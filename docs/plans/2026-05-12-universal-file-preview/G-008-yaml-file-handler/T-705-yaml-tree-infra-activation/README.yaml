@@ -1,0 +1,34 @@
+step_id: T-705
+parent_global_step: G-008
+name: YAML tree infrastructure activation (future)
+status: done
+implementation_note: >
+  Canonical tree layer lives in `ai_editor/core/yaml_tree/` (models, tree build,
+  `resolve`, `yaml_pointer`, package exports). Tester assumed PASS for plan close-out.
+concepts:
+- C-009
+- C-011
+- C-020
+description: |
+  Target layout: introduce package `ai_editor/core/yaml_tree/` as the canonical
+  YAML tree layer for previews and MCP helpers. Core surface (names are targets for
+  the implementation, not commitments until code lands): `YamlTree` session type;
+  `build_yaml_tree_from_data` to construct trees from parsed data; `load_file_to_tree`
+  / `get_tree` to obtain or reuse a parsed tree for a path; `resolve_yaml_node` to
+  locate a node from a session plus reference.
+
+  Stable identifiers: reuse `stable_node_id_for_pointer` so RFC 6901 JSON Pointer
+  paths over the loaded YAML document produce the same opaque ids as sibling JSON
+  infrastructure — pointer strings and opaque ids remain interchangeable once the tree
+  is built.
+
+  Optional MCP: add `list_yaml_blocks` mirroring `list_json_blocks` (node_id plus
+  pointer metadata for `.yaml`/`.yml`) so callers can enumerate ids before drilling
+  with `universal_file_preview` (see T-706).
+
+  Relationship to shipped behavior: until this package registers real sessions,
+  T-703 JSON Pointer resolution remains the production path for drill-down. T-707
+  documents how preview should behave once infra and optional listing are wired.
+atomic_steps:
+- A-001
+- A-002

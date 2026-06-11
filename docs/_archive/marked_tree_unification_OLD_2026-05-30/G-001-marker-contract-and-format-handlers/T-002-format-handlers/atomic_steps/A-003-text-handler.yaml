@@ -1,0 +1,85 @@
+step_id: A-003
+parent_tactical_step: T-002
+name: Create TextHandler for .txt and .rst files
+target_file: ai_editor/tree/handlers/text_handler.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml
+concepts:
+- C-007
+- C-001
+- C-003
+- C-004
+- C-005
+- C-009
+status: draft
+prompt: "Create the file `ai_editor/tree/handlers/text_handler.py`.\nOperation:
+  create_file (the file does not exist yet).\n\nThis file implements `TextHandler`
+  — the FormatHandler (C-007) for .txt and\n.rst files. It subclasses `FormatHandler`
+  from `ai_editor.tree.format_handler`.\nIt does **NOT** subclass MarkerContract.\n\
+  \n**Cross-TS execution order:** complete\n`docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml`\nbefore this step so `TreeNode` is available.\n\n## MRS excerpt\n\nC-005
+  AddressableBlock for text: one line. Paragraph-level grouping:\n  - two or more consecutive
+  newlines mark a paragraph break\n  - single newlines are continuation lines within
+  a paragraph\n  - the handler produces exactly two node levels: paragraph and line\n\
+  \  - blank lines that serve as paragraph separators carry no marker\n\nC-007 FormatHandler
+  for text (source_label {b001}):\n  - parse_content builds nodes from **unmarked**
+  source (NOT MarkerContract.parse)\n  - text handler uses line-level markers: each
+  line in the tree file is\n    prefixed with `<node_id><SEP><original_line>` where
+  SEP is `|`\n  - paragraph flag prefix `P:` for first line, `L:` for continuation\n\
+  \  - unmark strips all `P:<uuid>|` and `L:<uuid>|` prefixes\n\nC-009 TreeNode fields
+  from TextHandler.parse_content:\n  - node_id, kind (\"paragraph\" or \"line\"),
+  content\n  - line_no (1-based) stored in TreeNode.attributes[\"line_no\"]\n\n##
+  TreeNode dataclass (from ai_editor/tree/tree_node.py)\n\n```python\nfrom __future__
+  import annotations\n\nfrom dataclasses import dataclass, field\nfrom typing import
+  Any, Dict, Optional\n\nfrom ai_editor.tree.contracts import NodeId\n\n\n@dataclass\n\
+  class TreeNode:\n    node_id: NodeId\n    kind: str\n    content: str\n    attributes:
+  Dict[str, Any] = field(default_factory=dict)\n    parent_id: Optional[NodeId] = None\n\
+  \n    def __post_init__(self) -> None:\n        if not self.node_id:\n         \
+  \   raise ValueError(\"TreeNode.node_id must be a non-empty string\")\n        if
+  not self.kind:\n            raise ValueError(\"TreeNode.kind must be a non-empty
+  string\")\n```\n\n## Required file content\n\n```python\nfrom __future__ import
+  annotations\n\nimport re\nimport uuid\nfrom pathlib import Path\nfrom typing import
+  List\n\nfrom ai_editor.tree.format_handler import FormatHandler\nfrom ai_editor.tree.tree_node
+  import TreeNode\n\n_SEP = \"|\"\n_PARA_PREFIX = \"P:\"\n_LINE_PREFIX = \"L:\"\n\
+  _MARKER_RE = re.compile(r\"^(?:P:|L:)[0-9a-f-]{36}\\|\", re.MULTILINE)\n\n\nclass
+  TextHandler(FormatHandler):\n    \"\"\"FormatHandler for plain-text files (.txt,
+  .rst) (C-007).\"\"\"\n\n    def parse_content(\n        self, file_path: Path,
+  content: str\n    ) -> List[TreeNode]:\n        \"\"\"Build TreeNode list from unmarked
+  text content.\"\"\"\n        nodes: List[TreeNode] = []\n        lines = content.splitlines(keepends=True)\n\
+  \        in_paragraph = False\n        for i, line in enumerate(lines, start=1):\n\
+  \            stripped = line.rstrip(\"\\n\")\n            if stripped == \"\":\n\
+  \                in_paragraph = False\n                continue\n            kind
+  = \"paragraph\" if not in_paragraph else \"line\"\n            in_paragraph = True\n\
+  \            node_id = f\"{_PARA_PREFIX if kind == 'paragraph' else _LINE_PREFIX}{uuid.uuid4()}\"\
+  \n            nodes.append(\n                TreeNode(\n                    node_id=node_id,\n\
+  \                    kind=kind,\n                    content=stripped,\n       \
+  \             attributes={\"line_no\": i},\n                )\n            )\n\
+  \        return nodes\n\n    def mark(self, content: str) -> str:\n        \"\"\"\
+  Prefix each non-blank line with a fresh node-id marker.\"\"\"\n        result:
+  List[str] = []\n        in_paragraph = False\n        for line in content.splitlines(keepends=True):\n\
+  \            stripped = line.rstrip(\"\\n\")\n            if stripped == \"\":\n\
+  \                in_paragraph = False\n                result.append(line)\n   \
+  \             continue\n            prefix = _PARA_PREFIX if not in_paragraph else
+  _LINE_PREFIX\n            in_paragraph = True\n            result.append(f\"{prefix}{uuid.uuid4()}{_SEP}{line}\"\
+  )\n        return \"\".join(result)\n\n    def unmark(self, marked_text: str) -> str:\n\
+  \        \"\"\"Strip all node-id marker prefixes from marked text.\"\"\"\n     \
+  \   return _MARKER_RE.sub(\"\", marked_text)\n\n    def sidecar_path(self, source_abs:
+  Path) -> Path:\n        \"\"\"Return ``<stem>.<ext>.tree`` sibling of source_abs.\"\
+  \"\"\n        return source_abs.parent / (source_abs.name + \".tree\")\n```\n\n\
+  ## Constraints\n- Imports: `from __future__ import annotations`, `re`, `uuid`, `pathlib.Path`,\n\
+  \  `typing.List`, `ai_editor.tree.format_handler.FormatHandler`,\n  `ai_editor.tree.tree_node.TreeNode`.
+  No other imports.\n- parse_content returns List[TreeNode], not List[Dict].\n- line_no
+  goes in attributes dict, not as a top-level dict key.\n- UUID generation via `uuid.uuid4()`.\n\
+  - Estimated line count: ~85 lines.\n"
+verification:
+  type: import
+  target: ai_editor/tree/handlers/text_handler.py
+  expected: "`from ai_editor.tree.handlers.text_handler import TextHandler; from
+    ai_editor.tree.tree_node import TreeNode; h = TextHandler(); nodes = h.parse_content(__import__(\"\
+    pathlib\").Path(\"/tmp/x.txt\"), \"hello\\nworld\"); assert len(nodes) == 2;
+    assert isinstance(nodes[0], TreeNode); assert nodes[0].attributes[\"line_no\"] ==
+    1; marked = h.mark(\"hello\\nworld\"); assert h.unmark(marked) == \"hello\\nworld\"\
+    ` runs without error.\n"

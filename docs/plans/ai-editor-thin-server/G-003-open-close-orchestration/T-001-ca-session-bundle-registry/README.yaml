@@ -1,0 +1,27 @@
+step_id: T-001
+parent_global_step: G-003
+name: Реестр bundle по CA session_id
+description: 'Изменить command-layer session registry: ключ bundle — CA Session (C-004), не editor UUID. Параметр session_id в universal_file_open обязателен и семантически равен ca_session_id. Индекс (project_id, file_path) → ca_session_id. Убрать автогенерацию group UUID при open.
+
+  '
+concepts:
+- C-004
+- C-006
+- C-016
+inputs:
+- name: ca_session_id
+  type: string
+  description: Идентификатор сессии СА от агента.
+- name: project_id
+  type: string
+  description: Проект.
+- name: file_path
+  type: string
+  description: Открываемый файл.
+outputs:
+- name: session_bundle
+  type: object
+  description: In-memory bundle файлов одной CA Session.
+atomic_steps:
+- A-001
+status: ready_for_review

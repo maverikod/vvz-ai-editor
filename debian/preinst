@@ -1,0 +1,21 @@
+#!/bin/bash
+# debian/preinst - pre-installation script
+
+set -e
+
+SERVICE_NAME="code-analysis-server"
+SERVICE_USER="code-analysis"
+
+# Check if service is running and stop it
+if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+    echo "Stopping $SERVICE_NAME service..."
+    systemctl stop "$SERVICE_NAME" || true
+fi
+
+# Disable service if enabled
+if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
+    systemctl disable "$SERVICE_NAME" || true
+fi
+
+exit 0
+

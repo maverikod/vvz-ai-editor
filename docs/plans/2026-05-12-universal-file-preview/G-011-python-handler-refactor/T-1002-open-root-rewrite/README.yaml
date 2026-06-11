@@ -1,0 +1,13 @@
+# MERGED INTO T-1001
+# Both operations (drop dead code + rewrite _metadata_children_to_nodes) are
+# now in T-1001 (Clean and rewrite python_handler.py). This file is obsolete.
+step_id: T-1002
+parent_global_step: G-011
+name: OBSOLETE - merged into T-1001
+description: >
+  Merged into T-1001 (Clean and rewrite python_handler.py). This TS is no longer active.
+concepts: []
+inputs: []
+outputs: []
+atomic_steps: []
+status: obsolete

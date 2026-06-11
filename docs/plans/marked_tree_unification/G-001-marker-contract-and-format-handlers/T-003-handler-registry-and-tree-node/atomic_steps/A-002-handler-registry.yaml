@@ -1,0 +1,262 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Create HandlerRegistry
+target_file: ai_editor/tree/handler_registry.py
+operation: create_file
+priority: 2
+depends_on: []
+concepts:
+- C-008
+- C-007
+- C-003
+- C-002
+status: draft
+prompt: |
+  Create the file `ai_editor/tree/handler_registry.py`.
+  Operation: create_file (the file does not exist yet).
+
+  ## Parent documents
+
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml`
+  - Global step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/README.yaml`
+
+  ## Purpose
+
+  Define `HandlerRegistry` (C-008) — the central registry that resolves a
+  SourceFile to its FormatHandler (C-007) by file extension. HandlerRegistry is
+  the **sole resolution path**; no caller may bypass it to select a handler
+  directly.
+
+  ## Prerequisite (execution wave, not a code dependency)
+
+  `ai_editor/tree/format_handler.py` must exist with the FormatHandler ABC
+  (see inlined base class contract below). This step does not import TreeNode.
+
+  ## Inlined FormatHandler ABC contract (C-007)
+
+  The registry imports `FormatHandler` from `ai_editor.tree.format_handler`.
+  That module must define at minimum:
+
+  ```python
+  class FormatHandler(ABC):
+      def __init__(self, id_map: Optional[NodeIdMapResolver] = None) -> None:
+          self._id_map = id_map
+
+      @abstractmethod
+      def parse_content(self, file_path: Path, content: str) -> List[TreeNode]: ...
+
+      @abstractmethod
+      def mark(self, content: str) -> str: ...
+
+      @abstractmethod
+      def unmark(self, marked_text: str) -> str: ...
+
+      @abstractmethod
+      def sidecar_path(self, source_abs: Path) -> Path: ...
+  ```
+
+  Semantics: `parse_content` takes unmarked SourceFile body; `mark` and `unmark`
+  operate on TREE-section marked text; `sidecar_path` returns the sibling
+  `<source>.tree` path next to the source file.
+
+  ## MRS excerpt
+
+  C-008 HandlerRegistry:
+    - keyed by file extension (leading dot, e.g. ".py")
+    - owns the set of registered FormatHandlers
+    - sole resolution path from file path to FormatHandler
+
+  C-007 FormatHandler:
+    - one handler per format: text (.txt, .rst), markdown (.md), yaml (.yaml, .yml),
+      json (.json), python (.py)
+
+  C-003 TreeFile:
+    - file extension determines which handler to use
+
+  C-002 NodeId:
+    - unrecognised identifiers yield input error (HandlerNotFoundError for unknown ext)
+
+  ## File header (module docstring)
+
+  ```
+  """Central registry resolving SourceFile paths to FormatHandler by extension (C-008).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list — no others)
+
+  ```
+  from __future__ import annotations
+
+  from pathlib import Path
+  from typing import Dict
+
+  from ai_editor.tree.format_handler import FormatHandler
+  ```
+
+  ## Exception class
+
+  ```
+  class HandlerNotFoundError(KeyError):
+      """Raised when no FormatHandler is registered for a file extension."""
+
+      def __init__(self, extension: str) -> None:
+          ...
+          self.extension: str
+  ```
+
+  ### Method: HandlerNotFoundError.__init__(self, extension: str) -> None
+
+  Algorithm:
+  1. Call `super().__init__(f"No FormatHandler registered for extension {extension!r}")`.
+  2. Set `self.extension = extension`.
+
+  ## Class HandlerRegistry
+
+  Docstring:
+  ```
+  """Central registry resolving a file to its FormatHandler by extension (C-008).
+
+  Sole resolution path from a source file path to its FormatHandler.
+  No caller may bypass the registry to select a handler directly.
+  """
+  ```
+
+  ### Method: __init__(self) -> None
+
+  Docstring: `"""Initialise with an empty handler map."""`
+
+  Algorithm:
+  1. Set `self._handlers: Dict[str, FormatHandler] = {}`.
+
+  Instance attribute:
+  - `_handlers: Dict[str, FormatHandler]` — private map extension → handler.
+
+  ### Method: register(self, extension: str, handler: FormatHandler) -> None
+
+  Docstring:
+  ```
+  """Register a FormatHandler for a file extension.
+
+  Args:
+      extension: File extension including the leading dot (e.g. ".py").
+      handler: The FormatHandler instance to register.
+
+  Raises:
+      ValueError: If extension does not start with a dot.
+  """
+  ```
+
+  Algorithm:
+  1. If `not extension.startswith(".")`: raise `ValueError(f"Extension must start with a dot; got {extension!r}")`.
+  2. Store `self._handlers[extension] = handler`.
+
+  Edge cases:
+  - `extension=""` → ValueError.
+  - `extension="py"` (no dot) → ValueError.
+  - Re-registering same extension overwrites previous handler (allowed).
+
+  ### Method: resolve(self, file_path: Path) -> FormatHandler
+
+  Docstring:
+  ```
+  """Return the FormatHandler registered for the file's extension.
+
+  Args:
+      file_path: Path whose suffix selects the handler.
+
+  Returns:
+      The registered FormatHandler for this extension.
+
+  Raises:
+      HandlerNotFoundError: If no handler is registered for file_path.suffix.
+  """
+  ```
+
+  Algorithm:
+  1. Set `ext = file_path.suffix`.
+  2. If `ext not in self._handlers`: raise `HandlerNotFoundError(ext)`.
+  3. Return `self._handlers[ext]`.
+
+  Edge cases:
+  - `Path("file")` with empty suffix → HandlerNotFoundError("").
+  - `Path("a.PY")` uses suffix `.PY` (case-sensitive; no normalisation).
+
+  ### Method: extensions(self) -> list[str]
+
+  Docstring: `"""Return sorted list of registered file extensions."""`
+
+  Algorithm:
+  1. Return `sorted(self._handlers.keys())`.
+
+  ### Method: __contains__(self, extension: str) -> bool
+
+  Docstring: `"""Return True if a handler is registered for the extension."""`
+
+  Algorithm:
+  1. Return `extension in self._handlers`.
+
+  ## Do NOT implement in this step
+
+  - Do NOT add `default_registry` (added in the next step on this same file).
+  - Do NOT register any handlers in `__init__`.
+
+  ## Forbidden patterns
+
+  - Do NOT import handler implementations (TextHandler, etc.) in this step.
+  - Do NOT expose `_handlers` publicly.
+  - Do NOT raise bare `KeyError` from `resolve`; use `HandlerNotFoundError`.
+  - Do NOT add singleton module globals.
+  - Do NOT modify any file other than `ai_editor/tree/handler_registry.py`.
+  - Do NOT use `Any` type annotation.
+
+  ## Estimated line count
+
+  ~75 lines (must stay ≤ 400).
+
+  ## Mandatory validation (run from project root with `.venv` activated)
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/handler_registry.py
+  flake8 ai_editor/tree/handler_registry.py
+  mypy ai_editor/tree/handler_registry.py
+  python -c "
+  from pathlib import Path
+  from ai_editor.tree.handler_registry import HandlerRegistry, HandlerNotFoundError
+  r = HandlerRegistry()
+  assert r.extensions() == []
+  try:
+      r.resolve(Path('missing.xyz'))
+  except HandlerNotFoundError as e:
+      assert e.extension == '.xyz'
+  else:
+      raise SystemExit('expected HandlerNotFoundError')
+  try:
+      r.register('bad', None)
+  except ValueError:
+      pass
+  else:
+      raise SystemExit('expected ValueError')
+  "
+  pytest -q
+  ```
+
+  Expected:
+  - black, flake8, mypy → success as above
+  - python -c → exit 0
+  - pytest → all tests pass
+
+  All tests in the repository must pass before marking this step complete.
+verification:
+  type: import
+  target: ai_editor/tree/handler_registry.py
+  expected: >
+    HandlerRegistry and HandlerNotFoundError import succeeds. New registry has
+    empty extensions(). resolve(Path("x.unknown")) raises HandlerNotFoundError
+    with extension ".unknown". register("bad", handler) raises ValueError.
+    HandlerNotFoundError is a subclass of KeyError.

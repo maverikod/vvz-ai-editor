@@ -1,0 +1,17 @@
+step_id: A-009
+parent_tactical_step: T-000
+name: Удалить monolith preview_command
+target_file: ai_editor/commands/universal_file_preview_command.py
+operation: delete_file
+priority: 6
+depends_on:
+- A-005
+concepts:
+- C-016
+prompt: |
+  Delete `ai_editor/commands/universal_file_preview_command.py` before recreating slim facade.
+verification:
+  type: manual
+  target: ai_editor/commands/universal_file_preview_command.py
+  expected: File absent until facade AS runs.
+status: draft

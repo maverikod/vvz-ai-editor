@@ -1,0 +1,185 @@
+step_id: A-006
+parent_tactical_step: T-003
+name: Remove promote_pending_sidecar_to_final from tree_saver save_tree_to_file
+target_file: ai_editor/core/cst_tree/tree_saver.py
+operation: modify_file
+priority: 6
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/cst_tree/tree_saver.py
+
+  ## Goal
+  Remove the dependency on promote_pending_sidecar_to_final, which no longer
+  exists in tree_sidecar.py together with the entire pending-sidecar mechanism.
+  write_sidecar_atomic writes the sibling tree file directly. This change touches
+  the module-level tree_sidecar import, the post-sync sidecar-write block in
+  save_tree_to_file, and one stale ``.cst/`` reference in the save_tree_to_file
+  docstring; nothing else changes.
+
+  ## Preconditions
+  - tree_sidecar.py no longer exports promote_pending_sidecar_to_final.
+  - write_sidecar_atomic(py_path, tree) writes the sibling path directly.
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover redirecting legacy path call sites onto sibling_tree_path; removes pending-sidecar mechanism.
+  - properties:
+    - write_sidecar_atomic writes at the sibling path; promote_pending_sidecar_to_final deleted
+    - hard cutover; no backward-compatibility shim
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact stored as a sibling file next to the source.
+  - properties:
+    - stored as a sibling file placed directly next to the source file it describes
+
+  ## Context
+  At module level, tree_saver imports two names from .tree_sidecar:
+      from .tree_sidecar import promote_pending_sidecar_to_final, write_sidecar_atomic
+  In save_tree_to_file Step 8, after sync_file_to_db_atomic succeeds, a guarded block
+  calls promote_pending_sidecar_to_final(target_path) then write_sidecar_atomic(target_path,
+  tree) inside try/except OSError. promote_pending_sidecar_to_final is absent from
+  tree_sidecar.py; write_sidecar_atomic remains and already writes to the sibling path
+  with the signature write_sidecar_atomic(py_path, tree).
+
+  ## Required edits (migration-relevant ONLY; do not refactor anything else)
+  1. Change the module-level import (currently a single line importing both names) to
+     import only write_sidecar_atomic:
+         from .tree_sidecar import write_sidecar_atomic
+
+  2. Delete the call line ``promote_pending_sidecar_to_final(target_path)`` inside the
+     post-sync try block, leaving the write and its OSError handler intact:
+         if sync_result.get("success") and prebuilt_cst_tree_for_sync is not None:
+             try:
+                 write_sidecar_atomic(target_path, tree)
+             except OSError as exc:
+                 logger.warning(
+                     "CST sidecar write after save failed for %s: %s",
+                     target_path,
+                     exc,
+                 )
+
+  3. Update the stale ``.cst/`` reference in the save_tree_to_file docstring. In the
+     numbered "Process" list, Step 3 currently reads:
+         3. Generate source code from CST tree (clean ``.py``; sidecar ``.cst/<name>.tree``
+            holds node ids.)
+     Change the sidecar path form to the sibling convention so it reads:
+         3. Generate source code from CST tree (clean ``.py``; sidecar ``<source>.py.tree``
+            next to the source holds node ids.)
+     This is a docstring-only wording fix; do not change any executable line. The
+     inline ``# Step 3: ... sidecar holds ids.`` comment has no ``.cst`` and stays as is.
+
+  ## Forbidden
+  - Do not change any other import, statement, or block beyond the import line, the
+    promote_pending call line, and the Step 3 docstring wording above. All other steps
+    (disk snapshot check, backup, code generation, replay verification, temp write,
+    validation, os.replace, byte verification, DB file record, sync_file_to_db_atomic
+    call, git commit, return payload, exception handling, finally cleanup) stay exactly
+    as they are.
+  - Keep the write_sidecar_atomic(target_path, tree) call and its surrounding
+    try/except OSError unchanged except for removing the promote line.
+  - No backward-compatibility shim for pending sidecars.
+  - Do not touch other files.
+
+  ## a3/a8 waiver (pre-existing oversized file)
+  Target is pre-existing project file >400 lines. Region/sectioned embed with explicit anchor markers satisfies a8; full-file embed not required.
+
+  Do not split this file. This prompt uses a sectioned embed: verbatim imports and edit-adjacent save_tree_to_file excerpts; the large unchanged middle of save_tree_to_file is omitted with an explicit byte-for-byte contract. a8 post-prior state outside the three edit sites is preserved by that contract.
+
+  ## File state contract (post tree_sidecar.py sibling-path cutover, pre-this-step)
+  Total lines on disk: 403. Modify ONLY: (1) module-level tree_sidecar import,
+  (2) promote_pending_sidecar_to_final call inside save_tree_to_file post-sync block,
+  (3) Step 3 path wording in save_tree_to_file docstring Process list. All other lines
+  must match the pre-step file byte-for-byte.
+
+  ## Section 1 — module header and imports (verbatim except tree_sidecar import line)
+  ```python
+  """
+  CST tree saver - save tree to file with atomic operations.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import logging
+  import os
+  import time
+  from datetime import datetime
+  from pathlib import Path
+  from typing import Any, Dict, Optional, Sequence
+
+  from ..backup_manager import BackupManager
+  from ..file_lock import file_lock
+  from .models import CSTTree, TreeNodeMetadata, TreeOperation
+  from .tree_builder import (
+      _attach_disk_snapshot,
+      _read_logical_py_source_sync_disk,
+      create_tree_from_code,
+      get_tree,
+      reload_tree_from_file,
+      remove_tree,
+  )
+  from .node_stable_id import strip_inline_node_id_lines_from_source
+  from .tree_sidecar import promote_pending_sidecar_to_final, write_sidecar_atomic
+  from .tree_save_verification import (
+      FILE_CHANGED_SINCE_LOAD,
+      WRITE_VERIFY_FAILED,
+      SaveVerificationError,
+      assert_file_bytes_match,
+      assert_replay_matches,
+      assert_tree_module_integrity,
+      disk_matches_tree_snapshot,
+  )
+
+  logger = logging.getLogger(__name__)
+  ```
+
+  ## Section 2 — save_tree_to_file docstring Process list (edit Step 3 wording here)
+  The function signature and Args/Returns/Raises blocks are unchanged. Only Step 3
+  in the Process numbered list changes (see Required edits §3). Pre-edit Step 3:
+      3. Generate source code from CST tree (clean ``.py``; sidecar ``.cst/<name>.tree``
+         holds node ids.)
+
+  ## Section 3 — omitted middle (unchanged on disk; do NOT modify)
+  From ``timings: Dict[str, float] = {}`` through the ``sync_file_to_db_atomic(...)``
+  call and its timing assignment: path resolution, file_lock context, disk snapshot
+  check, backup, code generation, replay verification, temp write, validate,
+  os.replace, byte verify, DB file record — all byte-for-byte identical to pre-step
+  file. Do not alter any executable line in this region.
+
+  ## Section 4 — post-sync sidecar block (FULL pre-edit; apply Required edits §2)
+  ```python
+          if sync_result.get("success") and prebuilt_cst_tree_for_sync is not None:
+              try:
+                  promote_pending_sidecar_to_final(target_path)
+                  write_sidecar_atomic(target_path, tree)
+              except OSError as exc:
+                  logger.warning(
+                      "CST sidecar write after save failed for %s: %s",
+                      target_path,
+                      exc,
+                  )
+  ```
+
+  ## Section 5 — remainder of save_tree_to_file (unchanged; do NOT edit)
+  From the ``if not sync_result.get("success"):`` raise through the function's
+  except/finally handlers and closing of file_lock context: byte-for-byte identical
+  to pre-step file.
+verification:
+  type: static_analysis
+  target: ai_editor/core/cst_tree/tree_saver.py
+  expected: black, flake8, mypy exit 0; the module-level tree_sidecar import 
+    binds only write_sidecar_atomic; save_tree_to_file no longer calls 
+    promote_pending_sidecar_to_final; the post-sync block still calls 
+    write_sidecar_atomic(target_path, tree) inside try/except OSError with the 
+    same logger.warning; the save_tree_to_file docstring Step 3 references the 
+    sibling path <source>.py.tree and no longer contains '.cst/'; all other 
+    executable lines unchanged; grep for 'promote_pending_sidecar_to_final' and 
+    '.cst' in this file returns nothing.

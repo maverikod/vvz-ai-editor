@@ -1,0 +1,171 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Вынести EditSession implementation
+target_file: ai_editor/core/edit_session/edit_session_impl.py
+operation: create_file
+priority: 3
+depends_on:
+- A-001
+- A-006
+concepts:
+- C-005
+- C-006
+- C-007
+- C-008
+- C-018
+- C-019
+prompt: |
+  Create `ai_editor/core/edit_session/edit_session_impl.py` (operation: create_file).
+
+  ## Parent scope (T-003)
+
+  Mechanical split of `EditSession` entity from monolithic `edit_session.py`. Preserves
+  **legacy** open path (sibling session dir beside upstream source file). Workspace path
+  binding is added only in a later modify step on `edit_session_impl.py`.
+
+  ## OUT OF SCOPE (do NOT implement in this AS)
+
+  - Workspace open kwargs (`workspace_session_root`, `workspace_file_subtree_root`,
+    `workspace_origin_path`, `workspace_edit_subdir`) — implemented in `EditSession.open` workspace mode
+  - Relocating sidecar/tree-temp into Edit Subdirectory → T-006
+  - draft_path / lockfile_path under edit subdir → T-004
+  - Do NOT remove legacy `sidecar_path_for` / sibling `session_dir` in `open()` — keep
+    verbatim for non-workspace callers until T-006 replaces external sidecar resolution
+
+  ## Read first
+
+  - `ai_editor/core/edit_session/edit_session.py` (full monolith — copy source)
+  - `ai_editor/core/edit_session/edit_session_mutations.py` (lifecycle mutations module)
+
+  ## Allowed deltas from monolith (ONLY these)
+
+  1. Module docstring — replace C-012 reference:
+
+     ```python
+     """EditSession entity: on-disk session directory and dual-mode edit lifecycle (C-019).
+
+     Distinct from ``commands.universal_file_edit.session`` (in-memory draft registry).
+     Supports FINAL-2 open, valid/invalid tree mutations, re-validation, and staged
+     external copy-out.
+
+     Author: Vasiliy Zdanovskiy
+     email: vasilyvz@gmail.com
+     """
+     ```
+
+  2. Class docstring — use `(C-019)` not `(C-012)`.
+
+  3. Registry comment:
+
+     ```python
+     #: Process-level registry; open registers, close removes (C-019).
+     _active_sessions: dict[str, EditSession] = {}
+     ```
+
+  4. Delegate lifecycle methods to `edit_session_mutations as _mut` (import at **bottom**):
+
+     ```python
+     from . import edit_session_mutations as _mut
+     ```
+
+     Methods delegating to `_mut`: `checkout_history_index`, `undo`, `redo`,
+     `record_revert_commit`, `preview_external_write`, `confirm_external_copy_out`,
+     `close`, `record_tree_modification`.
+
+  5. Replace `_try_revalidate` body with `_mut.try_revalidate(self)`.
+
+  6. Replace `_post_mutation_degraded` trailing call with `_mut.try_revalidate(self)`.
+
+  7. Remove duplicated private helpers moved to `edit_session_mutations.py` (`_export_source_via_unmark`,
+     `_update_session_tree_checksums`, `_build_session_tree`, full `_try_revalidate` body).
+
+  ## Imports (complete list — same as monolith minus moved helpers)
+
+  ```python
+  from __future__ import annotations
+
+  import difflib
+  import enum
+  import os
+  import shutil
+  import uuid
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from typing import Any, Callable, Optional
+
+  from ai_editor.core.edit_session.marker_cycle import (
+      denude_marked_tree,
+      restore_marked_tree,
+  )
+  from ai_editor.core.edit_session.session_history import SessionHistory
+  from ai_editor.core.edit_session.session_repo import SessionRepo
+  from ai_editor.core.search_session.tree_representation import sidecar_path_for
+  from ai_editor.core.tree_lifecycle import (
+      compute_content_checksum,
+      is_tree_valid,
+      validate_or_recreate_tree_file,
+  )
+  from ai_editor.tree.edit_operations import EditOperation
+  from ai_editor.tree.handler_registry import HandlerRegistry
+  ```
+
+  ## EditSession.open (legacy only — unchanged logic)
+
+  Signature (no workspace kwargs in this AS):
+
+  ```python
+  @classmethod
+  def open(
+      cls,
+      *,
+      source_abs: Path,
+      project_root: Path,
+      file_path: str,
+      content: Optional[str] = None,
+  ) -> EditSession:
+  ```
+
+  Preserve exact monolith algorithm including:
+  - `session_dir = source_abs.parent / f"{source_abs.name}-{session_id}"`
+  - `tree_abs = sidecar_path_for(file_path, project_root.resolve())` then override from
+    `validate_or_recreate_tree_file` when available
+  - `session_tree_path = session_dir / tree_abs.name`
+
+  **Do NOT** add workspace-mode branches in this step.
+
+  ## Dataclass fields (unchanged from monolith)
+
+  `session_id`, `source_abs`, `tree_abs`, `session_dir`, `session_source_path`,
+  `session_tree_path`, `session_repo_path`, `session_repo`, `project_root`, `file_path`,
+  `tree_validity`, `source_checksum`, `tree_checksum`, `is_open`, `history`.
+
+  Do NOT add `workspace_session_root` / `workspace_file_subtree_root` fields until workspace open
+  kwargs are added in `edit_session_impl.py`.
+
+  ## Forbidden patterns
+
+  - Do NOT reference C-012 or C-014 in docstrings or comments
+  - Do NOT import `workspace_layout` or `editor_workspace_paths`
+  - Do NOT change `open()` path layout beyond mechanical move
+  - Do NOT implement T-006 sidecar-in-workspace logic
+  - Do NOT delete `edit_session.py` monolith (thin facade recreation restores `edit_session.py`)
+
+  ## Validation commands
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/edit_session_impl.py
+  flake8 ai_editor/core/edit_session/edit_session_impl.py
+  mypy ai_editor/core/edit_session/edit_session_impl.py
+  python -c "from ai_editor.core.edit_session.edit_session_impl import EditSession"
+  pytest tests/unit/test_edit_session_lifecycle.py tests/unit/test_edit_session_tree_operations.py -v
+  ```
+
+  Expected: import ok; all edit_session tests pass (still importing via monolith until thin facade
+  is recreated).
+  **Mandatory:** all project tests must pass before handoff.
+verification:
+  type: import
+  target: ai_editor.core.edit_session.edit_session_impl.EditSession
+  expected: EditSession class importable; legacy open behavior unchanged; no workspace kwargs yet.
+status: draft

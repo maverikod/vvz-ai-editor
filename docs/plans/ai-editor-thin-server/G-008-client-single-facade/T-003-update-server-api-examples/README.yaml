@@ -1,0 +1,24 @@
+step_id: T-003
+parent_global_step: G-008
+name: server_api и примеры клиента
+description: 'Обновить контракт фасада клиента под суженный MCP (C-016); исправить примеры вызова universal_file_*; проверка регистрации команд не требует session/transfer. Документировать единый workflow (C-009) в README клиентской библиотеки.
+
+  '
+concepts:
+- C-003
+- C-009
+- C-016
+- C-022
+inputs:
+- name: target_mcp_commands
+  type: array
+  description: universal_file_* + health (без queue_health).
+outputs:
+- name: aligned_client_contract
+  type: object
+  description: Клиент и сервер согласованы по command set.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: ready_for_review

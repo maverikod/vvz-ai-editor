@@ -1,0 +1,56 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Delete the standalone .trees/ resolver module sidecar_paths.py
+target_file: ai_editor/core/tree_temp/sidecar_paths.py
+operation: delete_file
+priority: 1
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: delete_file\nTarget: ai_editor/core/tree_temp/sidecar_paths.py\n\
+  \n## Goal\nRemove the standalone .trees/ resolver module entirely. After the cutover
+  no code\npath resolves tree files under a central .trees/ mirror directory; JSON
+  and YAML\ntree files become siblings of their sources (handled by A-002 and A-003
+  of this\ntactical step, which redirect the two callers onto sibling_tree_path).\n\
+  \n## What to delete\nDelete the whole file ai_editor/core/tree_temp/sidecar_paths.py.
+  Its entire\npublic surface is removed with it:\n  - resolve_trees_sidecar_path(project_root,
+  source_relative_to_project) -> Path\n  - TREES_DIRECTORY_NAME constant\n  - SidecarPathError
+  exception\n\n## How to delete\nUse the universal_file_delete MCP command (recycle-bin
+  soft delete) for the path\nabove. Do not leave a stub or a re-export shim.\n\n##
+  Ordering / dependency\nThis atomic step must be applied together with A-002 (tree_temp_write_commit.py)\n\
+  and A-003 (tree_temp_open_support.py) of the same tactical step, which remove the\n\
+  two imports of resolve_trees_sidecar_path. After all three are applied, a project\n\
+  search for \"resolve_trees_sidecar_path\", \"TREES_DIRECTORY_NAME\", \"SidecarPathError\"\
+  ,\nand \"tree_temp.sidecar_paths\" must return no hits outside tests/scripts (those
+  are\nhandled in T-003).\n\n## Forbidden\n- Do not keep any backward-compatibility
+  re-export of the removed names.\n- Do not touch any other file in this atomic step.\n\
+  \n## Full current file content (verbatim, for reference)\n```python\n\"\"\"Resolve
+  `.trees/` mirrored storage paths for tree-temp Sidecars (C-002).\n\nBind one source
+  file identity under the project to exactly one Sidecar file path.\n\nAuthor: Vasiliy
+  Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__ import annotations\n\
+  \nfrom pathlib import Path, PurePosixPath\n\nTREES_DIRECTORY_NAME = \".trees\"\n\
+  \n\nclass SidecarPathError(ValueError):\n    \"\"\"Raised when a project-relative
+  source path cannot map to a Sidecar path.\"\"\"\n\n\ndef resolve_trees_sidecar_path(\n\
+  \    project_root: Path, source_relative_to_project: Path\n) -> Path:\n    \"\"\"\
+  Return absolute Path to the Sidecar file for `source_relative_to_project`\n    under
+  `project_root/.trees/` using mirrored relative naming with `.tree` suffix.\n   \
+  \ \"\"\"\n    if source_relative_to_project.is_absolute():\n        raise SidecarPathError(\"\
+  source path must be relative to project root\")\n    pure = PurePosixPath(*source_relative_to_project.parts)\n\
+  \    if pure == PurePosixPath(\".\") or str(pure) == \"\":\n        raise SidecarPathError(\"\
+  source path must not be empty\")\n    for segment in pure.parts:\n        if segment
+  == \"..\":\n            raise SidecarPathError(\n                \"source path must
+  not contain parent directory segments\"\n            )\n        if segment in {\"\
+  .\", \"\"}:\n            raise SidecarPathError(\"source path must not contain '.'
+  or empty segments\")\n    rel_posix = pure.as_posix()\n    sidecar_rel_name = f\"\
+  {rel_posix}.tree\"\n    return (project_root / TREES_DIRECTORY_NAME / sidecar_rel_name).resolve()\n\
+  ```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/sidecar_paths.py
+  expected: File ai_editor/core/tree_temp/sidecar_paths.py no longer exists.
+    After A-002 and A-003 of this tactical step are also applied, a project grep
+    for 'resolve_trees_sidecar_path', 'TREES_DIRECTORY_NAME', 
+    'SidecarPathError', and 'tree_temp.sidecar_paths' returns no hits in 
+    ai_editor/ (tests and scripts are handled in T-003).

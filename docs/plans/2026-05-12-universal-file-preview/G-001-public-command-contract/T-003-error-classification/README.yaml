@@ -1,0 +1,45 @@
+step_id: T-003
+parent_global_step: G-001
+name: Error classification contract
+status: frozen
+concepts:
+- C-001
+- C-014
+description: "Define the ErrorClassification (C-014) as three distinct error classes,\
+  \ each with a deterministic error code. PreviewCommand (C-001) surfaces exactly\
+  \ one of these classes on failure; no silent fallback to a different file type or\
+  \ handler is permitted.\nClass 1 — input errors (error code prefix: INPUT_ERROR):\n\
+  \  Triggered by malformed or logically invalid caller-supplied parameters.\n  Specific\
+  \ codes:\n  - INVALID_SELECTOR_FORM: selector string does not contain ':' or leading\
+  \ '-'\n  - MIXED_SELECTOR_LIST: list contains both integers and strings\n  - DUPLICATE_SELECTOR_ENTRY:\
+  \ list contains a repeated index or identifier\n  - OUT_OF_RANGE_INDEX: integer\
+  \ selector index exceeds block set size\n  - UNKNOWN_IDENTIFIER: string selector\
+  \ entry not found in focus node's block set\n  - SELECTOR_ON_EMPTY: selector provided\
+  \ but focus node has no blocks\n  - UNKNOWN_EXTENSION: file_path extension has no\
+  \ registered FileHandler\n  - UNKNOWN_NODE_REF: node_ref value not resolvable by\
+  \ the file handler\n  - CONFLICTING_PARAMETERS: parameter combination is logically\
+  \ contradictory\n  - GLOB_IN_FILE_PATH: file_path contains wildcard characters\n\
+  \nClass 2 — file-structure errors (error code prefix: FILE_STRUCTURE_ERROR):\n \
+  \ Triggered when the file cannot be parsed by its handler.\n  Payload: name of the\
+  \ failing parser and, when available, the line range\n  where parsing failed.\n\n\
+  Class 3 — file-handler-internal errors (error code prefix: HANDLER_ERROR):\n  Triggered\
+  \ when the file handler fails during node resolution or\n  child materialisation\
+  \ after the file has been opened successfully.\n  Payload: name of the file handler\
+  \ that raised the error.\n\nNo-silent-fallback invariant: when the file handler\
+  \ for the given extension encounters any error, the command returns the appropriate\
+  \ error class and code. It never retries with a different handler or returns partial\
+  \ data.\n"
+inputs:
+- name: error_signal
+  type: internal error condition
+  description: 'An error condition raised anywhere in the command pipeline: input
+    validation, file-structure parsing, or handler-internal operation.'
+outputs:
+- name: classified_error
+  type: ErrorClassification (C-014) instance
+  description: 'A structured error response carrying: error class (one of the three),
+    error code (deterministic per condition), and class-specific payload (line range
+    for file-structure; handler name for handler-internal; violated rule for input
+    errors).'
+atomic_steps:
+- A-001

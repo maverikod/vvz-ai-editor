@@ -1,0 +1,129 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Sidecar JSON reader and validation
+target_file: ai_editor/core/tree_temp/sidecar_payload.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+prompt: |
+  Technical reference: docs/plans/2026-05-18-tree-sidecar/spec.yaml (concepts C-001, C-002).
+  Parent scope: docs/plans/2026-05-18-tree-sidecar/G-001-tree-node-and-sidecar/README.yaml.
+  Tactical scope: docs/plans/2026-05-18-tree-sidecar/G-001-tree-node-and-sidecar/T-002-sidecar-reader/README.yaml.
+
+  ## Operation
+  create_file — create `ai_editor/core/tree_temp/sidecar_payload.py`.
+
+  ## MRS excerpt (C-002 Sidecar persisted JSON)
+  Top-level JSON object fields only:
+  - source_sha256: 64-character hexadecimal SHA-256 digest string (accept uppercase on read; normalize to lowercase when returning from validation helper).
+  - root: JSON array of TreeNode-shaped JSON objects (C-001); order preserved.
+  Parsing rejects any other top-level keys.
+
+  ## Deliverable (exact source required)
+  The new file content MUST match the following Python source exactly: same docstrings, same strings, same identifiers, same logical layout. Run Black only as the validation step; if Black changes wrapping, accept Black's wrapping but keep every docstring letter-identical to the template below.
+
+  ```python
+  """JSON Sidecar payload load path for tree-temp sources (.trees/*.tree).
+
+  Decodes persisted Sidecar documents (C-002): hex source_sha256 plus root array whose
+  elements are TreeNode-shaped dicts (C-001).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import json
+  import re
+  from typing import Any, Dict, List, Tuple
+
+  from ai_editor.core.tree_temp.tree_node import (
+      TreeNode,
+      tree_node_from_json_dict,
+      validate_node_constraints,
+  )
+
+
+  class SidecarParseError(ValueError):
+      """Raised when Sidecar JSON is malformed or TreeNode validation fails."""
+
+
+  _SHA256_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+  def _require_object(value: Any, context: str) -> Dict[str, Any]:
+      if not isinstance(value, dict):
+          raise SidecarParseError(
+              f"{context}: expected JSON object, got {type(value).__name__}"
+          )
+      return value
+
+
+  def validate_sidecar_source_sha256_field(raw: Any) -> str:
+      """Validate and normalize Sidecar source_sha256 to lowercase hex."""
+      if not isinstance(raw, str) or not _SHA256_HEX_RE.match(raw):
+          raise SidecarParseError(
+              "source_sha256 must be a 64-character hexadecimal SHA-256 digest string"
+          )
+      return raw.lower()
+
+
+  def parse_sidecar_document(doc: Dict[str, Any]) -> Tuple[str, List[TreeNode]]:
+      """Decode top-level Sidecar mapping to digest and ordered root TreeNode list.
+
+      Permitted top-level keys are exactly ``source_sha256`` and ``root``.
+      """
+      extra_keys = set(doc.keys()) - {"source_sha256", "root"}
+      if extra_keys:
+          raise SidecarParseError(f"unexpected top-level keys: {sorted(extra_keys)}")
+      sha = validate_sidecar_source_sha256_field(doc.get("source_sha256"))
+      root_raw = doc.get("root")
+      if not isinstance(root_raw, list):
+          raise SidecarParseError("root must be a JSON array")
+      nodes: List[TreeNode] = []
+      for index, item in enumerate(root_raw):
+          if not isinstance(item, dict):
+              raise SidecarParseError(f"root[{index}] must be a JSON object")
+          node = tree_node_from_json_dict(item)
+          validate_node_constraints(node)
+          nodes.append(node)
+      return sha, nodes
+
+
+  def parse_sidecar_json_text(text: str) -> Tuple[str, List[TreeNode]]:
+      """Parse a UTF-8 Sidecar JSON document from text."""
+      try:
+          loaded = json.loads(text)
+      except json.JSONDecodeError as exc:
+          raise SidecarParseError(f"invalid JSON: {exc}") from exc
+      doc = _require_object(loaded, "sidecar root")
+      return parse_sidecar_document(doc)
+
+
+  def parse_sidecar_json_bytes(raw: bytes) -> Tuple[str, List[TreeNode]]:
+      """Decode UTF-8 bytes and parse Sidecar JSON."""
+      try:
+          text = raw.decode("utf-8")
+      except UnicodeDecodeError as exc:
+          raise SidecarParseError(f"sidecar must be UTF-8: {exc}") from exc
+      return parse_sidecar_json_text(text)
+  ```
+
+  ## Preconditions
+  `ai_editor/core/tree_temp/tree_node.py` must already define TreeNode, tree_node_from_json_dict, and validate_node_constraints with compatible behaviour for C-001.
+
+  ## Forbidden
+  - Do not add serialization or filesystem I/O in this step.
+  - Do not reference `.cst/` or Python CST sidecars.
+
+  ## Notes
+  Estimated line count after formatting is approximately 110 lines.
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/sidecar_payload.py
+  expected: Black accepts or reformats without failure; flake8 on this path exits zero; mypy on this path succeeds once tree_node defines the imported symbols.
+status: done

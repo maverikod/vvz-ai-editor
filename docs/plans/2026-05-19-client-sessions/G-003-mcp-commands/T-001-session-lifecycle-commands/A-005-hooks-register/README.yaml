@@ -1,0 +1,33 @@
+concepts:
+- C-005
+depends_on:
+- A-002
+- A-003
+- A-004
+name: Register session commands in hooks_register_part2.py
+operation: modify_file
+parent_tactical_step: T-001
+priority: 5
+prompt: "Modify the existing file at the exact path:\n  ai_editor/hooks_register_part2.py\n\
+  \nOperation: modify_file. The file contains function register_commands_part2(reg:
+  registry)\nstarting at line 15. The function registers many commands via try/except
+  import blocks\nlike:\n    try:\n        from .commands.some_command import SomeCommand\n\
+  \        reg.register(SomeCommand, 'custom')\n    except ImportError:\n        pass\n\
+  \nRequired change: append a new try/except block at the END of register_commands_part2\n\
+  function body, registering all three session lifecycle commands:\n\n    try:\n \
+  \       from .commands.sessions.session_create_command import SessionCreateCommand\n\
+  \        from .commands.sessions.session_delete_command import SessionDeleteCommand\n\
+  \        from .commands.sessions.session_list_command import SessionListCommand\n\
+  \n        reg.register(SessionCreateCommand, 'session_management')\n        reg.register(SessionDeleteCommand,
+  'session_management')\n        reg.register(SessionListCommand, 'session_management')\n\
+  \    except ImportError:\n        pass\n\nDo not modify any other part of the file.
+  Do not reformat existing code."
+status: done
+step_id: A-005
+target_file: ai_editor/hooks_register_part2.py
+verification:
+  expected: The file contains the registration block for SessionCreateCommand, 
+    SessionDeleteCommand, SessionListCommand with category 'session_management'.
+    Existing registrations are unchanged.
+  target: ai_editor/hooks_register_part2.py
+  type: static_analysis

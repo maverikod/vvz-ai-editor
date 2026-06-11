@@ -1,0 +1,301 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Preview открытой рабочей копии
+target_file: ai_editor/commands/universal_file_preview_runtime.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-008
+- C-011
+- C-014
+- C-016
+- C-024
+prompt: |
+  Modify `ai_editor/commands/universal_file_preview_runtime.py` only.
+  Implement **open-file preview mode** (Edit Stage C-011, Edit Subdirectory C-008)
+  inside `run_preview_execute`. Scope is **T-002 only** — when CA session id,
+  `project_id`, and `file_path` match an open file bundle, read the workspace
+  draft via Internal Edit Engine handlers. Do **not** implement one-shot upstream
+  read (that is G-004/T-003). Do **not** modify `universal_file_preview_command.py`
+  in this step.
+
+  ## Prerequisite — facade guard already on disk (G-007)
+
+  G-004/T-002 builds on completed G-007 session-guard work. On disk,
+  `UniversalFilePreviewCommand.execute` already calls
+  `SessionGuard.check(OperationKind.PREVIEW, ca_session_id)` (C-024; delegates
+  C-014 Session Validation touch via upstream) and only then delegates to
+  `run_preview_execute`. This step adds the open-file workspace branch inside
+  runtime only; do not modify the facade.
+
+  ## MRS concepts (relevant excerpt)
+
+  - **C-008 Edit Subdirectory**: workspace draft/CST/tree-temp copy; sole mutation
+    target on edit stage; preview reads this copy, not origin snapshot.
+  - **C-011 Edit Stage**: preview is read-only inside open Edit Subdirectory;
+    no session_view; no CA lock acquisition for preview.
+  - **C-014 Session Validation**: mandatory before preview; entry point is C-024;
+    SESSION_NOT_FOUND when CA session absent; only via Upstream Client touch
+    (handled in facade guard — do not call `validate_ca_session` directly here).
+  - **C-016 MCP Workflow Surface**: slim facade delegates orchestration to this
+    runtime module.
+  - **C-024 Session Guard**: normal operation PREVIEW; REJECT on NOT_FOUND
+    (enforced in facade before runtime entry).
+
+  ## Facade baseline (session-guard integration — already on disk; do NOT modify)
+
+  ```py
+  """MCP command: universal_file_preview — facade (C-016)."""
+  from __future__ import annotations
+
+  import logging
+  from typing import Any, Dict, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ..core.exceptions import ValidationError
+  from .base_mcp_command import BaseMCPCommand
+  from .preview_command_metadata import get_universal_file_preview_metadata
+  from .universal_file_preview_runtime import run_preview_execute
+
+  logger = logging.getLogger(__name__)
+
+
+  class UniversalFilePreviewCommand(BaseMCPCommand):
+      name = "universal_file_preview"
+      version = "1.0.0"
+      descr = "Structured read-only file preview"
+      category = "universal_file"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {"type": "string"},
+                  "session_id": {"type": "string"},
+              },
+              "required": ["project_id", "file_path"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls) -> Dict[str, Any]:
+          return get_universal_file_preview_metadata(cls)
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          return super().validate_params(params)
+
+      def execute(self, **kwargs: Any) -> SuccessResult | ErrorResult:
+          try:
+              return run_preview_execute(self, **kwargs)
+          except ValidationError as exc:
+              return ErrorResult(message=str(exc), code=cast(Any, "VALIDATION_ERROR"))
+          except Exception as exc:
+              logger.error("universal_file_preview failed: %s", exc, exc_info=True)
+              return ErrorResult(message=str(exc), code=cast(Any, "HANDLER_ERROR"))
+  ```
+
+  ## CURRENT FILE CONTENT (`ai_editor/commands/universal_file_preview_runtime.py` — modify this file)
+
+  ```py
+  """Runtime for universal_file_preview (C-016, C-011).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from typing import Any, Union
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+
+  def run_preview_execute(
+      command: Any,
+      **kwargs: Any,
+  ) -> Union[SuccessResult, ErrorResult]:
+      """Preview workspace copy orchestration (facade delegates here).
+
+      Structural shell from T-000; one-shot CA read branch extended in G-004/T-003.
+      """
+      raise NotImplementedError(
+          "universal_file_preview workspace orchestration: extend in G-004/T-002"
+      )
+  ```
+
+  ## Imports to add (exact list, top of file after module docstring)
+
+  ```
+  import logging
+  from pathlib import Path
+  from typing import Any, Union, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.preview_config_defaults import get_preview_config_defaults
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.invalid_write_support import mode_notice_text
+  from ai_editor.commands.universal_file_edit.session import get_session
+  from ai_editor.commands.universal_file_edit.tree_temp_open_support import (
+      acquire_tree_temp_for_open,
+  )
+  from ai_editor.commands.universal_file_preview.budget import PreviewBudget
+  from ai_editor.commands.universal_file_preview.dispatcher import HandlerDispatcher
+  from ai_editor.commands.universal_file_preview.errors import PreviewError
+  from ai_editor.commands.universal_file_preview.handlers.json_handler import JsonFileHandler
+  from ai_editor.commands.universal_file_preview.handlers.yaml_handler import YamlFileHandler
+  from ai_editor.commands.universal_file_preview.navigation import navigate
+  from ai_editor.commands.universal_file_preview.preview_addressing import (
+      check_preview_addressing,
+      parse_error_from_focus,
+      preview_source_is_parseable,
+  )
+  from ai_editor.commands.universal_file_preview.preview_pagination import apply_preview_pagination
+  from ai_editor.commands.universal_file_preview.response import build_envelope
+  from ai_editor.commands.universal_file_preview.session import merge_edit_session_into_preview_params
+  from ai_editor.commands.universal_file_preview.tree_temp_preview_focus import (
+      looks_like_sidecar_stable_id,
+  )
+  ```
+
+  Add `logger = logging.getLogger(__name__)` after imports.
+
+  Do **not** import `CodeAnalysisClient`, `get_code_analysis_client`, `SessionGuard`,
+  or any upstream lock/download/view RPC helpers in this file.
+
+  ## Function to implement: `run_preview_execute(command: Any, **kwargs: Any) -> Union[SuccessResult, ErrorResult]`
+
+  Replace the `NotImplementedError` body with the open-file-only algorithm below.
+  Keep the function **synchronous** (facade calls it without await).
+
+  ### Algorithm (step-by-step — open-file mode ONLY)
+
+  1. Read `ca_session_id = str(kwargs.get("session_id", "")).strip()`.
+  2. Read `project_id = str(kwargs.get("project_id", "")).strip()`.
+  3. Read `file_path = str(kwargs.get("file_path", "")).strip()`.
+  4. If `ca_session_id` is empty:
+     - Return `error_result_from_make_error(make_error(SESSION_NOT_FOUND, "session_id is required for open-file preview"))`.
+     - Do **not** fall through to one-shot upstream read.
+  5. Resolve open edit session:
+     - Call `get_session(ca_session_id, file_path=file_path or None)` inside `try`.
+     - On `ValueError` with message `"SESSION_FILE_PATH_REQUIRED"`:
+       return `error_result_from_make_error(make_error(SESSION_NOT_FOUND, "file_path is required when the session has multiple open files"))`.
+     - On any other `ValueError`:
+       return `error_result_from_make_error(make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}"))`.
+     - Do **not** fall through to one-shot when session lookup fails.
+  6. If `str(edit_session.project_id) != project_id`:
+     - Return `ErrorResult(message="session_id does not match project_id", code=cast(Any, "VALIDATION_ERROR"))`.
+  7. Merge preview params with open session:
+     - Call `merged = merge_edit_session_into_preview_params(kwargs)`.
+     - If `isinstance(merged, PreviewError)`:
+       return `ErrorResult(message=merged.message, code=cast(Any, merged.code), details=merged.details or {})`.
+     - Set `kwargs = merged`.
+  8. Resolve read path from Edit Subdirectory (C-008), **not** canonical project root:
+     - `abs_file_path = str(kwargs.get("_preview_abs_path") or edit_session.draft_path)`.
+     - `workspace_edit_root = Path(str(edit_session.workspace_edit_subdir)).resolve()` when attribute present, else `Path(abs_file_path).parent.resolve()`.
+     - `project_root = workspace_edit_root` (navigation/handlers use this as root for open-file mode).
+     - Do **not** call `command._resolve_project_root(project_id)` for the preview source path.
+  9. Handler dispatch (Internal Edit Engine — read-only):
+     - `dispatcher = HandlerDispatcher()`.
+     - `handler_result = dispatcher.dispatch(file_path)`.
+     - If `PreviewError`: return `ErrorResult` with its code/message/details.
+     - Else `handler = handler_result`.
+  10. Addressing validation:
+      - `parseable = preview_source_is_parseable(Path(abs_file_path))`.
+      - `addressing_err = check_preview_addressing(parseable=parseable, params=kwargs, file_path=file_path)`.
+      - If not None: return `ErrorResult` from addressing_err.
+  11. Tree-temp sidecar roots (when applicable):
+      - Build `nav_kwargs = dict(kwargs)`.
+      - For JSON/YAML handler + UUID sidecar `node_ref`: set `nav_kwargs["tree_temp_roots"]` from `edit_session.tree_temp_roots` when not invalid; if None and sidecar needed, call `acquire_tree_temp_for_open(project_root=Path(abs_file_path).parent.resolve(), source_abs=Path(abs_file_path).resolve(), handler_id=..., raw_source_bytes=Path(abs_file_path).read_bytes())` — **read bytes from draft path only**.
+  12. Preview budget defaults:
+      - `defaults = get_preview_config_defaults()`.
+      - Build `PreviewBudget` from kwargs keys with int casts and defaults from `defaults` dict (same keys as monolith: `preview_lines`, `value_preview_len`, `full_text_max_lines`, `max_chars`, `preview_offset`).
+  13. Navigate and build envelope:
+      - Set `nav_kwargs["file_path"] = abs_file_path`, `nav_kwargs["project_root"] = project_root`, `nav_kwargs["rel_file_path"] = file_path`, `nav_kwargs["preview_budget"] = budget`.
+      - `navigation_result = navigate(handler, nav_kwargs, budget)`.
+      - If `PreviewError`: return ErrorResult.
+      - `session_origin = "caller_owned"` (open edit session).
+      - `envelope = build_envelope(navigation_result, kwargs.get("selector"), session_origin)`.
+      - Apply invalid-node pagination identically to monolith (`apply_preview_pagination`, `mode_notice_text`).
+  14. Return `SuccessResult(data=envelope_or_paginated)`.
+
+  Wrap steps 9–14 in `try/except Exception`:
+  - Log `logger.error("universal_file_preview open-file failed: %s", exc, exc_info=True)`.
+  - Return `ErrorResult(message=str(exc), code=cast(Any, "HANDLER_ERROR"))`.
+
+  ### Error handling
+
+  - Session/bundle miss (steps 4–6): return ErrorResult via `error_result_from_make_error` or direct ErrorResult; never raise.
+  - `merge_edit_session_into_preview_params` failure: return ErrorResult; never raise PreviewError.
+  - Handler/navigation failures: return ErrorResult with stable codes from PreviewError.
+  - Unexpected exceptions in handler pipeline: log + HANDLER_ERROR.
+
+  ### Edge cases
+
+  - `session_id` missing/blank → SESSION_NOT_FOUND (step 4); no one-shot fallback.
+  - Valid CA id but no local open bundle → SESSION_NOT_FOUND (step 5).
+  - Multi-file session without `file_path` → SESSION_NOT_FOUND with SESSION_FILE_PATH_REQUIRED message.
+  - `project_id` mismatch with open bundle → VALIDATION_ERROR.
+  - Sidecar/text/tree-temp sessions: `_preview_abs_path` must point to `edit_session.draft_path` under Edit Subdirectory.
+  - Origin snapshot bytes on disk must not be read when draft path is set.
+
+  ### Constants and literals
+
+  - Error codes: `"SESSION_NOT_FOUND"`, `"VALIDATION_ERROR"`, `"HANDLER_ERROR"`.
+  - `session_origin` for open-file success: `"caller_owned"`.
+  - Log template: `"universal_file_preview open-file failed: %s"`.
+
+  ## Forbidden
+
+  - Do **not** modify `universal_file_preview_command.py` or any test file in this step.
+  - Do **not** call `session_view`, `lock_file_and_download`, `download_without_lock`, or any CA lock RPC.
+  - Do **not** implement one-shot upstream read branch (G-004/T-003 scope).
+  - Do **not** fall through to one-shot when open bundle is missing — always SESSION_NOT_FOUND.
+  - Do **not** call `validate_ca_session` or instantiate `SessionGuard` in runtime (facade guard is prerequisite).
+  - Do **not** write to origin snapshot, draft, sidecar, lockfile, or database.
+  - Do **not** use `command._resolve_project_root` for preview source path in open-file mode.
+  - Do **not** add methods beyond `run_preview_execute`.
+  - Keep file ≤400 lines.
+
+  ## Expected deliverable
+
+  Open-file preview reads workspace Edit Subdirectory draft via existing preview
+  handlers; broken/missing local bundle returns SESSION_NOT_FOUND without upstream
+  read; no session_view or CA lock.
+
+  ## Validation (mandatory after implementation)
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_preview_runtime.py
+  flake8 ai_editor/commands/universal_file_preview_runtime.py
+  mypy ai_editor/commands/universal_file_preview_runtime.py
+  pytest tests/unit/test_universal_file_preview_opened.py -v
+  ```
+
+  Expected:
+  - black: "reformatted" or "All done!" / no changes needed
+  - flake8: no output (exit 0)
+  - mypy: "Success: no issues found" on touched file
+  - pytest: all tests PASSED; preview reads workspace draft; no session_view RPC
+
+  **All tests must pass.**
+verification:
+  type: pytest
+  target: tests/unit/test_universal_file_preview_opened.py
+  expected: >
+    Preview reads workspace Edit Subdirectory draft for open file bundle
+    (ca_session_id + project_id + file_path); returns SESSION_NOT_FOUND when
+    bundle missing; never calls session_view or CA lock; no one-shot upstream
+    fallthrough. All tests in the target file pass.
+status: draft

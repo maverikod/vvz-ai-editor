@@ -1,0 +1,241 @@
+concepts:
+- concept_id: C-001
+  definition: A cross-project, DB-persisted working session identified by a 
+    UUID4, carrying a human comment and activity timestamps, with zero or more 
+    assigned roles.
+  invariants:
+  - session_id is immutable after creation
+  - last_active_at >= created_at
+  - Roles assigned at creation cannot exceed those permitted by SecurityPolicy
+  name: ClientSession
+  properties:
+  - 'session_id: UUID4 PRIMARY KEY, server-generated, immutable'
+  - "comment: TEXT NOT NULL DEFAULT ''"
+  - 'created_at: REAL — julianday at insert'
+  - 'last_active_at: REAL — updated on every touch'
+  - 'roles: set of Role references assigned at creation'
+  source_ranges:
+  - end: 20
+    start: 7
+  - end: 40
+    start: 22
+- concept_id: C-002
+  definition: A record that a specific file is open in a specific session, 
+    identified by the triple (session_id, project_id, file_id).
+  invariants:
+  - At most one record per (session_id, project_id, file_id) triple
+  - 'Acquisition is idempotent: INSERT OR IGNORE'
+  - 'Release is idempotent: missing record is not an error'
+  name: SessionFileLock
+  properties:
+  - 'session_id: FK -> ClientSession, CASCADE DELETE'
+  - 'project_id: UUID of registered project'
+  - 'file_id: UUID of file record'
+  - 'locked_at: REAL — julianday at acquisition'
+  - 'PRIMARY KEY: (session_id, project_id, file_id)'
+  source_ranges:
+  - end: 65
+    start: 52
+  - end: 82
+    start: 67
+- concept_id: C-003
+  definition: The behavioral invariant that every command accepting session_id 
+    must update last_active_at before executing, and return SESSION_NOT_FOUND if
+    the session is absent.
+  invariants:
+  - Touch is always the first action before any command logic
+  - No anonymous mode except the defined exception in C-006
+  name: SessionTouchRule
+  properties:
+  - 'Applies to: all session-scoped commands'
+  - 'Exception: session_list when show_session_ids=false and session_id omitted'
+  - 'Error code on missing session: SESSION_NOT_FOUND'
+  source_ranges:
+  - end: 35
+    start: 26
+  - end: 153
+    start: 144
+- concept_id: C-004
+  definition: A pure Python service layer with no MCP coupling that provides all
+    DB operations for ClientSession, SessionFileLock, Role, and RolePermission, 
+    used by both MCP commands and CLI.
+  invariants:
+  - No MCP or HTTP dependencies
+  - All operations are transactional at the DB level
+  name: SessionService
+  properties:
+  - is_session_valid(session_id) -> bool
+  - list_locked_files() -> list — global, no session_id in output
+  - create_client_session(comment, role_ids) -> dict
+  - touch_or_error(session_id) -> None
+  - delete_client_session(session_id, force) -> dict
+  - list_client_sessions(stale_threshold_seconds, show_ids) -> list
+  - open_session_file(session_id, project_id, file_id) -> dict
+  - close_session_file(session_id, project_id, file_id) -> dict
+  - list_session_file_locks(session_id) -> list
+  - count_session_file_locks(session_id) -> int
+  source_ranges:
+  - end: 98
+    start: 84
+- concept_id: C-005
+  definition: The set of six MCP commands exposing session lifecycle and 
+    file-lock operations, all implementing SessionTouchRule where applicable and
+    enforcing SecurityPolicy at the command boundary.
+  invariants:
+  - session_id required in all commands except session_create and conditionally 
+    session_list
+  - No command bypasses SecurityPolicy check
+  name: SessionMCPCommands
+  properties:
+  - session_create — no touch, accepts comment and role_ids
+  - session_delete — no touch, accepts session_id and force flag
+  - session_list — conditional touch and conditional session_id visibility per 
+    C-006
+  - session_open_file — touch first, then acquire lock
+  - session_close_file — touch first, then release lock
+  - session_list_file_locks — touch first, then list locks
+  source_ranges:
+  - end: 130
+    start: 100
+- concept_id: C-006
+  definition: The policy controlling whether session_id appears in session_list 
+    output and whether session_id is required in that command, governed by the 
+    config flag show_session_ids.
+  invariants:
+  - Config validator must verify show_session_ids is boolean
+  - 'Config generator must emit show_session_ids: false by default'
+  - CLI always shows session_id regardless of this flag (operator tool)
+  name: SessionListVisibilityPolicy
+  properties:
+  - 'show_session_ids: boolean in config under sessions section, default false'
+  - 'false: session_id optional in request; never included in output'
+  - 'true: session_id required in request (SESSION_ID_REQUIRED if absent); touch applied;
+    session_id included in each output row'
+  source_ranges:
+  - end: 153
+    start: 144
+  - end: 175
+    start: 155
+- concept_id: C-007
+  definition: A named entity that groups a set of permissions, assigned to 
+    sessions at creation time.
+  invariants:
+  - name is unique across all roles
+  - A role with no permissions is valid but grants nothing under allowlist 
+    policy
+  name: Role
+  properties:
+  - 'role_id: UUID4 PRIMARY KEY, server-generated'
+  - 'name: TEXT UNIQUE NOT NULL'
+  source_ranges:
+  - end: 193
+    start: 176
+- concept_id: C-008
+  definition: A record granting a Role access to a specific command on a 
+    specific registered proxy server.
+  invariants:
+  - server_uuid must correspond to a registered proxy server
+  - 'Grants are additive: a session with multiple roles accumulates all their permissions'
+  name: RolePermission
+  properties:
+  - 'role_id: FK -> Role, CASCADE DELETE'
+  - 'command_name: TEXT — MCP command name'
+  - 'server_uuid: UUID4 — proxy server identifier from list_servers'
+  - 'PRIMARY KEY: (role_id, command_name, server_uuid)'
+  source_ranges:
+  - end: 193
+    start: 183
+- concept_id: C-009
+  definition: The global access control mode that determines how Role and 
+    RolePermission are evaluated against incoming commands.
+  invariants:
+  - Policy mode is set globally in config under security.policy
+  - Under disabled mode all commands pass regardless of roles
+  - Under allowlist a session with no roles cannot execute any command
+  - Config validator rejects values outside the allowed enum
+  - 'Config generator emits policy: disabled as default'
+  name: SecurityPolicy
+  properties:
+  - 'mode: enum — disabled | allowlist | denylist'
+  - 'disabled: no checks, roles ignored'
+  - 'allowlist: only explicitly permitted triples allowed'
+  - 'denylist: all permitted except explicitly denied triples'
+  source_ranges:
+  - end: 215
+    start: 195
+- concept_id: C-010
+  definition: The operator-facing CLI interface (casmgr subcommands sessions and
+    locks) that reads the DB directly, bypasses MCP, SessionTouchRule, and 
+    SecurityPolicy, and always exposes session_id.
+  invariants:
+  - Not subject to SessionTouchRule
+  - Not subject to SecurityPolicy
+  - Always displays session_id regardless of show_session_ids config
+  - Reads DB directly via config path without a running server
+  name: SessionCLI
+  properties:
+  - casmgr sessions — lists all ClientSessions with session_id, comment, 
+    created_at, last_active_at, open_lock_count
+  - casmgr locks — lists all SessionFileLocks as project_id, file_id, locked_at;
+    session_id omitted
+  source_ranges:
+  - end: 220
+    start: 217
+meta:
+  author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  plan_name: 2026-05-19-client-sessions
+  title: Client Sessions Subsystem
+  version: '1.0'
+relations:
+- from_concept: C-001
+  note: ClientSession owns zero or more SessionFileLocks; cascade delete on 
+    session removal
+  to_concept: C-002
+  type: owns
+- from_concept: C-001
+  note: ClientSession references zero or more Roles assigned at creation
+  to_concept: C-007
+  type: uses
+- from_concept: C-004
+  to_concept: C-001
+  type: produces
+- from_concept: C-004
+  to_concept: C-002
+  type: produces
+- from_concept: C-005
+  to_concept: C-004
+  type: uses
+- from_concept: C-005
+  to_concept: C-003
+  type: implements
+- from_concept: C-005
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-005
+  to_concept: C-006
+  type: depends_on
+  note: SessionMCPCommands depends on SessionListVisibilityPolicy for 
+    session_list behavior
+- from_concept: C-007
+  note: A Role owns zero or more RolePermissions
+  to_concept: C-008
+  type: owns
+- from_concept: C-008
+  note: RolePermission grants access to specific SessionMCPCommands
+  to_concept: C-005
+  type: consumes
+- from_concept: C-009
+  to_concept: C-007
+  type: uses
+- from_concept: C-009
+  to_concept: C-008
+  type: uses
+- from_concept: C-010
+  note: CLI reads ClientSession and SessionFileLock data via SessionService
+  to_concept: C-004
+  type: uses
+- from_concept: C-010
+  note: CLI bypasses SecurityPolicy entirely
+  to_concept: C-009
+  type: depends_on

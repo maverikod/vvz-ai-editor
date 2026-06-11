@@ -1,0 +1,111 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create sibling storage convention module
+target_file: ai_editor/tree/sibling_convention.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-003
+- C-004
+status: ready_for_review
+prompt: |
+  Create the file `ai_editor/tree/sibling_convention.py`.
+  Operation: create_file (the file does not exist yet).
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-001-sibling-storage-convention/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (concepts C-003, C-004)
+
+  ## Locked model (mandatory)
+  - TreeFile (C-003) is a sibling file `<stem>.<ext>.tree` with three ordered on-disk
+    sections: CHECKSUMS → MAP → TREE (section wire format is owned by NodeIdMap / builders).
+  - SourceFile (C-004) is never modified by the tree system.
+  - This module defines path placement only; no file I/O.
+
+  ## MRS excerpt
+
+  C-003 TreeFile: on-disk artifact with sections CHECKSUMS, MAP, TREE; stored as sibling
+  next to SourceFile; canonical UUID4 only in MAP; integer short_id markers only in TREE.
+
+  C-004 SourceFile: original unmarked file; source of truth outside edit session; never
+  modified by tree system.
+
+  ## HRS {c001}
+  Tree files live as `<dir>/<stem>.<ext>.tree` beside `<dir>/<stem>.<ext>`. All formats
+  use this single convention. Legacy `.trees/`, `.cst/`, `.tree_sidecar` layouts are
+  out of scope here (G-000 cutover).
+
+  ## File header (module docstring — exact)
+  """
+  Sibling storage convention for TreeFile (C-003) and SourceFile (C-004).
+
+  Co-located placement: TreeFile path is ``<source_name>.tree`` in the same directory
+  as the SourceFile. On-disk TreeFile layout uses three sections (CHECKSUMS, MAP, TREE)
+  written by TreeBuilder; this module provides the path formula only.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact)
+  - from __future__ import annotations
+  - from pathlib import Path
+
+  ## Constants (exact)
+  - `TREE_FILE_SUFFIX: str = ".tree"`
+  - `SOURCE_FILE_INVARIANT: str` = multi-line string:
+    "The tree system must never modify a SourceFile. "
+    "SourceFile is the source of truth outside any active edit session."
+
+  ## Function skeleton
+  ```python
+  def sibling_tree_path(source_abs: Path) -> Path:
+      ...
+  ```
+
+  ### Algorithm: sibling_tree_path(source_abs: Path) -> Path
+  1. If `not source_abs.name`: raise `ValueError(f"source_abs must be a file path with a name, got: {source_abs!r}")`.
+  2. Return `source_abs.parent / (source_abs.name + TREE_FILE_SUFFIX)`.
+
+  ### Error handling
+  - `ValueError` only for bare root paths (step 1).
+
+  ### Edge cases
+  - `Path("doc.md")` → `Path("doc.md.tree")`.
+  - `Path("/proj/foo.py")` → `Path("/proj/foo.py.tree")`.
+  - `Path("/")` → ValueError.
+
+  ## Module __all__
+  ```python
+  __all__ = ["TREE_FILE_SUFFIX", "SOURCE_FILE_INVARIANT", "sibling_tree_path"]
+  ```
+
+  ## Forbidden patterns
+  - Do NOT read or write any file.
+  - Do NOT import HandlerRegistry, NodeIdMap, or checksum modules.
+  - Do NOT use legacy `.cst/`, `.trees/`, or `.tree_sidecar` path formulas.
+  - Do NOT add functions beyond `sibling_tree_path`.
+  - Do NOT embed UUID or universal-id logic.
+
+  ## Validation commands (project root, `.venv` active)
+  ```bash
+  black ai_editor/tree/sibling_convention.py
+  flake8 ai_editor/tree/sibling_convention.py
+  mypy ai_editor/tree/sibling_convention.py
+  python -c "from pathlib import Path; from ai_editor.tree.sibling_convention import sibling_tree_path, TREE_FILE_SUFFIX, SOURCE_FILE_INVARIANT; assert sibling_tree_path(Path('/proj/foo.py')) == Path('/proj/foo.py.tree'); assert sibling_tree_path(Path('doc.md')) == Path('doc.md.tree'); assert TREE_FILE_SUFFIX == '.tree'; assert 'never modify' in SOURCE_FILE_INVARIANT"
+  pytest -q
+  ```
+
+  Expected: formatter clean; flake8 exit 0; mypy success; python -c exit 0; all tests PASSED.
+
+  Estimated post-implementation line count: ~55 lines (≤400).
+
+  All tests must pass before marking this step complete.
+verification:
+  type: import
+  target: ai_editor/tree/sibling_convention.py
+  expected: >
+    sibling_tree_path returns co-located .tree path; TREE_FILE_SUFFIX is ".tree";
+    SOURCE_FILE_INVARIANT documents SourceFile never-modified rule. Full pytest suite passes.

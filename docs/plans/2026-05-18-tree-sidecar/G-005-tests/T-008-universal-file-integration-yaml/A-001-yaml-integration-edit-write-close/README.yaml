@@ -1,0 +1,63 @@
+step_id: A-001
+parent_tactical_step: T-008
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: YAML universal integration edit/write matrix
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_universal_yaml_edit_write_close.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-008-universal-file-integration-yaml/README.yaml
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-006
+- C-007
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_universal_yaml_edit_write_close.py
+  expected: pytest success module-targeted
+
+prompt: |-
+  EXECUTOR coder_auto CREATE tests/test_tree_temp_universal_yaml_edit_write_close.py ≤400 LOC. Duplicate structural intent of JSON counterpart module but YAML fixtures + yaml tree clearing.
+
+  DIFFERENCES FROM JSON MODULE explicitly list:
+    RELATIVE PATH `records/stack.yml` containing multi-line YAML with trailing comment line `# eof` adhering comment preservation.
+
+      EXACT BODY:
+        items:
+          - id: 1
+            active: false
+        meta:
+          tag: old  # lbl
+        # eof
+
+      Note inline `# lbl` attaches to scalar `tag` per ownership tests later maybe skip direct assertion here.
+
+  IMPORT SAME command classes PLUS include yaml cleanup `from ai_editor.core.yaml_tree import tree_builder as ytb` invoking `ytb._trees.clear()` setup.
+
+  Operation semantics IDENTICAL tolerant tree-temp because yaml pipeline reuses `_modify_yaml_registered_one` bridging JSON-shaped dictionary operations.
+
+  MATRIX TEST NAMES mirroring JSON file but YAML assertions parse using `yaml.safe_load` post-commit verifying Python structure.
+
+  SIDE ASSERT expectation path `.trees/records/stack.yml.tree`.
+
+  PATCH pid 9200 universal_file_write previews.
+
+  CONST `_YAML_PROJECT_UUID = "d00dfeed-d00d-4d00-d00d-feedd00dfe1"`.
+
+  TESTS replicate five counterparts: replace `/items/0/active` True, delete `/meta/tag` (if ambiguous due comment inline rename use delete pointer `/meta` entire mapping subdocument? Actually delete scalar tag safer path `/meta/tag`); array append inserting second element dict; keyed insert ordering using after_key variant on `meta` mapping OR `items` unaffected choose meta addition key `between` worthless—stick to analogous JSON tests mirroring semantics.
+
+   BATCH FAILURE test identical skeleton.
+
+   QUALITY black flake8 pytest q mypy.

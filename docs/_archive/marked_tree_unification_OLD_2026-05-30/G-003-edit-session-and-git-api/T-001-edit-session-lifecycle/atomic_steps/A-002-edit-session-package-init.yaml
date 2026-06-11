@@ -1,0 +1,42 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Create edit_session package __init__ re-exporting EditSession entity
+target_file: ai_editor/core/edit_session/__init__.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-012
+status: draft
+prompt: "Create the file `ai_editor/core/edit_session/__init__.py`.\nOperation:
+  create_file (the file does not exist yet).\n\nThis makes `ai_editor/core/edit_session/`
+  a proper Python package and\nexports the EditSession entity (C-012) and its invariant
+  constant from the\npublic package API.\n\n## Why create_file\n\nA-001 creates `edit_session.py`
+  in a new directory. Without `__init__.py`\nthe directory is not a Python package
+  and imports will fail. This A-step\ncreates the minimal package init that re-exports
+  the public names.\n\n## MRS excerpt\n\nC-012 EditSession: bounded editing context
+  with session directory and\nfour-phase lifecycle. Package `ai_editor/core/edit_session/`
+  is its\nhome; `__init__.py` is the public surface.\n\n## Post-A-001 state\n\nAfter
+  A-001 is applied, the directory contains:\n  ai_editor/core/edit_session/edit_session.py\n\
+  \    - class EditSession (dataclass, C-012)\n    - SESSION_IS_TRUTH_INVARIANT: str\n\
+  \n## Required file content\n\nWrite exactly this file:\n\n```python\n# Author: Vasiliy
+  Zdanovskiy -- vasilyvz@gmail.com\n\n\"\"\"EditSession package: bounded editing context
+  with four-phase lifecycle.\n\nPublic API:\n    EditSession -- C-012 entity; open/edit/write_commit/close
+  lifecycle.\n    SESSION_IS_TRUTH_INVARIANT -- machine-readable invariant string.\n\
+  \"\"\"\n\nfrom ai_editor.core.edit_session.edit_session import (\n    EditSession,\n\
+  \    SESSION_IS_TRUTH_INVARIANT,\n)\n\n__all__ = [\n    \"EditSession\",\n    \"\
+  SESSION_IS_TRUTH_INVARIANT\",\n]\n```\n\n## Constraints\n- Imports only from `ai_editor.core.edit_session.edit_session`
+  (A-001).\n- No other imports.\n- Estimated line count: ~20 lines (well within CR-008).\n\
+  - File header: `# Author: Vasiliy Zdanovskiy -- vasilyvz@gmail.com` (CR-012).\n\
+  - All docstrings in English (ARTIFACT_LOCALE=en, CR-010).\n- Do NOT create any other
+  files.\n"
+verification:
+  expected: Running `python -c 'from ai_editor.core.edit_session import 
+    EditSession, SESSION_IS_TRUTH_INVARIANT; import 
+    ai_editor.core.edit_session as pkg; assert set(["EditSession", 
+    "SESSION_IS_TRUTH_INVARIANT"]).issubset(set(pkg.__all__))'` exits with code 
+    0 and no output. Both names importable from package root and present in 
+    __all__.
+  target: ai_editor/core/edit_session/__init__.py
+  type: import

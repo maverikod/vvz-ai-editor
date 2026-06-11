@@ -1,0 +1,82 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create sibling storage convention module
+target_file: ai_editor/tree/sibling_convention.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-003
+- C-004
+status: ready_for_review
+prompt: "Create the file `ai_editor/tree/sibling_convention.py`.\nOperation: create_file
+  (the file does not exist yet).\n\nThis module establishes the co-located sibling
+  storage convention for TreeFile\n(C-003) and SourceFile (C-004), and declares the
+  SourceFile invariant.\n\n## MRS excerpt\n\nC-003 TreeFile: The on-disk artifact
+  holding source content with node-id markers\nembedded natively per format.\n  Properties:\n\
+  \  - contains source content plus markers\n  - stored as a sibling file placed directly
+  next to the source file it describes\n  - on-disk format is natively-marked content,
+  not a separate JSON payload\n\nC-004 SourceFile: The original, unmarked file that
+  the tree describes; the source\nof truth outside any edit session.\n  Properties:\n\
+  \  - never modified by the tree system, remains clean\n  - source of truth when
+  no session is active\n  - its byte content is what unmark must reproduce exactly\n\
+  \n## HRS binding paragraph {c001}\n\nTree files are stored as sibling files directly
+  next to the source file they\ndescribe. A tree file named `<stem>.<ext>.tree` lives
+  in the same directory as\n`<stem>.<ext>`. All formats use this single convention;
+  no subdirectory is\nintroduced. G-002 establishes this co-located sibling storage
+  convention as\nthe canonical on-disk placement rule, superseding the central
+  `.trees/` mirror\ndirectory, the per-Python `.cst/` subdirectory, and the adjacent
+  `.tree_sidecar`\nlayout patterns. Physical removal of those legacy layouts and
+  cutover of all\nresolvers to the sibling convention is owned by G-000
+  (SidecarLayoutMigration).\n\n## Required file content\n\nWrite
+  exactly this file:\n\n```python\n# Author: Vasiliy Zdanovskiy -- vasilyvz@gmail.com\n\
+  \n\"\"\"Sibling storage convention for TreeFile (C-003) and SourceFile (C-004).\n\
+  \nConvention (HRS {c001}):\n    A TreeFile is stored as a direct sibling of the
+  SourceFile it describes.\n    Given source file ``<dir>/<stem>.<ext>``, its TreeFile
+  path is\n    ``<dir>/<stem>.<ext>.tree``. All formats use this single convention;\n\
+  \    no centralised tree directory and no per-format subdirectory are used.\n\n\
+  SourceFile invariant (C-004):\n    The tree system must never modify a SourceFile.
+  A SourceFile is the source\n    of truth outside any active edit session; its byte
+  content is what the\n    ``unmark`` operation must reproduce exactly. Any function
+  in this package\n    that writes files writes only TreeFiles -- never SourceFiles.\n\
+  \n  Legacy layout patterns superseded as canonical rule (G-002 establishes;\n\
+  \    physical removal owned by G-000 SidecarLayoutMigration):\n    - ``.trees/``
+  centralised mirror directory\n    - ``.cst/`` per-Python subdirectory\n\
+  \    - ``.tree_sidecar`` adjacent sidecar files\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom pathlib import
+  Path\n\n#: The suffix appended to the source file's full name to form the TreeFile
+  name.\n#: Example: ``foo.py`` -> ``foo.py.tree``; ``doc.md`` -> ``doc.md.tree``.\n\
+  TREE_FILE_SUFFIX: str = \".tree\"\n\n#: Module-level declaration of the SourceFile
+  invariant (C-004).\n#: This string is machine-readable and checked in tests.\nSOURCE_FILE_INVARIANT:
+  str = (\n    \"The tree system must never modify a SourceFile. \"\n    \"SourceFile
+  is the source of truth outside any active edit session.\"\n)\n\n\ndef sibling_tree_path(source_abs:
+  Path) -> Path:\n    \"\"\"Return the co-located TreeFile path for the given SourceFile
+  path.\n\n    The TreeFile (C-003) is a direct sibling of the SourceFile (C-004)
+  it\n    describes. Its name is ``<stem>.<ext>.tree`` -- the full source filename\n\
+  \    with ``.tree`` appended -- living in the same directory.\n\n    Convention
+  (HRS {c001}): all formats use this single placement rule;\n    no subdirectory is
+  introduced.\n\n    Args:\n        source_abs: Absolute or project-relative path
+  to the SourceFile.\n                    Must not be a directory.\n\n    Returns:\n\
+  \        Path to the sibling TreeFile, e.g. for ``/proj/foo.py`` returns\n     \
+  \   ``/proj/foo.py.tree``.\n\n    Raises:\n        ValueError: If ``source_abs``
+  has no name (e.g. is a bare root path).\n    \"\"\"\n    if not source_abs.name:\n\
+  \        raise ValueError(\n            f\"source_abs must be a file path with a
+  name, got: {source_abs!r}\"\n        )\n    return source_abs.parent / (source_abs.name
+  + TREE_FILE_SUFFIX)\n```\n\n## Constraints\n- File header comment: `# Author: Vasiliy
+  Zdanovskiy -- vasilyvz@gmail.com` (CR-012).\n- Imports: `from __future__ import
+  annotations`, `pathlib.Path`. No other imports.\n- No logic that reads or writes
+  files (pure path computation only).\n- No format-specific logic.\n- `TREE_FILE_SUFFIX`
+  and `SOURCE_FILE_INVARIANT` are module-level constants (NAME-07: UPPER_SNAKE_CASE).\n\
+  - `sibling_tree_path` is the single public function; raises `ValueError` for bare
+  root paths.\n- Docstrings and comments in English (ARTIFACT_LOCALE=en, CR-010).\n\
+  - Estimated line count: ~80 lines.\n- Do not create any other files.\n"
+verification:
+  expected: Running `python -c 'from pathlib import Path; from 
+    ai_editor.tree.sibling_convention import sibling_tree_path, 
+    TREE_FILE_SUFFIX, SOURCE_FILE_INVARIANT; p = 
+    sibling_tree_path(Path("/proj/foo.py")); assert str(p) == 
+    "/proj/foo.py.tree", repr(p); p2 = sibling_tree_path(Path("doc.md")); assert
+    str(p2) == "doc.md.tree", repr(p2); assert TREE_FILE_SUFFIX == ".tree"; 
+    assert "never modify" in SOURCE_FILE_INVARIANT'` exits with code 0 and no 
+    output.
+  target: ai_editor/tree/sibling_convention.py
+  type: import

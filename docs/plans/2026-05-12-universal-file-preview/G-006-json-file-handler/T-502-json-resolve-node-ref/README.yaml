@@ -1,0 +1,46 @@
+step_id: T-502
+parent_global_step: G-006
+name: JSON file handler — resolve node_ref
+status: done
+concepts:
+- C-004
+- C-009
+- C-011
+- C-014
+- C-018
+description: "Define the identifier-resolution behaviour of JsonFileHandler (C-018)\
+  \ for .json files. When the caller supplies a node_ref, JsonFileHandler resolves\
+  \ it to the specific JSON Node the identifier addresses.\nIdentifier formats (StableIdentifier\
+  \ C-009): JsonFileHandler accepts two interchangeable spellings for the same node:\
+  \ - node_id string: an opaque identifier produced by the project's\n  list_json_blocks\
+  \ infrastructure (e.g. a UUID or hash string).\n- JSON Pointer string: an RFC 6901\
+  \ path of the form '/foo/0/bar'.\n  The root is addressed by the empty string ''.\n\
+  Both spellings resolve to the same node. JsonFileHandler accepts either form; the\
+  \ two are produced by the same project infrastructure and are always consistent.\n\
+  Resolution process: JsonFileHandler looks up the identifier in the JSON tree of\
+  \ the open or transiently-opened TreeSession (C-011). If found, it returns the corresponding\
+  \ JSON Node with its NodeKind, block set, and node_ref.\nResolution failure: If\
+  \ the identifier is not found (the path does not exist in the document, the node_id\
+  \ is unknown, or the JSON Pointer is malformed), JsonFileHandler signals an UNKNOWN_NODE_REF\
+  \ condition, which the command surfaces as an ErrorClassification (C-014) input\
+  \ error.\n"
+inputs:
+- name: node_ref_value
+  type: string (node_id or JSON Pointer)
+  description: A node_id string from list_json_blocks OR a JSON Pointer string ('/foo/bar'
+    or '') addressing a node in the JSON document.
+- name: json_session
+  type: TreeSession (C-011) containing the parsed JSON document
+  description: The in-memory JSON tree, available either from a caller-owned TreeSession
+    or from a transient session opened by JsonFileHandler for this request.
+outputs:
+- name: resolved_node
+  type: Node with NodeKind (C-004) assigned
+  description: The JSON Node addressed by node_ref_value, with its NodeKind (mapping,
+    sequence, or scalar), block set, and node_ref.
+- name: resolution_error
+  type: ErrorClassification (C-014) UNKNOWN_NODE_REF input error
+  description: Returned instead of resolved_node when the identifier is not found
+    or the JSON Pointer is malformed.
+atomic_steps:
+- A-001

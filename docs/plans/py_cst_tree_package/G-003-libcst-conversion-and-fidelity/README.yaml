@@ -1,0 +1,50 @@
+# Global Step G-003 — LibCST Conversion and Textual Fidelity
+
+# Level 3 artifact. Conceptual block. Domain objects and operations only.
+step_id: G-003
+name: LibCST Conversion and Textual Fidelity
+description: 'Establish the bidirectional conversion between the source syntax tree
+  and the package tree, and the textual-fidelity invariant that conversion must uphold.
+  Inbound conversion takes a source syntax tree and produces a package tree: each
+  source node becomes the identified-node form of its corresponding category, drawn
+  from the complete set of node forms, and every node is assigned a stable identity
+  — reusing a previously persisted identity when the source carries one, and generating
+  a fresh identity otherwise. Outbound conversion takes a package tree and produces
+  a clean source syntax tree that bears no trace of the stable identity; the identity
+  is removed during this conversion, neither before nor after, so the result renders
+  to ordinary source text with no identity markers. This identity-stripping pass is
+  the only whole-tree reconstruction the package performs, and reverting nodes to
+  their plain source form is its intended effect; the package does not otherwise rebuild
+  nodes through a whole-tree transforming traversal, since that would discard the
+  identity-bearing forms. The fidelity invariant requires that a full round trip —
+  parse the source text into a source syntax tree, convert inbound to a package tree,
+  apply no mutation, convert outbound back to a source syntax tree, and render — reproduces
+  the original text exactly, preserving the whitespace, comments, string quoting,
+  and formatting that survive a plain parse-and-render round trip of the underlying
+  syntax library. This step defines inbound conversion, outbound conversion, identity
+  assignment and removal at the conversion boundary, the stripping pass as the sole
+  whole-tree reconstruction, and the no-mutation fidelity guarantee. It does not define
+  how identities are represented on nodes, how the tree object or its indexes are
+  structured, persistence, mutation, or query.'
+concepts:
+- C-009  # LibcstConverter
+- C-015 # TextualFidelity
+relations:
+- C-009 produces C-001  # inbound conversion produces identified-node forms
+- C-009 uses C-002 # converter draws forms from the complete family
+- C-009 produces C-004 # inbound conversion produces a tree object
+- C-015 depends_on C-009 # fidelity depends on conversion correctness
+source_labels:
+- '{ij84}'
+- '{v1hk}'
+- '{lm9g}'
+- '{q2wv}'
+- '{ylqj}'
+depends_on:
+- G-001
+- G-002
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: draft

@@ -1,0 +1,38 @@
+step_id: G-003
+name: SHA sync policy and session lifecycle
+status: done
+description: 'Implement SHASyncPolicy and integrate into EditSession lifecycle. Four
+  cases on open: (1) no sidecar - build from source, write sidecar; (2) SHA matches
+  - load sidecar as-is; (3) SHA mismatch, no active session - source has priority,
+  rebuild sidecar; (4) SHA mismatch, active session - sidecar has priority, do not
+  rebuild. EditSession holds in-memory TreeNode tree, dirty flag, format_group tree-temp.
+  On edit: tree mutated, surviving UUIDs preserved, new nodes get new UUIDs. On write:
+  SourceSerializer produces source bytes, source file written, Sidecar updated with
+  new SHA-256. On close without write: in-memory changes discarded, on-disk Sidecar
+  unchanged.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-005
+- C-006
+- C-007
+relations:
+- C-003 uses C-002
+- C-003 uses C-007
+- C-007 owns C-001
+- C-007 uses C-002
+- C-007 uses C-005
+- C-007 uses C-006
+source_ranges:
+- end: 134
+  start: 111
+depends_on:
+- G-001
+- G-002
+tactical_steps:
+- 'T-001: SHASyncPolicy resolver'
+- 'T-002: EditSession open - load or build tree via policy'
+- 'T-003: EditSession edit - mutate tree, preserve UUIDs'
+- 'T-004: EditSession write - serialize, write file and sidecar'
+- 'T-005: EditSession close - discard in-memory, leave sidecar intact'

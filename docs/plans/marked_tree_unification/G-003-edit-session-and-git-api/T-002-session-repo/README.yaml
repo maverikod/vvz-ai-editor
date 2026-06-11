@@ -1,0 +1,56 @@
+step_id: T-002
+parent_global_step: G-003
+name: SessionRepo Definition
+description: 'Define the SessionRepo entity (C-013) as an ephemeral git repository
+  backed by a git library declared as a required project dependency that lives inside
+  the session directory. Establish that the SessionRepo exists only while the EditSession
+  is open and is destroyed with the session directory on close; history is ephemeral.
+  Establish that history is accessible for inspection with commit identity and timestamp
+  per edit. Establish the one-commit-per-mutation invariant: every tree modification
+  when tree-validity state is valid produces exactly one commit in the SessionRepo;
+  every plain-text modification when invalid produces exactly one commit; batching
+  multiple modifications into one commit is forbidden. Establish dual commit shape per
+  tree-validity state (C-012, {h008}, {d003}): when tree is valid each commit captures
+  BOTH the in-session three-section TreeFile (CHECKSUMS, MAP with short_id↔UUID4 map,
+  TREE with short_id markers) and the unmark-exported in-session source copy per the
+  full per-mutation invariant; when tree is invalid (DEGRADED per {h008}/{d003}) each
+  commit captures only the in-session source artefact while MAP and CHECKSUMS in the
+  on-disk tree file remain preserved unchanged for later re-validation.'
+concepts:
+- C-013
+- C-012
+source_labels:
+- '{d002}'
+- '{d003}'
+- '{d006}'
+- '{h008}'
+inputs:
+- name: EditSession entity definition
+  type: domain entity definition (C-012)
+  description: The owning context within which the SessionRepo lives; its lifecycle
+    and tree-validity state determine when SessionRepo is created, what each commit
+    captures, and when it is destroyed.
+outputs:
+- name: SessionRepo entity definition
+  type: domain entity definition
+  description: Ephemeral git repository inside the session directory (C-013); one commit
+    per mutation (tree modification when valid, plain-text modification when invalid);
+    when valid each commit captures both in-session three-section tree file and
+    unmark-exported in-session source per full {d003} invariant; when invalid
+    (DEGRADED per {h008}/{d003}) each commit captures source-only artefact; history
+    accessible for inspection; destroyed on session close.
+- name: One-commit-per-mutation invariant
+  type: domain constraint definition
+  description: Every mutation produces exactly one SessionRepo commit — when tree is
+    valid (C-012) capturing both artefacts per {d003}, when invalid capturing source
+    only per DEGRADED {d003}/{h008}; batching is forbidden.
+- name: Dulwich project dependency declaration
+  type: dependency manifest update
+  description: Declares dulwich as a required project dependency in the dependency
+    manifest per HRS {d006}; SessionRepo git operations require this declared dependency.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+status: ready_for_review

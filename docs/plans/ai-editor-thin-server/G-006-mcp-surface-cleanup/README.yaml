@@ -1,0 +1,34 @@
+step_id: G-006
+name: Сужение MCP-поверхности
+description: 'Снять с публичной MCP-поверхности редактора дублирующие и устаревшие семейства команд в объёме Legacy Removal Scope (C-020), чтобы MCP Workflow Surface (C-016) содержала только целевой файловый workflow (C-009) и инфраструктурную команду health — без фоновых queue-команд и без выноса upstream-вызовов в отдельный MCP API для модели. Доступ к Code Analysis Server сохраняется исключительно внутри workflow-команд через Upstream Client (C-017). Итоговое соответствие проверяется по Product Acceptance Criteria (C-022). Модули устаревшего кода могут временно сохраняться для внутреннего переиспользования до шага G-009.
+
+  '
+concepts:
+- C-016
+- C-017
+- C-020
+- C-022
+relations:
+- from_concept: C-001
+  to_concept: C-016
+  type: owns
+- from_concept: C-016
+  to_concept: C-009
+  type: implements
+- from_concept: C-020
+  to_concept: C-016
+  type: depends_on
+source_ranges:
+- start: 61
+  end: 61
+- start: 63
+  end: 63
+depends_on:
+- G-003
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+status: ready_for_review

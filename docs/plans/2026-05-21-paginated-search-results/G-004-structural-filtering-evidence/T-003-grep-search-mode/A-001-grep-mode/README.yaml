@@ -1,0 +1,125 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: fs_grep structural mode integration module
+target_file: ai_editor/commands/fs_grep_structural_integration.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-019
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/fs_grep_structural_integration.py
+
+  MRS excerpt (C-019 GrepSearchMode):
+  - Classic line grep returns line-oriented text matches and is opt-in.
+  - Structural mode validates or creates a file tree, maps matches to nodes or blocks,
+    and returns PreviewReference data ({6fcd}).
+  - Structural mode is the default.
+  - Classic line grep must not count as project cross-search structural evidence unless converted.
+
+  Integration consumer: G-008 paginated fs_ggrep adapter
+  (``ai_editor/commands/search_paginated_ggrep.py``) imports ``apply_ggrep_mode`` /
+  ``grep_mode_to_fs_ggrep_params`` from the grep-mode stack.
+
+  Path naming (do not confuse):
+  - MCP command registered name: ``fs_grep`` (``FsGrepCommand.name`` in ``fs_grep_command.py``).
+  - This module: ``fs_grep_structural_integration.py`` beside ``fs_grep_command.py``.
+  - Pagination schema only: ``fs_ggrep_pagination_schema.py`` (``fs_ggrep_`` filename prefix for paginated adapter only).
+
+  Dependency excerpt — validate_or_recreate_tree (from G-003/T-001):
+  ```python
+  def validate_or_recreate_tree(
+      *, project_root: Path, file_path: str, force: bool = False
+  ) -> tuple[TreeRepresentationRef, TreeValidityState]:
+      ...
+  ```
+  Call once per distinct ``file_path``; ignore ``TreeValidityState`` when attaching
+  preview_ref (freshness already enforced by validation).
+
+  Required imports:
+  - from __future__ import annotations
+  - from dataclasses import dataclass
+  - from enum import Enum
+  - from pathlib import Path
+  - from typing import Any, cast
+  - from ai_editor.core.search_session.preview_reference import (
+        build_preview_reference, preview_reference_to_dict,
+    )
+  - from ai_editor.core.search_session.tree_representation import (
+        TreeRepresentationRef, validate_or_recreate_tree,
+    )
+
+  Create integration module (no edits to fs_grep_command.py in this step):
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. GrepSearchMode(str, Enum): structural, classic_line
+     Docstring: operating mode for paginated grep structural integration.
+
+  3. DEFAULT_GREP_MODE = GrepSearchMode.structural
+
+  4. StructuralEvidenceEligibility(str, Enum): eligible, ineligible
+     Docstring: eligible when structural mode produced at least one preview_ref on a validated tree;
+     ineligible for classic_line or when no preview_ref attached.
+
+  5. @dataclass(frozen=True) GrepModeApplyResult:
+       matches: list[dict[str, Any]]
+       structural_evidence_eligibility: StructuralEvidenceEligibility
+     Docstring on class and fields.
+
+  6. def _group_matches_by_file(line_matches: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]
+     Docstring: group by match["file_path"]; raise ValueError when any match lacks file_path.
+
+  7. def enrich_line_matches_structural(
+        *,
+        project_root: Path,
+        file_path: str,
+        line_matches: list[dict[str, Any]],
+     ) -> list[dict[str, Any]]
+     Docstring: ``tree_ref, _ = validate_or_recreate_tree(project_root=project_root, file_path=file_path)``
+     once for this file; for each match attach preview_ref via build_preview_reference when stable
+     node_id or selector derivable; skip preview_ref on ValueError; return enriched copies.
+
+  8. def enrich_matches_per_file(
+        *,
+        project_root: Path,
+        line_matches: list[dict[str, Any]],
+     ) -> list[dict[str, Any]]
+     Docstring: group matches by file_path; for each distinct file call enrich_line_matches_structural
+     with that file's subset so validate_or_recreate_tree runs once per file, not once per batch.
+
+  9. def apply_ggrep_mode(
+        *,
+        mode: GrepSearchMode,
+        project_root: Path,
+        file_path: str,
+        line_matches: list[dict[str, Any]],
+     ) -> GrepModeApplyResult
+     Docstring: classic_line returns matches unchanged with structural_evidence_eligibility ineligible;
+     structural calls enrich_line_matches_structural and sets eligible when any match has preview_ref.
+
+  10. def apply_ggrep_mode_multi_file(
+         *,
+         mode: GrepSearchMode,
+         project_root: Path,
+         line_matches: list[dict[str, Any]],
+      ) -> GrepModeApplyResult
+      Docstring: paginated path entry — delegates to enrich_matches_per_file for structural mode;
+      classic_line returns input unchanged with ineligible eligibility.
+
+  __all__: DEFAULT_GREP_MODE, GrepSearchMode, StructuralEvidenceEligibility, GrepModeApplyResult,
+  apply_ggrep_mode, apply_ggrep_mode_multi_file, enrich_line_matches_structural, enrich_matches_per_file.
+
+  Author header. Under 220 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_fs_grep_structural_mode.py
+  expected: >
+    test_default_ggrep_mode_is_structural;
+    test_apply_ggrep_mode_classic_line_returns_ineligible_eligibility;
+    test_apply_ggrep_mode_structural_adds_preview_ref_and_eligible_when_tree_valid;
+    test_enrich_matches_per_file_calls_validate_or_recreate_tree_once_per_distinct_file_path;
+    test_apply_ggrep_mode_multi_file_groups_by_file_path before enrichment.
+status: ready_for_review

@@ -1,0 +1,24 @@
+step_id: A-000
+parent_tactical_step: T-301
+name: Create handlers package __init__.py
+target_file: ai_editor/commands/universal_file_preview/handlers/__init__.py
+operation: create_file
+priority: 0
+depends_on: []
+concepts:
+- C-003
+- C-016
+status: done
+prompt: "Create a new Python package init file.\n\nTarget file (create_file — file\
+  \ does not exist):\n  ai_editor/commands/universal_file_preview/handlers/__init__.py\n\
+  \nThis file makes handlers/ a Python package. It does not export anything;\nall\
+  \ handler classes are imported directly by their module path.\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  File handlers for universal_file_preview.\n\n  Each handler\
+  \ module implements FileHandler (C-003) for one file family.\n  Import handlers\
+  \ directly by module, not from this package.\n\n  Author: Vasiliy Zdanovskiy\n \
+  \ email: vasilyvz@gmail.com\n  \"\"\"\n\nNo imports. No exports. No other content.\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.handlers
+  expected: Package imports without error. The directory ai_editor/commands/universal_file_preview/handlers/
+    is now a Python package.

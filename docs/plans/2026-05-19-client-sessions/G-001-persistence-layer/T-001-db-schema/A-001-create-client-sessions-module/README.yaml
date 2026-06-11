@@ -1,0 +1,88 @@
+concepts:
+- C-001
+- C-002
+- C-007
+- C-008
+depends_on: []
+name: Create ai_editor/core/client_sessions.py with DDL and migration 
+  function
+operation: create_file
+parent_tactical_step: T-001
+priority: 1
+prompt: "Create a new Python file at the exact path:\n  ai_editor/core/client_sessions.py\n\
+  \nThis file is a new module with no pre-existing content. Do not assume any content.\n\
+  \nFile-level docstring (required, exact text):\n\"\"\"\nClient session persistence
+  layer: DDL constants, migration function, and domain exceptions.\n\nAuthor: Vasiliy
+  Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nImports to include at the top (exact):\n\
+  \  from __future__ import annotations\n  import logging\n  from typing import Any\n\
+  \nLogger (exact):\n  logger = logging.getLogger(__name__)\n\n--- TABLE NAME CONSTANTS
+  ---\n\nCLIENT_SESSIONS_TABLE: str = 'client_sessions'\nSESSION_FILE_LOCKS_TABLE:
+  str = 'session_file_locks'\nROLES_TABLE: str = 'roles'\nROLE_PERMISSIONS_TABLE:
+  str = 'role_permissions'\nSESSION_ROLES_TABLE: str = 'session_roles'\n\n--- DDL
+  STRINGS ---\n\nAll DDL strings use CREATE TABLE IF NOT EXISTS and CREATE INDEX IF
+  NOT EXISTS.\n\nCLIENT_SESSIONS_DDL: str — creates table client_sessions with columns:\n\
+  \  session_id TEXT PRIMARY KEY\n  comment TEXT NOT NULL DEFAULT ''\n  created_at
+  REAL DEFAULT (julianday('now'))\n  last_active_at REAL DEFAULT (julianday('now'))\n\
+  \nCLIENT_SESSIONS_IDX: str — creates index:\n  CREATE INDEX IF NOT EXISTS idx_client_sessions_last_active\n\
+  \  ON client_sessions(last_active_at)\n\nSESSION_FILE_LOCKS_DDL: str — creates table
+  session_file_locks with columns:\n  session_id TEXT NOT NULL\n  project_id TEXT
+  NOT NULL\n  file_id TEXT NOT NULL\n  locked_at REAL DEFAULT (julianday('now'))\n\
+  \  PRIMARY KEY (session_id, project_id, file_id)\n  FOREIGN KEY (session_id) REFERENCES
+  client_sessions(session_id) ON DELETE CASCADE\n  FOREIGN KEY (project_id) REFERENCES
+  projects(id) ON DELETE CASCADE\n  FOREIGN KEY (file_id) REFERENCES files(id) ON
+  DELETE CASCADE\n\nSESSION_FILE_LOCKS_IDX_SESSION: str — creates index:\n  CREATE
+  INDEX IF NOT EXISTS idx_session_file_locks_session\n  ON session_file_locks(session_id)\n\
+  \nSESSION_FILE_LOCKS_IDX_FILE: str — creates index:\n  CREATE INDEX IF NOT EXISTS
+  idx_session_file_locks_file\n  ON session_file_locks(project_id, file_id)\n\nROLES_DDL:
+  str — creates table roles with columns:\n  role_id TEXT PRIMARY KEY\n  name TEXT
+  UNIQUE NOT NULL\n\nROLE_PERMISSIONS_DDL: str — creates table role_permissions with
+  columns:\n  role_id TEXT NOT NULL\n  command_name TEXT NOT NULL\n  server_uuid TEXT
+  NOT NULL\n  PRIMARY KEY (role_id, command_name, server_uuid)\n  FOREIGN KEY (role_id)
+  REFERENCES roles(role_id) ON DELETE CASCADE\n\nROLE_PERMISSIONS_IDX: str — creates
+  index:\n  CREATE INDEX IF NOT EXISTS idx_role_permissions_role\n  ON role_permissions(role_id)\n\
+  \nSESSION_ROLES_DDL: str — creates table session_roles with columns:\n  session_id
+  TEXT NOT NULL\n  role_id TEXT NOT NULL\n  PRIMARY KEY (session_id, role_id)\n  FOREIGN
+  KEY (session_id) REFERENCES client_sessions(session_id) ON DELETE CASCADE\n  FOREIGN
+  KEY (role_id) REFERENCES roles(role_id) ON DELETE CASCADE\n\n--- DOMAIN EXCEPTIONS
+  ---\n\nclass SessionNotFoundError(ValueError):\n    \"\"\"Raised when session_id
+  is not found in client_sessions.\"\"\"\n\n    def __init__(self, session_id: str)
+  -> None:\n        super().__init__(f'Session not found: {session_id}')\n       \
+  \ self.session_id = session_id\n\nclass SessionHasLocksError(ValueError):\n    \"\
+  \"\"Raised when a session has open file locks and force=False.\"\"\"\n\n    def
+  __init__(self, session_id: str, lock_count: int) -> None:\n        super().__init__(\n\
+  \            f'Session {session_id} has {lock_count} open file lock(s). Use force=True
+  to release.'\n        )\n        self.session_id = session_id\n        self.lock_count
+  = lock_count\n\n--- MIGRATION FUNCTION ---\n\ndef ensure_client_session_tables(conn:
+  Any) -> None:\n    \"\"\"\n    Create all client-session-related tables and indexes
+  idempotently.\n\n    Runs CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS
+  for all five\n    tables (client_sessions, session_file_locks, roles, role_permissions,\n\
+  \    session_roles). Commits after all statements succeed. Rolls back and logs\n\
+  \    a warning on any exception without re-raising (same pattern as the existing\n\
+  \    ensure_* functions in sqlite_migrations.py).\n\n    Args:\n        conn: An
+  active SQLite connection object with .execute(), .commit(),\n              and .rollback()
+  methods. If falsy, returns immediately.\n    \"\"\"\n    if not conn:\n        return\n\
+  \    try:\n        conn.execute(CLIENT_SESSIONS_DDL)\n        conn.execute(CLIENT_SESSIONS_IDX)\n\
+  \        conn.execute(SESSION_FILE_LOCKS_DDL)\n        conn.execute(SESSION_FILE_LOCKS_IDX_SESSION)\n\
+  \        conn.execute(SESSION_FILE_LOCKS_IDX_FILE)\n        conn.execute(ROLES_DDL)\n\
+  \        conn.execute(ROLE_PERMISSIONS_DDL)\n        conn.execute(ROLE_PERMISSIONS_IDX)\n\
+  \        conn.execute(SESSION_ROLES_DDL)\n        conn.commit()\n    except Exception
+  as e:\n        logger.warning('Could not ensure client session tables: %s', e)\n\
+  \        try:\n            conn.rollback()\n        except Exception:\n        \
+  \    pass\n\nConstraints:\n- File must not exceed 120 lines.\n- No imports other
+  than those listed above.\n- All DDL strings must be plain str constants (no f-strings,
+  no format calls).\n- Docstrings in Google style (Args: section shown above is mandatory
+  for ensure_client_session_tables).\n- Type annotations on all function parameters
+  and return types.\n- Do not add any data-access functions to this file — only DDL,
+  exceptions, and migration."
+status: done
+step_id: A-001
+target_file: ai_editor/core/client_sessions.py
+verification:
+  expected: The file imports without errors (python -c 'import 
+    ai_editor.core.client_sessions'), all five TABLE constants are defined 
+    as strings, all DDL strings contain CREATE TABLE IF NOT EXISTS or CREATE 
+    INDEX IF NOT EXISTS, SessionNotFoundError and SessionHasLocksError are 
+    importable, ensure_client_session_tables is callable with a None argument 
+    without raising.
+  target: ai_editor/core/client_sessions.py
+  type: import

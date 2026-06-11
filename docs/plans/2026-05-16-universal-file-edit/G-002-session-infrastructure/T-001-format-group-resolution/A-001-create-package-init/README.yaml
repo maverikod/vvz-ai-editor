@@ -1,0 +1,49 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create universal_file_edit package __init__.py
+target_file: ai_editor/commands/universal_file_edit/__init__.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-002
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/__init__.py
+
+  MRS context:
+  C-002 FormatGroup: Classification of a file into one of three groups.
+  The universal_file_edit package will house all four new MCP command classes
+  and their supporting modules (format_group, session, errors).
+
+  Task:
+  Create the package init file for the new universal_file_edit package.
+  The file must:
+  - Have a module-level docstring describing the package.
+  - Not import anything (package is a plain namespace, imports happen per-module).
+
+  Exact content to write:
+  ```python
+  """
+  universal_file_edit package: four-command lifecycle for file editing sessions.
+
+  Commands: universal_file_open, universal_file_edit,
+  universal_file_write, universal_file_close.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  Implementation:
+  Create directory ai_editor/commands/universal_file_edit/ if it does not exist.
+  Write the file with the exact content shown above.
+  Run lint_code and format_code on the file.
+verification:
+  type: import
+  target: ai_editor/commands/universal_file_edit
+  expected: >
+    The package can be imported without errors:
+    import ai_editor.commands.universal_file_edit
+    The __init__.py file exists and contains the module docstring.
+status: draft

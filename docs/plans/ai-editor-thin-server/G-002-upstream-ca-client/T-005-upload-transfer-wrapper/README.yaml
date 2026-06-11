@@ -1,0 +1,38 @@
+step_id: T-005
+parent_global_step: G-002
+name: Обёртка upload transfer
+description: 'Добавить в Upstream Client (C-017) chunked upload/save для Write Stage (C-012): передача содержимого рабочей копии на СА после локального сравнения с Origin Snapshot (C-007). Возвращает подтверждение принятого содержимого для обновления origin. Upstream Client — единственный путь записи на диск проекта СА ({1u2o}, свойство C-017). Граница C-017: core-клиент предоставляет публичную thin-обёртку upload с session/file-контекстом; sibling transfer-слой выполняет chunked upload bytes и получение transfer_id. Downstream вызывает только публичную поверхность core-клиента.
+
+  '
+concepts:
+- C-007
+- C-012
+- C-017
+- C-023
+inputs:
+- name: ca_session_id
+  type: string
+  description: CA Session.
+- name: project_id
+  type: string
+  description: Проект.
+- name: file_path
+  type: string
+  description: Целевой файл.
+- name: content
+  type: bytes
+  description: Содержимое для upload.
+outputs:
+- name: upload_accepted
+  type: boolean
+  description: СА принял содержимое.
+- name: accepted_content
+  type: bytes
+  description: Нормализованное содержимое для синхронизации origin.
+- name: code_analysis_file_transfer_module
+  type: module
+  description: Sibling-модуль transfer-хелперов Write Stage (C-012) — upload pipeline; расширяется в рамках T-005.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

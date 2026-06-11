@@ -1,0 +1,20 @@
+step_id: T-001
+parent_global_step: G-002
+name: Контракт конфигурации Upstream Client
+description: 'Расширить конфигурационный контракт Upstream Client (C-017): секция code_analysis_server с host, port, protocol, TLS, timeout, server_id для MCP Proxy. Секреты не в git. Единая точка загрузки секции для всех RPC к СА.
+
+  '
+concepts:
+- C-017
+inputs:
+- name: raw_config
+  type: object
+  description: Загруженная конфигурация редактора.
+outputs:
+- name: upstream_connection_params
+  type: object
+  description: Параметры подключения JsonRpcClient к СА.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

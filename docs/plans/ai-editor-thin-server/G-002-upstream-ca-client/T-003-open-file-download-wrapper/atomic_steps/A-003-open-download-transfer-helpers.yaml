@@ -1,0 +1,159 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: open_download_transfer_helpers
+target_file: ai_editor/core/upstream/code_analysis_file_transfer.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-002
+concepts:
+- C-010
+- C-017
+- C-023
+prompt: |
+  Modify `ai_editor/core/upstream/code_analysis_file_transfer.py` (operation: modify_file).
+
+  ## Parent links
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-002-upstream-ca-client/README.yaml` (G-002)
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-002-upstream-ca-client/T-003-open-file-download-wrapper/README.yaml` (T-003)
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml`
+
+  ## MRS excerpt
+
+  - **C-010 Open Stage**: resolve `file_path`→`file_id`, chunked download to bytes for Origin Snapshot.
+  - **C-017/C-023**: helpers delegate RPC via `client` parameter; use `project_file_transfer_download_begin`, `JsonRpcClient.download_file`.
+
+  ## Task
+
+  Add three module-level functions (preserve `normalize_rel_path` unchanged):
+
+  1. `resolve_file_id_for_path(client, project_id, file_path) -> str` — `list_project_files` path match; `ValidationError` if ids/paths empty; `RuntimeError` if not found.
+  2. `download_transfer_to_bytes(client, transfer_id) -> bytes` — temp file + `client._ensure_rpc()` + `client._run_async(rpc.download_file(...))`.
+  3. `download_file_bytes(client, *, session_id, project_id, file_id, lock_mode) -> bytes` — `project_file_transfer_download_begin` then `download_transfer_to_bytes`.
+
+  Add imports: `from pathlib import Path`, `from typing import Any, Dict, Optional` (keep TYPE_CHECKING block).
+
+  Late import inside `resolve_file_id_for_path`: `from ai_editor.core.exceptions import ValidationError`.
+  Late import inside `download_transfer_to_bytes`: `import tempfile`.
+
+  ## Forbidden
+
+  - Do NOT modify `code_analysis_client.py`.
+  - Do NOT add upload helpers (T-005).
+  - Do NOT add top-level import of `CodeAnalysisClient`.
+
+  ## CURRENT FILE CONTENT (skeleton with `normalize_rel_path` plus additions from this step — full target after this step)
+
+  ```python
+  """
+  Transfer-layer helpers for code-analysis-server chunked upload/download.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from pathlib import Path
+  from typing import TYPE_CHECKING, Any, Dict, Optional
+
+  if TYPE_CHECKING:
+      from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+
+  def normalize_rel_path(file_path: str) -> str:
+      """Normalize project-relative path for CA file index matching (C-023)."""
+      return str(file_path or "").strip().replace("\\", "/")
+
+
+  def resolve_file_id_for_path(
+      client: "CodeAnalysisClient",
+      project_id: str,
+      file_path: str,
+  ) -> str:
+      """Resolve relative path to files-table UUID via list_project_files (C-023)."""
+      from ai_editor.core.exceptions import ValidationError
+
+      pid = str(project_id or "").strip()
+      rel = normalize_rel_path(file_path)
+      if not pid or not rel:
+          raise ValidationError(
+              "project_id and file_path are required",
+              field="file_path",
+              details={"project_id": project_id, "file_path": file_path},
+          )
+      data = client.call("list_project_files", {"project_id": pid})
+      files = data.get("files") if isinstance(data, dict) else data
+      if not isinstance(files, list):
+          raise RuntimeError("list_project_files returned no files list")
+      for item in files:
+          if not isinstance(item, dict):
+              continue
+          row_path = normalize_rel_path(
+              str(
+                  item.get("relative_path")
+                  or item.get("path")
+                  or item.get("file_path")
+                  or ""
+              )
+          )
+          if row_path == rel:
+              fid = str(item.get("file_id") or item.get("id") or "").strip()
+              if fid:
+                  return fid
+      raise RuntimeError(f"file not found in project index: {rel!r}")
+
+
+  def download_transfer_to_bytes(
+      client: "CodeAnalysisClient",
+      transfer_id: str,
+  ) -> bytes:
+      """Download chunked transfer payload to memory via JsonRpcClient.download_file."""
+      import tempfile
+
+      tid = str(transfer_id or "").strip()
+      if not tid:
+          raise RuntimeError("download begin returned no transfer_id")
+      rpc = client._ensure_rpc()
+      with tempfile.NamedTemporaryFile(delete=True) as tmp:
+          client._run_async(rpc.download_file(tid, tmp.name))
+          return Path(tmp.name).read_bytes()
+
+
+  def download_file_bytes(
+      client: "CodeAnalysisClient",
+      *,
+      session_id: Optional[str],
+      project_id: str,
+      file_id: str,
+      lock_mode: str,
+  ) -> bytes:
+      """Begin project_file_transfer_download_begin and materialize bytes (C-023)."""
+      params: Dict[str, Any] = {
+          "project_id": str(project_id).strip(),
+          "file_id": str(file_id).strip(),
+          "compression": "identity",
+          "lock_mode": lock_mode,
+          "include_backup_history": False,
+      }
+      if session_id:
+          params["session_id"] = str(session_id).strip()
+      begin = client.call("project_file_transfer_download_begin", params)
+      if not isinstance(begin, dict):
+          raise RuntimeError("project_file_transfer_download_begin returned invalid payload")
+      transfer_id = str(begin.get("transfer_id") or "").strip()
+      return download_transfer_to_bytes(client, transfer_id)
+  ```
+
+  ## Validation
+
+  - `black ai_editor/core/upstream/code_analysis_file_transfer.py` → exit 0
+  - `flake8 ai_editor/core/upstream/code_analysis_file_transfer.py` → exit 0
+  - `mypy ai_editor/core/upstream/code_analysis_file_transfer.py` → Success: no issues found
+  - All existing tests pass (`pytest`)
+verification:
+  type: static_analysis
+  target: ai_editor/core/upstream/code_analysis_file_transfer.py
+  expected: resolve + download helpers present; file under 400 lines.
+status: draft

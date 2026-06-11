@@ -1,0 +1,33 @@
+step_id: G-006
+name: JSON file handler
+description: 'JsonFileHandler is the FileHandler family for .json files. It opens
+  a JSON file and produces a root Node whose NodeKind depends on the document: mapping
+  for JSON objects, sequence for JSON arrays, scalar for bare scalars. Interior nodes
+  follow the JSON shape recursively. The handler resolves node_ref values either as
+  node_id strings produced by the project''s list_json_blocks infrastructure or as
+  JSON pointer strings ("/foo/bar"); the two spellings are interchangeable because
+  the same project infrastructure produces them.
+
+  '
+concepts:
+- C-018
+relations:
+- from_concept: C-018
+  to_concept: C-003
+  type: extends
+- from_concept: C-018
+  to_concept: C-004
+  type: produces
+- from_concept: C-018
+  to_concept: C-009
+  type: depends_on
+source_ranges:
+- start: 158
+  end: 161
+depends_on:
+- G-002
+- G-003
+tactical_steps:
+- T-501
+- T-502
+status: frozen

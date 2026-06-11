@@ -1,0 +1,69 @@
+step_id: T-004
+parent_global_step: G-002
+name: Unified Pipeline Integration and Parity Verification
+description: 'Modify only the unified pipeline integration module(s) that invoke existing
+  TreeLifecycle (C-010) and TreeBuilder (C-011) APIs — this step does NOT create or
+  modify TreeBuilder or TreeLifecycle class definitions. Wire validate→build routing in
+  the integration layer so every validity and creation decision calls TreeLifecycle
+  entry points, which dispatch to TreeBuilder.build using HandlerRegistry (C-008) to
+  resolve FormatHandler (C-007) and produce TreeNode trees (C-009); ChecksumSyncPolicy
+  (C-006) remains the four-branch decision input to that routing. On rebuild paths the
+  integration layer ensures validate_and_repair runs after TreeBuilder.build when
+  refreshing an existing tree, preserving TreeNodeUuid (C-024) per {a007}/{n002}.
+  Leave recreate_tree_from_content and legacy TreeFormatKind dispatch untouched as a
+  parity oracle alongside the unified pipeline. Add a parity test module that compares
+  unified-pipeline output against the legacy oracle on shared real fixtures for each
+  supported format, asserting the three-section tree file layout (CHECKSUMS, MAP with
+  short_id↔UUID4 and next_free, TREE with short_id markers only) matches oracle
+  semantics where applicable. This tactical step completes G-002 integration per decision
+  A1 and strategy new-alongside-old; it does not remove legacy code or redirect G-000
+  consumers.'
+concepts:
+- C-010
+- C-011
+- C-008
+- C-007
+- C-009
+- C-006
+- C-024
+- C-025
+inputs:
+- name: TreeBuilder entity API
+  type: existing domain entity API (C-011)
+  description: Predefined TreeBuilder.build that resolves HandlerRegistry, calls
+    FormatHandler.mark, writes three-section sibling TreeFile (CHECKSUMS, MAP, TREE),
+    and records content_checksum in CHECKSUMS and the returned tree reference; consumed
+    by integration modules, not redefined here.
+- name: TreeLifecycle entity API
+  type: existing domain entity API (C-010)
+  description: Predefined TreeLifecycle coordinator with checksum helpers, TreeBuilder
+    reference, ChecksumSyncPolicy (C-006) four-branch decision input, and NodeIdMap
+    validate_and_repair on rebuild; consumed by integration modules, not redefined here.
+- name: HandlerRegistry and FormatHandler implementations
+  type: MRS concepts (C-008, C-007)
+  description: HandlerRegistry.default_registry with Text, Markdown, Yaml, Json, and
+    PythonHandler instances from G-001 marker contract work.
+- name: NodeIdMap operations
+  type: domain entity definition (C-025)
+  description: build and validate_and_repair integrated into unified-pipeline rebuild
+    routing.
+outputs:
+- name: Unified pipeline integration module
+  type: integration module
+  description: Module(s) that wire validate→build routing by calling existing TreeLifecycle
+    and TreeBuilder APIs; no TreeBuilder or TreeLifecycle class definitions are created
+    or modified in this step.
+- name: Parity verification suite
+  type: verification artifact
+  description: Parity test module comparing unified-pipeline three-section tree output
+    against the legacy parity oracle on fixtures; documents covered versus unverified
+    node-type parity for Python.
+source_labels:
+- '{c005}'
+- '{c006}'
+- '{a007}'
+- '{n002}'
+atomic_steps:
+- A-001
+- A-002
+status: needs_review

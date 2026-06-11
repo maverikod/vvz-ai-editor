@@ -1,0 +1,53 @@
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+concepts:
+- C-005
+- C-001
+- C-003
+- C-006
+description: "Expose three SessionMCPCommands (C-005) covering the ClientSession (C-001)
+  lifecycle: session_create, session_delete, and session_list.\n\nsession_create command:\n\
+  - Input: comment (string, required), role_ids (list of UUID4 strings, optional,
+  default empty).\n- Action: creates a ClientSession via SessionService; no SessionTouchRule
+  (session does not exist yet); no SecurityPolicy check (creation is always permitted).\n\
+  - Output: {session_id, comment, created_at, last_active_at}.\n- Error: none specific
+  to this command.\n\nsession_delete command:\n- Input: session_id (string, required),
+  force (boolean, optional, default false).\n- Action: no SessionTouchRule (session
+  is being terminated); deletes ClientSession via SessionService with force flag.\n\
+  - Output: {session_id, deleted: true, released_lock_count: int}.\n- Errors: SESSION_NOT_FOUND
+  if session absent; SESSION_HAS_LOCKS if open SessionFileLocks exist and force=false.\n\
+  \nsession_list command:\n- Input: session_id (string, conditional — required when
+  show_session_ids=true, optional when false), stale_threshold_seconds (integer, optional).\n\
+  - Action: applies SessionTouchRule (C-003) only when session_id is provided; respects
+  SessionListVisibilityPolicy (C-006) to determine whether session_id is included
+  in output rows.\n- Output: {sessions: list, count: int} where each session item
+  contains comment, created_at, last_active_at, open_lock_count, and session_id only
+  when show_session_ids=true.\n- Errors: SESSION_ID_REQUIRED when show_session_ids=true
+  and session_id absent; SESSION_NOT_FOUND when session_id provided but not found."
+inputs:
+- description: ClientSession CRUD and touch_or_error from SessionService 
+    (C-004).
+  name: SessionService ClientSession operations
+  type: domain contract
+- description: show_session_ids flag value read from loaded server config.
+  name: SessionListVisibilityPolicy config value (C-006)
+  type: domain contract
+name: 'Session lifecycle MCP commands: session_create, session_delete, session_list'
+outputs:
+- description: session_create MCP command registered in the command registry.
+  name: session_create command
+  type: MCP command
+- description: session_delete MCP command registered in the command registry.
+  name: session_delete command
+  type: MCP command
+- description: session_list MCP command registered in the command registry.
+  name: session_list command
+  type: MCP command
+parent_global_step: G-003
+status: done
+step_id: T-001

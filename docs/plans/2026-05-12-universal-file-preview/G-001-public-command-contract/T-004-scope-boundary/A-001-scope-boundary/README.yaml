@@ -1,0 +1,112 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Add _SCOPE_INVARIANTS constant to universal_file_preview_command module
+target_file: ai_editor/commands/universal_file_preview_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-021
+- C-014
+status: done
+prompt: "Modify an existing Python file.\n\nTarget file (modify_file):\n  ai_editor/commands/universal_file_preview_command.py\n\
+  \nThe file content after all T-001 atomic steps have been applied is exactly:\n\n\
+  \  \"\"\"\n  MCP command: universal_file_preview\n\n  Uniform structured preview\
+  \ of any project file node.\n  Read-only; never writes to files, database, or tree\
+  \ sessions\n  the command did not create.\n\n  Author: Vasiliy Zdanovskiy\n  email:\
+  \ vasilyvz@gmail.com\n  \"\"\"\n  from __future__ import annotations\n\n  import\
+  \ logging\n  from typing import Any\n\n  from mcp_proxy_adapter.commands.result\
+  \ import ErrorResult, SuccessResult\n\n  from .base_mcp_command import BaseMCPCommand\n\
+  \  from .universal_file_preview.dispatcher import HandlerDispatcher\n  from .universal_file_preview.budget\
+  \ import PreviewBudget\n  from .universal_file_preview.navigation import navigate\n\
+  \  from .universal_file_preview.response import build_envelope\n  from .universal_file_preview.errors\
+  \ import (\n      INPUT_ERROR_GLOB_IN_FILE_PATH,\n      INPUT_ERROR_INVALID_SELECTOR_FORM,\n\
+  \      INPUT_ERROR_MIXED_SELECTOR_LIST,\n      INPUT_ERROR_DUPLICATE_SELECTOR_ENTRY,\n\
+  \  )\n\n  _GLOB_CHARS = frozenset(\"*?[\")\n  _PREVIEW_LINES_DEFAULT = 20\n  _VALUE_PREVIEW_LEN_DEFAULT\
+  \ = 120\n  logger = logging.getLogger(__name__)\n\n  class UniversalFilePreviewCommand(BaseMCPCommand):\n\
+  \      \"\"\"\n      MCP command that returns a structured preview of any project\
+  \ file node.\n\n      Supports .py, .pyi, .pyw (Python), .md, .txt, .rst, .adoc\
+  \ (text),\n      .json (JSON), .jsonl, .ndjson (JSON Lines), .yaml, .yml (YAML).\n\
+  \      XML and HTML are out of scope.\n\n      Attributes:\n          name: Command\
+  \ name identifier.\n          version: Command version string.\n          descr:\
+  \ Human-readable command description.\n          category: Command category.\n \
+  \         author: Author name.\n          email: Author email.\n          use_queue:\
+  \ Whether to use async queue for execution.\n      \"\"\"\n\n      name = \"universal_file_preview\"\
+  \n      version = \"1.0.0\"\n      descr = \"Uniform structured preview of any project\
+  \ file node\"\n      category = \"preview\"\n      author = \"Vasiliy Zdanovskiy\"\
+  \n      email = \"vasilyvz@gmail.com\"\n      use_queue = False\n\n      @classmethod\n\
+  \      def get_schema(cls) -> dict[str, Any]:\n          \"\"\"Return JSON Schema\
+  \ for the command input parameters.\"\"\"\n          return {\n              \"\
+  type\": \"object\",\n              \"properties\": {\n                  \"project_id\"\
+  : {\"type\": \"string\", \"description\": \"Project UUID.\"},\n                \
+  \  \"file_path\": {\"type\": \"string\", \"description\": \"Project-relative path\
+  \ to one file. No globs.\"},\n                  \"node_ref\": {\"type\": \"string\"\
+  , \"description\": \"StableIdentifier in file handler native format. Omit for file\
+  \ root.\", \"nullable\": True},\n                  \"selector\": {\n           \
+  \           \"description\": \"Picks a subset of the focus node block set. String\
+  \ (slice form), list[int] (explicit indices), or list[str] (block identifiers).\
+  \ Omit to get first preview_lines blocks.\",\n                      \"oneOf\": [{\"\
+  type\": \"string\"}, {\"type\": \"array\", \"items\": {\"type\": \"integer\"}},\
+  \ {\"type\": \"array\", \"items\": {\"type\": \"string\"}}],\n                 \
+  \     \"nullable\": True,\n                  },\n                  \"preview_lines\"\
+  : {\"type\": \"integer\", \"minimum\": 1, \"description\": \"Cap on blocks returned\
+  \ when selector is omitted.\", \"nullable\": True},\n                  \"value_preview_len\"\
+  : {\"type\": \"integer\", \"minimum\": 1, \"description\": \"Cap on inline scalar/name\
+  \ length.\", \"nullable\": True},\n                  \"tree_id\": {\"type\": \"\
+  string\", \"description\": \"UUID of an existing in-memory TreeSession.\", \"nullable\"\
+  : True},\n              },\n              \"required\": [\"project_id\", \"file_path\"\
+  ],\n              \"additionalProperties\": False,\n          }\n\n      def validate_params(self,\
+  \ params: dict[str, Any]) -> dict[str, Any]:\n          \"\"\"Validate and normalise\
+  \ raw MCP call parameters.\"\"\"\n          file_path = params[\"file_path\"]\n\
+  \          if any(c in file_path for c in _GLOB_CHARS):\n              raise ValueError(INPUT_ERROR_GLOB_IN_FILE_PATH)\n\
+  \          node_ref = params.get(\"node_ref\")\n          selector = params.get(\"\
+  selector\")\n          if isinstance(selector, str):\n              if \":\" not\
+  \ in selector and not selector.startswith(\"-\"):\n                  raise ValueError(INPUT_ERROR_INVALID_SELECTOR_FORM)\n\
+  \          elif isinstance(selector, list) and selector:\n              if not (all(isinstance(x,\
+  \ int) for x in selector) or all(isinstance(x, str) for x in selector)):\n     \
+  \             raise ValueError(INPUT_ERROR_MIXED_SELECTOR_LIST)\n              if\
+  \ len(selector) != len(set(map(str, selector))):\n                  raise ValueError(INPUT_ERROR_DUPLICATE_SELECTOR_ENTRY)\n\
+  \          preview_lines = params.get(\"preview_lines\", _PREVIEW_LINES_DEFAULT)\n\
+  \          value_preview_len = params.get(\"value_preview_len\", _VALUE_PREVIEW_LEN_DEFAULT)\n\
+  \          tree_id = params.get(\"tree_id\")\n          return {\"file_path\": file_path,\
+  \ \"node_ref\": node_ref, \"selector\": selector,\n                  \"preview_lines\"\
+  : preview_lines, \"value_preview_len\": value_preview_len,\n                  \"\
+  tree_id\": tree_id}\n\n      def execute(self, **kwargs: Any) -> SuccessResult |\
+  \ ErrorResult:\n          \"\"\"\n          Execute the preview command.\n\n   \
+  \       Args:\n              **kwargs: Validated parameters from validate_params.\n\
+  \n          Returns:\n              SuccessResult with ResponseEnvelope data, or\
+  \ ErrorResult on failure.\n          \"\"\"\n          try:\n              dispatcher\
+  \ = HandlerDispatcher()\n              handler_result = dispatcher.dispatch(kwargs[\"\
+  file_path\"])\n              if isinstance(handler_result, PreviewError):\n    \
+  \              return ErrorResult(code=handler_result.code, message=handler_result.message)\n\
+  \              budget = PreviewBudget(preview_lines=kwargs[\"preview_lines\"],\n\
+  \                                     value_preview_len=kwargs[\"value_preview_len\"\
+  ])\n              navigation_result = navigate(handler_result, kwargs, budget)\n\
+  \              if isinstance(navigation_result, PreviewError):\n               \
+  \   return ErrorResult(code=navigation_result.code, message=navigation_result.message)\n\
+  \              session_origin = 'command_created' if navigation_result.tree_id is\
+  \ not None else ('caller_owned' if kwargs.get('tree_id') else 'none')\n        \
+  \      envelope = build_envelope(navigation_result, kwargs.get(\"selector\"), session_origin)\n\
+  \              return SuccessResult(data=envelope)\n          except Exception as\
+  \ exc:\n              logger.error(\"universal_file_preview failed: %s\", exc, exc_info=True)\n\
+  \              return ErrorResult(code=\"HANDLER_ERROR\", message=str(exc))\n\n\
+  Change to make:\n  Insert the following constant AFTER the three module-level constants\n\
+  \  (_GLOB_CHARS, _PREVIEW_LINES_DEFAULT, _VALUE_PREVIEW_LEN_DEFAULT)\n  and BEFORE\
+  \ the logger assignment.\n  Insert between _VALUE_PREVIEW_LEN_DEFAULT and logger:\n\
+  \n    _SCOPE_INVARIANTS: tuple[str, ...] = (\n        \"NO_WRITES: command never\
+  \ writes to files, database, or tree sessions\"\n        \" it did not create\"\
+  ,\n        \"NO_RAW_BYTES: response never contains raw file bytes; all output is\"\
+  \n        \" structured JSON\",\n        \"SINGLE_FILE: file_path is a single literal\
+  \ path; globs and wildcards\"\n        \" are rejected as GLOB_IN_FILE_PATH\",\n\
+  \        \"NO_XML_HTML: no FileHandler is registered for .xml, .html, .htm;\"\n\
+  \        \" requests produce UNKNOWN_EXTENSION\",\n    )\n\n  Type annotation: tuple[str,\
+  \ ...]\n  Four string elements, each as a string literal (not f-string).\n  No other\
+  \ changes to the file.\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_preview_command.py
+  expected: _SCOPE_INVARIANTS is a module-level constant of type tuple[str, ...] with
+    exactly four string elements documenting NO_WRITES, NO_RAW_BYTES, SINGLE_FILE,
+    and NO_XML_HTML; it appears between _VALUE_PREVIEW_LEN_DEFAULT and logger; all
+    other content of the file is unchanged.

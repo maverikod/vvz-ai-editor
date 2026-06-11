@@ -1,0 +1,70 @@
+# Execution waves for T-003-read-path-and-consumers atomic steps.
+# Cross-TS ordering is expressed here only; depends_on within a TS uses plain A-NNN.
+
+cross_ts_gate:
+  description: >
+    tree_sidecar.py must already use sibling_tree_path (T-001 path cutover complete)
+    and core/tree_temp/sidecar_paths.py must be deleted (T-002 module removal complete).
+  requires:
+    - tactical_step: T-001-path-resolution
+      step_id: A-001
+    - tactical_step: T-002-write-path
+      step_id: A-001
+
+waves:
+  - wave: 1
+    after_cross_ts_gate: true
+    steps:
+      - A-001
+  - wave: 2
+    after:
+      - A-001
+    parallel:
+      - A-002
+      - A-003
+      - A-004
+      - A-005
+      - A-006
+      - A-008
+      - A-010
+  - wave: 3
+    after:
+      - A-001
+    steps:
+      - A-007
+  - wave: 4
+    after:
+      - A-001
+      - A-002
+      - A-003
+      - A-004
+      - A-005
+      - A-006
+      - A-007
+      - A-008
+    steps:
+      - A-009
+  - wave: 5
+    after:
+      - A-009
+    steps:
+      - A-011
+  - wave: 6
+    after:
+      - A-011
+    steps:
+      - A-012
+  - wave: 7
+    parallel:
+      - A-013
+      - A-014
+      - A-015
+      - A-016
+  - wave: 8
+    parallel:
+      - A-017
+      - A-018
+  - wave: 9
+    parallel:
+      - A-019
+      - A-020

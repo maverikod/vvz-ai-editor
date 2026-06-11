@@ -1,0 +1,24 @@
+step_id: T-001
+parent_global_step: G-005
+name: Сравнение origin и edit
+description: 'Ввести сущность сравнения Write Stage (C-012): экспорт текущего состояния Edit Subdirectory (C-008) в каноническую сериализованную форму и побайтовое сравнение этого канонического экспорта с байтами Origin Snapshot (C-007) как origin baseline. Единственное правило сравнения — canonical-export comparison, не сырое сравнение in-place артефактов Edit Subdirectory. Результат equal / diff для ветвления no-op vs upload при write_mode=commit; при write_mode=preview — основа локального diff без upload.
+
+  '
+concepts:
+- C-007
+- C-008
+- C-012
+inputs:
+- name: origin_baseline
+  type: bytes
+  description: Байты Origin Snapshot (C-007) как baseline для сравнения.
+- name: canonical_export
+  type: bytes
+  description: Канонический экспорт текущего состояния Edit Subdirectory (C-008).
+outputs:
+- name: comparison_result
+  type: enum
+  description: equal или diff.
+atomic_steps:
+- A-001
+status: ready_for_review

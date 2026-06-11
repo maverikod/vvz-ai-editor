@@ -1,0 +1,201 @@
+step_id: A-001
+parent_tactical_step: T-003
+parent_global_step_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/README.yaml
+parent_tactical_task_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/T-003-edit-session-edit/README.yaml
+machine_spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+source_spec: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+name: Tree-temp edit batch module — tree_temp_edit_batch / apply_tree_temp_mutations
+target_file: ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-001
+  - C-007
+status: done
+verification:
+  type: pytest
+  target: tests/test_universal_file_edit_command.py
+  expected: Full suite passes; failed ops return ErrorResult without mutating tree or dirty flag.
+prompt: |
+  Executor: coder_auto. Create only ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py (max 400 lines).
+
+  Cross-G contract: this is the single edit pipeline for tree-temp TreeNode sessions. Public entrypoint name is
+  **apply_tree_temp_mutations** (not apply_tree_temp_batch). Session roots field is **tree_temp_roots**; checksum
+  field on EditSession is **source_sha256_at_open** (see G-003 T-002 A-001).
+
+  Module docstring:
+    """Apply universal_file_edit operations to TreeNode-backed tree-temp sessions (G-003 / G-004).
+
+    Author: Vasiliy Zdanovskiy
+    Email: vasilyvz@gmail.com
+    """
+
+  Imports:
+    from __future__ import annotations
+
+    import json
+    import uuid
+    from copy import deepcopy
+    from typing import Any, Dict, List, Optional, Tuple
+
+    import yaml
+    from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+    from ai_editor.commands.universal_file_edit.errors import (
+        PARSE_ERROR,
+        UNKNOWN_FORMAT,
+        WRITE_FAILED,
+        make_error,
+    )
+    from ai_editor.commands.universal_file_edit.session import EditSession
+    from ai_editor.commands.universal_file_edit.format_group import FORMAT_TREE_TEMP
+    from ai_editor.core.backup_manager import BackupManager
+    from ai_editor.core.json_tree.tree_modifier import modify_tree as json_modify_tree
+    from ai_editor.core.json_tree.tree_builder import get_tree as json_get_registered
+    from ai_editor.core.yaml_tree.tree_builder import get_tree as yaml_get_tree
+    from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  Public function (exact signature):
+
+    def apply_tree_temp_mutations(
+        session: EditSession,
+        operations: List[Dict[str, Any]],
+    ) -> SuccessResult | ErrorResult:
+
+  Behaviour:
+
+    1. If session.format_group != FORMAT_TREE_TEMP: return ErrorResult INVALID_SESSION message.
+
+    2. If session.tree_temp_roots is None: **legacy path** — require session.tree_id non-empty; run the same logic as the pre-refactor edit_command._apply_tree_temp inner function (json/yaml modify_tree loops, draft_path rewrites, BackupManager backup of draft). Copy behaviour verbatim from repository version at plan authoring time so tests pass until open migrates to tree_temp_roots.
+
+    3. If session.tree_temp_roots is not None:
+         a) Build an index mapping stable_id -> (parent, index_in_parent) for all nodes reachable from roots (parent is None for root-level nodes; index_in_parent is index in parent's children or root list index).
+         b) Before mutating, snapshot roots_deep = deepcopy(session.tree_temp_roots).
+         c) Try BackupManager backup of session.draft_path if it exists (same as legacy path try/except pattern); on backup failure return ErrorResult code WRITE_FAILED.
+         d) For each operation in order: interpret using the same keys as `_normalized_json_modify_operation` in edit_command (type/action, json_pointer/value/content). Map json_pointer / node_ref to stable_id targeting: operations use stable_id string on key `target_stable_id` or reuse `target_node_id` when value looks like UUID v4; if only json_pointer is provided, resolve by walking TreeNode children by keys / indices. On unknown target return ErrorResult INVALID_OPERATION and restore session.tree_temp_roots from snapshot roots_deep, rewrite draft from snapshot, return (do not set dirty).
+         e) Mutations:
+            - replace: update scalar value or replace node payload preserving stable_id (same object identity allowed).
+            - delete: remove node from parent's children.
+            - insert: allocate new TreeNode with fresh uuid4 stable_id; attach under parent per position fields mirroring legacy insert semantics.
+         f) On full success: serialize session.tree_temp_roots to draft text using handler_id json vs yaml (same dumps as legacy _apply_tree_temp), write draft_path, set session.dirty = True, return SuccessResult data {success: True, updated: True}.
+         g) On any error after partial apply: restore session.tree_temp_roots = roots_deep, rewrite draft from deepcopy serialization, do not set dirty.
+
+  TreeNode field access must use attributes defined in G-001 (stable_id, type, key, value, children, comment fields).
+
+  Forbidden: touching session.abs_path source file, Any type, print/logging, bare except.
+
+  Validation:
+    black ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py
+    flake8 ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py
+    mypy ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py
+    pytest -q
+
+  Note: For the legacy branch, paste and adapt the inner function body currently in
+  UniversalFileEditCommand._apply_tree_temp (json/yaml modify_tree loops and draft writes)
+  from the version of edit_command.py captured below — duplicate it inside this module
+  so there is no import cycle.
+
+  ```python
+  # --- legacy excerpt (authoritative snapshot; trim only if black reformats) ---
+  def _run_tree_temp() -> SuccessResult | ErrorResult:
+      from ai_editor.core.backup_manager import BackupManager
+      from ai_editor.core.json_tree.tree_modifier import (
+          modify_tree as json_modify_tree,
+      )
+
+      tid = session.tree_id
+      if not tid:
+          return ErrorResult(
+              message="Session has no registered tree id for tree-temp format.",
+              code="INVALID_SESSION",
+              details=None,
+          )
+      try:
+          root_dir = _project_root_near(session.draft_path)
+          bm = BackupManager(root_dir=root_dir)
+          if session.draft_path.exists():
+              bm.create_backup(
+                  session.draft_path,
+                  command="universal_file_edit",
+              )
+      except Exception as exc:
+          return ErrorResult(
+              message=f"Backup before edit failed: {exc}",
+              code=WRITE_FAILED,
+              details={"path": str(session.draft_path)},
+          )
+
+      try:
+          if session.handler_id == "json":
+              import json as _json
+
+              from ai_editor.core.json_tree.tree_builder import (
+                  get_tree as json_get_registered,
+              )
+
+              for op in operations:
+                  mop = _normalized_json_modify_operation(op)
+                  json_modify_tree(tid, [mop])
+                  jt = json_get_registered(tid)
+                  if jt is None:
+                      return ErrorResult(
+                          message=f"JSON tree not found after apply: {tid}",
+                          code=PARSE_ERROR,
+                          details=None,
+                      )
+                  dump = (
+                      _json.dumps(jt.root_data, indent=2, ensure_ascii=False)
+                      + "\n"
+                  )
+                  session.draft_path.write_text(
+                      dump,
+                      encoding="utf-8",
+                  )
+          elif session.handler_id == "yaml":
+              import yaml
+
+              from ai_editor.core.yaml_tree.tree_builder import (
+                  get_tree as yaml_get_tree,
+              )
+
+              for op in operations:
+                  mop = _normalized_json_modify_operation(op)
+                  _modify_yaml_registered_one(tid, mop)
+                  yt = yaml_get_tree(tid)
+                  if yt is None:
+                      return ErrorResult(
+                          message=f"YAML tree not found after apply: {tid}",
+                          code=PARSE_ERROR,
+                          details=None,
+                      )
+                  session.draft_path.write_text(
+                      yaml.safe_dump(
+                          yt.root_data,
+                          default_flow_style=False,
+                          allow_unicode=True,
+                          sort_keys=False,
+                      ),
+                      encoding="utf-8",
+                  )
+          else:
+              err = make_error(
+                  UNKNOWN_FORMAT,
+                  f"Unsupported handler for tree-temp: {session.handler_id}",
+              )
+              return ErrorResult(
+                  message=str(err["message"]),
+                  code=str(err["code"]),
+                  details=err.get("details"),
+              )
+      except ValueError as exc:
+          return ErrorResult(
+              message=str(exc),
+              code="INVALID_OPERATION",
+              details={"operations": operations},
+          )
+
+      return SuccessResult(data={"success": True, "updated": True})
+  ```
+
+  You must copy `_project_root_near`, `_normalized_json_modify_operation`, and `_modify_yaml_registered_one` into this module as private functions with identical behaviour (paste from same edit_command.py snapshot).

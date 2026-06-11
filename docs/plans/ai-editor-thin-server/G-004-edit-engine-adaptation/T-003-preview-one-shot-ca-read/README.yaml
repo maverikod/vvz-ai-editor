@@ -1,0 +1,34 @@
+step_id: T-003
+parent_global_step: G-004
+name: Preview одноразовое чтение с СА
+description: 'Реализовать режим preview Edit Stage (C-011): одноразовое чтение файла с upstream через Upstream Client (C-017) и CA API Contract (C-023) без удержания блокировки и без создания File Subtree — только когда файл не открыт в editor session ({5l1i}). Запрещённый upstream view API не используется. Если файл уже открыт в CA Session, запрос отклоняется с делегированием на read-only preview по локальной рабочей копии в Edit Subdirectory; одноразовое upstream-чтение и создание File Subtree в этом случае запрещены.
+
+  '
+concepts:
+- C-004
+- C-008
+- C-011
+- C-017
+- C-023
+inputs:
+- name: project_id
+  type: string
+  description: Идентификатор проекта для резолва файла на upstream.
+- name: file_path
+  type: string
+  description: Путь файла для одноразового read-only просмотра без open в editor session.
+- name: ca_session_identifier
+  type: string
+  description: CA Session identifier (C-004) для контекста вызова upstream.
+outputs:
+- name: ephemeral_preview
+  type: object
+  description: Содержимое или структура из upstream без локального File Subtree.
+- name: open_file_delegation_rejection
+  type: object
+  description: При уже открытом файле в CA Session — отказ с указанием использовать read-only preview открытой рабочей копии.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: ready_for_review

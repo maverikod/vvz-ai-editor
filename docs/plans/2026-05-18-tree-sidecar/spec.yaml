@@ -1,0 +1,153 @@
+meta:
+  plan: tree-sidecar
+  version: '1.0'
+concepts:
+- concept_id: C-001
+  definition: A single node in the structured data tree, carrying a stable UUID, a
+    type discriminator, an optional key (for object members), an optional scalar value,
+    an ordered list of children (for containers), and optional comment strings.
+  name: TreeNode
+  properties:
+  - 'stable_id: UUID v4; assigned once; never reassigned'
+  - 'type: one of object | array | string | number | boolean | null'
+  - 'key: string; present only when node is a member of an object'
+  - 'value: scalar; present on string, number, boolean, null nodes'
+  - 'children: ordered list of TreeNode; present on object and array nodes'
+  - 'comment_before: string; comment on the lines above this node'
+  - 'comment_inline: string; comment to the right of this node on the same line'
+  source_ranges:
+  - end: 75
+    start: 46
+- concept_id: C-002
+  definition: A JSON file stored in .trees/ at the project root that persists the
+    full TreeNode tree for one source data file, together with the SHA-256 of the
+    source at last sync.
+  name: Sidecar
+  properties:
+  - 'path: .trees/<relative_source_path>.tree'
+  - 'source_sha256: hex SHA-256 of source file at last write'
+  - 'root: ordered list of top-level TreeNode entries'
+  - 'format: always valid JSON regardless of source format'
+  - 'directory: .trees/ at the project root; naming mirrors source path'
+  source_ranges:
+  - end: 26
+    start: 1
+  - end: 45
+    start: 27
+  - end: 98
+    start: 76
+- concept_id: C-003
+  definition: The rule set that determines which representation has priority when
+    the recorded SHA-256 does not match the current source file checksum.
+  name: SHASyncPolicy
+  properties:
+  - 'no_sidecar: build from source; write sidecar'
+  - 'sha_match: load sidecar as-is'
+  - 'sha_mismatch_no_session: source has priority; rebuild and overwrite sidecar'
+  - 'sha_mismatch_active_session: sidecar has priority; do not rebuild'
+  source_ranges:
+  - end: 122
+    start: 111
+- concept_id: C-004
+  definition: 'The rule that assigns each comment string to a specific TreeNode field:
+    comment_inline or comment_before.'
+  name: CommentOwnershipRule
+  properties:
+  - 'inline_comment: same line as value -> comment_inline on that node'
+  - 'above_comment: own line -> comment_before on the child immediately below'
+  - 'top_level_comment: above first root node -> comment_before on first root node'
+  source_ranges:
+  - end: 110
+    start: 100
+- concept_id: C-005
+  definition: A format-specific component that reads a source file and produces a
+    TreeNode tree, preserving comments per CommentOwnershipRule.
+  name: SourceParser
+  properties:
+  - 'json_parser: tolerant; accepts // and /* */ comments'
+  - 'yaml_parser: uses ruamel.yaml round-trip mode; preserves # comments'
+  source_ranges:
+  - end: 145
+    start: 136
+  - end: 163
+    start: 157
+- concept_id: C-006
+  definition: A format-specific component that writes a TreeNode tree back to the
+    source format, restoring comments at positions recorded in the tree.
+  name: SourceSerializer
+  properties:
+  - 'json_serializer: produces JSON with // or /* */ comments restored'
+  - 'yaml_serializer: produces YAML with # comments restored via ruamel.yaml'
+  source_ranges:
+  - end: 145
+    start: 136
+  - end: 163
+    start: 157
+- concept_id: C-007
+  definition: The in-memory object that holds the tree and tracks open/dirty state
+    during a universal_file_open -> edit -> write -> close workflow.
+  name: EditSession
+  properties:
+  - 'session_id: UUID returned to caller on open'
+  - 'tree: in-memory TreeNode tree (root list)'
+  - 'source_sha256: SHA of the file as loaded'
+  - 'dirty: bool; true after any edit before write'
+  - 'format_group: tree-temp for JSON and YAML'
+  source_ranges:
+  - end: 134
+    start: 123
+- concept_id: C-009
+  definition: The drill-down navigation behaviour of universal_file_preview that uses
+    persistent sidecar stable_id values as node_ref to return children of any container
+    node across sessions.
+  name: PreviewNavigation
+  properties:
+  - 'node_ref: stable_id from sidecar passed to universal_file_preview'
+  - 'container_drill_down: returns children when node_ref is object or array'
+  - 'root_view: returns root blocks when node_ref is absent'
+  - 'cross_session_stability: node_ref valid in any session on same file'
+  - 'scalar_node_ref_effective_focus: walk to nearest object/array ancestor; if none,
+      root_view'
+  source_ranges:
+  - end: 187
+    start: 147
+relations:
+- from_concept: C-002
+  to_concept: C-001
+  type: owns
+- from_concept: C-003
+  to_concept: C-002
+  type: uses
+- from_concept: C-003
+  to_concept: C-007
+  type: uses
+- from_concept: C-004
+  to_concept: C-001
+  type: produces
+- from_concept: C-005
+  to_concept: C-001
+  type: produces
+- from_concept: C-005
+  to_concept: C-004
+  type: uses
+- from_concept: C-006
+  to_concept: C-001
+  type: consumes
+- from_concept: C-007
+  to_concept: C-001
+  type: owns
+- from_concept: C-007
+  to_concept: C-002
+  type: uses
+- from_concept: C-007
+  to_concept: C-005
+  type: uses
+- from_concept: C-007
+  to_concept: C-006
+  type: uses
+- from_concept: C-009
+  to_concept: C-002
+  type: uses
+- from_concept: C-009
+  to_concept: C-001
+  type: uses

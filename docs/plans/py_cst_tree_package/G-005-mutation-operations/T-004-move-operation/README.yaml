@@ -1,0 +1,44 @@
+step_id: T-004
+parent_global_step: G-005
+name: MoveOperation
+description: Define the MoveOperation entity (C-014). Move relocates a target 
+  node addressed by StableId (C-003) and its entire subtree to a new position 
+  relative to a destination also addressed by StableId, within the same Tree 
+  (C-004). The moved node and every descendant, however deeply nested and 
+  regardless of node category, keep their StableIds; only position changes. 
+  Every node outside the moved subtree also keeps its StableId. This is the 
+  strictest identity guarantee and the central reason the package exists. A move
+  carries all formatting attached to the subtree including docstring and leading
+  comments and blank lines; attached content is never lost. Blank-line cosmetics
+  at source or destination are not normalized; the result is valid Python whose 
+  surrounding blank-line count may differ from a style ideal; style 
+  normalization is the caller responsibility. After the move the IdIndex 
+  (C-005), AttributeIndex (C-006), and ParentRelation (C-007) are updated and 
+  consistent.
+concepts:
+- C-014
+- C-004
+- C-003
+- C-005
+- C-006
+- C-007
+inputs:
+- name: target Tree
+  type: C-004 instance
+  description: The Tree in which the move is performed.
+- name: target address
+  type: StableId
+  description: The StableId of the node and subtree to relocate; obtained by 
+    querying the Tree through the QueryInterface (C-008) before calling this 
+    operation.
+- name: destination address
+  type: StableId
+  description: The StableId of the node relative to which the subtree is placed 
+    at the new position; also obtained through the QueryInterface (C-008).
+outputs:
+- name: Tree after move
+  type: C-004 instance
+  description: Tree after move; moved subtree retains all StableIds; all other 
+    nodes retain theirs; formatting carried; indexes consistent.
+atomic_steps: []
+status: draft

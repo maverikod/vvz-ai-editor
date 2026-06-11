@@ -1,0 +1,127 @@
+step_id: A-019
+parent_tactical_step: T-002
+name: Убрать sessions и transfer auto-import из hooks
+target_file: ai_editor/hooks.py
+operation: modify_file
+priority: 19
+depends_on:
+- A-018
+concepts:
+- C-016
+- C-020
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/hooks.py`):
+  ```py
+  """
+  Command registration hooks for ai-editor-server.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  # Import patch for CommandExecutionJob to support progress tracking
+  # This must be imported before CommandExecutionJob is used
+  from .core.command_execution_job_patch import patch_command_execution_job  # noqa: F401
+
+  from mcp_proxy_adapter.commands.hooks import register_custom_commands_hook
+  from mcp_proxy_adapter.commands.command_registry import registry
+  from mcp_proxy_adapter.commands.hooks import register_auto_import_module
+
+  from .hooks_register_part1 import register_commands_part1
+  from .hooks_register_part2 import register_commands_part2
+
+
+  def register_ai_editor_commands(reg: registry) -> None:
+      """Register AI Editor file-editing commands and minimal infrastructure.
+
+      Args:
+          reg: MCP command registry instance.
+
+      Returns:
+          None
+      """
+      register_commands_part1(reg)
+      register_commands_part2(reg)
+      from .commands.command_metadata_helpers import (
+          apply_metadata_finalization_to_registry,
+      )
+
+      apply_metadata_finalization_to_registry(reg)
+
+
+  # Register hook
+  register_custom_commands_hook(register_ai_editor_commands)
+
+  # Register modules for auto-import in child processes (spawn mode).
+  register_auto_import_module("ai_editor.core.command_execution_job_patch")
+  register_auto_import_module("ai_editor.core.transfer_lock_registry")
+  register_auto_import_module("ai_editor.commands.project_file_transfer_by_id_commands")
+  register_auto_import_module("ai_editor.commands.project_file_advisory_lock_batch_command")
+  register_auto_import_module("ai_editor.commands.project_file_lock_status_command")
+  register_auto_import_module("ai_editor.commands.universal_file_preview_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.open_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.edit_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.write_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.close_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.move_nodes_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.search_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.session_undo_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.session_redo_command")
+  register_auto_import_module("ai_editor.commands.universal_file_edit.session_write_command")
+  register_auto_import_module("ai_editor.commands.sessions.session_create_command")
+  register_auto_import_module("ai_editor.commands.sessions.session_delete_command")
+  register_auto_import_module("ai_editor.commands.sessions.session_list_command")
+  register_auto_import_module("ai_editor.commands.sessions.session_view_command")
+  register_auto_import_module("ai_editor.commands.sessions.session_open_file_command")
+  register_auto_import_module("ai_editor.commands.sessions.session_close_file_command")
+  register_auto_import_module("ai_editor.commands.sessions.session_list_file_locks_command")
+  register_auto_import_module("ai_editor.commands.sessions.subordinate_session_commands")
+  ```
+
+  Modify `ai_editor/hooks.py` only.
+
+  Remove ALL `register_auto_import_module` lines for the following modules
+  (C-020 Legacy Removal Scope; these modules are deleted or unregistered from MCP surface C-016
+  as part of G-009):
+
+  Sessions package (ai_editor.commands.sessions.*):
+  - "ai_editor.commands.sessions.session_create_command"
+  - "ai_editor.commands.sessions.session_delete_command"
+  - "ai_editor.commands.sessions.session_list_command"
+  - "ai_editor.commands.sessions.session_view_command"
+  - "ai_editor.commands.sessions.session_open_file_command"
+  - "ai_editor.commands.sessions.session_close_file_command"
+  - "ai_editor.commands.sessions.session_list_file_locks_command"
+  - "ai_editor.commands.sessions.subordinate_session_commands"
+
+  Transfer and lock modules (removed from MCP surface in G-006/T-002, deleted in T-004):
+  - "ai_editor.core.transfer_lock_registry"
+  - "ai_editor.commands.project_file_transfer_by_id_commands"
+  - "ai_editor.commands.project_file_advisory_lock_batch_command"
+  - "ai_editor.commands.project_file_lock_status_command"
+
+  Keep unchanged:
+  - "ai_editor.core.command_execution_job_patch"
+  - "ai_editor.commands.universal_file_preview_command"
+  - "ai_editor.commands.universal_file_edit.open_command"
+  - "ai_editor.commands.universal_file_edit.edit_command"
+  - "ai_editor.commands.universal_file_edit.write_command"
+  - "ai_editor.commands.universal_file_edit.close_command"
+  - "ai_editor.commands.universal_file_edit.move_nodes_command"
+  - "ai_editor.commands.universal_file_edit.search_command"
+  - "ai_editor.commands.universal_file_edit.session_undo_command"
+  - "ai_editor.commands.universal_file_edit.session_redo_command"
+  - "ai_editor.commands.universal_file_edit.session_write_command"
+
+  Keep all other content in hooks.py unchanged (imports, register_ai_editor_commands function,
+  register_custom_commands_hook call, hooks_register_part1 and hooks_register_part2 imports).
+  Touch only hooks.py.
+verification:
+  type: static_analysis
+  target: ai_editor/hooks.py
+  expected: >
+    No register_auto_import_module for ai_editor.commands.sessions.* or for
+    transfer/lock modules (transfer_lock_registry, project_file_transfer_by_id_commands,
+    project_file_advisory_lock_batch_command, project_file_lock_status_command) in hooks.py.
+    All universal_file_edit and core.command_execution_job_patch auto-imports remain.
+status: draft

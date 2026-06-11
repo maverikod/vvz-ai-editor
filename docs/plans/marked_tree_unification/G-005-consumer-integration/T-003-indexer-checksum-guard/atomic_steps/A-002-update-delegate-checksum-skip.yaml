@@ -1,0 +1,215 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Delegate update_file_data skip guard to checksum module
+target_file: ai_editor/core/database/files/update.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-022
+- C-006
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/database/files/update.py
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-003-indexer-checksum-guard/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-022, C-006)
+
+  ## Goal
+  Replace the modification-time skip guard in `update_file_data` with delegation to
+  `try_skip_reindex_by_checksum` (C-022 / C-006). Remove mtime-based skip criteria.
+  Keep `last_modified` updates for the analyze/reindex path (DB bookkeeping only).
+
+  Prerequisite: `ai_editor/core/database/files/update_checksum_guard.py` exists
+  with `try_skip_reindex_by_checksum` and `_is_fk_or_integrity_error`.
+
+  ## MRS excerpt
+
+  C-022 Indexer:
+    - replaces the mtime-based skip guard with a checksum-based guard
+    - equal checksum skips reindex, differing checksum triggers reindex
+    - reindexing is content-driven, not mtime-driven
+
+  C-006 ChecksumSyncPolicy:
+    - SHA-256 checksum of source content is the synchronization trigger
+
+  ## a3/a8 waiver (pre-existing oversized file)
+  Target is pre-existing 402 lines on disk. Region/sectioned embed satisfies a8.
+  Post-step target ≤400 lines after removing the mtime skip block and local duplicate
+  helper. Do not split this file.
+
+  ## Forbidden
+  - Do NOT reintroduce FILE_MODIFICATION_TOLERANCE or mtime comparison for skip decisions.
+  - Do NOT modify update_checksum_guard.py in this step.
+  - Do NOT remove `last_modified` / `LAST_MODIFIED_EPSILON` logic in the full reindex path
+    (lines that bump last_modified before analyze_file and set disk mtime after success).
+  - Do NOT touch other files.
+  - Do NOT attach mtime to search findings.
+
+  ## Edit 1 — imports (module top)
+
+  Replace:
+
+  ```python
+  from ...constants import FILE_MODIFICATION_TOLERANCE, LAST_MODIFIED_EPSILON
+  from ...exceptions import ProjectIdMismatchError
+  from ai_editor.core.sql_portable import WHERE_FILES_ACTIVE, sql_julian_timestamp_now_expr
+
+  from .helpers import _last_modified_to_unix
+  ```
+
+  With:
+
+  ```python
+  from ...constants import LAST_MODIFIED_EPSILON
+  from ...exceptions import ProjectIdMismatchError
+  from ai_editor.core.sql_portable import WHERE_FILES_ACTIVE, sql_julian_timestamp_now_expr
+
+  from .update_checksum_guard import try_skip_reindex_by_checksum
+  ```
+
+  ## Edit 2 — delete module-level `_is_fk_or_integrity_error`
+
+  Delete the entire function (lines 21–24 in pre-step file):
+
+  ```python
+  def _is_fk_or_integrity_error(exc: Exception) -> bool:
+      """True if the exception is FK or integrity-related (no silent swallow)."""
+      s = str(exc).lower()
+      return "foreign key" in s or "integrity" in s
+  ```
+
+  Keep using `_is_fk_or_integrity_error` in later except blocks by importing it:
+
+  Add to the import from update_checksum_guard:
+
+  ```python
+  from .update_checksum_guard import (
+      _is_fk_or_integrity_error,
+      try_skip_reindex_by_checksum,
+  )
+  ```
+
+  ## Edit 3 — replace mtime skip block (after `file_id = file_record["id"]`)
+
+  Delete from `# Get current file mtime from disk` through the skip-path
+  `return {..., "skipped": True,}` block (inclusive). That is the entire section
+  guarded by `normalized_lm`, `current_mtime`, and `FILE_MODIFICATION_TOLERANCE`.
+
+  Insert in its place:
+
+  ```python
+        # Checksum-based skip guard (C-022): only when structural index already exists.
+        ast_exists = self._fetchone(
+            "SELECT 1 AS ok FROM ast_trees WHERE file_id = ? LIMIT 1",
+            (file_id,),
+        )
+        if Path(abs_path).exists() and ast_exists is not None:
+            skip_result = try_skip_reindex_by_checksum(
+                self,
+                abs_path=abs_path,
+                file_id=file_id,
+                file_record=file_record,
+            )
+            if skip_result is not None:
+                return skip_result
+
+        # Disk mtime for analyze-path bookkeeping (not a skip criterion).
+        try:
+            file_path_obj = Path(abs_path)
+            if file_path_obj.exists():
+                current_mtime = file_path_obj.stat().st_mtime
+            else:
+                current_mtime = file_record.get("last_modified", 0)
+        except Exception:
+            current_mtime = file_record.get("last_modified", 0)
+  ```
+
+  The existing `# Clear all old records` block and everything after must remain
+  unchanged, still using `current_mtime` and `LAST_MODIFIED_EPSILON`.
+
+  ## Pre-step anchor (verbatim region being replaced)
+
+  ```python
+        file_id = file_record["id"]
+
+        # Get current file mtime from disk
+        try:
+            file_path_obj = Path(abs_path)
+            if file_path_obj.exists():
+                current_mtime = file_path_obj.stat().st_mtime
+            else:
+                current_mtime = file_record.get("last_modified", 0)
+        except Exception:
+            current_mtime = file_record.get("last_modified", 0)
+
+        # Skip full reindex if file exists and stored last_modified matches disk mtime
+        # *and* we already have structural index (AST). Watcher rows often have
+        # last_modified equal to disk mtime on first insert; without this guard,
+        # index_file would "succeed" with skipped=True while never creating AST/chunks.
+        normalized_lm = _last_modified_to_unix(file_record.get("last_modified"))
+        ast_exists = self._fetchone(
+            "SELECT 1 AS ok FROM ast_trees WHERE file_id = ? LIMIT 1",
+            (file_id,),
+        )
+        if (
+            Path(abs_path).exists()
+            and normalized_lm is not None
+            and abs(normalized_lm - current_mtime) <= FILE_MODIFICATION_TOLERANCE
+            and ast_exists is not None
+        ):
+            try:
+                self._clear_file_vectors(file_id)
+                self._execute(
+                    "UPDATE files SET needs_chunking = 1 WHERE id = ?",
+                    (file_id,),
+                )
+                self._commit()
+            except Exception as e:
+                logger.error(
+                    "Error clearing vectors / setting needs_chunking on skip: %s",
+                    e,
+                    exc_info=True,
+                )
+                err_msg = (
+                    f"Database foreign key constraint error: {e}"
+                    if _is_fk_or_integrity_error(e)
+                    else f"Failed on skip path: {e}"
+                )
+                return {
+                    "success": False,
+                    "error": err_msg,
+                    "file_path": abs_path,
+                    "file_id": file_id,
+                }
+            return {
+                "success": True,
+                "file_path": abs_path,
+                "file_id": file_id,
+                "skipped": True,
+            }
+
+        # Clear all old records (including CST trees - fixed in Phase 1)
+  ```
+
+  ## Validation (.venv active)
+
+      black ai_editor/core/database/files/update.py
+      flake8 ai_editor/core/database/files/update.py
+      mypy ai_editor/core/database/files/update.py
+      pytest -q
+
+  Post-step: update.py ≤400 lines. No FILE_MODIFICATION_TOLERANCE or
+  _last_modified_to_unix references. Skip path uses try_skip_reindex_by_checksum only
+  when ast_trees row exists. All tests must pass.
+verification:
+  type: pytest
+  target: tests
+  expected: >
+    update_file_data delegates skip decisions to try_skip_reindex_by_checksum when
+    AST exists; mtime tolerance skip removed. last_modified bump for analyze path
+    preserved. update.py ≤400 lines. Full pytest suite passes.

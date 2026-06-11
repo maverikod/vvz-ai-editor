@@ -1,0 +1,174 @@
+meta:
+  plan_name: universal_file_edit
+  description: 'Machine-readable parallelization map for plan 2026-05-16-universal-file-edit.
+    Each wave lists atomic steps that may execute concurrently. Steps within a wave
+    touch disjoint files; steps within one track (same target_file) are strictly sequential
+    within that wave.
+
+    '
+  critical_path:
+  - G-007/T-001/A-001
+  - G-002/T-001/A-001
+  - G-002/T-001/A-002
+  - G-003/T-001/A-001
+  - G-003/T-002/A-001
+  - G-003/T-003/A-001
+  - G-001/T-002/A-001
+  critical_path_length: 7
+  max_parallelism: 4
+  max_parallelism_at:
+  - wave_3
+  - wave_4
+  total_atomic_steps: 18
+  total_waves: 6
+waves:
+- wave: 0
+  description: 'No prerequisites. Error codes module and two unregister-legacy modifications
+    on disjoint files start immediately.
+
+    '
+  blocked_by: []
+  steps:
+  - step_id: G-007/T-001/A-001
+    target_file: ai_editor/commands/universal_file_edit/errors.py
+    operation: create_file
+    track: errors
+    depends_on: []
+  - step_id: G-001/T-001/A-001
+    target_file: ai_editor/hooks_register_part1.py
+    operation: modify_file
+    track: unregister
+    depends_on: []
+  - step_id: G-001/T-001/A-002
+    target_file: ai_editor/commands/registration.py
+    operation: modify_file
+    track: unregister
+    depends_on: []
+- wave: 1
+  description: 'Session infrastructure: package init and session entity. Both files
+    are disjoint. format_group.py waits for __init__.py (wave 2).
+
+    '
+  blocked_by:
+  - wave_0
+  steps:
+  - step_id: G-002/T-001/A-001
+    target_file: ai_editor/commands/universal_file_edit/__init__.py
+    operation: create_file
+    track: session_infra
+    depends_on: []
+  - step_id: G-002/T-002/A-001
+    target_file: ai_editor/commands/universal_file_edit/session.py
+    operation: create_file
+    track: session_infra
+    depends_on: []
+- wave: 2
+  description: 'format_group.py requires the package __init__.py to exist first.
+
+    '
+  blocked_by:
+  - G-002/T-001/A-001
+  steps:
+  - step_id: G-002/T-001/A-002
+    target_file: ai_editor/commands/universal_file_edit/format_group.py
+    operation: create_file
+    track: session_infra
+    depends_on:
+    - G-002/T-001/A-001
+- wave: 3
+  description: 'All four command skeletons created in parallel. Each targets a distinct
+    file; full parallelism available.
+
+    '
+  blocked_by:
+  - wave_2
+  steps:
+  - step_id: G-003/T-001/A-001
+    target_file: ai_editor/commands/universal_file_edit/open_command.py
+    operation: create_file
+    track: open
+    depends_on: []
+  - step_id: G-004/T-001/A-001
+    target_file: ai_editor/commands/universal_file_edit/edit_command.py
+    operation: create_file
+    track: edit
+    depends_on: []
+  - step_id: G-005/T-001/A-001
+    target_file: ai_editor/commands/universal_file_edit/write_command.py
+    operation: create_file
+    track: write
+    depends_on: []
+  - step_id: G-006/T-001/A-001
+    target_file: ai_editor/commands/universal_file_edit/close_command.py
+    operation: create_file
+    track: close
+    depends_on: []
+- wave: 4
+  description: 'Each track completes its command file sequentially (same-file constraint).
+    Tracks are fully parallel with each other. Tracks write and close finish after
+    their first modify step. Tracks open and edit each require two sequential modify
+    steps.
+
+    '
+  blocked_by:
+  - wave_3
+  tracks:
+  - track: open
+    note: open_command.py modified twice sequentially
+    steps:
+    - step_id: G-003/T-002/A-001
+      target_file: ai_editor/commands/universal_file_edit/open_command.py
+      operation: modify_file
+      depends_on:
+      - G-003/T-001/A-001
+    - step_id: G-003/T-003/A-001
+      target_file: ai_editor/commands/universal_file_edit/open_command.py
+      operation: modify_file
+      depends_on:
+      - G-003/T-002/A-001
+  - track: edit
+    note: edit_command.py modified twice sequentially
+    steps:
+    - step_id: G-004/T-002/A-001
+      target_file: ai_editor/commands/universal_file_edit/edit_command.py
+      operation: modify_file
+      depends_on:
+      - G-004/T-001/A-001
+    - step_id: G-004/T-003/A-001
+      target_file: ai_editor/commands/universal_file_edit/edit_command.py
+      operation: modify_file
+      depends_on:
+      - G-004/T-002/A-001
+  - track: write
+    note: write_command.py modified once
+    steps:
+    - step_id: G-005/T-002/A-001
+      target_file: ai_editor/commands/universal_file_edit/write_command.py
+      operation: modify_file
+      depends_on:
+      - G-005/T-001/A-001
+  - track: close
+    note: close_command.py modified once
+    steps:
+    - step_id: G-006/T-002/A-001
+      target_file: ai_editor/commands/universal_file_edit/close_command.py
+      operation: modify_file
+      depends_on:
+      - G-006/T-001/A-001
+- wave: 5
+  description: 'Register the four new command classes. Must execute after all four
+    command modules are fully implemented (all of wave 4 complete).
+
+    '
+  blocked_by:
+  - wave_4
+  steps:
+  - step_id: G-001/T-002/A-001
+    target_file: ai_editor/hooks_register_part2.py
+    operation: modify_file
+    track: register
+    depends_on:
+    - G-003/T-003/A-001
+    - G-004/T-003/A-001
+    - G-005/T-002/A-001
+    - G-006/T-002/A-001

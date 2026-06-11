@@ -1,0 +1,398 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Edit command — workspace draft paths
+target_file: ai_editor/commands/universal_file_edit/edit_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-007
+- C-008
+- C-011
+- C-019
+- C-024
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/edit_command.py` only (Edit Stage C-011).
+  Adapt edit mutations to workspace Edit Subdirectory paths (C-008) and integrate Session
+  Guard (C-024) before any mutation. Internal Edit Engine dispatch (C-019) stays unchanged
+  except that path source is the workspace session bundle, not canonical upstream project root.
+
+  ## MRS concepts (relevant excerpt)
+
+  - **C-007 Origin Snapshot**: immutable local copy in File Subtree; edit must not modify it.
+  - **C-008 Edit Subdirectory**: working copy (draft/CST/tree-temp) under File Subtree;
+    allocated at open via `allocate_edit_subdir` (see G-001 domain).
+  - **C-011 Edit Stage**: mutations apply only to Edit Subdirectory content.
+  - **C-019 Internal Edit Engine**: format groups, CST, tree-temp, text buffer pipelines
+    unchanged; only `session.draft_path` / `session.core` paths come from workspace bundle.
+  - **C-024 Session Guard**: `SessionGuard.check(kind, ca_session_id)` mandatory before
+    edit; REJECT → ErrorResult, zero mutations.
+
+  ## Workspace path domain (G-001 — reference only; do NOT import in this file)
+
+  Open orchestration (already implemented elsewhere) binds paths using:
+  - `file_workspace_layout(workspace_root, ca_session_id, project_id, file_path) -> FileWorkspaceLayout`
+    from `ai_editor.core.editor_workspace_paths` — yields `session_dir`, `file_subtree_dir`,
+    `origin_path` (C-005–C-007).
+  - `allocate_edit_subdir(*, file_subtree_dir, origin_filename) -> CoreSessionPaths` from
+    `ai_editor.core.edit_session.workspace_layout` — creates Edit Subdirectory (C-008) and
+    `session_source_path` working copy target.
+  Edit command **consumes** the resulting `EditSession.draft_path`; it does **not** allocate
+  or resolve workspace layout itself.
+
+  ## CURRENT FILE CONTENT (G-007 baseline — modify this file)
+
+  ```py
+  """
+  UniversalFileEditCommand: applies a batch of mutations to the draft.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import asyncio
+  from typing import Any, Dict, List, Type, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.edit_command_metadata import (
+      get_universal_file_edit_metadata,
+  )
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TREE_TEMP,
+  )
+  from ai_editor.commands.universal_file_edit.invalid_write_support import (
+      invalid_session_warning,
+  )
+  from ai_editor.commands.universal_file_edit.session import EditSession, get_session
+  from ai_editor.commands.universal_file_edit.sidecar_cst_apply import (
+      run_sidecar_cst_edit_batch,
+      validate_sidecar_nested_batch,
+  )
+  from ai_editor.commands.universal_file_edit.text_draft_apply import (
+      run_text_draft_apply,
+  )
+  from ai_editor.commands.universal_file_edit import tree_temp_edit_batch
+
+
+  class UniversalFileEditCommand(BaseMCPCommand):
+      """MCP command that applies a batch of mutation operations to the draft.
+
+      The original file is never touched. For sidecar group, a batch that targets
+      both a parent node and its descendant is rejected with NESTED_BATCH_FORBIDDEN;
+      sibling batches (e.g. class methods, nested functions under the same outer def)
+      are allowed and preserve stable_id across ops.
+      """
+
+      name = "universal_file_edit"
+
+      version = "1.0.0"
+
+      descr = "Apply a batch of universal file edit operations to the session draft."
+
+      category = "file_management"
+
+      author = "Vasiliy Zdanovskiy"
+
+      email = "vasilyvz@gmail.com"
+
+      use_queue = False
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_edit"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id, session_id, operations.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {
+                      "type": "string",
+                      "description": "Project UUID. Use list_projects to discover valid values.",
+                  },
+                  "session_id": {
+                      "type": "string",
+                      "description": "Active session UUID returned by universal_file_open.",
+                  },
+                  "file_path": {
+                      "type": "string",
+                      "description": (
+                          "Project-relative path when the session holds multiple files. "
+                          "Optional when the session has a single open file."
+                      ),
+                  },
+                  "operations": {
+                      "type": "array",
+                      "description": (
+                          "Batch of edit operations. Shape must match universal_file_preview "
+                          "node_ref. Supported type values: insert, delete, replace, move. "
+                          "Python .py uses {type,node_id,code_lines}; "
+                          "JSON/YAML uses {type,json_pointer,value} or short_id/node_ref; "
+                          "move uses {type,node_id|node_ref,target_node_id|parent_node_id,position}; "
+                          "text/markdown uses {type,node_ref,content} or line ranges when "
+                          "preview or is_invalid fallback requires it."
+                      ),
+                      "items": {"type": "object"},
+                  },
+              },
+              "required": ["project_id", "session_id", "operations"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls: Type["UniversalFileEditCommand"]) -> Dict[str, Any]:
+          """Return extended AI/docs metadata for universal_file_edit.
+
+          Returns:
+              Metadata dict with description, parameters, examples, errors.
+          """
+          return cast(Dict[str, Any], get_universal_file_edit_metadata(cls))
+
+      async def execute(  # type: ignore[override]
+          self,
+          project_id: str,
+          session_id: str,
+          operations: List[Dict[str, Any]],
+          file_path: str = "",
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          """Execute the edit command.
+
+          Args:
+              project_id: Project UUID (validated by handler; reserved for future checks).
+              session_id: Active session identifier.
+              operations: Batch of edit operation dicts.
+              file_path: Project-relative path when the session holds multiple files.
+              **kwargs: Adapter context.
+
+          Returns:
+              SuccessResult with payload, or ErrorResult on failure.
+          """
+          del project_id, kwargs
+          try:
+              session = get_session(session_id, file_path=file_path or None)
+          except ValueError as exc:
+              msg = str(exc)
+              if msg == "SESSION_FILE_PATH_REQUIRED":
+                  return error_result_from_make_error(
+                      make_error(
+                          SESSION_NOT_FOUND,
+                          "file_path is required when the session has multiple open files",
+                      )
+                  )
+              return error_result_from_make_error(
+                  make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+              )
+
+          fg = session.format_group
+          if fg == FORMAT_SIDECAR:
+              validation = validate_sidecar_nested_batch(operations, session.tree_id)
+              if validation is not None:
+                  return error_result_from_make_error(validation)
+              result = await self._apply_sidecar(session, operations)
+          elif fg == FORMAT_TREE_TEMP:
+              result = await self._apply_tree_temp(session, operations)
+          else:
+              result = await self._apply_text(session, operations)
+
+          if session.is_invalid and isinstance(result, SuccessResult):
+              payload = dict(result.data)
+              payload["warning"] = invalid_session_warning(session)
+              return SuccessResult(data=payload)
+          return result
+
+      async def _apply_sidecar(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          """Apply sidecar group operations via CST ``modify_tree`` and refresh sidecar.
+
+          Each operation runs in isolation: resolve ``stable_id`` against the current
+          tree, ``modify_tree`` with one op (stable_id transfer via ``_build_tree_index``),
+          then ``write_sidecar_atomic``. On any failure the batch rolls back to the
+          pre-batch tree and sidecar snapshot.
+
+          Args:
+              session: Active EditSession.
+              operations: List of validated edit operation dicts.
+
+          Returns:
+              SuccessResult with success/update flags, or ErrorResult on failure.
+          """
+          return await asyncio.to_thread(run_sidecar_cst_edit_batch, session, operations)
+
+      async def _apply_tree_temp(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          """Apply tree-temp group operations to the draft via JSON/YAML pipelines.
+
+          For each operation, updates the registered in-memory tree, then serializes
+          the tree to ``session.draft_path``.
+
+          Args:
+              session: Active EditSession with tree_id and draft_path.
+              operations: Edit operation dicts (``type``/``action``, addresses, values).
+
+          Returns:
+              SuccessResult with ``success``/``updated`` flags, or ErrorResult on failure.
+          """
+          return await asyncio.to_thread(
+              tree_temp_edit_batch.apply_tree_temp_mutations,
+              session,
+              operations,
+          )
+
+      async def _apply_text(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          """Apply text edits to ``session.draft_path`` sorted bottom-up."""
+
+          return await asyncio.to_thread(run_text_draft_apply, session, operations)
+  ```
+
+  ## Imports to add (exact lines, after existing imports, before class)
+
+  ```python
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+  from ai_editor.core.upstream.session_guard import (
+      GuardDecision,
+      OperationKind,
+      SessionGuard,
+  )
+  ```
+
+  Do **not** add any other new imports. Do **not** import `file_workspace_layout`,
+  `allocate_edit_subdir`, `FileWorkspaceLayout`, or `get_project_root`.
+
+  ## Schema change: `get_schema` → `session_id` property
+
+  Replace the `session_id` description string with exactly:
+
+  `"CA session id returned by universal_file_open (same value as upstream session id)."`
+
+  Leave all other schema fields unchanged.
+
+  ## Method to modify: `execute`
+
+  Keep signature, docstring, and `_apply_sidecar` / `_apply_tree_temp` / `_apply_text`
+  unchanged. Replace the method body algorithm as follows.
+
+  ### Algorithm (step-by-step)
+
+  1. `del project_id, kwargs` (unchanged).
+  2. `ca_session_id = str(session_id).strip()`.
+  3. Construct `guard = SessionGuard(get_code_analysis_client())`.
+  4. Call `decision = guard.check(OperationKind.EDIT, ca_session_id)`.
+  5. If `decision == GuardDecision.REJECT` **or** `decision == GuardDecision.ALLOW_TERMINATING`:
+     - Return immediately `error_result_from_make_error(make_error(SESSION_NOT_FOUND, f"CA session not found or invalid: {ca_session_id}"))`.
+     - Do **not** call `get_session` and do **not** invoke any `_apply_*` helper.
+  6. If `decision == GuardDecision.ALLOW`:
+     - Enter existing `try`/`except ValueError` block calling
+       `session = get_session(ca_session_id, file_path=file_path or None)`.
+     - Preserve existing ValueError handling for `SESSION_FILE_PATH_REQUIRED` and unknown session.
+  7. Dispatch by `session.format_group` exactly as baseline (FORMAT_SIDECAR → validate +
+     `_apply_sidecar`; FORMAT_TREE_TEMP → `_apply_tree_temp`; else → `_apply_text`).
+  8. All mutation helpers must continue to write only via `session.draft_path` and
+     `session.core` paths already bound to Edit Subdirectory at open — **never** open or
+     write `session.abs_path` (Origin Snapshot C-007).
+  9. Preserve invalid-session warning branch unchanged.
+
+  ### Workspace path contract (C-008, C-011)
+
+  - `session_id` parameter is the **CA session id** (same key used by open orchestration
+    with `file_workspace_layout` / `allocate_edit_subdir`).
+  - `get_session(ca_session_id, ...)` returns the workspace-bound facade; do **not** resolve
+    canonical upstream project root via `get_project_root(project_id)` or
+    `_resolve_project_root_near`.
+  - Origin Snapshot bytes on disk (`session.abs_path` / `FileWorkspaceLayout.origin_path`)
+    must remain unchanged by edit operations; only working copy under Edit Subdirectory
+    (`session.draft_path`) is mutated.
+  - Do **not** re-allocate edit subdir or re-layout paths in this command.
+
+  ### Error handling
+
+  - Guard rejection (step 5): return `ErrorResult` via `error_result_from_make_error`;
+    never raise.
+  - `get_session` ValueError paths: unchanged mapping to `SESSION_NOT_FOUND`.
+  - Sidecar validation / apply errors: unchanged.
+  - Do **not** call `validate_ca_session` directly — SessionGuard subsumes C-014 validation.
+
+  ### Edge cases
+
+  - Empty or whitespace `session_id` → guard REJECT → SESSION_NOT_FOUND, no mutations.
+  - CA session NOT_FOUND/invalid → guard REJECT → SESSION_NOT_FOUND, no mutations.
+  - Multi-file bundle without `file_path` → existing SESSION_FILE_PATH_REQUIRED message.
+  - Guard ALLOW + valid session → mutations hit workspace `session.draft_path` only.
+  - `ALLOW_TERMINATING` on EDIT → treat as REJECT (normal edit forbidden on broken session).
+
+  ### Constants and literals
+
+  - Guard operation kind: `OperationKind.EDIT`.
+  - Error code for guard/local session failures: `SESSION_NOT_FOUND` (via `make_error`).
+  - Guard rejection message template: `"CA session not found or invalid: {ca_session_id}"`.
+
+  ## Methods unchanged
+
+  - `get_name`, `metadata`, `_apply_sidecar`, `_apply_tree_temp`, `_apply_text` — no edits.
+
+  ## Forbidden
+
+  - Do **not** modify any file other than `edit_command.py`.
+  - Do **not** import or call `get_project_root`, `file_workspace_layout`,
+    `allocate_edit_subdir`, or write to Origin Snapshot paths.
+  - Do **not** change Internal Edit Engine helper modules (`sidecar_cst_apply`,
+    `tree_temp_edit_batch`, `text_draft_apply`).
+  - Do **not** add corruption markers or comment tokens inside `async def execute`.
+  - Keep code comments and docstrings self-contained; describe runtime behavior only.
+  - Do **not** add methods beyond those in the baseline.
+  - Do **not** use bare `except:`.
+
+  ## Validation (mandatory after implementation)
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/edit_command.py
+  flake8 ai_editor/commands/universal_file_edit/edit_command.py
+  mypy ai_editor/commands/universal_file_edit/edit_command.py
+  pytest tests/unit/test_universal_file_edit_workspace.py -v
+  pytest tests/unit/test_session_guard_edit.py -v
+  ```
+
+  Expected:
+  - black: "reformatted" or "All done!" / no changes needed
+  - flake8: no output (exit 0)
+  - mypy: "Success: no issues found" on touched file
+  - pytest: all tests PASSED; edit applies to workspace draft; origin bytes unchanged;
+    guard REJECT paths perform zero mutations
+
+  **All tests must pass.**
+
+  ## Expected deliverable
+
+  `UniversalFileEditCommand.execute` runs SessionGuard (C-024) for Edit Stage (C-011) before
+  session lookup and mutations. Edit operations mutate only workspace Edit Subdirectory draft
+  paths from the open bundle; Origin Snapshot (C-007) is never written.
+verification:
+  type: pytest
+  target: tests/unit/test_universal_file_edit_workspace.py
+  expected: Edit applies to workspace draft; origin bytes unchanged on disk; guard REJECT performs zero mutations; all tests pass.
+status: draft

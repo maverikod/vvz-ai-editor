@@ -1,0 +1,341 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Модуль editor_workspace_paths
+target_file: ai_editor/core/editor_workspace_paths.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-005
+- C-006
+- C-007
+- C-008
+- C-018
+prompt: |
+  Create `ai_editor/core/editor_workspace_paths.py` (operation: create_file).
+
+  ## MRS excerpt (concepts for this step only)
+
+  - **C-005 Editor Session Directory**: `workspace_root/session_id/` — root of all local session artifacts.
+  - **C-006 File Subtree**: per `(project_id, file_path)` subtree inside Editor Session Directory; contains Origin Snapshot and (later) Edit Subdirectory.
+  - **C-007 Origin Snapshot**: immutable local copy at a path inside File Subtree (basename of `file_path`).
+  - **C-018 Workspace Root Configuration**: `ai_editor.storage.workspace_root` in `config.json`.
+  - **C-008 Edit Subdirectory** (NOT implemented in this file): child directory `{origin_basename}-{uuid}/` inside File Subtree. Allocation is deferred to `allocate_edit_subdir` in `ai_editor/core/edit_session/workspace_layout.py`. This resolver MUST NOT set `edit_subdir == file_subtree_dir`.
+
+  ## Target file
+
+  - Path: `ai_editor/core/editor_workspace_paths.py`
+  - Action: create_file
+
+  ## File header (exact module docstring)
+
+  ```text
+  """Editor workspace path resolver (C-005, C-006, C-007, C-018).
+
+  Resolves Editor Session Directory and File Subtree paths only.
+  Edit Subdirectory (C-008) is NOT allocated here — see workspace_layout.allocate_edit_subdir.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list)
+
+  ```python
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from pathlib import Path
+
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.core.storage_paths import _resolve_path, load_raw_config
+  ```
+
+  ## Constants and literals
+
+  - `FILES_SEGMENT = "files"` — subdirectory under `session_dir` for all file subtrees.
+  - Config key: `"workspace_root"` under `ai_editor.storage`.
+  - Default config path when omitted: `Path("config.json")`.
+  - Path normalization: backslash → slash; strip leading `./`; use `.as_posix()`.
+
+  ## Class/function skeleton
+
+  ### `def _normalize_file_path(file_path: str) -> str`
+  One-line docstring: "Normalize project-relative file_path to posix without leading ./"
+
+  ### `def resolve_workspace_root(*, config_path: Path | None = None) -> Path`
+  One-line docstring: "Load workspace root from config (C-018)."
+
+  ### `def _assert_under_root(root: Path, candidate: Path) -> Path`
+  One-line docstring: "Resolve candidate and ensure it stays under root."
+
+  ### `@dataclass(frozen=True) class FileWorkspaceLayout`
+  Fields (exactly three — no edit_subdir field):
+  - `session_dir: Path` — Editor Session Directory (C-005)
+  - `file_subtree_dir: Path` — File Subtree root (C-006)
+  - `origin_path: Path` — Origin Snapshot path (C-007)
+
+  ### `def session_directory(workspace_root: Path, ca_session_id: str) -> Path`
+  One-line docstring: "Return workspace_root/ca_session_id/ (C-005)."
+
+  ### `def file_subtree_directory(workspace_root: Path, ca_session_id: str, project_id: str, file_path: str) -> Path`
+  One-line docstring: "Return File Subtree directory for one open file (C-006)."
+
+  ### `def file_workspace_layout(workspace_root: Path, ca_session_id: str, project_id: str, file_path: str) -> FileWorkspaceLayout`
+  One-line docstring: "Resolve session_dir, file_subtree_dir, origin_path; does not allocate Edit Subdirectory (C-008)."
+
+  ### `def ensure_session_directory(workspace_root: Path, ca_session_id: str) -> Path`
+  One-line docstring: "mkdir session_dir and return it."
+
+  ### `def ensure_file_subtree(layout: FileWorkspaceLayout) -> FileWorkspaceLayout`
+  One-line docstring: "mkdir file_subtree_dir only; return layout."
+
+  ## Method logic — step-by-step algorithms
+
+  ### `_normalize_file_path(file_path: str) -> str`
+  1. Replace `\` with `/` in `file_path`.
+  2. `Path(...).as_posix().lstrip("./")`.
+  3. Return result.
+
+  ### `resolve_workspace_root(*, config_path: Path | None = None) -> Path`
+  1. `cfg = (config_path or Path("config.json")).resolve()`.
+  2. If not `cfg.is_file()`: raise `ValidationError(f"Config not found: {cfg}", field="config_path")`.
+  3. `raw = load_raw_config(cfg)`; `config_dir = cfg.parent`.
+  4. `ai_editor_cfg = raw.get("ai_editor") or {}`.
+  5. `storage_cfg = ai_editor_cfg.get("storage")` if `ai_editor_cfg` is dict else `{}`; if not dict, use `{}`.
+  6. `value = storage_cfg.get("workspace_root")`.
+  7. If `value` is not non-empty str: raise `ValidationError("workspace_root is required in ai_editor.storage", field="ai_editor.storage.workspace_root")`.
+  8. Return `_resolve_path(config_dir, value.strip())`.
+
+  ### `_assert_under_root(root: Path, candidate: Path) -> Path`
+  1. `resolved = candidate.resolve()`.
+  2. Try `resolved.relative_to(root.resolve())`.
+  3. On `ValueError`: raise `ValidationError("path escapes workspace_root", field="path", details={"path": str(resolved), "root": str(root)})` from exc.
+  4. Return `resolved`.
+
+  ### `session_directory(workspace_root: Path, ca_session_id: str) -> Path`
+  1. `root = workspace_root.resolve()`.
+  2. `sid = str(ca_session_id or "").strip()`.
+  3. If not `sid`: raise `ValidationError("ca_session_id is required", field="ca_session_id")`.
+  4. Return `_assert_under_root(root, root / sid)`.
+
+  ### `file_subtree_directory(workspace_root, ca_session_id, project_id, file_path) -> Path`
+  1. `norm = _normalize_file_path(file_path)`.
+  2. `parent = Path(norm).parent`.
+  3. `session_dir = session_directory(workspace_root, ca_session_id)`.
+  4. `base = session_dir / "files" / str(project_id)`.
+  5. If `str(parent)` not in `("", ".")`: `base = base / parent`.
+  6. Return `_assert_under_root(workspace_root.resolve(), base)`.
+
+  ### `file_workspace_layout(...) -> FileWorkspaceLayout`
+  1. `norm = _normalize_file_path(file_path)`.
+  2. `session_dir = session_directory(workspace_root, ca_session_id)`.
+  3. `subtree = file_subtree_directory(workspace_root, ca_session_id, project_id, file_path)`.
+  4. `origin_path = _assert_under_root(workspace_root.resolve(), subtree / Path(norm).name)`.
+  5. Return `FileWorkspaceLayout(session_dir=session_dir, file_subtree_dir=subtree, origin_path=origin_path)`.
+  6. Do NOT compute, return, or mkdir any Edit Subdirectory path. Callers needing C-008 invoke `allocate_edit_subdir(file_subtree_dir=layout.file_subtree_dir, origin_filename=layout.origin_path.name)` separately.
+
+  ### `ensure_session_directory(workspace_root, ca_session_id) -> Path`
+  1. `path = session_directory(workspace_root, ca_session_id)`.
+  2. `path.mkdir(parents=True, exist_ok=True)`.
+  3. Return `path`.
+
+  ### `ensure_file_subtree(layout: FileWorkspaceLayout) -> FileWorkspaceLayout`
+  1. `layout.file_subtree_dir.mkdir(parents=True, exist_ok=True)`.
+  2. Return `layout` (same instance; no new fields).
+
+  ## Error handling per method
+
+  - `resolve_workspace_root`: raises `ValidationError` for missing config file or missing/empty `workspace_root`.
+  - `session_directory`: raises `ValidationError` for empty `ca_session_id`.
+  - `_assert_under_root`: raises `ValidationError` with `field="path"` when path escapes root.
+  - All other methods: propagate `ValidationError` from callees; do not catch other exceptions.
+
+  ## Return value specification
+
+  - `resolve_workspace_root` → absolute `Path` to workspace root.
+  - `session_directory` → absolute `Path` `{workspace_root}/{ca_session_id}/`.
+  - `file_subtree_directory` → absolute `Path` `{session_dir}/files/{project_id}/[{parent_dirs}]`.
+  - `file_workspace_layout` → `FileWorkspaceLayout` with three paths; **no** `edit_subdir` attribute.
+  - `ensure_session_directory` / `ensure_file_subtree` → same paths after mkdir.
+
+  ## Edge cases
+
+  - `file_path="mod.py"` → subtree at `.../files/{project_id}/`, origin `.../mod.py`.
+  - `file_path="./src/mod.py"` → normalized `src/mod.py`, subtree `.../files/{project_id}/src/`.
+  - `file_path="src\\pkg\\mod.py"` → normalized `src/pkg/mod.py`.
+  - Empty `ca_session_id` or whitespace-only → `ValidationError`.
+  - Candidate path resolving outside `workspace_root` → `ValidationError`.
+  - `FileWorkspaceLayout` never implies `file_subtree_dir == edit_subdir`; edit path is always a strict child `{basename}-{uuid}/` created later by `allocate_edit_subdir`.
+
+  ## Forbidden patterns
+
+  - Do NOT read or accept `editor_workspace_dir` config key (use `workspace_root` only).
+  - Do NOT add `edit_subdir` field to `FileWorkspaceLayout`.
+  - Do NOT set any edit path equal to `file_subtree_dir` (no C-008/C-006 collapse).
+  - Do NOT import or call `allocate_edit_subdir` or `workspace_layout` in this module.
+  - Do NOT mkdir Edit Subdirectory in this module.
+  - Do NOT add methods not listed above.
+  - Do NOT modify files other than the target file.
+  - Do NOT use `Any` type annotation.
+  - Do NOT use bare `except:`.
+
+  ## Complete file content to create
+
+  ```python
+  """Editor workspace path resolver (C-005, C-006, C-007, C-018).
+
+  Resolves Editor Session Directory and File Subtree paths only.
+  Edit Subdirectory (C-008) is NOT allocated here — see workspace_layout.allocate_edit_subdir.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from pathlib import Path
+
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.core.storage_paths import _resolve_path, load_raw_config
+
+
+  def _normalize_file_path(file_path: str) -> str:
+      """Normalize project-relative file_path to posix without leading ./"""
+      return Path(file_path.replace("\\", "/")).as_posix().lstrip("./")
+
+
+  def resolve_workspace_root(*, config_path: Path | None = None) -> Path:
+      """Load workspace root from config (C-018)."""
+      cfg = (config_path or Path("config.json")).resolve()
+      if not cfg.is_file():
+          raise ValidationError(f"Config not found: {cfg}", field="config_path")
+      raw = load_raw_config(cfg)
+      config_dir = cfg.parent
+      ai_editor_cfg = raw.get("ai_editor") or {}
+      storage_cfg = (
+          ai_editor_cfg.get("storage") if isinstance(ai_editor_cfg, dict) else {}
+      )
+      if not isinstance(storage_cfg, dict):
+          storage_cfg = {}
+      value = storage_cfg.get("workspace_root")
+      if not isinstance(value, str) or not value.strip():
+          raise ValidationError(
+              "workspace_root is required in ai_editor.storage",
+              field="ai_editor.storage.workspace_root",
+          )
+      return _resolve_path(config_dir, value.strip())
+
+
+  def _assert_under_root(root: Path, candidate: Path) -> Path:
+      """Resolve candidate and ensure it stays under root."""
+      resolved = candidate.resolve()
+      try:
+          resolved.relative_to(root.resolve())
+      except ValueError as exc:
+          raise ValidationError(
+              "path escapes workspace_root",
+              field="path",
+              details={"path": str(resolved), "root": str(root)},
+          ) from exc
+      return resolved
+
+
+  @dataclass(frozen=True)
+  class FileWorkspaceLayout:
+      """Resolved workspace paths for one file open (C-005, C-006, C-007 only)."""
+
+      session_dir: Path
+      file_subtree_dir: Path
+      origin_path: Path
+
+
+  def session_directory(workspace_root: Path, ca_session_id: str) -> Path:
+      """Return workspace_root/ca_session_id/ (C-005)."""
+      root = workspace_root.resolve()
+      sid = str(ca_session_id or "").strip()
+      if not sid:
+          raise ValidationError("ca_session_id is required", field="ca_session_id")
+      return _assert_under_root(root, root / sid)
+
+
+  def file_subtree_directory(
+      workspace_root: Path,
+      ca_session_id: str,
+      project_id: str,
+      file_path: str,
+  ) -> Path:
+      """Return File Subtree directory for one open file (C-006)."""
+      norm = _normalize_file_path(file_path)
+      parent = Path(norm).parent
+      session_dir = session_directory(workspace_root, ca_session_id)
+      base = session_dir / "files" / str(project_id)
+      if str(parent) not in ("", "."):
+          base = base / parent
+      return _assert_under_root(workspace_root.resolve(), base)
+
+
+  def file_workspace_layout(
+      workspace_root: Path,
+      ca_session_id: str,
+      project_id: str,
+      file_path: str,
+  ) -> FileWorkspaceLayout:
+      """Resolve session_dir, file_subtree_dir, origin_path; does not allocate Edit Subdirectory (C-008)."""
+      norm = _normalize_file_path(file_path)
+      session_dir = session_directory(workspace_root, ca_session_id)
+      subtree = file_subtree_directory(
+          workspace_root, ca_session_id, project_id, file_path
+      )
+      origin_path = _assert_under_root(
+          workspace_root.resolve(), subtree / Path(norm).name
+      )
+      return FileWorkspaceLayout(
+          session_dir=session_dir,
+          file_subtree_dir=subtree,
+          origin_path=origin_path,
+      )
+
+
+  def ensure_session_directory(workspace_root: Path, ca_session_id: str) -> Path:
+      """mkdir session_dir and return it."""
+      path = session_directory(workspace_root, ca_session_id)
+      path.mkdir(parents=True, exist_ok=True)
+      return path
+
+
+  def ensure_file_subtree(layout: FileWorkspaceLayout) -> FileWorkspaceLayout:
+      """mkdir file_subtree_dir only; return layout."""
+      layout.file_subtree_dir.mkdir(parents=True, exist_ok=True)
+      return layout
+  ```
+
+  ## Validation commands (run from project root with `.venv` active)
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/editor_workspace_paths.py
+  flake8 ai_editor/core/editor_workspace_paths.py
+  mypy ai_editor/core/editor_workspace_paths.py
+  ```
+
+  Expected:
+  - black → "reformatted" or "All done!"
+  - flake8 → no output (exit 0)
+  - mypy → "Success: no issues found"
+
+  ## Mandatory completion
+
+  All project tests must pass after implementation.
+verification:
+  type: import
+  target: ai_editor.core.editor_workspace_paths
+  expected: >
+    Module imports cleanly. resolve_workspace_root, session_directory,
+    file_workspace_layout, FileWorkspaceLayout (session_dir, file_subtree_dir,
+    origin_path only), ensure_session_directory, ensure_file_subtree are
+    callable. Missing ai_editor.storage.workspace_root raises ValidationError.
+    FileWorkspaceLayout has no edit_subdir field.
+status: draft

@@ -1,0 +1,78 @@
+step_id: A-001
+parent_tactical_step: T-006
+name: search queue cancel hook
+target_file: ai_editor/core/search_session/queue_cancel.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-020
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/queue_cancel.py
+
+  MRS (C-020 SearchStatus): cancellation must stop queued search work where possible without
+  duplicating cancelled-state logic (apply_cancellation lives in status.py).
+
+  Scope boundary: queue-stop infrastructure only. Do not create MCP command modules or modify
+  hooks_register_part1.py.
+
+  Queue manager API (mcp_proxy_adapter.integrations.queuemgr_integration):
+
+  ```python
+  from mcp_proxy_adapter.integrations.queuemgr_integration import (
+      QueueJobError,
+      QueueManagerIntegration,
+      get_global_queue_manager,
+  )
+
+
+  async def get_global_queue_manager() -> QueueManagerIntegration:
+      """Return running global QueueManagerIntegration or raise QueueJobError."""
+
+
+  class QueueManagerIntegration:
+      def is_running(self) -> bool:
+          """True when the queue manager process is available."""
+
+      async def stop_job(self, job_id: str) -> QueueJobResult:
+          """Stop a running or pending job; maps to queuemgr AsyncQueueSystem.stop_job."""
+  ```
+
+  There is no cancel_job method. Use stop_job exclusively.
+
+  Imports:
+  - from __future__ import annotations
+  - from typing import Optional
+  - from mcp_proxy_adapter.integrations.queuemgr_integration import (
+        QueueJobError,
+        get_global_queue_manager,
+    )
+  - from ai_editor.core.search_session.manifest import SearchSessionManifest
+
+  Implement:
+  - async def cancel_queued_search_job(queue_job_id: str) -> bool:
+      When queue_job_id is empty or whitespace-only, return False immediately.
+      Resolve manager via await get_global_queue_manager().
+      When manager.is_running() is False, return False.
+      await manager.stop_job(queue_job_id); return True on success.
+      Catch QueueJobError and generic Exception; return False (best-effort, no raise).
+  - def queue_job_id_from_manifest(manifest: SearchSessionManifest) -> Optional[str]:
+      Read manifest.request dict key "queue_job_id" when present and non-empty str; else None.
+
+  Module docstring: consumers include the search_cancel MCP lifecycle command, which calls this
+  hook after apply_cancellation when manifest.request carries a queue job reference.
+
+  Constraints:
+  - Under 120 lines.
+  - No MCP command classes, no command registration changes.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_queue_cancel.py
+  expected: >
+    cancel_queued_search_job returns True when get_global_queue_manager succeeds and stop_job
+    accepts the job id. Returns False when job id missing/blank, manager unavailable, or
+    stop_job raises QueueJobError. queue_job_id_from_manifest extracts queue_job_id from
+    manifest.request when set.
+status: frozen

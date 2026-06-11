@@ -1,0 +1,16 @@
+global_step: G-003
+tactical_step: T-003
+name: SessionGitApi Commands
+waves:
+  - wave: 1
+    parallel: true
+    steps:
+      - A-001
+      - A-002
+      - A-003
+      - A-004
+      - A-005
+    note: >
+      Five session_git_* command files are independent (one-file rule). Each resolves
+      get_active_session and session.session_repo from EditSession after SessionRepo
+      wiring wave (GS wave_5).

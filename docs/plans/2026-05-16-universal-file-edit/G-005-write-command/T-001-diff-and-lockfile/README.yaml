@@ -1,0 +1,31 @@
+step_id: T-001
+parent_global_step: G-005
+name: Generate diff and write lockfile (first call)
+description: Realise the first phase of WriteCommand (C-009). Entry condition:
+  the WriteLockfile (C-004) is either absent or its PID does not match the
+  current server PID (PID mismatch treated as first call).
+  Generate source code from the DraftFile (C-003) using ExistingInfrastructure
+  (C-012) appropriate for the FormatGroup (C-002). Compute a diff between
+  the original file and the generated code. Write the current server PID to
+  the WriteLockfile (C-004). Return the diff. The original file is not modified.
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-009
+- C-012
+inputs:
+- name: session
+  type: EditSession (C-001)
+  description: Active session identifying file, draft path, and format group.
+outputs:
+- name: diff
+  type: unified diff string
+  description: Diff between original file and code generated from draft.
+- name: lockfile_written
+  type: boolean
+  description: True when WriteLockfile (C-004) has been written with current PID.
+atomic_steps:
+- A-001
+status: draft

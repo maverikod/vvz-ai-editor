@@ -1,0 +1,101 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: JSON SourceSerializer module
+target_file: ai_editor/core/tree_temp/json_source_serializer.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-004
+- C-006
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/tree_temp/json_source_serializer.py
+
+  Prerequisite: TreeNode from ai_editor.core.tree_temp.tree_node (G-001 T-001).
+
+  MRS excerpts:
+  C-001 TreeNode with comment_before and comment_inline on nodes.
+  C-004 placements: emit inline comments on same logical line as node; emit before comments as separate lines
+    immediately above the node; top before-comments precede first root emission.
+  C-006 JSON serializer: produces JSON text with // and /* */ comments restored from tree fields.
+
+  Module docstring (exact):
+  """
+  TreeNode to tolerant JSON SourceSerializer with comment restoration (C-006, C-004).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  Imports (exact):
+  from __future__ import annotations
+  import json
+  from typing import List
+
+  from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  Public API:
+  def serialize_json_source(root_nodes: List[TreeNode]) -> str:
+      """Serialize root TreeNode list to UTF-8 tolerant JSON text (C-006).
+
+      Formatting rules:
+      - Use 2-space indent, Unix \\n newlines, ensure_ascii=False, trailing newline at EOF.
+      - Object keys are double-quoted; string values JSON-escaped.
+      - Order: emit comment_before lines first (each non-empty line from comment_before emitted as-is
+        followed by newline); then emit the structural line for the node; if comment_inline is set,
+        one horizontal space then the inline comment string appended on the same line (no extra space inside
+        the stored comment string).
+      - comment_before and comment_inline strings are emitted exactly as stored (they already include // or /*
+        delimiters per parser contract).
+      - For block multi-line comments in comment_before, emit as stored (may span lines).
+      Raises:
+          ValueError: messages start with \"Invalid tree for JSON serialization:\" for inconsistent TreeNode
+          field usage versus type (e.g. value set on object node, children on scalar, missing key on object member).
+      """
+
+  TreeNode field validation rules before emission:
+  - type object: children may be non-empty; value must be None; key must be None for root object node only —
+    for children of object, key must be non-empty str.
+  - type array: value None; key None; children any length.
+  - types string|number|boolean|null: children empty; value present only where applicable (string str, number
+    int|float, boolean bool, null None); key set iff this node is object member.
+  - stable_id non-empty str on every node.
+
+  Root emission (mirror parse_json_source under the same ambiguity constraints):
+  - If len(root_nodes)==0: emit exactly the two characters `[]` plus a trailing newline — this is the serialized
+    form of an empty root JSON array produced by the parser.
+  - If len(root_nodes)==1 and root_nodes[0].type==\"object\": emit that object as the whole JSON document.
+  - If len(root_nodes)==1 and root_nodes[0].type in (\"string\",\"number\",\"boolean\",\"null\"): emit that scalar
+    as the whole JSON document (a bare JSON scalar is valid RFC 8259). Known limitation shared with the parser
+    TS: a single scalar TreeNode cannot distinguish source `[x]` from source `x`; round-trip for the one-element
+    array case may require a future TS/MRS amendment carrying explicit root framing metadata. Do not invent extra
+    parameters on serialize_json_source to fix this.
+  - If len(root_nodes)>1: emit a JSON array whose elements are the serialized form of each entry in root_nodes in
+    order, preserving comments per-node.
+  - If any root node has type \"array\" at the top level: raise ValueError(
+    \"Invalid tree for JSON serialization: unexpected root array wrapper\") because the document-root array case
+    is represented as multiple roots, not a container node.
+
+  Indentation helper: implement recursive `_emit(node, depth) -> List[str]` building lines or use io.StringIO
+  with writes; ensure no trailing spaces beyond inline comments.
+
+  Comma placement: between object members and array elements follow standard JSON commas at end of prior line
+  or after value line.
+
+  Numbers: use JSON str of int if isinstance int else repr for float per json encoder semantics — use
+  json.dumps on scalar values where possible for numbers/strings/bool/null to guarantee validity, but structure
+  must be hand-built for comments placement.
+
+  Forbidden:
+  - No Sidecar / EditSession / universal_file_*.
+  - No new third-party deps.
+  - Max 400 lines.
+
+  Validation: black, flake8, mypy on file.
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/json_source_serializer.py
+  expected: Linters pass; serialize_json_source defined; respects C-004 ordering; file at most 400 lines.
+status: done

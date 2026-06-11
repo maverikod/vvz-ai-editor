@@ -1,0 +1,34 @@
+step_id: T-001
+parent_global_step: G-005
+name: RawFindingBuffer accumulation
+description: >
+  Creates the RawFindingBuffer as a dedicated accumulation subdirectory inside
+  SearchSessionDirectory. Defines one-finding-per-file writes by the main search
+  thread, a lock file recording the owner process PID of the active block
+  assembler, stale-lock reclamation when the owner PID is dead, deletion of
+  assembled findings after block publication, and delete_buffer removal of the entire
+  buffer directory (findings, lock, and subdirectory) when search status is completed
+  and the buffer is empty. Keeps the buffer internal to result production and not
+  exposed to HTTP readers.
+concepts:
+  - C-028
+inputs:
+  - name: search_session_directory
+    type: SearchSessionDirectory
+    description: Session directory that owns the raw finding buffer location.
+  - name: produced_finding
+    type: SearchFinding
+    description: One complete search result emitted by the main search thread.
+outputs:
+  - name: buffered_finding_file
+    type: BufferedFindingRecord
+    description: Individual finding file stored in the buffer awaiting assembly.
+  - name: buffer_lock_state
+    type: BufferLockState
+    description: Current lock ownership or stale-lock reclamation outcome for the assembler.
+  - name: buffer_directory_removed
+    type: BufferRemovalOutcome
+    description: Confirms RawFindingBuffer.delete_buffer removed findings, lock, and subdirectory after completed search with empty buffer.
+atomic_steps:
+- A-001
+status: frozen

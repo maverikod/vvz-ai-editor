@@ -1,0 +1,16 @@
+---
+description: Project rules — docs/PROJECT_RULES.md (Profile + CR/LAYOUT/NAME)
+alwaysApply: true
+---
+
+# Project rules pointer
+
+1. **Canonical:** `docs/PROJECT_RULES.md` — Profile (this repo) + `CR-*`, `LAYOUT-*`, `NAME-*`.
+2. **Context:** `docs/agents/universal_project_context.md`, `docs/agents/project_overlay.md`, `docs/agents/common_agent_rules.md` (index: `docs/agents/README.md`).
+3. **Subagents:** `.cursor/agents/*.md` — top block lists context files; body is role rules.
+
+**After code edits:** **CR-005** (venv), **CR-007** (black / flake8 / mypy on touched paths), **CR-006** (indexing if `USE_CODE_MAP` = yes). **Invalid or missing `projectid` when required:** **CR-003** — stop and report.
+
+**Python:** on import or `pip` errors, confirm **`VENV_DIR`** (`.venv`) is active. **Never** `--break-system-packages` or PEP 668 overrides without explicit user approval of that command (**CR-015**).
+
+**Parallelism:** independent subtasks → parallel when safe (**CR-016**).

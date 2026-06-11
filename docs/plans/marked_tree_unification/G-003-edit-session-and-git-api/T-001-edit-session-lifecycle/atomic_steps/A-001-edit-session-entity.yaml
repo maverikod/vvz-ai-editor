@@ -1,0 +1,427 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create EditSession entity with FINAL-2 dual-mode lifecycle
+target_file: ai_editor/core/edit_session/edit_session.py
+operation: create_file
+priority: 2
+depends_on:
+- A-004
+concepts:
+- C-012
+- C-010
+- C-003
+- C-006
+- C-011
+- C-025
+- C-024
+status: ready_for_review
+prompt: |
+  > Cross-TS and within-TS execution ordering is expressed ONLY via the standard depends_on field plus parallel-waves.yaml. Do not add non-standard cross-TS ordering fields. Cross-TS FILE dependencies must be satisfied by INLINING full post-prior-AS file state into the prompt (a8), NOT by referencing other steps. No atomic, tactical, or global step identifiers may appear in any prompt: prose.
+
+  Create the file `ai_editor/core/edit_session/edit_session.py`.
+  Operation: create_file (replace any prior draft of this path).
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-012, C-010, C-003, C-006, C-011, C-025, C-024)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/README.yaml`
+
+  Distinct from `ai_editor/commands/universal_file_edit/session.py` (in-memory
+  draft registry). This module is C-012: on-disk session directory, tree-validity
+  state, dual-mode edit, re-validation, copy-out, blind close.
+
+  Requires `marker_cycle.py` (hide/restore on three-section TreeFile TREE section;
+  CHECKSUMS/MAP preserved) and `TreeBuilder.build` (inlined contract below).
+
+  ## MRS excerpt (C-012)
+
+  - FINAL-2 {d002}: optional `content` ONLY when target missing or source/tree broken;
+    ERROR if valid file exists; when accepted write content to in-session source FIRST.
+  - Tracks `tree_validity` valid/invalid per {h008}.
+  - Valid edits: hide/unhide via marker_cycle, full {d003} post-steps (tree write,
+    unmark export to session source, SHA-256 both, one git commit both artefacts).
+  - Invalid edits: plain-text on in-session source only; DEGRADED {d003} (source write,
+    SHA-256 source, git commit source only).
+  - Re-validation {h009}: `TreeBuilder.build` when plain-text makes source parseable.
+  - Write phase gates EXTERNAL copy-out only; in-session artefacts finalized per {d003}.
+  - Stage 1 preview {d004}: `preview_external_write()` diffs in-session unmark-exported
+    source + in-session tree vs live external source + sibling tree; returns diffs;
+    no external writes; no-op when no diffs (`has_changes=False`).
+  - Stage 2 confirm {n7k2}: `confirm_external_copy_out()` atomically copies both
+    artefacts externally (both or neither); NO in-session commit (that is {d003}).
+  - Write-stage external diff distinct from session_git_diff (C-014/{e003}).
+  - Close {d005}: delete session dir without validation; ephemeral git.
+
+  ## Inlined dependency — TreeBuilder.build (C-011)
+
+  Module: `ai_editor/core/tree_lifecycle/builder.py`
+
+  ```python
+  class TreeBuilder:
+      @staticmethod
+      def build(
+          *,
+          content: str,
+          source_abs: Path,
+          file_path: str,
+          content_checksum: str,
+          registry: Optional[HandlerRegistry] = None,
+      ) -> TreeRepresentationRef:
+          ...
+  ```
+
+  Algorithm (canonical unified three-section build path):
+  1. `reg = registry if registry is not None else HandlerRegistry.default_registry()`.
+  2. `handler = reg.resolve(source_abs)`.
+  3. `marked_text = handler.mark(content)`  # TREE body only; integer short_id markers.
+  4. `nodes = handler.parse_content(source_abs, content)`.
+  5. Build `discovered_nodes` from nodes for NodeIdMap (C-025).
+  6. `sidecar_path = handler.sidecar_path(source_abs)`  # sibling `.tree`.
+  7. Load prior MAP from existing sidecar when present (preserve TreeNodeUuid entries
+     and next_free per {a007}; C-024).
+  8. `NodeIdMap.build(...)` then optional `validate_and_repair` when prior MAP exists.
+  9. `serialize_tree_file(sections)` → atomic write to `sidecar_path` via `.tmp` + `os.replace`.
+  10. Return `TreeRepresentationRef(file_path=..., sidecar_path=..., content_checksum=..., root_stable_id=str(first_short_id)|None)`.
+
+  Return value fields: `file_path: str`, `sidecar_path: Path`, `content_checksum: str`,
+  `root_stable_id: str | None` (first node short_id as string, not UUID).
+
+  Raises: `HandlerNotFoundError`, `ValueError` (empty nodes), `OSError`, NodeIdMap errors —
+  propagate unchanged.
+
+  Usage in `_try_revalidate()` per {h009}/{n002}:
+  ```python
+  ref = TreeBuilder.build(
+      content=source_text,
+      source_abs=self.source_abs,
+      file_path=self.file_path,
+      content_checksum=self.source_checksum,
+  )
+  shutil.copy2(ref.sidecar_path, self.session_tree_path)
+  ```
+  TreeBuilder rebuild restores short_id markers in TREE via NodeIdMap.build (C-025)
+  while preserving TreeNodeUuid (C-024) and next_free from existing MAP when sidecar
+  existed.
+
+  ## Key imports
+
+  ```python
+  from __future__ import annotations
+
+  import difflib
+  import enum
+  import shutil
+  import uuid
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from typing import Any, Callable, Optional
+
+  from ai_editor.core.edit_session.marker_cycle import (
+      MarkerEditState,
+      denude_marked_tree,
+      restore_marked_tree,
+  )
+  from ai_editor.core.tree_lifecycle import (
+      compute_content_checksum,
+      is_tree_valid,
+      validate_or_recreate_tree_file,
+  )
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+  from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
+  from ai_editor.tree.handler_registry import HandlerRegistry
+  ```
+
+  SessionRepo (C-013) is NOT implemented in this file; wiring is added in a later
+  modify step on this same module (`session_repo` field and commit hooks).
+  FormatHandler.unmark for export: use HandlerRegistry in `_export_source_via_unmark`.
+
+  ## Types and constants
+
+  ```python
+  class SessionTreeValidity(str, enum.Enum):
+      VALID = "valid"
+      INVALID = "invalid"
+
+  class EditSessionError(ValueError):
+      """EditSession lifecycle violations."""
+
+  CONTENT_NOT_ALLOWED_FOR_VALID_FILE = "CONTENT_NOT_ALLOWED_FOR_VALID_FILE"
+
+  SESSION_VALID_TRUTH_INVARIANT = (
+      "When tree_validity is valid, the in-session tree is truth; "
+      "the external SourceFile is stale."
+  )
+  SESSION_INVALID_TRUTH_INVARIANT = (
+      "When tree_validity is invalid, the in-session source copy is the editing surface."
+  )
+  ```
+
+  ## EditSession dataclass fields
+
+  ```python
+  @dataclass
+  class EditSession:
+      session_id: str
+      source_abs: Path
+      tree_abs: Path
+      session_dir: Path
+      session_source_path: Path
+      session_tree_path: Path
+      session_repo_path: Path
+      project_root: Path
+      file_path: str
+      tree_validity: SessionTreeValidity
+      source_checksum: str
+      tree_checksum: Optional[str]
+      is_open: bool = field(default=False)
+  ```
+
+  ## open() — FINAL-2 {d002}
+
+  Signature:
+  ```python
+  @classmethod
+  def open(
+      cls,
+      *,
+      source_abs: Path,
+      project_root: Path,
+      file_path: str,
+      content: Optional[str] = None,
+  ) -> EditSession:
+  ```
+
+  Algorithm:
+  1. If `content is not None` and `source_abs.is_file()`:
+     - Call `validate_or_recreate_tree_file(project_root=..., file_path=...)`.
+     - If returned `TreeValidityState` indicates a valid tree for existing file,
+       raise `EditSessionError(CONTENT_NOT_ALLOWED_FOR_VALID_FILE,
+       "content parameter not allowed when source and tree are valid")`.
+  2. `session_id = str(uuid.uuid4())`; `session_dir = source_abs.parent / f"{source_abs.name}-{session_id}"`;
+     `mkdir(exist_ok=False)`.
+  3. `session_source_path = session_dir / source_abs.name`.
+  4. If `content is not None`: write `content` to `session_source_path` (UTF-8) FIRST.
+     Else if `source_abs.is_file()`: `shutil.copy2(source_abs, session_source_path)`.
+     Else: raise `EditSessionError("SOURCE_MISSING")` when neither content nor source exists.
+  5. Read `session_source_path.read_text(encoding="utf-8")` → `source_text`;
+     `source_checksum = compute_content_checksum(source_text)`.
+  6. Tree path: `ref, validity_state = validate_or_recreate_tree_file(...)`.
+     `tree_abs = ref.sidecar_path`. Copy tree into session when sidecar exists:
+     `session_tree_path = session_dir / tree_abs.name`; if `tree_abs.is_file()`:
+     `shutil.copy2(tree_abs, session_tree_path)`.
+  7. Classify `tree_validity`:
+     - Try `HandlerRegistry.default_registry().resolve(source_abs).parse_content(file_path, source_text)`.
+     - On parse failure → `SessionTreeValidity.INVALID`.
+     - On success: if session tree exists and `is_tree_valid(source_checksum, ref.content_checksum)`
+       → VALID else INVALID.
+  8. `session_repo_path = session_dir` (SessionRepo.init is wired in a later modify step).
+  9. Return `cls(..., is_open=True, tree_validity=..., source_checksum=..., tree_checksum=...)`.
+
+  Do NOT register in `_active_sessions` here; a later modify step on this file adds the registry.
+
+  ## apply_valid_tree_mutation(mutation_fn)
+
+  ```python
+  def apply_valid_tree_mutation(
+      self,
+      mutation_fn: Callable[[str], str],
+  ) -> None:
+  ```
+
+  Requires `tree_validity == VALID` and `is_open`; else `RuntimeError`.
+  1. Read full three-section tree: `marked = session_tree_path.read_text(encoding="utf-8")`.
+  2. `denuded, state = denude_marked_tree(source_abs=self.source_abs, marked_tree=marked)`
+     — denuded is TREE-body plain text; state holds CHECKSUMS + MAP unchanged (C-024:
+     TreeNodeUuid entries in MAP are not altered by hide/unhide).
+  3. `denuded_after = mutation_fn(denuded)`.
+  4. `restored = restore_marked_tree(source_abs=self.source_abs, denuded_after_mutation=denuded_after, state=state)`.
+  5. Write full three-section `restored` to `session_tree_path`.
+  6. Call `_post_mutation_full()`.
+
+  ## apply_plaintext_mutation(new_source_text)
+
+  Requires `tree_validity == INVALID`. Writes `new_source_text` to `session_source_path`;
+  updates `source_checksum`; calls `_post_mutation_degraded()`; then `_try_revalidate()`.
+
+  ## _post_mutation_full() — {d003} valid
+
+  1. Ensure tree on disk (already written).
+  2. `_export_source_via_unmark()` → writes unmarked export to `session_source_path`.
+  3. Recompute `source_checksum` and `tree_checksum` via `compute_content_checksum`.
+  (SessionRepo commit_full is added when SessionRepo is wired into EditSession.)
+
+  ## _post_mutation_degraded() — {d003} DEGRADED
+
+  1. Recompute `source_checksum` only; `tree_checksum = None`.
+  (SessionRepo commit_degraded is added when SessionRepo is wired into EditSession.)
+
+  ## _export_source_via_unmark()
+
+  ```python
+  def _export_source_via_unmark(self) -> None:
+      handler = HandlerRegistry.default_registry().resolve(self.source_abs)
+      sections = parse_tree_file(self.session_tree_path.read_text(encoding="utf-8"))
+      clean = handler.unmark(sections.tree)
+      self.session_source_path.write_text(clean, encoding="utf-8")
+  ```
+
+  Add import: `from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file`
+
+  ## _try_revalidate() — {h009}
+
+  When `tree_validity == INVALID`, attempt parse via handler.parse_content.
+  On success: call `TreeBuilder.build` (contract above) with session source text,
+  copy resulting `ref.sidecar_path` into `session_tree_path`, set VALID, record checksums.
+  NodeIdMap.build preserves TreeNodeUuid (C-024) and next_free from existing MAP.
+
+  ## preview_external_write() — stage 1 {d004}
+
+  Signature:
+  ```python
+  def preview_external_write(self) -> dict[str, Any]:
+  ```
+
+  Docstring one-liner: "Compute unified diffs of in-session artefacts vs live external files; no external writes."
+
+  Return shape (exact keys):
+  `{"has_changes": bool, "source_diff": str, "tree_diff": str}`
+
+  Algorithm:
+  1. If not `self.is_open`: raise `RuntimeError("EditSession is not open; cannot preview external write.")`.
+  2. Read in-session source:
+     `in_source = self.session_source_path.read_text(encoding="utf-8")` if
+     `self.session_source_path.is_file()` else `""`.
+     (Already unmark-exported per {d003} post-mutation; do NOT call unmark here.)
+  3. Read in-session tree:
+     `in_tree = self.session_tree_path.read_text(encoding="utf-8")` if
+     `self.session_tree_path.is_file()` else `""`.
+  4. Read external source:
+     `ext_source = self.source_abs.read_text(encoding="utf-8")` if
+     `self.source_abs.is_file()` else `""`.
+  5. Read external tree:
+     `ext_tree = self.tree_abs.read_text(encoding="utf-8")` if
+     `self.tree_abs.is_file()` else `""`.
+  6. Build `source_diff`:
+     `"".join(difflib.unified_diff(
+         in_source.splitlines(keepends=True),
+         ext_source.splitlines(keepends=True),
+         fromfile="in-session-source",
+         tofile="external-source",
+     ))`
+  7. Build `tree_diff`:
+     `"".join(difflib.unified_diff(
+         in_tree.splitlines(keepends=True),
+         ext_tree.splitlines(keepends=True),
+         fromfile="in-session-tree",
+         tofile="external-tree",
+     ))`
+  8. `has_changes = bool(source_diff.strip() or tree_diff.strip())`.
+  9. Return `{"has_changes": has_changes, "source_diff": source_diff, "tree_diff": tree_diff}`.
+
+  Error handling:
+  - `RuntimeError` when session not open (see step 1).
+  - Do NOT catch `OSError` from reads; let propagate (session corruption is fatal).
+
+  Edge cases:
+  - Missing external files → treated as empty string; diff shows full in-session content.
+  - Identical in-session and external content → empty diffs, `has_changes=False` (no-op externally).
+  - INVALID tree_validity: still diff both pairs; in-session tree may be stale from open.
+
+  ## confirm_external_copy_out() — stage 2 {n7k2}
+
+  Signature:
+  ```python
+  def confirm_external_copy_out(self) -> None:
+  ```
+
+  Docstring one-liner: "Atomically copy in-session artefacts to external co-located paths; both or neither when valid."
+
+  Algorithm:
+  1. If not `self.is_open`: raise `RuntimeError("EditSession is not open; cannot confirm external copy-out.")`.
+  2. `preview = self.preview_external_write()`.
+  3. If `not preview["has_changes"]`: return immediately (no-op per {d004}; no external writes).
+  4. Branch on `self.tree_validity`:
+
+  ### Branch VALID — dual atomic copy (both or neither)
+
+  5a. `tmp_tree = self.tree_abs.with_suffix(self.tree_abs.suffix + ".tmp")`
+  5b. `tmp_source = self.source_abs.with_suffix(self.source_abs.suffix + ".tmp")`
+  5c. `backup_tree = self.tree_abs.with_suffix(self.tree_abs.suffix + ".bak")`
+  5d. `try`:
+        - `shutil.copy2(self.session_tree_path, tmp_tree)`
+        - `shutil.copy2(self.session_source_path, tmp_source)`
+        - If `self.tree_abs.exists()`: `shutil.copy2(self.tree_abs, backup_tree)`
+        - `tmp_tree.replace(self.tree_abs)`  (tree first)
+        - `try`: `tmp_source.replace(self.source_abs)`  (source second)
+          - `except Exception`: if `backup_tree.exists()`: `shutil.copy2(backup_tree, self.tree_abs)`; re-raise
+      `except Exception`:
+        - `tmp_tree.unlink(missing_ok=True)`; `tmp_source.unlink(missing_ok=True)`; re-raise
+      `finally`:
+        - `backup_tree.unlink(missing_ok=True)`
+
+  ### Branch INVALID — source-only external copy
+
+  5e. When `tree_validity == INVALID`: copy ONLY in-session source to external source.
+      Do NOT modify `self.tree_abs`.
+      - `tmp_source = self.source_abs.with_suffix(self.source_abs.suffix + ".tmp")`
+      - `shutil.copy2(self.session_source_path, tmp_source)`
+      - `tmp_source.replace(self.source_abs)`
+      - On any failure: `tmp_source.unlink(missing_ok=True)` then re-raise.
+
+  Error handling:
+  - `RuntimeError` when session not open.
+  - Partial failure in VALID branch restores external tree from `.bak` before re-raise.
+  - No SessionRepo commit in this method (in-session finalization is {d003} only).
+
+  Edge cases:
+  - `has_changes=False` → immediate return, no file operations.
+  - VALID branch requires both `session_tree_path` and `session_source_path` to exist;
+    if either missing when VALID, raise `RuntimeError("Session artefacts missing for external copy-out")`.
+  - INVALID branch: external tree left unchanged even if tree_diff was non-empty (stale in-session tree).
+
+  Constants/literals:
+  - Tmp suffix: `".tmp"`; backup suffix: `".bak"`.
+  - Unified diff labels: `"in-session-source"`, `"external-source"`, `"in-session-tree"`, `"external-tree"`.
+
+  ## close() — {d005} blind
+
+  `shutil.rmtree(session_dir)` if exists; `is_open = False`. No checksum or validation.
+
+  ## record_tree_modification()
+
+  Deprecated alias: raise `RuntimeError("use apply_valid_tree_mutation")` to force migration.
+
+  ## Constraints
+
+  - Do NOT create `__init__.py` (package init is a separate step).
+  - Do NOT import dulwich.
+  - Do NOT import `commands.universal_file_edit.session.EditSession`.
+  - Do NOT implement `write_copy_out()` or legacy `write_commit()` (removed per {d004}/{n7k2}).
+  - Do NOT use universal-id-in-marker, UUID-in-marker, or retired {l001}-{l003}/{m001}/{m002}.
+  - Estimated file size: 300–340 lines (under 400; SessionRepo wiring is a separate module).
+  - Do NOT add SessionRepo field, imports, or commit calls in this step.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/edit_session.py
+  flake8 ai_editor/core/edit_session/edit_session.py
+  mypy ai_editor/core/edit_session/edit_session.py
+  python -c "from ai_editor.core.edit_session.edit_session import EditSession, SessionTreeValidity"
+  pytest -q
+  ```
+
+  All tests must pass.
+
+verification:
+  type: import
+  target: ai_editor/core/edit_session/edit_session.py
+  expected: |
+    EditSession class exists with open(content=... optional), close,
+    preview_external_write() returning dict with has_changes/source_diff/tree_diff,
+    confirm_external_copy_out(), apply_valid_tree_mutation, apply_plaintext_mutation,
+    SessionTreeValidity enum, EditSessionError, and FINAL-2 constant
+    CONTENT_NOT_ALLOWED_FOR_VALID_FILE. Imports difflib, marker_cycle, TreeBuilder,
+    and parse_tree_file. No dulwich import. No write_copy_out or write_commit method.
+    All tests pass.

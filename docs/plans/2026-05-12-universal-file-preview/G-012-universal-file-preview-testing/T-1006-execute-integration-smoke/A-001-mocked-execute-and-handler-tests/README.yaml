@@ -1,0 +1,28 @@
+step_id: A-001
+parent_tactical_step: T-1006
+name: Mocked execute smoke plus handler unit coverage
+target_file: tests/test_universal_file_preview_smoke.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-003
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  Consolidated pytest coverage in `tests/test_universal_file_preview_smoke.py`:
+  - Async integration-style test `test_universal_file_preview_execute_budget_py_mock_db`
+    patches `BaseMCPCommand._open_database_from_config`, runs `validate_params` →
+    `execute`, asserts `SuccessResult` and non-empty structured `focus.text` for budget.py.
+  - Extensive synchronous tests per handler family (JSON opaque id, YAML opaque id and
+    pointer edge cases, JSONL drill, Python visualizer, session errors, whitelist).
+implementation_note: >
+  Executes without starting ai-editor-server; suitable for CI and local regressions.
+verification:
+  type: pytest
+  target: tests/test_universal_file_preview_smoke.py
+  expected: >
+    All tests PASS including `test_universal_file_preview_execute_budget_py_mock_db` and
+    handler-focused cases (JSON, YAML, JSONL, Python, text, dispatcher, resolve_session).

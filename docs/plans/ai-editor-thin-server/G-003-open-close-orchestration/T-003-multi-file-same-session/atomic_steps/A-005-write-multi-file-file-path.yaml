@@ -1,0 +1,239 @@
+step_id: A-005
+parent_tactical_step: T-003
+name: Write — обязательный file_path при N>1
+target_file: ai_editor/commands/universal_file_edit/write_command.py
+operation: modify_file
+priority: 4
+depends_on:
+- A-001
+- A-002
+concepts:
+- C-004
+- C-009
+- C-012
+- C-016
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/commands/universal_file_edit/write_command.py`):
+  Post-G-005 slim facade baseline (upload error preservation) plus multi-file `file_path`
+  routing from this step. Modify only the deltas listed below.
+
+  ```py
+  """MCP command: universal_file_write — facade (C-016).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  import logging
+  from typing import Any, Dict, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_FILE_PATH_REQUIRED,
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.session import (
+      EditSession,
+      resolve_session_for_command,
+  )
+  from ai_editor.commands.universal_file_edit.write_compare import (
+      CompareResult,
+      compare_session_to_origin,
+  )
+  from ai_editor.commands.universal_file_edit.write_command_metadata import (
+      get_universal_file_write_metadata,
+  )
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+  from ai_editor.core.upstream.session_guard import OperationKind, SessionGuard
+
+  from .base_mcp_command import BaseMCPCommand
+
+  logger = logging.getLogger(__name__)
+
+
+  class UniversalFileWriteCommand(BaseMCPCommand):
+      name = "universal_file_write"
+      version = "1.0.0"
+      descr = "Compare edit workspace to origin and upload if changed"
+      category = "universal_file_edit"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {
+                      "type": "string",
+                      "description": (
+                          "Project-relative path. Required when the CA session has "
+                          "more than one open file (see multi_file_bundle from open). "
+                          "Optional when exactly one file is open."
+                      ),
+                  },
+                  "session_id": {"type": "string"},
+                  "write_mode": {
+                      "type": "string",
+                      "enum": ["preview", "commit"],
+                      "default": "commit",
+                  },
+              },
+              "required": ["project_id", "file_path", "session_id"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls) -> Dict[str, Any]:
+          return get_universal_file_write_metadata(cls)
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          return super().validate_params(params)
+
+      async def execute(
+          self,
+          project_id: str,
+          file_path: str,
+          session_id: str,
+          write_mode: str = "commit",
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          _ = kwargs
+          ca_session_id = session_id
+          guard = SessionGuard(get_code_analysis_client())
+          if guard.check(OperationKind.WRITE, ca_session_id).name == "REJECT":
+              return ErrorResult(message="invalid CA session", code="SESSION_REJECTED")
+
+          try:
+              session = resolve_session_for_command(
+                  ca_session_id, file_path or None
+              )
+          except ValueError as exc:
+              msg = str(exc)
+              if msg == "SESSION_FILE_PATH_REQUIRED":
+                  return error_result_from_make_error(
+                      make_error(
+                          SESSION_FILE_PATH_REQUIRED,
+                          "file_path is required when the session has multiple open files",
+                          details={"session_id": session_id},
+                      )
+                  )
+              return error_result_from_make_error(
+                  make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}")
+              )
+
+          if write_mode != "commit":
+              return ErrorResult(
+                  message="write_mode=preview not implemented in this step",
+                  code="NOT_IMPLEMENTED",
+              )
+
+          comparison = compare_session_to_origin(session)
+          if comparison.result == CompareResult.EQUAL:
+              return SuccessResult(
+                  data={
+                      "unchanged": True,
+                      "uploaded": False,
+                      "session_id": ca_session_id,
+                      "project_id": project_id,
+                      "file_path": session.file_path,
+                  }
+              )
+
+          client = get_code_analysis_client()
+          try:
+              accepted = client.upload_session_file_content(
+                  session_id=ca_session_id,
+                  project_id=project_id,
+                  file_path=session.file_path,
+                  content=comparison.exported_bytes,
+              )
+          except RuntimeError as exc:
+              logger.error("universal_file_write upload failed: %s", exc)
+              return ErrorResult(
+                  message=str(exc),
+                  code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
+                  details={"upstream_error": str(exc)},
+              )
+          except Exception as exc:
+              logger.error("universal_file_write upload failed: %s", exc, exc_info=True)
+              return ErrorResult(
+                  message=str(exc),
+                  code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
+                  details={"upstream_error": str(exc)},
+              )
+          session.abs_path.write_bytes(accepted)
+          return SuccessResult(
+              data={
+                  "unchanged": False,
+                  "uploaded": True,
+                  "session_id": ca_session_id,
+                  "project_id": project_id,
+                  "file_path": session.file_path,
+              }
+          )
+  ```
+
+  Modify `ai_editor/commands/universal_file_edit/write_command.py` (operation: modify_file).
+
+  ## Goal (C-004, C-009, C-012, C-016)
+
+  When bundle N>1, require explicit `file_path` for `universal_file_write`; return
+  `SESSION_FILE_PATH_REQUIRED` instead of mapping to `SESSION_NOT_FOUND` (same policy as
+  edit and close multi-file disambiguation).
+
+  ## Required changes (relative to G-005 canonical facade baseline)
+
+  The embedded content above is the **target end state**. Apply these deltas on top of the
+  G-005 canonical facade (SessionGuard, compare_session_to_origin, upload with error preservation):
+
+  ### Imports
+  1. Add `SESSION_FILE_PATH_REQUIRED` to errors import list.
+  2. Replace `get_session` import with `resolve_session_for_command` from session module.
+  3. Remove unused `get_session` import.
+  4. Keep `EditSession` import.
+
+  ### `get_schema()` — update `file_path` description
+  Replace description with:
+  `"Project-relative path. Required when the CA session has more than one open file (see multi_file_bundle from open). Optional when exactly one file is open."`
+
+  ### `execute()` — session resolution
+  1. Replace `get_session(ca_session_id, file_path=file_path or None)` with
+     `resolve_session_for_command(ca_session_id, file_path or None)`.
+  2. In `except ValueError`:
+     - if `msg == "SESSION_FILE_PATH_REQUIRED"`:
+       return `error_result_from_make_error(make_error(SESSION_FILE_PATH_REQUIRED, "file_path is required when the session has multiple open files", details={"session_id": session_id}))`
+     - elif `msg == "SESSION_NOT_FOUND"` or default:
+       return `error_result_from_make_error(make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}"))`
+
+  Do **not** change write_mode logic, preview/commit branches, compare/upload flow from G-005 baseline.
+
+  ## Forbidden
+
+  - Do NOT add upstream upload changes beyond G-005 baseline.
+  - Do NOT modify close_command or session.py.
+  - Do NOT change validate_params.
+  - Do NOT modify files other than target.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/write_command.py
+  flake8 ai_editor/commands/universal_file_edit/write_command.py
+  mypy ai_editor/commands/universal_file_edit/write_command.py
+  pytest tests/ -q --tb=no -x
+  ```
+
+  Expected: multi-file + missing file_path → SESSION_FILE_PATH_REQUIRED; all tests pass.
+verification:
+  type: pytest
+  target: ai_editor/commands/universal_file_edit/write_command.py
+  expected: Write with N>1 files and omitted file_path returns SESSION_FILE_PATH_REQUIRED; single-file write unchanged.
+status: draft

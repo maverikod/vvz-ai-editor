@@ -1,0 +1,33 @@
+step_id: A-002
+parent_tactical_step: T-004
+name: Удалить registration.py
+target_file: ai_editor/commands/registration.py
+operation: delete_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-016
+- C-020
+prompt: |
+  Precondition: execute ONLY after BOTH of the following are complete:
+  - G-002/T-005 (upload transfer wrapper fully implemented in Upstream Client, C-017)
+  - G-006/T-002 (register_file_management_commands made a no-op in registration.py,
+    and its call block removed from hooks_register_part2.py)
+
+  Delete `ai_editor/commands/registration.py`.
+
+  Context: By G-006/T-002 precondition, registration.py contains only a no-op stub of
+  register_file_management_commands (no MCP transfer/lock registrations remain, C-016).
+  By the same G-006/T-002 precondition, hooks_register_part2.py no longer imports or calls
+  register_file_management_commands. It is therefore safe to delete this file.
+
+  Do not modify any other file in this step. Cleanup of register_auto_import_module lines
+  for legacy sessions/transfer/lock modules in hooks.py is out of scope for this delete_file step.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/registration.py
+  expected: >
+    File absent from repository; module ai_editor.commands.registration no longer
+    exists on disk; no MCP surface (C-016) references register_file_management_commands.
+status: draft

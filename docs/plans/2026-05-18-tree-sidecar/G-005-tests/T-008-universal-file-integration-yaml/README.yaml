@@ -1,0 +1,40 @@
+step_id: T-008
+parent_global_step: G-005
+name: Universal file command integration tests (YAML)
+status: done
+description: 'Establish end-to-end verification obligations on the universal file command
+  surface for YAML tree-temp sources, exercising TreeNode (C-001), Sidecar (C-002),
+  SHASyncPolicy (C-003), EditSession (C-007), PreviewNavigation (C-009), and YAML-facing
+  parser and serializer facets of SourceParser and SourceSerializer (C-005, C-006). Prove
+  open returns session_id and blocks keyed by persistent stable_id values. Prove edit
+  covers all supported operation types and position variants for YAML-backed trees. Prove
+  write persists YAML with hash-line (#) comments restored per tree fields and satisfies
+  diff preview obligations where exposed by the contract. Prove preview root versus
+  container drill-down via node_ref mirrors PreviewNavigation rules independently of JSON
+  versus YAML syntax. Prove at least one scalar node_ref case: effective focus is the nearest
+  object/array ancestor''s children, or root_view when the root is scalar (scalar_node_ref_effective_focus),
+  without duplicating full preview matrices. Prove stable_id persistence across two disjoint sessions on the same
+  YAML path. Prove SHA-driven reload behaviour aligns with policy when source bytes change
+  between sessions without an intervening session holding the file.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-006
+- C-007
+- C-009
+inputs:
+- name: yaml_integration_matrices
+  type: project-scoped YAML file scenarios and command sequences
+  description: '.yaml and .yml examples with hash-line (#) comments plus multi-step traces
+    across preview, open, edit variants, write, close, and second-session navigation.'
+outputs:
+- name: yaml_surface_verdict
+  type: verification outcome
+  description: Responses and on-disk YAML plus sidecar artefacts satisfy the universal file
+    integration obligations parallel to JSON while respecting YAML comment mechanics.
+atomic_steps:
+- A-001
+- A-002

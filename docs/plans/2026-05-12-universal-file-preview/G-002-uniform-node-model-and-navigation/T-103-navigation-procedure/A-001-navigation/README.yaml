@@ -1,0 +1,81 @@
+step_id: A-001
+parent_tactical_step: T-103
+name: Create navigation module with three-phase navigate() function
+target_file: ai_editor/commands/universal_file_preview/navigation.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-006
+- C-007
+- C-008
+- C-013
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/navigation.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  NavigationProcedure (C-006) for universal_file_preview.\n\
+  \n  Single three-phase function shared by all NodeKind values and all file\n  types:\
+  \ enumerate the focus node's block set, select a subset via\n  Selector (C-007),\
+  \ render each selected block via BlockHandler (C-008).\n\n  Author: Vasiliy Zdanovskiy\n\
+  \  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from __future__ import annotations\n\
+  \  import logging\n  from typing import Any\n  from .base_handler import FileHandler\n\
+  \  from .budget import PreviewBudget\n  from .block_handlers import render_block\n\
+  \  from .errors import PreviewError, handler_error\n  from .models import Block,\
+  \ NavigationResult, Node, NodeKind\n  from .selector import apply_selector\n  from\
+  \ .session import resolve_session\n\nThe imported functions and classes have these\
+  \ signatures (defined in\nother files in this package):\n\n  # From .session:\n\
+  \  def resolve_session(\n      handler: FileHandler,\n      params: dict[str, Any],\n\
+  \  ) -> tuple[Any | None, str, str | None] | PreviewError:\n      \"\"\"\n     \
+  \ Resolve the TreeSession for the request.\n      Returns (session, session_origin,\
+  \ tree_id) or PreviewError.\n        session_origin: 'caller_owned' | 'command_created'\
+  \ | 'none'\n        tree_id: UUID string when session_origin == 'command_created',\
+  \ else None.\n      \"\"\"\n\n  # From .block_handlers:\n  def render_block(node:\
+  \ Node, value_preview_len: int) -> dict[str, Any]:\n      \"\"\"Render a Node using\
+  \ its NodeKind's BlockHandler rule.\"\"\"\n\n  # From .selector:\n  def apply_selector(\n\
+  \      raw: str | list | None,\n      block_set: list[Node],\n      preview_lines:\
+  \ int,\n  ) -> list[Node] | PreviewError:\n      \"\"\"Apply selector to block_set;\
+  \ returns selected nodes or PreviewError.\"\"\"\n\n  # From .budget:\n  @dataclass\n\
+  \  class PreviewBudget:\n      preview_lines: int       # cap when selector is omitted\n\
+  \      value_preview_len: int   # cap on inline scalar/name length\n\n  # From .models:\n\
+  \  @dataclass\n  class Node:\n      node_kind: NodeKind\n      node_ref: str\n \
+  \     type_label: str | None\n      name: str | None\n      attributes: dict[str,\
+  \ Any]\n      # .children property -> list[Node] (lazy)\n\n  @dataclass\n  class\
+  \ Block:\n      node_kind: NodeKind\n      node_ref: str\n      summary: dict[str,\
+  \ Any]\n\n  @dataclass\n  class NavigationResult:\n      focus_node: Node\n    \
+  \  total_blocks: int\n      selected_blocks: list[Block]\n      tree_id: str | None\n\
+  \nModule-level:\n  logger = logging.getLogger(__name__)\n\nFunction: navigate(\n\
+  \    handler: FileHandler,\n    params: dict[str, Any],\n    budget: PreviewBudget,\n\
+  ) -> NavigationResult | PreviewError\nReturn type: NavigationResult | PreviewError\n\
+  Docstring:\n  \"\"\"\n  Execute the three-phase NavigationProcedure (C-006) for\
+  \ one request.\n\n  Phase 1 — enumerate: produce the focus node's ordered block\
+  \ set.\n  Phase 2 — select: apply Selector (C-007) to the block set.\n  Phase 3\
+  \ — render: invoke BlockHandler (C-008) for each selected block.\n\n  Args:\n  \
+  \    handler: FileHandler resolved by HandlerDispatcher for the file.\n      params:\
+  \ Validated parameter dict containing keys:\n              'file_path' (str), 'node_ref'\
+  \ (str|None),\n              'selector' (str|list|None), 'project_id' (str),\n \
+  \             'tree_id' (str|None).\n      budget: PreviewBudget with preview_lines\
+  \ and value_preview_len.\n\n  Returns:\n      NavigationResult on success, or PreviewError\
+  \ on failure.\n  \"\"\"\nBody:\n  # Resolve session\n  session_result = resolve_session(handler,\
+  \ params)\n  if isinstance(session_result, PreviewError):\n      return session_result\n\
+  \  session, session_origin, tree_id = session_result\n\n  # Phase 1: enumerate\n\
+  \  open_result = handler.open_root(params['file_path'], session)\n  if isinstance(open_result,\
+  \ PreviewError):\n      return open_result\n  focus_node: Node = open_result\n \
+  \ if params.get('node_ref') is not None:\n      resolve_result = handler.resolve_node_ref(params['node_ref'],\
+  \ session)\n      if isinstance(resolve_result, PreviewError):\n          return\
+  \ resolve_result\n      focus_node = resolve_result\n  block_set: list[Node] = focus_node.children\n\
+  \  total_blocks = len(block_set)\n\n  # Phase 2: select\n  selector_result = apply_selector(\n\
+  \      params.get('selector'), block_set, budget.preview_lines)\n  if isinstance(selector_result,\
+  \ PreviewError):\n      return selector_result\n  selected_nodes = selector_result\n\
+  \n  # Phase 3: render\n  selected_blocks: list[Block] = []\n  for node in selected_nodes:\n\
+  \      summary = render_block(node, budget.value_preview_len)\n      selected_blocks.append(Block(\n\
+  \          node_kind=node.node_kind,\n          node_ref=node.node_ref,\n      \
+  \    summary=summary,\n      ))\n\n  return NavigationResult(\n      focus_node=focus_node,\n\
+  \      total_blocks=total_blocks,\n      selected_blocks=selected_blocks,\n    \
+  \  tree_id=tree_id if session_origin == 'command_created' else None,\n  )\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.navigation
+  expected: 'Module imports without error; navigate is a callable function accepting
+    (handler: FileHandler, params: dict, budget: PreviewBudget) and returning NavigationResult
+    | PreviewError.'

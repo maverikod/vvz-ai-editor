@@ -1,0 +1,146 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: TreeQuery module returning short_id integers
+target_file: ai_editor/tree/tree_query.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-018
+- C-019
+- C-002
+- C-010
+- C-025
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-003-tree-query-and-cst-selector/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-018, C-019, C-002, C-010, C-025)
+
+  Create `ai_editor/tree/tree_query.py`.
+  Operation: create_file.
+
+  TreeQuery (C-018): structural search over marked tree; returns integer short_id list
+  at API boundary ({n003}). NodeIdMap.resolve server-internal only (C-025).
+
+  ## MRS excerpt
+
+  C-018:
+  - simple mode: type, name, qualified_name, line range (Python only)
+  - XPath mode: CstQuerySelector string
+  - require_one: unique match or NoMatch / NonUniqueMatch with candidate short_ids
+  - include_code: matched source text (Python only)
+  - in-session → draft tree; out-of-session → validated on-disk tree via TreeLifecycle
+
+  C-002: results are short_id ints, never UUID.
+
+  ## Module docstring
+
+  """
+  TreeQuery — structural search returning integer short_ids (C-018).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports
+
+  - from __future__ import annotations
+  - from dataclasses import dataclass
+  - from enum import Enum
+  - from pathlib import Path
+  - from typing import Any, Callable, List, Optional, Sequence, Union
+  - from ai_editor.tree.contracts import NodeId, validate_short_id
+  - from ai_editor.tree.cst_query_selector import CstQuerySelector, CstQuerySelectorError
+
+  ## Enums and result types
+
+  class QueryMode(str, Enum):
+    SIMPLE = "simple"
+    XPATH = "xpath"
+
+  @dataclass(frozen=True) class TreeQueryMatch:
+    short_id: NodeId
+    source_text: Optional[str] = None  # set when include_code and Python
+
+  @dataclass(frozen=True) class NoMatch:
+    message: str = "no nodes matched query"
+
+  @dataclass(frozen=True) class NonUniqueMatch:
+    candidates: List[NodeId]
+    message: str = "query matched multiple nodes"
+
+  RequireOneResult = Union[TreeQueryMatch, NoMatch, NonUniqueMatch]
+
+  class TreeQueryError(ValueError): ...
+
+  ## @dataclass TreeQueryFilters (simple mode)
+
+  node_type: Optional[str] = None
+  name: Optional[str] = None
+  qualified_name: Optional[str] = None
+  start_line: Optional[int] = None
+  end_line: Optional[int] = None
+
+  ## class TreeQuery
+
+  __init__(self, *, tree_loader: Callable[[Path, Optional[str]], Any], short_id_mapper: Callable[[Any], NodeId]) -> None
+
+  ### search(*, source_path, mode, filters=None, selector=None, session_id=None, include_code=False, require_one=False) -> Union[List[TreeQueryMatch], RequireOneResult]
+
+  Algorithm:
+  1. tree = tree_loader(source_path, session_id)  # session draft vs TreeLifecycle-validated disk tree
+  2. If mode SIMPLE:
+     a. If line range filters set and format not Python → TreeQueryError("line range filters are Python only")
+     b. Delegate to `ai_editor.core.cst_tree.tree_finder.find_nodes` with search_type="simple"
+        passing node_type, name, qualname, start_line, end_line from filters and include_code flag
+  3. If mode XPATH:
+     a. sel = CstQuerySelector.parse(selector or "")
+     b. short_ids = sel.evaluate(tree, short_id_mapper=self._short_id_mapper)
+  4. Build TreeQueryMatch list; if include_code and Python: attach source excerpt from engine
+  5. If require_one:
+     - 0 matches → NoMatch()
+     - 1 match → TreeQueryMatch
+     - >1 → NonUniqueMatch(candidates=[m.short_id for m in matches])
+  6. Else return full match list
+
+  All short_id values validated via validate_short_id before return.
+
+  ## Tree acquisition
+
+  tree_loader contract (injected):
+  - session_id set → in-session draft tree from EditSession
+  - session_id None → TreeLifecycle ensure valid tree on disk first
+
+  This module does NOT import TreeLifecycle directly.
+
+  ## Forbidden
+
+  - NO UUID in results or candidate lists
+  - NO line numbers as result identifiers (line range is input filter only, Python)
+  - NO full-text / DB search
+  - NO reimplementing XPath engine (use CstQuerySelector)
+  - NO G-007, non-standard cross-TS ordering fields, {l*}/{m*}
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/tree_query.py
+  flake8 ai_editor/tree/tree_query.py
+  mypy ai_editor/tree/tree_query.py
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/tree_query.py
+  expected: >
+    TreeQuery.search returns short_id ints; require_one yields NoMatch/NonUniqueMatch
+    with int candidates; include_code Python-only; delegates XPath to CstQuerySelector;
+    estimated ~230 lines (≤400).

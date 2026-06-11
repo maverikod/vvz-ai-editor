@@ -1,0 +1,28 @@
+step_id: T-003
+parent_global_step: G-005
+name: SearchResultBlock contract
+description: >
+  Creates the SearchResultBlock contract for immutable result slices written
+  into SearchSessionDirectory. Each block holds an integer number of complete
+  search results whose serialized size must not exceed the configured maximum
+  block size in bytes, except when a single result alone exceeds the limit—in
+  that case the block contains that one result and integrity takes precedence
+  over the size bound. Blocks are written once, never modified afterward, and
+  are addressed by position number through the directory index rather than
+  embedded links.
+concepts:
+  - C-004
+inputs:
+  - name: assembled_findings
+    type: SearchFindingSet
+    description: Contiguous whole findings selected for one block.
+  - name: maximum_block_size_bytes
+    type: BlockSizeLimit
+    description: Configured upper bound on serialized block size from SessionTTLPolicy.
+outputs:
+  - name: search_result_block
+    type: SearchResultBlock
+    description: Immutable published block containing whole results within size rules.
+atomic_steps:
+- A-001
+status: frozen

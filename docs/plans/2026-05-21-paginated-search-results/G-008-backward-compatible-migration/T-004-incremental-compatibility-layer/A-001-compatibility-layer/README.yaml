@@ -1,0 +1,71 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Incremental compatibility layer
+target_file: ai_editor/core/search_session/compatibility.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-022
+  - C-001
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/compatibility.py
+
+  MRS (C-022 IncrementalCompatibilityLayer):
+  - Adds pagination as an opt-in behavior.
+  - May route paginated execution through SearchSession.
+  - Preserves existing validation, schemas, queue behavior, timeout behavior, direct payloads,
+    structural results, and preview references.
+  - Must avoid duplicating working search logic.
+
+  MRS (C-001 SearchSession): search_id is the client-visible job_id; blocks addressed by position number.
+
+  Implement:
+  - @dataclass(frozen=True) PaginatedSearchHandoff:
+      job_id: str
+      index_url: str
+      first_block_position: Optional[int] = None
+      legacy_payload: Optional[dict[str, Any]] = None
+
+  - def handoff_to_response(handoff: PaginatedSearchHandoff) -> dict[str, Any]
+    Returns dict with success=True, paginated=True, job_id, index_url, first_block_position,
+    and include_job_id-friendly fields; never embeds README opaque cursor.
+
+  - BRIDGE_COMMANDS: dict[str, tuple[str, ...]] mapping search_start to
+    ("fulltext", "semantic", "grep", "cross", "tree_query").
+
+  - def maybe_route_paginated(
+        *,
+        params: dict[str, Any],
+        legacy_executor: Callable[[], dict[str, Any]],
+        paginated_executor: Callable[[], Optional[int]],
+        session_factory: Callable[[], SearchSession],
+    ) -> dict[str, Any]
+    Behavior:
+    - When params.get("paginated") is not True, return legacy_executor() unchanged.
+    - When paginated is True:
+      a) Create session via session_factory() (session directory must already exist or be created by caller before invoke).
+      b) Invoke paginated_executor() which MUST run legacy backend, normalize findings into RawFindingBuffer,
+         run BlockAssembler until idle for inline completion, update directory index — returning first published
+         block position (1-based int) or None when no results.
+      c) Build PaginatedSearchHandoff with job_id=session.search_id,
+         index_url=f"/search/jobs/{session.search_id}/index",
+         first_block_position=return value from paginated_executor,
+         legacy_payload=None.
+      d) Return handoff_to_response(handoff).
+    Forbidden: handoff-only path that skips paginated_executor; returning job_id without running first-block pipeline.
+
+  Constraints:
+  - Under 220 lines.
+  - Author header.
+  - Type hints on all public functions.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_compatibility.py
+  expected: >
+    paginated=false returns legacy_executor output unchanged; paginated=true invokes paginated_executor exactly once
+    before handoff; handoff includes job_id, index_url, and first_block_position when executor returns 1; executor
+    returning None yields handoff with first_block_position null; paginated path never calls legacy_executor for payload merge.
+status: ready_for_review

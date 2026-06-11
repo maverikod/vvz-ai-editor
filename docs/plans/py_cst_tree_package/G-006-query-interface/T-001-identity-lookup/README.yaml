@@ -1,0 +1,22 @@
+step_id: T-001
+parent_global_step: G-006
+name: Identity Lookup
+description: Define the identity lookup operation of the QueryInterface entity 
+  (C-008). Given a StableId, the operation retrieves the corresponding node from
+  the Tree by delegating to the IdIndex (C-005), which holds the 
+  StableId-to-node mapping. The lookup resolves directly against the index 
+  without traversing the node structure.
+concepts:
+- C-008
+- C-005
+inputs:
+- name: StableId
+  type: StableId value
+  description: The identity value of the node to retrieve.
+outputs:
+- name: identity lookup result
+  type: IdentifiedNode or absence signal
+  description: The node matching the given StableId, or an absence signal if no 
+    matching node exists.
+atomic_steps: []
+status: draft

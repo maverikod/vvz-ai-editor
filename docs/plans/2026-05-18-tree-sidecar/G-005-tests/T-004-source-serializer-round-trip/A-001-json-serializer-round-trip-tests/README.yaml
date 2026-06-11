@@ -1,0 +1,80 @@
+step_id: A-001
+parent_tactical_step: T-004
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: JSON serializer round-trip tests
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_serializer_json_roundtrip.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-004-source-serializer-round-trip/README.yaml
+concepts:
+- C-006
+- C-001
+- C-004
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_serializer_json_roundtrip.py
+  expected: Pytest exits 0 on this module.
+
+prompt: |-
+  EXECUTOR coder_auto CREATE FILE tests/test_tree_temp_serializer_json_roundtrip.py (≤400 lines). Docstring one paragraph Author Vasiliy Zdanovskiy email vasilyvz@gmail.com.
+
+  IMPORT LIST:
+    from __future__ import annotations
+
+    import pytest
+
+    from ai_editor.core.tree_temp.json_frontend import parse_json_source_to_roots
+    from ai_editor.core.tree_temp.json_emit import emit_json_source_from_roots
+    from ai_editor.core.tree_temp.tree_node import TreeNode
+
+
+  SYMBOL CONTRACT AFTER G-002/G-004 implementation:
+
+    emit_json_source_from_roots(roots: list[TreeNode]) -> str
+      Must produce tolerant JSON textual document with ASCII newlines concluding file optionally but consistently.
+
+      Round-trip LAW for tests: forall sources S accepted by parser, letting R=parse_json_source_to_roots(S), regenerated T=emit_json_source_from_roots(R), then parse_json_source_to_roots(T) structural projection ignoring stable_id regeneration BUT TreeNode.comments must match pairwise by traversing preorder aligned node shapes — coder implements comparison helper `_structural_projection_without_ids` comparing kinds keys values children counts and comment_before/after inline stripping ignoring whitespace deltas only where parser normalizes indentation but comment text core preserved minimally via substring containment for inline markers `//`.
+
+    If helpers differ named adjust via escalation only.
+
+  REQUIRED HELPERS LOCALLY:
+
+    def assert_roundtrip_stable_comments(document: str) -> None:
+      Execute parse emit parse; compare derived shapes using structural helper requiring comment snippets survive: exact equality for deterministic mini docs OR substring containment fallback limited to trimming spaces.
+
+      Implementation detail specified: derive list tuples (kind,key,value_ref,depth) ignoring stable_id capturing comment_inline/before trimming spaces only.
+
+      Must raise AssertionError on mismatch messaging first divergence index.
+
+  TEST FUNCTIONS:
+
+  test_json_roundtrip_minimal_inline_and_above_comments
+    document EXACT '//head\n{\"a\":1}//trail\n'; call assert_roundtrip_stable_comments(document).
+
+  test_json_roundtrip_nested_object_order
+    string '{\"outer\":{\"z\":9,\"y\":8}}'; ensure keys order persists.
+
+  test_json_roundtrip_array_root_numbers
+    string '[10,11,12]' ; ensure ordering.
+
+  test_json_emit_parse_idempotent_twice_loop
+    run assert_roundtrip_stable_comments twice chained manually verifying second iteration uses output of prior.
+
+  test_json_comment_only_line_between_members
+    string '{\"first\":true,\n//mid\n\"second\":false}\n'; ensure //mid survives on second member BEFORE field per C-004.
+
+  ROUNDTRIP IGNORE stable_id BECAUSE serializers may regenerate - tests must NEVER assert uuid equality unless parser preserves which is optional.
+
+  QUALITY GATE black flake8 pytest q mypy singular file.
+
+
+  FORBIDDEN multi-file edits; printing debug.

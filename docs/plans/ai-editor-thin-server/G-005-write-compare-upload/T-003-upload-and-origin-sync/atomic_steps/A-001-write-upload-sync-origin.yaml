@@ -1,0 +1,215 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Upload на СА и sync origin
+target_file: ai_editor/commands/universal_file_edit/write_command.py
+operation: modify_file
+priority: 2
+depends_on: []
+concepts:
+- C-007
+- C-008
+- C-012
+- C-017
+- C-023
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/write_command.py` only.
+  Replace DIFF `NOT_IMPLEMENTED` stub with upload-and-origin-sync (C-012, C-023).
+
+  ## MRS C-012 (relevant)
+
+  - при отличии — upload на СА
+  - при успехе СА — перезапись Origin Snapshot
+  - единственный путь записи на диск проекта СА — upload API; no `os.replace` to project root
+
+  ## write_compare API (import unchanged)
+
+  `from ai_editor.commands.universal_file_edit.write_compare import CompareResult, compare_session_to_origin`
+  On DIFF, use `comparison.exported_bytes` as upload payload.
+
+  ## CURRENT FILE CONTENT (complete post-priority-1 state — modify this file)
+
+  ```py
+  """MCP command: universal_file_write — facade (C-016).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  import logging
+  from typing import Any, Dict, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.session import get_session
+  from ai_editor.commands.universal_file_edit.write_compare import (
+      CompareResult,
+      compare_session_to_origin,
+  )
+  from ai_editor.commands.universal_file_edit.write_command_metadata import (
+      get_universal_file_write_metadata,
+  )
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+  from ai_editor.core.upstream.session_guard import OperationKind, SessionGuard
+
+  from .base_mcp_command import BaseMCPCommand
+
+  logger = logging.getLogger(__name__)
+
+
+  class UniversalFileWriteCommand(BaseMCPCommand):
+      name = "universal_file_write"
+      version = "1.0.0"
+      descr = "Compare edit workspace to origin and upload if changed"
+      category = "universal_file_edit"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {"type": "string"},
+                  "session_id": {"type": "string"},
+                  "write_mode": {
+                      "type": "string",
+                      "enum": ["preview", "commit"],
+                      "default": "commit",
+                  },
+              },
+              "required": ["project_id", "file_path", "session_id"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls) -> Dict[str, Any]:
+          return get_universal_file_write_metadata(cls)
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          return super().validate_params(params)
+
+      async def execute(
+          self,
+          project_id: str,
+          file_path: str,
+          session_id: str,
+          write_mode: str = "commit",
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          _ = kwargs
+          ca_session_id = session_id
+          guard = SessionGuard(get_code_analysis_client())
+          if guard.check(OperationKind.WRITE, ca_session_id).name == "REJECT":
+              return ErrorResult(message="invalid CA session", code="SESSION_REJECTED")
+
+          try:
+              session = get_session(ca_session_id, file_path=file_path or None)
+          except ValueError as exc:
+              msg = str(exc)
+              if msg == "SESSION_FILE_PATH_REQUIRED":
+                  return error_result_from_make_error(
+                      make_error(
+                          SESSION_NOT_FOUND,
+                          "file_path is required when the session has multiple open files",
+                      )
+                  )
+              return error_result_from_make_error(
+                  make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}")
+              )
+
+          if write_mode != "commit":
+              return ErrorResult(
+                  message="write_mode=preview not implemented in this step",
+                  code="NOT_IMPLEMENTED",
+              )
+
+          comparison = compare_session_to_origin(session)
+          if comparison.result == CompareResult.EQUAL:
+              return SuccessResult(
+                  data={
+                      "unchanged": True,
+                      "uploaded": False,
+                      "session_id": ca_session_id,
+                      "project_id": project_id,
+                      "file_path": session.file_path,
+                  }
+              )
+
+          return ErrorResult(
+              message="upload not implemented in this step",
+              code="NOT_IMPLEMENTED",
+          )
+  ```
+
+  ## Change required: replace DIFF stub with upload branch
+
+  When `comparison.result == CompareResult.DIFF`:
+
+  1. `client = get_code_analysis_client()`
+  2. `accepted = client.upload_session_file_content(
+         session_id=ca_session_id,
+         project_id=project_id,
+         file_path=session.file_path,
+         content=comparison.exported_bytes,
+     )`
+  3. On success (no exception): `session.abs_path.write_bytes(accepted)` — update Origin Snapshot only.
+  4. Return `SuccessResult(data={"unchanged": False, "uploaded": True, "session_id": ca_session_id, "project_id": project_id, "file_path": session.file_path})`.
+
+  Do NOT call `confirm_external_copy_out`, `os.replace` to `get_project_root()`, or write to project tree locally.
+
+  ## Target DIFF branch (exact code to substitute for NOT_IMPLEMENTED return)
+
+  ```python
+          client = get_code_analysis_client()
+          accepted = client.upload_session_file_content(
+              session_id=ca_session_id,
+              project_id=project_id,
+              file_path=session.file_path,
+              content=comparison.exported_bytes,
+          )
+          session.abs_path.write_bytes(accepted)
+          return SuccessResult(
+              data={
+                  "unchanged": False,
+                  "uploaded": True,
+                  "session_id": ca_session_id,
+                  "project_id": project_id,
+                  "file_path": session.file_path,
+              }
+          )
+  ```
+
+  Keep EQUAL branch and guard/session resolution unchanged.
+
+  ## Forbidden
+
+  - Do NOT modify `session.draft_path` on success.
+  - Do NOT write origin before upload succeeds.
+  - Do NOT add try/except around upload (error preservation is priority 3).
+  - Do NOT modify files other than `write_command.py`.
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/write_command.py
+  flake8 ai_editor/commands/universal_file_edit/write_command.py
+  mypy ai_editor/commands/universal_file_edit/write_command.py
+  pytest tests/unit/test_universal_file_write_upload.py -v
+  ```
+
+  Expected: mock upload called on DIFF; `session.abs_path` updated with accepted bytes; no local project-root write.
+  All tests must pass before handoff.
+verification:
+  type: pytest
+  target: tests/unit/test_universal_file_write_upload.py
+  expected: Mock upload invoked on DIFF; workspace origin snapshot overwritten with accepted bytes on success.
+status: ready_for_review

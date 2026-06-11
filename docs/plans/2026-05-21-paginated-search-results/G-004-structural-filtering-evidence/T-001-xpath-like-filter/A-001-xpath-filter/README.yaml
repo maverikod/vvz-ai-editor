@@ -1,0 +1,111 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: XPathLikeFilter engine
+target_file: ai_editor/core/search_session/xpath_filter.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-016
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/xpath_filter.py
+
+  MRS excerpt (C-016 XPathLikeFilter):
+  - Universal structural filter evaluating XPath-like queries over validated TreeRepresentation data.
+  - Operates on validated tree representations, not ad-hoc text ({41c7}).
+  - Works with database-backed structural data, indexer in-memory structures, dynamic trees, and draft-session content.
+  - Returns only matching tree nodes.
+  - Shares structure model, node identifiers, and selector semantics with the indexer.
+  - Excludes vectorization from the tree construction and filtering path.
+
+  Scope: XPathLikeFilter node matching only. PreviewReference conversion belongs to G-003
+  (PreviewReference) and downstream paginated adapters; do not import preview_reference here.
+
+  Dependency excerpt — tree validation (from G-003/T-001 tree_representation.py):
+  ```python
+  class TreeValidityState(str, Enum):
+      reused = "reused"
+      recreated = "recreated"
+
+  @dataclass(frozen=True)
+  class TreeRepresentationRef:
+      file_path: str
+      sidecar_path: Path
+      content_checksum: str
+      root_stable_id: Optional[str]
+
+  def validate_or_recreate_tree(
+      *, project_root: Path, file_path: str, force: bool = False
+  ) -> tuple[TreeRepresentationRef, TreeValidityState]:
+      ...
+  ```
+  XPathLikeFilter receives an already-validated ``TreeRepresentationRef`` via
+  ``node_loader``; it does not call ``validate_or_recreate_tree`` itself.
+
+  ``node_loader`` contract (injected by caller — indexed DB, in-memory indexer,
+  dynamic builder, or draft session adapter):
+  ```python
+  Callable[[TreeRepresentationRef], list[TreeNodeMatch]]
+  ```
+  Each ``TreeNodeMatch`` carries ``file_path``, ``stable_id``, ``start_line``,
+  ``end_line``. PreviewReference conversion is the caller's responsibility after
+  filtering; this module returns ``TreeNodeMatch`` only.
+
+  Required imports:
+  - from __future__ import annotations
+  - from collections.abc import Callable
+  - from dataclasses import dataclass
+  - from enum import Enum
+  - from typing import Any
+  - from ai_editor.core.search_session.tree_representation import TreeRepresentationRef
+
+  Implement:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. TreeSourceKind(str, Enum): indexed, in_memory, dynamic, draft_session
+     Docstring: classification of the tree node loader source.
+
+  3. @dataclass(frozen=True) TreeNodeMatch:
+       file_path: str
+       stable_id: str
+       start_line: int
+       end_line: int
+     Docstring on class and each field.
+
+  4. @dataclass(frozen=True) CompiledQuery:
+       normalized_query: str
+     Docstring: v1 holds validated normalized XPath-like query text only.
+
+  5. def compile_xpath_like(query: str) -> CompiledQuery
+     Docstring: strip and validate non-empty query; raise ValueError on blank query.
+
+  6. def filter_tree_nodes(
+        *,
+        tree_ref: TreeRepresentationRef,
+        query: str,
+        source_kind: TreeSourceKind,
+        node_loader: Callable[[TreeRepresentationRef], list[TreeNodeMatch]],
+     ) -> list[TreeNodeMatch]
+     Docstring: compile query, delegate node enumeration to injected node_loader, return matches only.
+     v1 may filter in loader; this function validates query and returns loader output unchanged.
+
+  __all__ = [
+      "CompiledQuery",
+      "TreeNodeMatch",
+      "TreeSourceKind",
+      "compile_xpath_like",
+      "filter_tree_nodes",
+  ]
+
+  Under 200 lines. All public symbols typed and documented.
+
+verification:
+  type: pytest
+  target: tests/unit/test_xpath_filter.py
+  expected: >
+    test_compile_xpath_like_rejects_empty_query;
+    test_filter_tree_nodes_delegates_to_node_loader and returns TreeNodeMatch list;
+    module does not import preview_reference.
+status: ready_for_review

@@ -1,0 +1,115 @@
+step_id: A-008
+parent_tactical_step: T-001
+name: Drop mtime from normalize_cross_finding and delete _source_mtime machinery
+target_file: ai_editor/commands/search_paginated_cross.py
+operation: modify_file
+priority: 1
+depends_on:
+- A-002
+concepts:
+- C-026
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/search_paginated_cross.py
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-001-grep-consumer-integration/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-026)
+
+  ## Goal
+  Remove all Finding.mtime plumbing from the cross-search paginated adapter (C-026).
+  After the Finding dataclass mtime field is removed in the prior step on finding.py,
+  this step deletes mtime from normalize_cross_finding, removes the _source_mtime
+  helper and its cache variables, and stops passing mtime into Finding construction.
+
+  ## MRS excerpt
+
+  C-026 SearchSessionFinding:
+    - does not carry file mtime
+    - ranking does not use mtime as a sort dimension
+    - ordering uses relevance score with a deterministic result_id tie-break
+
+  ## File size contract (a8 region waiver)
+  search_paginated_cross.py is 527 lines and exceeds the 400-line atomic-step file cap.
+  This step touches ONLY the three regions listed below. Every other line in the file
+  is immutable. Locate each region by function name or surrounding context within the
+  on-disk file.
+
+  ## Pre-edit regions (locate on disk — do not assume line numbers)
+
+  Region 1 — function signature and body of normalize_cross_finding:
+      def normalize_cross_finding(
+          raw: dict[str, Any],
+          *,
+          index: int,
+          require_structural_grep: bool = True,
+          mtime: float = 0.0,
+      ) -> Optional[Finding]:
+      ...
+          return Finding(
+              ...
+              mtime=mtime,
+          )
+
+  Region 2 — inside run_paginated_cross, after idx = 0 and before def _write_findings:
+      _mtime_root: list = []
+      _mtime_cache: dict[str, float] = {}
+
+      def _source_mtime(file_path: str) -> float:
+          """Return the source file mtime for a finding, cached per path.
+          ...
+          """
+          ... entire nested function through return value ...
+
+  Region 3 — inside _write_findings, the normalize_cross_finding call:
+          finding = normalize_cross_finding(
+              raw,
+              index=idx,
+              require_structural_grep=require_structural,
+              mtime=_source_mtime(file_path),
+          )
+
+  ## Required edits (only these three regions)
+
+  Edit 1 — normalize_cross_finding:
+  - Delete the `mtime: float = 0.0,` parameter from the signature.
+  - Delete the `mtime=mtime,` keyword from the `return Finding(...)` call.
+
+  Edit 2 — delete Region 2 entirely:
+  - Remove `_mtime_root`, `_mtime_cache`, and the complete nested `_source_mtime`
+    function definition (including its docstring and body).
+
+  Edit 3 — _write_findings call site:
+  - Change the normalize_cross_finding call to pass only raw, index=idx, and
+    require_structural_grep=require_structural (no mtime keyword).
+
+  Post-step: approximately 490 lines (≤527 unchanged except deletions; net −~37 lines).
+  All tests must pass.
+
+  ## Forbidden
+  - Do NOT reintroduce mtime, stat(), or file freshness tie-break logic anywhere in this file.
+  - Do NOT modify phase logic, buffer writes, block assembler, or prefilter helpers.
+  - Do NOT touch other files in this step.
+  - Do NOT reference G-007, universal-id, or UUID-in-marker.
+  - Do NOT add non-standard cross-TS ordering fields or step identifiers in comments.
+
+  ## Validation (.venv active)
+
+      black ai_editor/commands/search_paginated_cross.py
+      flake8 ai_editor/commands/search_paginated_cross.py
+      mypy ai_editor/commands/search_paginated_cross.py
+      pytest tests/unit/test_search_paginated_cross.py -q
+      pytest -q
+
+  Expected: grep for '_source_mtime', '_mtime_root', '_mtime_cache', and 'mtime='
+  in normalize_cross_finding / Finding(...) returns nothing in this file.
+  Full pytest suite passes.
+verification:
+  type: pytest
+  target: tests/unit/test_search_paginated_cross.py
+  expected: >
+    normalize_cross_finding has no mtime parameter and constructs Finding without
+    mtime keyword; _source_mtime machinery deleted; search_paginated_cross.py
+    has no mtime/stat freshness plumbing. Full pytest suite passes.

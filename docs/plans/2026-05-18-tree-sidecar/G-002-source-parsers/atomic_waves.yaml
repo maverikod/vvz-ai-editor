@@ -1,0 +1,28 @@
+# Parallel execution waves for G-002-source-parsers (after G-001 TreeNode exists).
+# Steps in one wave may run concurrently; finish a wave before starting the next.
+# Install: add ruamel.yaml to pyproject first, then `pip install -e .` before any step that imports ruamel.
+
+plan: docs/plans/2026-05-18-tree-sidecar
+global_step: G-002-source-parsers
+
+waves:
+  - id: 1
+    parallel:
+      - tactical: T-001
+        atomic: A-001
+        target_file: ai_editor/core/tree_temp/json_source_parser.py
+      - tactical: T-003
+        atomic: A-001
+        target_file: ai_editor/core/tree_temp/json_source_serializer.py
+      - tactical: T-002
+        atomic: A-001
+        target_file: pyproject.toml
+  - id: 2
+    parallel:
+      - tactical: T-002
+        atomic: A-002
+        target_file: ai_editor/core/tree_temp/yaml_source_parser.py
+      - tactical: T-004
+        atomic: A-001
+        target_file: ai_editor/core/tree_temp/yaml_source_serializer.py
+    note: T-004 assumes ruamel from wave 1; run `pip install -e .` after wave 1.

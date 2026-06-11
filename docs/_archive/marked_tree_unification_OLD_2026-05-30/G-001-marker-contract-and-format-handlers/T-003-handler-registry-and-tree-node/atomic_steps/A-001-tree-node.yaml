@@ -1,0 +1,58 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Create TreeNode dataclass
+target_file: ai_editor/tree/tree_node.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-009
+- C-002
+- C-007
+status: draft
+prompt: "Create the file `ai_editor/tree/tree_node.py`.\nOperation: create_file
+  (the file does not exist yet).\n\nThis file defines the `TreeNode` dataclass (C-009)
+  — the in-memory unit\nproduced by a FormatHandler's parse_content operation.\n\n\
+  ## MRS excerpt\n\nC-002 NodeId: the format-specific identifier that names exactly
+  one\n  addressable block.\n  - the marker string is the identifier, not a pointer
+  to one stored elsewhere\n  - one node id names exactly one addressable block\n \
+  \ - an unrecognised node id yields an input error, never silent ignore\n\nC-007
+  FormatHandler: parse_content(file_path, content) builds the node tree\n  and returns
+  the ordered list of TreeNode instances.\n\nC-009 TreeNode: an in-memory node produced
+  by parsing a marked tree.\n  properties:\n    - produced by a FormatHandler from
+  source content\n    - carries node id (NodeId / C-002), type label, attributes,
+  and text or value\n    - the ordered set of TreeNodes produced by parsing forms
+  the tree structure\n\n## Required file content\n\n```python\nfrom __future__ import
+  annotations\n\nfrom dataclasses import dataclass, field\nfrom typing import Any,
+  Dict, Optional\n\nfrom ai_editor.tree.contracts import NodeId\n\n\n@dataclass\n\
+  class TreeNode:\n    \"\"\"In-memory node produced by a FormatHandler's parse_content
+  (C-009).\n\n    An ordered sequence of TreeNodes returned by parse_content forms
+  the\n    tree structure for a given source file. Each node carries the NodeId\n\
+  \    (C-002) that was embedded in the tree file as its marker.\n\n    Attributes:\n\
+  \        node_id: The NodeId (C-002) embedded in the tree file as the\n        \
+  \    node's marker. Unique within a tree.\n        kind: The type label of this
+  node (e.g. \"paragraph\", \"heading\",\n            \"FunctionDef\", \"mapping\"\
+  , \"object\"). Format-specific.\n        content: The source text or value of the
+  node (without markers).\n        attributes: Optional dict of additional per-node
+  metadata\n            (e.g. heading level, line range, YAML key path). Defaults
+  to\n            an empty dict.\n        parent_id: NodeId of the parent node, or
+  None for root nodes.\n            Populated by handlers that produce nested tree
+  structures.\n    \"\"\"\n\n    node_id: NodeId\n    kind: str\n    content: str\n\
+  \    attributes: Dict[str, Any] = field(default_factory=dict)\n    parent_id: Optional[NodeId]
+  = None\n\n    def __post_init__(self) -> None:\n        \"\"\"Validate that node_id
+  and kind are non-empty strings.\"\"\"\n        if not self.node_id:\n          \
+  \  raise ValueError(\"TreeNode.node_id must be a non-empty string\")\n        if
+  not self.kind:\n            raise ValueError(\"TreeNode.kind must be a non-empty
+  string\")\n```\n\n## Constraints\n- Imports: `from __future__ import annotations`,
+  `dataclasses.dataclass`,\n  `dataclasses.field`, `typing.Any`, `typing.Dict`, `typing.Optional`,\n\
+  \  `ai_editor.tree.contracts.NodeId`. No other imports.\n- Use `@dataclass`
+  decorator; do NOT use `@dataclass(frozen=True)` or any\n  other dataclass options.\n\
+  - `attributes` defaults to an empty dict via `field(default_factory=dict)`.\n- `parent_id`
+  defaults to None.\n- `__post_init__` validates node_id and kind are non-empty.\n\
+  - Estimated line count: ~50 lines.\n"
+verification:
+  type: import
+  target: ai_editor/tree/tree_node.py
+  expected: "`from ai_editor.tree.tree_node import TreeNode; n = TreeNode(node_id=\"\
+    abc\", kind=\"paragraph\", content=\"hello\"); assert n.attributes == {}; assert
+    n.parent_id is None` exits with code 0 and no output.\n"

@@ -1,0 +1,55 @@
+step_id: A-005
+parent_tactical_step: T-003
+name: Удалить monolith edit_session
+target_file: ai_editor/core/edit_session/edit_session.py
+operation: delete_file
+priority: 4
+depends_on:
+- A-002
+concepts:
+- C-019
+prompt: |
+  Delete `ai_editor/core/edit_session/edit_session.py` (operation: delete_file).
+
+  ## Parent scope (T-003)
+
+  Remove monolith after body moved to `edit_session_impl.py` and mutations extracted to
+  `edit_session_mutations.py`. Thin facade recreation restores `edit_session.py`.
+
+  ## Preconditions
+
+  - `edit_session_impl.py` contains full EditSession implementation
+  - All imports of `EditSession` from `edit_session.py` will break until thin facade is
+    recreated — execute facade recreation immediately after this step in the same coding wave
+
+  ## OUT OF SCOPE
+
+  - Recreating thin `edit_session.py` re-export facade
+  - Workspace open mode in `edit_session_impl.py`
+  - draft/lockfile/sidecar/tree-temp path changes → T-004/T-006
+
+  ## Procedure
+
+  1. Verify `ai_editor/core/edit_session/edit_session_impl.py` exists and imports cleanly
+  2. Delete `ai_editor/core/edit_session/edit_session.py` via BackupManager before write
+  3. Do NOT update `__init__.py` in this step (facade recreation step handles re-exports)
+
+  ## Forbidden patterns
+
+  - Do NOT leave partial monolith content
+  - Do NOT modify `edit_session_impl.py` in this AS
+
+  ## Validation commands
+
+  ```bash
+  test ! -f ai_editor/core/edit_session/edit_session.py
+  python -c "from ai_editor.core.edit_session.edit_session_impl import EditSession"
+  ```
+
+  Expected: monolith file absent; impl importable.
+  **Mandatory:** complete thin facade recreation before running full test suite.
+verification:
+  type: manual
+  target: ai_editor/core/edit_session/edit_session.py
+  expected: The monolithic edit_session.py file is absent or deleted. Restoration of the thin edit_session.py re-export facade is handled separately by the facade-recreate work in this tactical step.
+status: draft

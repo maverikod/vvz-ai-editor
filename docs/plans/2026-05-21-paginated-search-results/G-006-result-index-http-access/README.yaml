@@ -1,0 +1,34 @@
+step_id: G-006
+name: Result index and paged HTTP access
+description: "Defines the client-facing directory index of a search job and the HTTP
+  access by which clients read it and the result blocks. The index lists every written
+  block in order with an explicit completeness marker, is the single mutable artefact
+  updated by append while blocks stay immutable, and is returned in one read by job_id.
+  Clients fetch any block directly by position number, poll the index for progress
+  while the search runs, and every successful read refreshes the last-access timestamp.
+  This step defines the index and its HTTP retrieval only; it does not define how
+  blocks are produced or how sessions expire.\n"
+concepts:
+- C-005
+- C-027
+- C-006
+relations:
+- from_concept: C-005
+  to_concept: C-027
+  type: consumes
+- description: HTTPResultAccess refreshes the last-access timestamp on every 
+    successful index, block, or status read.
+  from_concept: C-005
+  to_concept: C-006
+  type: produces
+source_labels:
+- '{4cv1}'
+- '{lann}'
+- '{br58}'
+- '{6cni}'
+depends_on:
+- G-005
+tactical_steps:
+- T-001
+- T-002
+status: ready_for_review

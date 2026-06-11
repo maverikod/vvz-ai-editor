@@ -1,0 +1,66 @@
+step_id: A-017
+parent_tactical_step: T-003
+name: Confirm sidecar_cst_apply observes sibling sidecar via write_sidecar_atomic
+target_file: ai_editor/commands/universal_file_edit/sidecar_cst_apply.py
+operation: modify_file
+priority: 16
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/universal_file_edit/sidecar_cst_apply.py
+
+  ## Goal
+  Satisfy the tactical requirement that sidecar_cst_apply observes the sibling
+  tree-file convention (C-003). The module imports write_sidecar_atomic at module
+  level and calls it after mutations; it never calls sidecar_path_for_py. Update the
+  module docstring to state sibling layout explicitly.
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover; write_sidecar_atomic writes at the sibling path; no pending branch.
+  - properties:
+    - hard cutover; no backward-compatibility shim
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact stored as a sibling file next to the source.
+
+  ## Precondition (file state)
+  The tree_sidecar module on disk must write only via sibling_tree_path.
+
+  ## Required edits (migration-relevant ONLY)
+  Replace the module docstring with:
+
+  """
+  Apply CST edit batches inside universal_file_edit sidecar sessions.
+
+  Persists trees via write_sidecar_atomic at the sibling path <source>.py.tree (C-003).
+  Does not resolve .cst/ or pending sidecar paths.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  Do not change any import, function body, or class.
+
+  ## a3 / a8
+  File is 435 lines (>400). Module docstring only.
+
+  ## Forbidden
+  - Do not import sidecar_path_for_py or promote_pending_sidecar_to_final.
+  - Do not change write_sidecar_atomic call semantics.
+  - Do not touch other files.
+
+  ## Validation
+  black/flake8/mypy exit 0; grep for '.cst', 'pending', 'promote_pending',
+  'sidecar_path_for_py' returns nothing. All tests must pass.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/sidecar_cst_apply.py
+  expected: >
+    Module docstring documents sibling <source>.py.tree via write_sidecar_atomic;
+    calls unchanged; no legacy path symbols; black/flake8/mypy exit 0.

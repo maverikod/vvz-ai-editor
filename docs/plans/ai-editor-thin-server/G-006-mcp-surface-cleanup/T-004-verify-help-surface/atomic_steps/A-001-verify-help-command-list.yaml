@@ -1,0 +1,162 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Проверка help после сужения MCP
+target_file: tests/unit/test_mcp_help_surface.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-016
+- C-022
+prompt: |
+  Create `tests/unit/test_mcp_help_surface.py` (operation: create_file).
+
+  Parent context (G-006 / T-004):
+  - C-016 MCP Workflow Surface: help must list universal_file_open, universal_file_edit,
+    universal_file_write, universal_file_close, universal_file_preview, and health only.
+  - C-022 criterion (6): help must not expose duplicate or legacy command families removed
+    during G-006 unregister work (session_*, subordinate_session_*, project_file_transfer_*,
+    project_file_*lock*, auxiliary universal_file_* , session_git_*, session_undo/redo/write,
+    queue_health).
+
+  Write the file with EXACT content below (module docstring, imports, constants, helper,
+  parametrized tests). Do not add, remove, or rename symbols beyond this template.
+
+  ```python
+  """MCP help surface lists only thin-workflow commands (C-016, C-022).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import pytest
+
+  from ai_editor.hooks import register_ai_editor_commands
+  from mcp_proxy_adapter.commands.command_registry import CommandRegistry
+
+  EXPECTED: frozenset[str] = frozenset(
+      {
+          "universal_file_open",
+          "universal_file_edit",
+          "universal_file_write",
+          "universal_file_close",
+          "universal_file_preview",
+          "health",
+      }
+  )
+
+  FORBIDDEN: frozenset[str] = frozenset(
+      {
+          "session_create",
+          "session_delete",
+          "session_list",
+          "session_view",
+          "session_open_file",
+          "session_close_file",
+          "session_list_file_locks",
+          "subordinate_session_create",
+          "subordinate_session_delete",
+          "subordinate_session_get",
+          "subordinate_session_list",
+          "subordinate_session_update",
+          "project_file_transfer_download_begin",
+          "project_file_transfer_upload_save",
+          "project_file_advisory_lock_batch",
+          "project_file_lock_status",
+          "universal_file_move_nodes",
+          "universal_file_search",
+          "session_git_log",
+          "session_git_diff",
+          "session_git_show",
+          "session_git_status",
+          "session_git_revert",
+          "session_undo",
+          "session_redo",
+          "session_write",
+          "queue_health",
+      }
+  )
+
+
+  def _registered_command_names() -> set[str]:
+      """Return command names registered by editor hooks (MCP help surface)."""
+      reg = CommandRegistry()
+      register_ai_editor_commands(reg)
+      return set(reg.get_all_commands().keys())
+
+
+  @pytest.mark.parametrize("name", sorted(EXPECTED))
+  def test_expected_command_registered(name: str) -> None:
+      """Each thin-workflow command must appear in the MCP help registry."""
+      assert name in _registered_command_names(), (
+          f"Expected command {name!r} missing from MCP help surface after G-006 cleanup"
+      )
+
+
+  @pytest.mark.parametrize("name", sorted(FORBIDDEN))
+  def test_removed_command_not_registered(name: str) -> None:
+      """Legacy / duplicate families must not appear after G-006 unregister work."""
+      assert name not in _registered_command_names(), (
+          f"Forbidden command {name!r} still registered on MCP help surface"
+      )
+
+
+  def test_help_surface_exactly_six_commands() -> None:
+      """C-016: registry exposes exactly the six thin-workflow commands, no extras."""
+      names = _registered_command_names()
+      assert names == EXPECTED, (
+          "Editor MCP help surface must list only universal_file_* workflow commands "
+          "and health; "
+          f"expected={sorted(EXPECTED)!r} "
+          f"actual={sorted(names)!r} "
+          f"extra={sorted(names - EXPECTED)!r} "
+          f"missing={sorted(EXPECTED - names)!r}"
+      )
+  ```
+
+  Helper `_registered_command_names` algorithm:
+  1. Instantiate fresh `CommandRegistry()` (isolated from other tests).
+  2. Call `register_ai_editor_commands(reg)` from `ai_editor.hooks` (same path as server hook).
+  3. Return `set(reg.get_all_commands().keys())` — these names are what MCP help lists.
+
+  Test `test_expected_command_registered`:
+  - Parametrize over sorted EXPECTED; assert each `name` is in `_registered_command_names()`.
+
+  Test `test_removed_command_not_registered`:
+  - Parametrize over sorted FORBIDDEN; assert each `name` is not in `_registered_command_names()`.
+
+  Test `test_help_surface_exactly_six_commands`:
+  - Assert set equality between `_registered_command_names()` and EXPECTED (no extra commands).
+
+  Error handling: no try/except; failed assertions produce the message strings shown above.
+
+  Edge cases:
+  - If hooks register zero commands → parametrized expected tests fail; exact-six test lists missing= all six.
+  - If legacy commands still registered → forbidden parametrized test fails naming the command.
+  - If extra non-legacy commands remain → exact-six test fails with extra= listing them.
+
+  Forbidden:
+  - Do NOT import CommandRegistry from ai_editor.commands.registration.
+  - Do NOT modify hooks_register_*.py or registration.py in this step.
+  - Do NOT add print() debugging.
+  - Do NOT modify any file other than `tests/unit/test_mcp_help_surface.py`.
+
+  Validation (run from project root with .venv active):
+  - black tests/unit/test_mcp_help_surface.py → "reformatted" or "would be left unchanged"
+  - flake8 tests/unit/test_mcp_help_surface.py → no output (exit 0)
+  - mypy tests/unit/test_mcp_help_surface.py → "Success: no issues found"
+  - pytest tests/unit/test_mcp_help_surface.py -v → all PASSED
+verification:
+  type: pytest
+  target: tests/unit/test_mcp_help_surface.py
+  expected: >
+    pytest tests/unit/test_mcp_help_surface.py -v exits 0 with all tests PASSED:
+    the editor MCP registry lists universal_file_open, universal_file_edit,
+    universal_file_write, universal_file_close, universal_file_preview, and health,
+    and lists none of the FORBIDDEN legacy families (session_*, subordinate_session_*,
+    project_file_transfer_*, project_file_*lock*, universal_file_move_nodes,
+    universal_file_search, session_git_*, session_undo, session_redo, session_write,
+    queue_health).
+status: draft

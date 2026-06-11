@@ -1,0 +1,91 @@
+step_id: A-009
+parent_tactical_step: T-003
+name: Paginated tree_query execute adapter
+target_file: ai_editor/commands/search_paginated_tree_query.py
+operation: create_file
+priority: 9
+depends_on: []
+concepts:
+  - C-021
+  - C-023
+  - C-024
+  - C-001
+  - C-004
+  - C-015
+  - C-016
+  - C-029
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_paginated_tree_query.py
+
+  MRS (C-021 ExistingSearchCommand): tree_query has no legacy inline command; paginated adapter is the sole path.
+  MRS (C-023 BackwardCompatibleCommandContract): optional pagination fields; tree_query requires paginated=true at bridge.
+  MRS (C-015 TreeRepresentation): structural representation for supported files.
+  MRS (C-016 XPathLikeFilter): XPath-like filtering over tree nodes.
+  MRS (C-001 SearchSession): tree_query results paginate through same session blocks as other backends.
+  MRS (C-029 BlockAssembler): publishes structural node matches as immutable blocks.
+
+  Import typing: Any, Callable, Optional from typing.
+
+  Shared types (import only; same pipeline block as G-008/T-003/A-005):
+  - SearchSession, SearchSessionState from ai_editor.core.search_session.session
+  - SearchSessionDirectoryLayout from ai_editor.core.search_session.directory
+  - SearchSessionManifest, write_manifest_atomic, capture_server_process_identity, DEFAULT_METRICS
+    from ai_editor.core.search_session.manifest
+  - initialize_service_metadata from ai_editor.core.search_session.service_metadata
+  - RawFindingBuffer from ai_editor.core.search_session.raw_finding_buffer
+  - BlockAssembler from ai_editor.core.search_session.block_assembler
+  - append_block_entry, mark_index_finished, COMPLETENESS_FINISHED from ai_editor.core.search_session.result_index
+  - update_manifest_atomic from ai_editor.core.search_session.manifest
+  - atomic_write_json from ai_editor.core.search_session.atomic_publication
+  - load_session_ttl_policy from ai_editor.core.search_session.policy
+
+  XPath filter API (exact names from ai_editor.core.search_session.xpath_filter):
+  - TreeRepresentationRef from ai_editor.core.search_session.tree_representation
+  - TreeSourceKind, TreeNodeMatch, CompiledQuery, compile_xpath_like, filter_tree_nodes from xpath_filter
+  - PreviewReference from ai_editor.core.search_session.preview_reference
+
+  Production tree_scanner wiring:
+  - compiled: CompiledQuery = compile_xpath_like(params["xpath"])
+  - For each candidate file tree_ref: TreeRepresentationRef, call
+    filter_tree_nodes(
+        tree_ref=tree_ref,
+        query=compiled.normalized_query,
+        source_kind=TreeSourceKind.indexed,
+        node_loader=<callable returning list[TreeNodeMatch] for that tree_ref>,
+    )
+  - Map each TreeNodeMatch (file_path, stable_id, start_line, end_line) to finding dict via normalize_tree_query_finding.
+
+  Implement:
+  - def normalize_tree_query_finding(raw: dict[str, Any], *, index: int) -> dict[str, Any]
+    result_id f"tree_query-{index:06d}", source="tree_query", file_path, start_line, end_line,
+    node_ref from stable_id, selector from xpath, preview-compatible reference fields.
+
+  - async def run_paginated_tree_query(
+        *,
+        params: dict[str, Any],
+        session: SearchSession,
+        layout: SearchSessionDirectoryLayout,
+        raw_config: dict[str, Any],
+        block_assembler_factory: Callable[..., BlockAssembler],
+        tree_scanner: Callable[..., list[dict[str, Any]]],
+    ) -> Optional[int]
+    Uses tree_scanner callable (injected for tests) to enumerate per-file xpath matches from params
+    xpath and file_pattern; writes manifest phase xpath_filtering; buffers findings; publishes first block;
+    returns block position 1 when matches exist.
+
+  Constraints:
+  - Under 280 lines.
+  - Author header.
+  - Full working implementation with injectable tree_scanner; production wiring supplies scanner using
+    filter_tree_nodes API above.
+  - No NotImplementedError or TODO placeholders.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_paginated_tree_query.py
+  expected: >
+    Injected tree_scanner findings normalize with preview-compatible node_ref; first block published
+    at position 1; empty scanner returns None without error; filter_tree_nodes called with tree_ref,
+    query, source_kind, and node_loader keyword arguments.
+status: ready_for_review

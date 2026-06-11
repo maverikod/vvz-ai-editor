@@ -1,0 +1,53 @@
+# G-001 / G-003 alignment note — HRS review cascade 2026-05-30
+# Parent audit: docs/ai_reports/g002_audit_findings.yaml
+#
+# SUPERSEDED (node-id model, Phase F counts/verdicts): see
+# docs/ai_reports/marked_tree_unification_dovodka_audit.yaml
+# → node_id_cascade_phase_f (2026-05-30). History below retained.
+#           cascade_id hrs-review-cascade-2026-05-30
+# Updated: e003-hrs-f001-cascade-2026-05-30 (HRS-F001 resolved)
+
+meta:
+  plan_name: marked_tree_unification
+  parent_audit: docs/ai_reports/g002_audit_findings.yaml
+  parent_cascade_id: hrs-review-cascade-2026-05-30
+  latest_cascade_id: e003-hrs-f001-cascade-2026-05-30
+  recorded_at: '2026-05-30'
+
+summary: >
+  After HRS {b000} universal all-nodes marker augment and session-lifecycle
+  paragraphs {d002}-{d005}, G-001 and G-003 global-step READMEs were re-projected
+  from MRS. G-001 now states the all-nodes marker rule (metadata slot or END-of-block
+  comment) and delegates hide/unhide during mutation to EditSession, not FormatHandler.
+  G-003 now encodes FINAL-2 open content-supply rule, hide/unhide mutation cycle,
+  per-mutation post-steps (write tree, unmark export, checksums, git commit), and
+  close-without-validation semantics. Both steps remain status needs_review pending
+  tactical/atomic layer refresh under the parent cascade.
+
+e003_resolution:
+  finding: HRS-F001
+  status: resolved
+  cascade_id: e003-hrs-f001-cascade-2026-05-30
+  change: >
+    HRS {e003} closing aligned with {d003}: in-session source re-exported after
+    every mutation via unmark; source mode compares rev_a against most recent
+    per-mutation exported in-session source. MRS C-014 source-mode property cascaded.
+  g003_impact: >
+    G-003 source_labels already include {e003}; description source-level diff
+    semantics now consistent with augmented {d003} and corrected {e003}. No G-003
+    README rewrite required this cascade.
+
+alignment:
+  g001:
+    hrs_paragraphs: ['{b000}', '{a001}', '{a003}', '{a004}', '{b001}'-'{b005}']
+    mrs_concepts: [C-001, C-005, C-007, C-008, C-009]
+    key_change: universal all-nodes marker rule explicit in G-001 description
+  g003:
+    hrs_paragraphs: ['{d001}'-'{d006}', '{e001}'-'{e006}']
+    mrs_concepts: [C-012, C-013, C-014]
+    key_change: FINAL-2 content-supply rule and full mutation-cycle invariant in G-003 description
+
+verdict:
+  aligned_with_parent_cascade: true
+  hrs_f001_closed: true
+  overall_green: true

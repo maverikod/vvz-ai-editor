@@ -1,0 +1,65 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: DeadSessionDetection
+target_file: ai_editor/core/search_session/dead_detection.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-010
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/dead_detection.py
+
+  MRS (C-010 DeadSessionDetection): missing pid; start_time mismatch; stale heartbeat.
+
+  Imports:
+  - from __future__ import annotations
+  - import os
+  - from enum import Enum
+  - from ai_editor.core.search_session.heartbeat import is_heartbeat_stale
+  - from ai_editor.core.search_session.manifest import SearchSessionManifest
+
+  Implement:
+  - _PID_REUSE_TOLERANCE_SECONDS = 1.0
+  - class DeadSessionVerdict(str, Enum): live, dead, orphaned, timed_out
+  - def evaluate_session_liveness(
+        manifest: SearchSessionManifest,
+        *,
+        hard_timeout_seconds: float,
+        now: float,
+    ) -> DeadSessionVerdict
+
+  Verdict table (evaluate in this order; first match wins):
+
+  | Verdict   | Condition |
+  |-----------|-----------|
+  | dead      | manifest.process.main_pid missing, not positive, or os.kill(pid, 0) raises ProcessLookupError |
+  | orphaned  | process alive AND live process_start_epoch > manifest.process.process_start_time + tolerance (PID reuse) |
+  | timed_out | process alive AND identity matches AND is_heartbeat_stale(manifest, hard_timeout_seconds=..., now=...) is True |
+  | live      | none of the above |
+
+  timed_out vs orphaned resolution:
+  - orphaned: recorded pid exists but belongs to a different process instance (start time advanced
+    beyond tolerance); cleanup treats it like a dead owner.
+  - timed_out: same process instance is alive but the search worker stopped refreshing heartbeat_at
+    within hard_timeout_seconds while manifest.status is running.
+  - Never classify stale heartbeat as orphaned.
+  - Never classify PID reuse as timed_out.
+
+  Private helpers:
+  - _is_process_alive(pid: int) -> bool  (PermissionError => treat as alive)
+  - _probe_process_start_epoch(pid: int) -> float | None  (/proc/{pid}/stat when available)
+  - _linux_boot_time_epoch() -> float | None
+
+  Under 150 lines. Author header.
+
+verification:
+  type: pytest
+  target: tests/unit/test_dead_session_detection.py
+  expected: >
+    Missing or exited process => dead.
+    Live pid with start time mismatch beyond tolerance => orphaned (not timed_out).
+    Live pid with matching identity and stale heartbeat on running session => timed_out (not orphaned).
+    Fresh heartbeat and valid process => live.
+status: frozen

@@ -1,0 +1,91 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: SessionHeartbeat writer
+target_file: ai_editor/core/search_session/heartbeat.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-009
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/heartbeat.py
+
+  MRS (C-009 SessionHeartbeat): heartbeat_at in manifest; distinguishes live search from stuck worker;
+  stale beyond hard timeout => timed_out (classification delegated to dead_detection).
+
+  Dependency excerpt — manifest contract
+  (ai_editor/core/search_session/manifest.py):
+
+  ```python
+  @dataclass
+  class ServerProcessIdentity:
+      main_pid: int
+      process_start_time: float
+      host: Optional[str] = None
+      instance_id: Optional[str] = None
+
+
+  @dataclass
+  class SearchSessionManifest:
+      search_id: str
+      created_at: float
+      last_access_at: float
+      heartbeat_at: Optional[float]
+      status: str
+      phase: str
+      request: dict[str, Any]
+      metrics: dict[str, int]
+      process: ServerProcessIdentity
+      block_ready_count: int = 0
+
+
+  def read_manifest(layout: SearchSessionDirectoryLayout) -> SearchSessionManifest:
+      """Load manifest JSON; raise FileNotFoundError when missing."""
+
+
+  def update_manifest_atomic(
+      layout: SearchSessionDirectoryLayout,
+      mutator: Callable[[SearchSessionManifest], SearchSessionManifest],
+  ) -> SearchSessionManifest:
+      """Read-modify-write manifest under an exclusive lock on manifest.json.lock."""
+  ```
+
+  Imports:
+  - from __future__ import annotations
+  - import time
+  - from collections.abc import Callable
+  - from dataclasses import replace
+  - from ai_editor.core.search_session.directory import SearchSessionDirectoryLayout
+  - from ai_editor.core.search_session.manifest import (
+        SearchSessionManifest,
+        update_manifest_atomic,
+    )
+
+  Implement:
+  - _RUNNING_STATUS = "running"
+  - def make_heartbeat_hook(layout: SearchSessionDirectoryLayout) -> Callable[[], None]
+      Returns no-arg callable that calls touch_heartbeat(layout, now=time.time()).
+  - def touch_heartbeat(layout: SearchSessionDirectoryLayout, *, now: float) -> None
+      update_manifest_atomic(layout, lambda m: replace(m, heartbeat_at=now))
+  - def is_heartbeat_stale(
+        manifest: SearchSessionManifest,
+        *,
+        hard_timeout_seconds: float,
+        now: float,
+    ) -> bool
+      Return False when manifest.status != _RUNNING_STATUS.
+      Return True when heartbeat_at is None on a running session.
+      Return True when (now - heartbeat_at) > hard_timeout_seconds.
+
+  Under 100 lines. Author header.
+
+verification:
+  type: pytest
+  target: tests/unit/test_session_heartbeat.py
+  expected: >
+    touch_heartbeat updates manifest heartbeat_at via update_manifest_atomic.
+    is_heartbeat_stale returns False for non-running status.
+    is_heartbeat_stale returns True when heartbeat_at is None on running session.
+    is_heartbeat_stale returns True when elapsed exceeds hard_timeout_seconds.
+status: frozen

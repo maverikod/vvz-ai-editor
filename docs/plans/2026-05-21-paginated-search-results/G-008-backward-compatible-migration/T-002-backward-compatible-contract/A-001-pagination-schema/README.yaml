@@ -1,0 +1,50 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Shared pagination schema helpers
+target_file: ai_editor/commands/search_session_schema.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-021
+  - C-023
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_session_schema.py
+
+  MRS (C-021 ExistingSearchCommand):
+  - Keeps current non-paginated behavior as the default for existing callers.
+  - May be extended through optional parameters or compatible bridge commands.
+
+  MRS (C-023 BackwardCompatibleCommandContract):
+  - Current behavior remains default.
+  - New pagination fields are optional.
+  - Existing callers do not need to change.
+
+  Implement:
+  - OPTIONAL_PAGINATION_PROPERTIES: dict[str, Any] for get_schema reuse:
+      paginated: {type: boolean, default: false, description: opt in to SearchSession-backed blocks}
+      include_job_id: {type: boolean, default: true}
+      job_id: {type: string, description: existing session id for continuation via block_position}
+      block_position: {type: integer, minimum: 1, description: 1-based result block position in job index}
+  - def merge_pagination_schema(
+        base_schema: dict[str, Any],
+        *,
+        include_job_id_default: bool = True,
+    ) -> dict[str, Any]
+    Returns a deep copy of base_schema with optional pagination properties merged into properties;
+    does not add pagination fields to required; preserves additionalProperties from base when present.
+
+  Constraints:
+  - Under 120 lines.
+  - Author header (Vasiliy Zdanovskiy, vasilyvz@gmail.com).
+  - Do not reference README opaque cursor; block_position is the canonical continuation field.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_session_schema.py
+  expected: >
+    merge_pagination_schema preserves base required keys and additionalProperties; paginated defaults
+    to false; optional job_id and block_position properties are present; pagination fields are never
+    added to required; pytest covers merge with a minimal base schema and with include_job_id_default=False.
+status: ready_for_review

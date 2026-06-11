@@ -1,0 +1,60 @@
+step_id: T-701
+parent_global_step: G-008
+name: YAML file handler — open and produce root Node
+status: done
+concepts:
+- C-003
+- C-004
+- C-014
+- C-020
+description: |
+  Define the opening behaviour of YamlFileHandler (C-020), which extends FileHandler
+  (C-003), for .yaml and .yml files. Single document per file: no multi-document stream.
+  Parsing uses yaml.safe_load; anchors and aliases are resolved by the loader.
+
+  The file is read as UTF-8 with errors=replace before parsing.
+
+  When invoked to open a YAML file, YamlFileHandler parses it and produces a root Node
+  whose NodeKind (C-004) depends on the top-level YAML value type, except that an empty
+  stream or a comment-only document yields root NodeKind mapping with an empty block set
+  ({}), not a scalar null. A bare YAML null at the root is treated as an empty document
+  with the same empty mapping root (aligned with current code).
+
+  Root Node NodeKind by document type:
+  - YAML mapping: NodeKind mapping. Block set is the ordered sequence of key-value
+    pairs. Each pair is one self-contained Block carrying both the key and the value.
+  - YAML sequence: NodeKind sequence. Block set is the ordered sequence of sequence
+    elements, each with its own NodeKind.
+  - YAML bare scalar (string, number, boolean, null): NodeKind scalar. Block set is empty.
+
+  Interior node structure:
+  - YAML values are mapped recursively: nested mappings become mapping Nodes, nested
+    sequences become sequence Nodes, scalar values become scalar Nodes.
+
+  Lazy materialisation: children are produced lazily via `_yaml_value_to_node` and loaders;
+  YamlFileHandler materialises only the root and the children needed by the current
+  NavigationProcedure request.
+
+  `open_root` accepts an optional `PreviewBudget` per the FileHandler contract; it is ignored
+  for YAML until a dedicated budget step exists.
+
+  File-structure errors: invalid YAML yields FILE_STRUCTURE_ERROR of class
+  ErrorClassification (C-014) with parser name yaml and, when available, the line number from
+  `problem_mark` (the response envelope does not expose column today). Non-parse failures on
+  read (for example OSError) use the same FILE_STRUCTURE_ERROR classification with parser
+  yaml.
+inputs:
+- name: file_path
+  type: string
+  description: Project-relative path to the .yaml or .yml file to open.
+outputs:
+- name: root_node
+  type: Node with NodeKind mapping | sequence | scalar (C-004)
+  description: The root Node produced from the parsed YAML file. Its NodeKind is determined
+    by the top-level YAML value type.
+- name: file_structure_error
+  type: ErrorClassification (C-014) FILE_STRUCTURE_ERROR
+  description: Returned instead of root_node when the file is not valid YAML or cannot be
+    read. Carries parser name yaml and line when available for syntax errors.
+atomic_steps:
+- A-001

@@ -1,0 +1,81 @@
+# Global Step G-005 — Mutation Operations
+
+# Level 3 artifact. Conceptual block. Domain objects and operations only.
+step_id: G-005
+name: Mutation Operations
+description: 'Establish the four mutation operations on a tree object, all of which
+  address nodes by stable identity — naming the target node, and where applicable
+  the destination parent or sibling, by identity rather than by position — and all
+  of which leave the tree indexes consistent with the mutated structure, so that after
+  any single operation no index entry points at a removed node and every surviving
+  node remains reachable through the identity index, the attribute indexes, and the
+  parent relation that apply to it. The StableId used to address a node is obtained
+  by first querying the tree through the QueryInterface (C-008): the caller resolves
+  a node by name, type, kind, or path-style selector to receive its StableId, then
+  passes that StableId to the mutation operation. This query-then-mutate chain — QueryInterface
+  produces StableId, mutation consumes StableId — is the only supported addressing
+  path; position-based addressing is not provided. Insert places a new node or subtree
+  at a position relative to a target node or inside a target parent; the inserted
+  nodes receive fresh stable identities and every pre-existing node keeps its identity
+  unchanged. Delete removes a target node and its entire subtree; every remaining
+  node keeps its identity unchanged, while the identities of removed nodes are gone
+  with them. Replace substitutes a target node with a new node or subtree; the new
+  nodes receive fresh identities and every other node keeps its identity unchanged.
+  Move relocates a target node and its entire subtree to a new position relative to
+  another node or inside another parent; the moved node and every descendant of it,
+  however deeply nested and whatever their node categories, keep their identities
+  unchanged with only their position changing, and every node outside the moved subtree
+  also keeps its identity unchanged. Move carries the strictest identity guarantee
+  and is the central reason the package exists. A move carries with the moved subtree
+  all formatting attached to it, including its docstring and its leading comments
+  and blank lines, so attached content is never lost; the operation does not normalize
+  the blank-line cosmetics left at the source or introduced at the destination, leaving
+  a valid, structurally faithful result whose surrounding blank-line count may differ
+  from a style ideal, with style normalization left to the caller. This step defines
+  the four operations, their identity preservation rules, the move formatting-carry
+  contract, the query-then-mutate addressing chain, and consistency of the identity
+  index, attribute indexes, and parent relation after mutation. It does not define
+  the tree object or index structure, conversion, persistence, or query.'
+concepts:
+- C-011  # InsertOperation
+- C-012 # DeleteOperation
+- C-013 # ReplaceOperation
+- C-014 # MoveOperation
+relations:
+- C-011 uses C-004
+- C-012 uses C-004
+- C-013 uses C-004
+- C-014 uses C-004
+- C-011 uses C-003
+- C-012 uses C-003
+- C-013 uses C-003
+- C-014 uses C-003
+- C-011 uses C-005
+- C-012 uses C-005
+- C-013 uses C-005
+- C-014 uses C-005
+- C-011 uses C-006
+- C-012 uses C-006
+- C-013 uses C-006
+- C-014 uses C-006
+- C-011 uses C-007
+- C-012 uses C-007
+- C-013 uses C-007
+- C-014 uses C-007
+source_labels:
+- '{j8m6}'
+- '{z0lu}'
+- '{lqg8}'
+- '{hevj}'
+- '{m5zg}'
+- '{t8rc}'
+- '{8niu}'
+- '{prib}'
+depends_on:
+- G-002
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+status: draft

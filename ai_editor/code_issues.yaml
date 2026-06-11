@@ -1,0 +1,2257 @@
+issues:
+  any_type_usage: []
+  classes_without_docstrings:
+  - class: _ParsedPseudo
+    file: ai_editor/cst_query/parser.py
+    line: 73
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 78
+  - class: _NodeInfo
+    file: ai_editor/cst_query/executor.py
+    line: 47
+  - class: FunctionChunk
+    file: ai_editor/core/duplicate_detector_semantic.py
+    line: 47
+  - class: _TmpChunk
+    file: ai_editor/core/faiss_manager_rebuild.py
+    line: 281
+  - class: _StatementListRewriter
+    file: ai_editor/core/cst_module/patcher.py
+    line: 107
+  - class: NodeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 61
+  - class: RangeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 207
+  - class: NodeRemover
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 36
+  - class: Finder
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 79
+  - class: ParentFinder
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 178
+  - class: FindByStart
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 114
+  - class: PositionInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 73
+  - class: NodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 134
+  - class: RelativeNodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 286
+  - class: ListCSTBlocksCommand
+    file: ai_editor/commands/list_cst_blocks_command.py
+    line: 25
+  - class: QueryChunk
+    file: ai_editor/commands/semantic_search_mcp.py
+    line: 162
+  - class: QueryCSTCommand
+    file: ai_editor/commands/query_cst_command.py
+    line: 38
+  - class: _TmpChunk
+    file: ai_editor/commands/vector_commands/revectorize.py
+    line: 442
+  files_too_large:
+  - exceeds_limit: 149
+    file: ai_editor/main_workers.py
+    limit: 400
+    lines: 549
+  - exceeds_limit: 18
+    file: ai_editor/cli/server_manager_cli.py
+    limit: 400
+    lines: 418
+  - exceeds_limit: 182
+    file: ai_editor/core/comprehensive_analyzer.py
+    limit: 400
+    lines: 582
+  - exceeds_limit: 176
+    file: ai_editor/core/worker_lifecycle.py
+    limit: 400
+    lines: 576
+  - exceeds_limit: 2
+    file: ai_editor/core/faiss_manager.py
+    limit: 400
+    lines: 402
+  - exceeds_limit: 7
+    file: ai_editor/core/settings_manager.py
+    limit: 400
+    lines: 407
+  - exceeds_limit: 179
+    file: ai_editor/core/db_integrity.py
+    limit: 400
+    lines: 579
+  - exceeds_limit: 10
+    file: ai_editor/core/project_discovery.py
+    limit: 400
+    lines: 410
+  - exceeds_limit: 69
+    file: ai_editor/core/exceptions.py
+    limit: 400
+    lines: 469
+  - exceeds_limit: 41
+    file: ai_editor/core/worker_manager.py
+    limit: 400
+    lines: 441
+  - exceeds_limit: 103
+    file: ai_editor/core/backup_manager.py
+    limit: 400
+    lines: 503
+  - exceeds_limit: 215
+    file: ai_editor/core/vectorization_worker_pkg/batch_processor.py
+    limit: 400
+    lines: 615
+  - exceeds_limit: 5
+    file: ai_editor/core/vectorization_worker_pkg/processing_cycle_projects.py
+    limit: 400
+    lines: 405
+  - exceeds_limit: 6
+    file: ai_editor/core/vectorization_worker_pkg/runner.py
+    limit: 400
+    lines: 406
+  - exceeds_limit: 131
+    file: ai_editor/core/indexing_worker_pkg/processing.py
+    limit: 400
+    lines: 531
+  - exceeds_limit: 38
+    file: ai_editor/core/cst_module/patcher.py
+    limit: 400
+    lines: 438
+  - exceeds_limit: 182
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    limit: 400
+    lines: 582
+  - exceeds_limit: 82
+    file: ai_editor/core/cst_tree/tree_builder.py
+    limit: 400
+    lines: 482
+  - exceeds_limit: 5
+    file: ai_editor/core/cst_tree/tree_modifier.py
+    limit: 400
+    lines: 405
+  - exceeds_limit: 119
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    limit: 400
+    lines: 519
+  - exceeds_limit: 176
+    file: ai_editor/core/database/schema_creation_create.py
+    limit: 400
+    lines: 576
+  - exceeds_limit: 182
+    file: ai_editor/core/database/base.py
+    limit: 400
+    lines: 582
+  - exceeds_limit: 29
+    file: ai_editor/core/database/schema_definition_tables_rest.py
+    limit: 400
+    lines: 429
+  - exceeds_limit: 114
+    file: ai_editor/core/database/files/atomic.py
+    limit: 400
+    lines: 514
+  - exceeds_limit: 148
+    file: ai_editor/core/docstring_chunker_pkg/docstring_chunker.py
+    limit: 400
+    lines: 548
+  - exceeds_limit: 35
+    file: ai_editor/core/refactorer_pkg/file_splitter.py
+    limit: 400
+    lines: 435
+  - exceeds_limit: 49
+    file: ai_editor/core/refactorer_pkg/validators.py
+    limit: 400
+    lines: 449
+  - exceeds_limit: 229
+    file: ai_editor/core/database_client/client_api_files.py
+    limit: 400
+    lines: 629
+  - exceeds_limit: 63
+    file: ai_editor/core/db_driver/sqlite.py
+    limit: 400
+    lines: 463
+  - exceeds_limit: 202
+    file: ai_editor/commands/cst_convert_and_save_command.py
+    limit: 400
+    lines: 602
+  - exceeds_limit: 25
+    file: ai_editor/commands/code_mapper_mcp_commands.py
+    limit: 400
+    lines: 425
+  - exceeds_limit: 141
+    file: ai_editor/commands/worker_status.py
+    limit: 400
+    lines: 541
+  - exceeds_limit: 102
+    file: ai_editor/commands/refactor_extract_superclass.py
+    limit: 400
+    lines: 502
+  - exceeds_limit: 98
+    file: ai_editor/commands/find_duplicates_mcp.py
+    limit: 400
+    lines: 498
+  - exceeds_limit: 92
+    file: ai_editor/commands/refactor_split_class.py
+    limit: 400
+    lines: 492
+  - exceeds_limit: 5
+    file: ai_editor/commands/run_project_module_command.py
+    limit: 400
+    lines: 405
+  - exceeds_limit: 177
+    file: ai_editor/commands/cst_save_tree_command.py
+    limit: 400
+    lines: 577
+  - exceeds_limit: 96
+    file: ai_editor/commands/cst_create_file_command.py
+    limit: 400
+    lines: 496
+  - exceeds_limit: 25
+    file: ai_editor/commands/run_project_script_command.py
+    limit: 400
+    lines: 425
+  - exceeds_limit: 3
+    file: ai_editor/commands/file_structure_command.py
+    limit: 400
+    lines: 403
+  - exceeds_limit: 146
+    file: ai_editor/commands/semantic_search_mcp.py
+    limit: 400
+    lines: 546
+  - exceeds_limit: 96
+    file: ai_editor/commands/check_vectors_command.py
+    limit: 400
+    lines: 496
+  - exceeds_limit: 78
+    file: ai_editor/commands/cst_find_node_command.py
+    limit: 400
+    lines: 478
+  - exceeds_limit: 36
+    file: ai_editor/commands/cst_get_node_info_command.py
+    limit: 400
+    lines: 436
+  - exceeds_limit: 129
+    file: ai_editor/commands/refactor_split_file_to_package.py
+    limit: 400
+    lines: 529
+  - exceeds_limit: 8
+    file: ai_editor/commands/comprehensive_analysis_mcp/execute_batch.py
+    limit: 400
+    lines: 408
+  - exceeds_limit: 13
+    file: ai_editor/commands/comprehensive_analysis_mcp/metadata.py
+    limit: 400
+    lines: 413
+  - exceeds_limit: 4
+    file: ai_editor/commands/ast/list_entities.py
+    limit: 400
+    lines: 404
+  - exceeds_limit: 61
+    file: ai_editor/commands/ast/search_nodes.py
+    limit: 400
+    lines: 461
+  - exceeds_limit: 161
+    file: ai_editor/commands/ast/usages.py
+    limit: 400
+    lines: 561
+  - exceeds_limit: 115
+    file: ai_editor/commands/ast/dependencies.py
+    limit: 400
+    lines: 515
+  - exceeds_limit: 16
+    file: ai_editor/commands/ast/entity_info.py
+    limit: 400
+    lines: 416
+  - exceeds_limit: 52
+    file: ai_editor/commands/project_management_mcp_commands/delete_project.py
+    limit: 400
+    lines: 452
+  - exceeds_limit: 69
+    file: ai_editor/commands/project_management_mcp_commands/create_project.py
+    limit: 400
+    lines: 469
+  - exceeds_limit: 17
+    file: ai_editor/commands/project_management_mcp_commands/change_project_id.py
+    limit: 400
+    lines: 417
+  - exceeds_limit: 93
+    file: ai_editor/commands/vector_commands/revectorize.py
+    limit: 400
+    lines: 493
+  - exceeds_limit: 75
+    file: ai_editor/commands/file_management/repair_database.py
+    limit: 400
+    lines: 475
+  files_without_docstrings: []
+  generic_exception_usage: []
+  imports_in_middle: []
+  invalid_imports:
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/main_app_events.py
+    imported: DEFAULT_SHUTDOWN_GRACE_TIMEOUT
+    line: 15
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_app_events.py
+    imported: startup_database_driver
+    line: 16
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_app_events.py
+    imported: startup_file_watcher_worker
+    line: 16
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_app_events.py
+    imported: startup_indexing_worker
+    line: 16
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_app_events.py
+    imported: startup_vectorization_worker
+    line: 16
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.logging' cannot be imported
+    file: ai_editor/main_daemon_logging.py
+    imported: create_unified_formatter
+    line: 45
+    module: ai_editor.logging
+    type: import_from
+  - description: Module 'ai_editor.logging' cannot be imported
+    file: ai_editor/main_daemon_logging.py
+    imported: install_unified_record_factory
+    line: 45
+    module: ai_editor.logging
+    type: import_from
+  - description: Module 'ai_editor.main_app_events' cannot be imported
+    file: ai_editor/main_app_factory.py
+    imported: register_startup_shutdown_events
+    line: 16
+    module: ai_editor.main_app_events
+    type: import_from
+  - description: Module 'ai_editor.logging' cannot be imported
+    file: ai_editor/main_app_factory.py
+    imported: create_unified_formatter
+    line: 61
+    module: ai_editor.logging
+    type: import_from
+  - description: Module 'ai_editor.logging' cannot be imported
+    file: ai_editor/main_app_factory.py
+    imported: install_unified_record_factory
+    line: 61
+    module: ai_editor.logging
+    type: import_from
+  - description: Module 'ai_editor.commands.base_mcp_command' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: BaseMCPCommand
+    line: 12
+    module: ai_editor.commands.base_mcp_command
+    type: import_from
+  - description: Module 'ai_editor.core.storage_paths' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: ensure_storage_dirs
+    line: 13
+    module: ai_editor.core.storage_paths
+    type: import_from
+  - description: Module 'ai_editor.core.storage_paths' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: load_raw_config
+    line: 13
+    module: ai_editor.core.storage_paths
+    type: import_from
+  - description: Module 'ai_editor.core.storage_paths' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: resolve_storage_paths
+    line: 13
+    module: ai_editor.core.storage_paths
+    type: import_from
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: DEFAULT_BATCH_SIZE
+    line: 18
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: DEFAULT_DATABASE_DRIVER_LOG_FILENAME
+    line: 18
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: DEFAULT_POLL_INTERVAL
+    line: 18
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.core.config' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: ServerConfig
+    line: 23
+    module: ai_editor.core.config
+    type: import_from
+  - description: Module 'ai_editor.core.config' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: get_driver_config
+    line: 23
+    module: ai_editor.core.config
+    type: import_from
+  - description: Module 'ai_editor.core.worker_manager' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: get_worker_manager
+    line: 24
+    module: ai_editor.core.worker_manager
+    type: import_from
+  - description: Module 'ai_editor.core.database' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: CodeDatabase
+    line: 282
+    module: ai_editor.core.database
+    type: import_from
+  - description: Module 'ai_editor.core.database.base' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: create_driver_config_for_worker
+    line: 283
+    module: ai_editor.core.database.base
+    type: import_from
+  - description: Module 'ai_editor.core.config' cannot be imported
+    file: ai_editor/main_workers.py
+    imported: get_driver_config
+    line: 286
+    module: ai_editor.core.config
+    type: import_from
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/main.py
+    imported: DEFAULT_CONFIG_FILENAME
+    line: 15
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.core.settings_manager' cannot be imported
+    file: ai_editor/main.py
+    imported: get_settings
+    line: 16
+    module: ai_editor.core.settings_manager
+    type: import_from
+  - description: Module 'ai_editor.main_app_factory' cannot be imported
+    file: ai_editor/main.py
+    imported: create_app_with_events
+    line: 17
+    module: ai_editor.main_app_factory
+    type: import_from
+  - description: Module 'ai_editor.main_app_factory' cannot be imported
+    file: ai_editor/main.py
+    imported: setup_main_logger_file_handler
+    line: 17
+    module: ai_editor.main_app_factory
+    type: import_from
+  - description: Module 'ai_editor.main_cleanup' cannot be imported
+    file: ai_editor/main.py
+    imported: register_cleanup_handlers
+    line: 21
+    module: ai_editor.main_cleanup
+    type: import_from
+  - description: Module 'ai_editor.main_config' cannot be imported
+    file: ai_editor/main.py
+    imported: apply_global_config
+    line: 22
+    module: ai_editor.main_config
+    type: import_from
+  - description: Module 'ai_editor.main_config' cannot be imported
+    file: ai_editor/main.py
+    imported: ensure_storage_and_load_app_config
+    line: 22
+    module: ai_editor.main_config
+    type: import_from
+  - description: Module 'ai_editor.main_config' cannot be imported
+    file: ai_editor/main.py
+    imported: load_config_and_validate
+    line: 22
+    module: ai_editor.main_config
+    type: import_from
+  - description: Module 'ai_editor.main_daemon_logging' cannot be imported
+    file: ai_editor/main.py
+    imported: setup_daemon_logging
+    line: 27
+    module: ai_editor.main_daemon_logging
+    type: import_from
+  - description: Module 'ai_editor.main_server_config' cannot be imported
+    file: ai_editor/main.py
+    imported: build_server_config
+    line: 28
+    module: ai_editor.main_server_config
+    type: import_from
+  - description: Module 'ai_editor.main_startup_info' cannot be imported
+    file: ai_editor/main.py
+    imported: print_startup_info
+    line: 29
+    module: ai_editor.main_startup_info
+    type: import_from
+  - description: Module 'ai_editor.main_workers_run' cannot be imported
+    file: ai_editor/main.py
+    imported: run_workers_directly_and_start_monitoring
+    line: 30
+    module: ai_editor.main_workers_run
+    type: import_from
+  - description: Module 'ai_editor.core.worker_manager' cannot be imported
+    file: ai_editor/main.py
+    imported: get_worker_manager
+    line: 33
+    module: ai_editor.core.worker_manager
+    type: import_from
+  - description: Module 'ai_editor.core.storage_paths' cannot be imported
+    file: ai_editor/main_config.py
+    imported: ensure_storage_dirs
+    line: 17
+    module: ai_editor.core.storage_paths
+    type: import_from
+  - description: Module 'ai_editor.core.storage_paths' cannot be imported
+    file: ai_editor/main_config.py
+    imported: resolve_storage_paths
+    line: 17
+    module: ai_editor.core.storage_paths
+    type: import_from
+  - description: Module 'ai_editor.main_validation' cannot be imported
+    file: ai_editor/main_config.py
+    imported: report_validation_failure
+    line: 21
+    module: ai_editor.main_validation
+    type: import_from
+  - description: Module 'ai_editor.core.config_validator' cannot be imported
+    file: ai_editor/main_config.py
+    imported: CodeAnalysisConfigValidator
+    line: 50
+    module: ai_editor.core.config_validator
+    type: import_from
+  - description: Module 'ai_editor.core.settings_manager' cannot be imported
+    file: ai_editor/main_config.py
+    imported: get_settings
+    line: 104
+    module: ai_editor.core.settings_manager
+    type: import_from
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/main_cleanup.py
+    imported: DEFAULT_SHUTDOWN_GRACE_TIMEOUT
+    line: 16
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/main_workers_run.py
+    imported: DEFAULT_WORKER_MONITOR_INTERVAL
+    line: 14
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_workers_run.py
+    imported: startup_database_driver
+    line: 15
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_workers_run.py
+    imported: startup_file_watcher_worker
+    line: 15
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_workers_run.py
+    imported: startup_indexing_worker
+    line: 15
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.main_workers' cannot be imported
+    file: ai_editor/main_workers_run.py
+    imported: startup_vectorization_worker
+    line: 15
+    module: ai_editor.main_workers
+    type: import_from
+  - description: Module 'ai_editor.core.database' cannot be imported
+    file: ai_editor/core/indexing_worker_pkg/vectorize_after_index.py
+    imported: CodeDatabase
+    line: 90
+    module: ai_editor.core.database
+    type: import_from
+  - description: Module 'ai_editor.core.database_driver_pkg.drivers.sqlite' cannot
+      be imported
+    file: ai_editor/core/indexing_worker_pkg/vectorize_after_index.py
+    imported: SQLiteDriver
+    line: 91
+    module: ai_editor.core.database_driver_pkg.drivers.sqlite
+    type: import_from
+  - description: Module 'ai_editor.core.vectorization_helper' cannot be imported
+    file: ai_editor/core/indexing_worker_pkg/vectorize_after_index.py
+    imported: get_svo_client_manager
+    line: 104
+    module: ai_editor.core.vectorization_helper
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: TreeOperation
+    line: 20
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: TreeOperationType
+    line: 20
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_builder' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: load_file_to_tree
+    line: 21
+    module: ai_editor.core.cst_tree.tree_builder
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_finder' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: find_nodes
+    line: 22
+    module: ai_editor.core.cst_tree.tree_finder
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_modifier' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: modify_tree
+    line: 23
+    module: ai_editor.core.cst_tree.tree_modifier
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.ast_cst' cannot
+      be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: ASTNode
+    line: 24
+    module: ai_editor.core.database_client.objects.ast_cst
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.tree_action' cannot
+      be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: TreeAction
+    line: 25
+    module: ai_editor.core.database_client.objects.tree_action
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.xpath_filter'
+      cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: XPathFilter
+    line: 26
+    module: ai_editor.core.database_client.objects.xpath_filter
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: DataResult
+    line: 28
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: ErrorResult
+    line: 28
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_modify.py
+    imported: ErrorCode
+    line: 28
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: DeleteRequest
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: InsertRequest
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: SelectRequest
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: UpdateRequest
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: BaseResult
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: DataResult
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: ErrorResult
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: SuccessResult
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: ErrorCode
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: RPCError
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: RPCRequest
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_server.py
+    imported: RPCResponse
+    line: 33
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_file_trash.py
+    imported: DataResult
+    line: 17
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_file_trash.py
+    imported: ErrorResult
+    line: 17
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_file_trash.py
+    imported: SuccessResult
+    line: 17
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_file_trash.py
+    imported: ErrorCode
+    line: 17
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_file_trash.py
+    imported: CodeDatabase
+    line: 34
+    module: ai_editor.core.database
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: TreeOperation
+    line: 16
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: TreeOperationType
+    line: 16
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_builder' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: load_file_to_tree
+    line: 17
+    module: ai_editor.core.cst_tree.tree_builder
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_finder' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: find_nodes
+    line: 18
+    module: ai_editor.core.cst_tree.tree_finder
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_modifier' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: modify_tree
+    line: 19
+    module: ai_editor.core.cst_tree.tree_modifier
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.ast_cst' cannot
+      be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: CSTNode
+    line: 20
+    module: ai_editor.core.database_client.objects.ast_cst
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.tree_action' cannot
+      be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: TreeAction
+    line: 21
+    module: ai_editor.core.database_client.objects.tree_action
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.xpath_filter'
+      cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: XPathFilter
+    line: 22
+    module: ai_editor.core.database_client.objects.xpath_filter
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: DataResult
+    line: 24
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: ErrorResult
+    line: 24
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_cst_modify.py
+    imported: ErrorCode
+    line: 24
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_schema.py
+    imported: DataResult
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_schema.py
+    imported: ErrorResult
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_schema.py
+    imported: SuccessResult
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_schema.py
+    imported: ErrorCode
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_builder' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: load_file_to_tree
+    line: 17
+    module: ai_editor.core.cst_tree.tree_builder
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_finder' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: find_nodes
+    line: 18
+    module: ai_editor.core.cst_tree.tree_finder
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.ast_cst' cannot
+      be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: ASTNode
+    line: 19
+    module: ai_editor.core.database_client.objects.ast_cst
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.ast_cst' cannot
+      be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: CSTNode
+    line: 19
+    module: ai_editor.core.database_client.objects.ast_cst
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.objects.xpath_filter'
+      cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: XPathFilter
+    line: 20
+    module: ai_editor.core.database_client.objects.xpath_filter
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: DataResult
+    line: 22
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: ErrorResult
+    line: 22
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_ast_cst_query.py
+    imported: ErrorCode
+    line: 22
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_index_file.py
+    imported: ErrorResult
+    line: 17
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_index_file.py
+    imported: SuccessResult
+    line: 17
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_index_file.py
+    imported: ErrorCode
+    line: 17
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_index_file.py
+    imported: CodeDatabase
+    line: 85
+    module: ai_editor.core.database
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: DeleteRequest
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: InsertRequest
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: SelectRequest
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: UpdateRequest
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: DataResult
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: ErrorResult
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: SuccessResult
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.database_client.protocol' cannot be imported
+    file: ai_editor/core/database_driver_pkg/rpc_handlers_base.py
+    imported: ErrorCode
+    line: 15
+    module: ai_editor.core.database_client.protocol
+    type: import_from
+  - description: Module 'ai_editor.core.mutable_cst' cannot be imported
+    file: ai_editor/core/cst_tree/tree_modifier.py
+    imported: apply_operations
+    line: 34
+    module: ai_editor.core.mutable_cst
+    type: import_from
+  - description: Module 'ai_editor.core.mutable_cst' cannot be imported
+    file: ai_editor/core/cst_tree/tree_modifier.py
+    imported: build_from_libcst
+    line: 34
+    module: ai_editor.core.mutable_cst
+    type: import_from
+  - description: Module 'ai_editor.core.mutable_cst' cannot be imported
+    file: ai_editor/core/cst_tree/tree_modifier.py
+    imported: serialize_to_source
+    line: 34
+    module: ai_editor.core.mutable_cst
+    type: import_from
+  - description: Module 'ai_editor.commands.code_mapper_mcp_command' cannot be
+      imported
+    file: ai_editor/core/database/files/update.py
+    imported: UpdateIndexesMCPCommand
+    line: 210
+    module: ai_editor.commands.code_mapper_mcp_command
+    type: import_from
+  - description: Module 'ai_editor.commands.code_mapper_mcp_command' cannot be
+      imported
+    file: ai_editor/core/file_watcher_pkg/multi_project_worker_scan.py
+    imported: UpdateIndexesMCPCommand
+    line: 239
+    module: ai_editor.commands.code_mapper_mcp_command
+    type: import_from
+  - description: Module 'ai_editor.core.constants' cannot be imported
+    file: ai_editor/core/file_watcher_pkg/multi_project_worker_scan.py
+    imported: DEFAULT_MAX_FILE_LINES
+    line: 242
+    module: ai_editor.core.constants
+    type: import_from
+  - description: Module 'ai_editor.core.config' cannot be imported
+    file: ai_editor/core/config_validator/constants.py
+    imported: ServerConfig
+    line: 8
+    module: ai_editor.core.config
+    type: import_from
+  - description: Module 'ai_editor.cst_query' cannot be imported
+    file: ai_editor/core/database_client/objects/xpath_filter.py
+    imported: QueryParseError
+    line: 11
+    module: ai_editor.cst_query
+    type: import_from
+  - description: Module 'ai_editor.cst_query' cannot be imported
+    file: ai_editor/core/database_client/objects/xpath_filter.py
+    imported: parse_selector
+    line: 11
+    module: ai_editor.cst_query
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/mutable_cst/build.py
+    imported: TreeNodeMetadata
+    line: 16
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/mutable_cst/edits.py
+    imported: ROOT_NODE_ID_SENTINEL
+    line: 15
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/mutable_cst/edits.py
+    imported: TreeOperation
+    line: 15
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/mutable_cst/edits.py
+    imported: TreeOperationType
+    line: 15
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.models' cannot be imported
+    file: ai_editor/core/mutable_cst/edits.py
+    imported: TreeNodeMetadata
+    line: 15
+    module: ai_editor.core.cst_tree.models
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_modifier_ops' cannot be
+      imported
+    file: ai_editor/core/mutable_cst/edits.py
+    imported: parse_code_snippet
+    line: 21
+    module: ai_editor.core.cst_tree.tree_modifier_ops
+    type: import_from
+  - description: Module 'ai_editor.core.cst_tree.tree_modifier_ops' cannot be
+      imported
+    file: ai_editor/core/mutable_cst/edits.py
+    imported: parse_code_snippet_or_comment
+    line: 21
+    module: ai_editor.core.cst_tree.tree_modifier_ops
+    type: import_from
+  - description: Module 'ai_editor.logging.unified_logging' cannot be imported
+    file: ai_editor/logging/__init__.py
+    imported: LEVEL_TO_IMPORTANCE
+    line: 8
+    module: ai_editor.logging.unified_logging
+    type: import_from
+  - description: Module 'ai_editor.logging.unified_logging' cannot be imported
+    file: ai_editor/logging/__init__.py
+    imported: UNIFIED_DATE_FMT
+    line: 8
+    module: ai_editor.logging.unified_logging
+    type: import_from
+  - description: Module 'ai_editor.logging.unified_logging' cannot be imported
+    file: ai_editor/logging/__init__.py
+    imported: UNIFIED_FORMAT_STR
+    line: 8
+    module: ai_editor.logging.unified_logging
+    type: import_from
+  - description: Module 'ai_editor.logging.unified_logging' cannot be imported
+    file: ai_editor/logging/__init__.py
+    imported: UnifiedFormatter
+    line: 8
+    module: ai_editor.logging.unified_logging
+    type: import_from
+  - description: Module 'ai_editor.logging.unified_logging' cannot be imported
+    file: ai_editor/logging/__init__.py
+    imported: create_unified_formatter
+    line: 8
+    module: ai_editor.logging.unified_logging
+    type: import_from
+  - description: Module 'ai_editor.logging.unified_logging' cannot be imported
+    file: ai_editor/logging/__init__.py
+    imported: importance_from_level
+    line: 8
+    module: ai_editor.logging.unified_logging
+    type: import_from
+  - description: Module 'ai_editor.logging.unified_logging' cannot be imported
+    file: ai_editor/logging/__init__.py
+    imported: install_unified_record_factory
+    line: 8
+    module: ai_editor.logging.unified_logging
+    type: import_from
+  - description: Relative import '..core.repair_worker_pkg.runner' cannot be resolved
+    file: ai_editor/commands/repair_worker_management.py
+    imported: run_repair_worker
+    line: 80
+    module: ..core.repair_worker_pkg.runner
+    type: import_from_relative
+  - description: Module 'ai_editor.core.config' cannot be imported
+    file: ai_editor/commands/start_worker_mcp_command.py
+    imported: ServerConfig
+    line: 179
+    module: ai_editor.core.config
+    type: import_from
+  - description: Module 'ai_editor.logging' cannot be imported
+    file: ai_editor/commands/log_viewer_command.py
+    imported: importance_from_level
+    line: 14
+    module: ai_editor.logging
+    type: import_from
+  - description: Module 'ai_editor.core.log_rotation_all' cannot be imported
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    imported: collect_log_paths
+    line: 13
+    module: ai_editor.core.log_rotation_all
+    type: import_from
+  - description: Relative import '.project_creation' cannot be resolved
+    file: ai_editor/commands/project_management_mcp_commands/create_project.py
+    imported: CreateProjectCommand
+    line: 145
+    module: .project_creation
+    type: import_from_relative
+  methods_with_pass: []
+  methods_without_docstrings:
+  - class: null
+    file: ai_editor/main_app_events.py
+    line: 44
+    method: _start_workers_bg
+  - class: null
+    file: ai_editor/main_daemon_logging.py
+    line: 57
+    method: _daemon_thread_excepthook
+  - class: null
+    file: ai_editor/main_daemon_logging.py
+    line: 81
+    method: _daemon_excepthook
+  - class: null
+    file: ai_editor/main_daemon_logging.py
+    line: 97
+    method: _heartbeat_worker
+  - class: null
+    file: ai_editor/main_cleanup.py
+    line: 28
+    method: cleanup_workers
+  - class: null
+    file: ai_editor/main_cleanup.py
+    line: 68
+    method: signal_handler
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 79
+    method: NAME
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 82
+    method: INT
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 85
+    method: STAR
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 126
+    method: OP
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 129
+    method: predicate
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 135
+    method: pseudo_args
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 138
+    method: pseudo
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 145
+    method: node_type
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 151
+    method: step
+  - class: _ToAst
+    file: ai_editor/cst_query/parser.py
+    line: 172
+    method: selector
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 199
+    method: _pseudo_from_parsed
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 79
+    method: NAME
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 82
+    method: INT
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 85
+    method: STAR
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 126
+    method: OP
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 129
+    method: predicate
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 135
+    method: pseudo_args
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 138
+    method: pseudo
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 145
+    method: node_type
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 151
+    method: step
+  - class: null
+    file: ai_editor/cst_query/parser.py
+    line: 172
+    method: selector
+  - class: _NodeInfo
+    file: ai_editor/cst_query/executor.py
+    line: 61
+    method: node_type
+  - class: _NodeInfo
+    file: ai_editor/cst_query/executor.py
+    line: 65
+    method: span_key
+  - class: _NodeInfo
+    file: ai_editor/cst_query/executor.py
+    line: 68
+    method: to_id
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 213
+    method: _node_name
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 221
+    method: _node_kind
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 235
+    method: _node_qualname
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 253
+    method: _eval_query
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 266
+    method: _apply_combinator
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 293
+    method: _apply_step
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 306
+    method: _matches_step
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 315
+    method: _matches_node_type
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 352
+    method: _matches_predicate
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 379
+    method: _compare
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 61
+    method: node_type
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 65
+    method: span_key
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 68
+    method: to_id
+  - class: null
+    file: ai_editor/cst_query/executor.py
+    line: 133
+    method: visit
+  - class: null
+    file: ai_editor/core/entity_cross_ref_builder.py
+    line: 73
+    method: key
+  - class: FunctionChunk
+    file: ai_editor/core/duplicate_detector_semantic.py
+    line: 48
+    method: __init__
+  - class: null
+    file: ai_editor/core/duplicate_detector_semantic.py
+    line: 48
+    method: __init__
+  - class: null
+    file: ai_editor/core/duplicate_detector_semantic.py
+    line: 133
+    method: add_occurrence
+  - class: null
+    file: ai_editor/core/log_rotation_all.py
+    line: 64
+    method: matches
+  - class: null
+    file: ai_editor/core/log_rotation_all.py
+    line: 74
+    method: add
+  - class: _TmpChunk
+    file: ai_editor/core/faiss_manager_rebuild.py
+    line: 282
+    method: __init__
+  - class: null
+    file: ai_editor/core/faiss_manager_rebuild.py
+    line: 282
+    method: __init__
+  - class: null
+    file: ai_editor/core/duplicate_detector.py
+    line: 296
+    method: lcs_length
+  - class: null
+    file: ai_editor/core/cst_module/blocks.py
+    line: 16
+    method: _block_id
+  - class: _StatementListRewriter
+    file: ai_editor/core/cst_module/patcher.py
+    line: 110
+    method: __init__
+  - class: _StatementListRewriter
+    file: ai_editor/core/cst_module/patcher.py
+    line: 120
+    method: _rewrite_body
+  - class: _StatementListRewriter
+    file: ai_editor/core/cst_module/patcher.py
+    line: 141
+    method: leave_Module
+  - class: _StatementListRewriter
+    file: ai_editor/core/cst_module/patcher.py
+    line: 148
+    method: leave_IndentedBlock
+  - class: _StatementListRewriter
+    file: ai_editor/core/cst_module/patcher.py
+    line: 155
+    method: leave_SimpleStatementLine
+  - class: null
+    file: ai_editor/core/cst_module/patcher.py
+    line: 205
+    method: _parse_small_stmt_snippet
+  - class: null
+    file: ai_editor/core/cst_module/patcher.py
+    line: 110
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_module/patcher.py
+    line: 120
+    method: _rewrite_body
+  - class: null
+    file: ai_editor/core/cst_module/patcher.py
+    line: 141
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_module/patcher.py
+    line: 148
+    method: leave_IndentedBlock
+  - class: null
+    file: ai_editor/core/cst_module/patcher.py
+    line: 155
+    method: leave_SimpleStatementLine
+  - class: null
+    file: ai_editor/core/cst_module/utils.py
+    line: 17
+    method: _is_module_docstring
+  - class: null
+    file: ai_editor/core/cst_module/utils.py
+    line: 75
+    method: unified_diff
+  - class: null
+    file: ai_editor/core/cst_module/utils.py
+    line: 85
+    method: write_with_backup
+  - class: _CreateRewriter
+    file: ai_editor/core/cst_module/patcher_create.py
+    line: 28
+    method: __init__
+  - class: _CreateRewriter
+    file: ai_editor/core/cst_module/patcher_create.py
+    line: 103
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_module/patcher_create.py
+    line: 28
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_module/patcher_create.py
+    line: 103
+    method: leave_Module
+  - class: _InsertRewriter
+    file: ai_editor/core/cst_module/patcher_insert.py
+    line: 28
+    method: __init__
+  - class: _InsertRewriter
+    file: ai_editor/core/cst_module/patcher_insert.py
+    line: 122
+    method: leave_Module
+  - class: _InsertRewriter
+    file: ai_editor/core/cst_module/patcher_insert.py
+    line: 129
+    method: leave_IndentedBlock
+  - class: null
+    file: ai_editor/core/cst_module/patcher_insert.py
+    line: 28
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_module/patcher_insert.py
+    line: 122
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_module/patcher_insert.py
+    line: 129
+    method: leave_IndentedBlock
+  - class: NodeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 62
+    method: __init__
+  - class: NodeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 70
+    method: on_leave
+  - class: NodeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 81
+    method: leave_Module
+  - class: NodeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 99
+    method: leave_IndentedBlock
+  - class: NodeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 119
+    method: leave_SimpleStatementLine
+  - class: RangeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 208
+    method: __init__
+  - class: RangeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 220
+    method: leave_Module
+  - class: RangeReplacer
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 245
+    method: leave_IndentedBlock
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 62
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 70
+    method: on_leave
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 81
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 99
+    method: leave_IndentedBlock
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 119
+    method: leave_SimpleStatementLine
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 208
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 220
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_replace.py
+    line: 245
+    method: leave_IndentedBlock
+  - class: null
+    file: ai_editor/core/cst_tree/tree_builder.py
+    line: 169
+    method: visit
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier.py
+    line: 57
+    method: _codegen_impl_compat
+  - class: NodeRemover
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 37
+    method: __init__
+  - class: NodeRemover
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 41
+    method: on_visit
+  - class: NodeRemover
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 47
+    method: on_leave
+  - class: Finder
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 80
+    method: visit
+  - class: ParentFinder
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 179
+    method: visit
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 37
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 41
+    method: on_visit
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 47
+    method: on_leave
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 80
+    method: visit
+  - class: FindByStart
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 115
+    method: visit
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 179
+    method: visit
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_find.py
+    line: 115
+    method: visit
+  - class: _SkeletonTransformer
+    file: ai_editor/core/cst_tree/skeleton.py
+    line: 21
+    method: leave_FunctionDef
+  - class: null
+    file: ai_editor/core/cst_tree/skeleton.py
+    line: 21
+    method: leave_FunctionDef
+  - class: PositionInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 74
+    method: __init__
+  - class: PositionInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 83
+    method: leave_Module
+  - class: PositionInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 91
+    method: leave_FunctionDef
+  - class: PositionInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 103
+    method: leave_ClassDef
+  - class: NodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 135
+    method: __init__
+  - class: NodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 146
+    method: on_leave
+  - class: NodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 175
+    method: leave_Module
+  - class: NodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 189
+    method: leave_IndentedBlock
+  - class: RelativeNodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 287
+    method: __init__
+  - class: RelativeNodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 306
+    method: leave_Module
+  - class: RelativeNodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 391
+    method: leave_IndentedBlock
+  - class: RelativeNodeInserter
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 420
+    method: on_leave
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 74
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 83
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 91
+    method: leave_FunctionDef
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 103
+    method: leave_ClassDef
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 135
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 146
+    method: on_leave
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 175
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 189
+    method: leave_IndentedBlock
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 287
+    method: __init__
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 306
+    method: leave_Module
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 391
+    method: leave_IndentedBlock
+  - class: null
+    file: ai_editor/core/cst_tree/tree_modifier_ops_insert.py
+    line: 420
+    method: on_leave
+  - class: SchemaCompareOps
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 19
+    method: __init__
+  - class: SchemaCompareOps
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 228
+    method: _indexes_match
+  - class: SchemaCompareOps
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 325
+    method: _foreign_keys_match
+  - class: SchemaCompareOps
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 351
+    method: _unique_constraints_match
+  - class: null
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 19
+    method: __init__
+  - class: null
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 228
+    method: _indexes_match
+  - class: null
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 325
+    method: _foreign_keys_match
+  - class: null
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 351
+    method: _unique_constraints_match
+  - class: null
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 331
+    method: _fk_key
+  - class: null
+    file: ai_editor/core/database/schema_sync_comparator_compare.py
+    line: 339
+    method: _norm
+  - class: _DummyChunk
+    file: ai_editor/core/docstring_chunker_pkg/docstring_chunker.py
+    line: 545
+    method: __init__
+  - class: null
+    file: ai_editor/core/docstring_chunker_pkg/docstring_chunker.py
+    line: 545
+    method: __init__
+  - class: FileChangeProcessor
+    file: ai_editor/core/file_watcher_pkg/processor.py
+    line: 41
+    method: __init__
+  - class: null
+    file: ai_editor/core/file_watcher_pkg/processor.py
+    line: 41
+    method: __init__
+  - class: ProcessorQueueOps
+    file: ai_editor/core/file_watcher_pkg/processor_queue.py
+    line: 23
+    method: __init__
+  - class: null
+    file: ai_editor/core/file_watcher_pkg/processor_queue.py
+    line: 23
+    method: __init__
+  - class: null
+    file: ai_editor/core/file_watcher_pkg/multi_project_worker_scan.py
+    line: 246
+    method: run_indexing
+  - class: null
+    file: ai_editor/core/refactorer_pkg/file_splitter.py
+    line: 21
+    method: _list_cst_blocks
+  - class: null
+    file: ai_editor/core/db_worker_pkg/runner_socket.py
+    line: 149
+    method: execute_job
+  - class: null
+    file: ai_editor/core/db_worker_pkg/runner.py
+    line: 64
+    method: signal_handler
+  - class: null
+    file: ai_editor/core/db_worker_pkg/runner.py
+    line: 75
+    method: cleanup_worker
+  - class: null
+    file: ai_editor/core/mutable_cst/build.py
+    line: 85
+    method: visit
+  - class: null
+    file: ai_editor/core/mutable_cst/build.py
+    line: 187
+    method: collect
+  - class: UnifiedFormatter
+    file: ai_editor/logging/unified_logging.py
+    line: 60
+    method: format
+  - class: null
+    file: ai_editor/logging/unified_logging.py
+    line: 45
+    method: _factory
+  - class: null
+    file: ai_editor/logging/unified_logging.py
+    line: 60
+    method: format
+  - class: CSTConvertAndSaveCommand
+    file: ai_editor/commands/cst_convert_and_save_command.py
+    line: 42
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_convert_and_save_command.py
+    line: 42
+    method: get_schema
+  - class: GetFileLinesCommand
+    file: ai_editor/commands/get_file_lines_command.py
+    line: 43
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/get_file_lines_command.py
+    line: 43
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/code_mapper_mcp_command.py
+    line: 218
+    method: make_heartbeat_cb
+  - class: null
+    file: ai_editor/commands/code_mapper_mcp_command.py
+    line: 221
+    method: cb
+  - class: CSTReloadTreeCommand
+    file: ai_editor/commands/cst_reload_tree_command.py
+    line: 36
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_reload_tree_command.py
+    line: 36
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/worker_status.py
+    line: 456
+    method: _row0
+  - class: null
+    file: ai_editor/commands/worker_status.py
+    line: 464
+    method: _data
+  - class: ExtractSuperclassMCPCommand
+    file: ai_editor/commands/refactor_extract_superclass.py
+    line: 37
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/refactor_extract_superclass.py
+    line: 37
+    method: get_schema
+  - class: CSTLoadFileCommand
+    file: ai_editor/commands/cst_load_file_command.py
+    line: 51
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_load_file_command.py
+    line: 51
+    method: get_schema
+  - class: ListCSTBlocksCommand
+    file: ai_editor/commands/list_cst_blocks_command.py
+    line: 35
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/list_cst_blocks_command.py
+    line: 35
+    method: get_schema
+  - class: SplitClassMCPCommand
+    file: ai_editor/commands/refactor_split_class.py
+    line: 37
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/refactor_split_class.py
+    line: 37
+    method: get_schema
+  - class: CSTSaveTreeCommand
+    file: ai_editor/commands/cst_save_tree_command.py
+    line: 51
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_save_tree_command.py
+    line: 51
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/update_indexes_analyzer.py
+    line: 57
+    method: _heartbeat
+  - class: null
+    file: ai_editor/commands/update_indexes_analyzer.py
+    line: 188
+    method: add_usage_callback
+  - class: null
+    file: ai_editor/commands/base_mcp_command_open_db.py
+    line: 207
+    method: _ensure_schema
+  - class: CSTCreateFileCommand
+    file: ai_editor/commands/cst_create_file_command.py
+    line: 39
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_create_file_command.py
+    line: 39
+    method: get_schema
+  - class: CSTGetNodeByRangeCommand
+    file: ai_editor/commands/cst_get_node_by_range_command.py
+    line: 36
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_get_node_by_range_command.py
+    line: 36
+    method: get_schema
+  - class: FileStructureCommand
+    file: ai_editor/commands/file_structure_command.py
+    line: 62
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/file_structure_command.py
+    line: 62
+    method: get_schema
+  - class: QueryChunk
+    file: ai_editor/commands/semantic_search_mcp.py
+    line: 163
+    method: __init__
+  - class: null
+    file: ai_editor/commands/semantic_search_mcp.py
+    line: 163
+    method: __init__
+  - class: null
+    file: ai_editor/commands/check_vectors_command.py
+    line: 419
+    method: _row0
+  - class: null
+    file: ai_editor/commands/check_vectors_command.py
+    line: 427
+    method: _data
+  - class: CSTGetNodeAtLineCommand
+    file: ai_editor/commands/cst_get_node_at_line_command.py
+    line: 37
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_get_node_at_line_command.py
+    line: 37
+    method: get_schema
+  - class: CSTFindNodeCommand
+    file: ai_editor/commands/cst_find_node_command.py
+    line: 36
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_find_node_command.py
+    line: 36
+    method: get_schema
+  - class: CSTGetNodeInfoCommand
+    file: ai_editor/commands/cst_get_node_info_command.py
+    line: 60
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_get_node_info_command.py
+    line: 60
+    method: get_schema
+  - class: SplitFileToPackageMCPCommand
+    file: ai_editor/commands/refactor_split_file_to_package.py
+    line: 37
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/refactor_split_file_to_package.py
+    line: 37
+    method: get_schema
+  - class: QueryCSTCommand
+    file: ai_editor/commands/query_cst_command.py
+    line: 48
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/query_cst_command.py
+    line: 48
+    method: get_schema
+  - class: ReplaceFileLinesCommand
+    file: ai_editor/commands/replace_file_lines_command.py
+    line: 54
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/replace_file_lines_command.py
+    line: 54
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_modify_tree_ops_build.py
+    line: 224
+    method: _replace_delete_sort_key
+  - class: ComposeCSTModuleCommand
+    file: ai_editor/commands/cst_compose_module_command.py
+    line: 87
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_compose_module_command.py
+    line: 87
+    method: get_schema
+  - class: LogViewerCommand
+    file: ai_editor/commands/log_viewer_command.py
+    line: 35
+    method: __init__
+  - class: LogViewerCommand
+    file: ai_editor/commands/log_viewer_command.py
+    line: 73
+    method: _parse_time
+  - class: LogViewerCommand
+    file: ai_editor/commands/log_viewer_command.py
+    line: 91
+    method: _parse_log_line
+  - class: LogViewerCommand
+    file: ai_editor/commands/log_viewer_command.py
+    line: 162
+    method: _matches_event_type
+  - class: LogViewerCommand
+    file: ai_editor/commands/log_viewer_command.py
+    line: 172
+    method: _matches_filters
+  - class: null
+    file: ai_editor/commands/log_viewer_command.py
+    line: 35
+    method: __init__
+  - class: null
+    file: ai_editor/commands/log_viewer_command.py
+    line: 73
+    method: _parse_time
+  - class: null
+    file: ai_editor/commands/log_viewer_command.py
+    line: 91
+    method: _parse_log_line
+  - class: null
+    file: ai_editor/commands/log_viewer_command.py
+    line: 162
+    method: _matches_event_type
+  - class: null
+    file: ai_editor/commands/log_viewer_command.py
+    line: 172
+    method: _matches_filters
+  - class: null
+    file: ai_editor/commands/log_viewer_command.py
+    line: 95
+    method: make_entry
+  - class: ListLogsByIdCommand
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 46
+    method: __init__
+  - class: ListLogFilesCommand
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 70
+    method: __init__
+  - class: ListLogFilesCommand
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 78
+    method: _detect_worker_type
+  - class: RotateLogsCommand
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 182
+    method: __init__
+  - class: RotateLogsCommand
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 186
+    method: _rotation_path
+  - class: null
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 46
+    method: __init__
+  - class: null
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 70
+    method: __init__
+  - class: null
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 78
+    method: _detect_worker_type
+  - class: null
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 182
+    method: __init__
+  - class: null
+    file: ai_editor/commands/log_viewer_list_rotate.py
+    line: 186
+    method: _rotation_path
+  - class: CSTModifyTreeCommand
+    file: ai_editor/commands/cst_modify_tree_command.py
+    line: 51
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/cst_modify_tree_command.py
+    line: 51
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/comprehensive_analysis_mcp/command.py
+    line: 106
+    method: log_timing
+  - class: ListCodeEntitiesMCPCommand
+    file: ai_editor/commands/ast/list_entities.py
+    line: 42
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/list_entities.py
+    line: 42
+    method: get_schema
+  - class: SearchASTNodesMCPCommand
+    file: ai_editor/commands/ast/search_nodes.py
+    line: 27
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/search_nodes.py
+    line: 27
+    method: get_schema
+  - class: ASTStatisticsMCPCommand
+    file: ai_editor/commands/ast/statistics.py
+    line: 27
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/statistics.py
+    line: 27
+    method: get_schema
+  - class: GetImportsMCPCommand
+    file: ai_editor/commands/ast/imports.py
+    line: 27
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/imports.py
+    line: 27
+    method: get_schema
+  - class: GetClassHierarchyMCPCommand
+    file: ai_editor/commands/ast/hierarchy.py
+    line: 42
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/hierarchy.py
+    line: 42
+    method: get_schema
+  - class: ListProjectFilesMCPCommand
+    file: ai_editor/commands/ast/list_files.py
+    line: 29
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/list_files.py
+    line: 29
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/list_files.py
+    line: 93
+    method: _file_to_dict
+  - class: null
+    file: ai_editor/commands/ast/list_files.py
+    line: 73
+    method: _path_for_match
+  - class: GetEntityDependenciesMCPCommand
+    file: ai_editor/commands/ast/entity_dependencies.py
+    line: 41
+    method: get_schema
+  - class: GetEntityDependentsMCPCommand
+    file: ai_editor/commands/ast/entity_dependencies.py
+    line: 138
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/entity_dependencies.py
+    line: 41
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/entity_dependencies.py
+    line: 138
+    method: get_schema
+  - class: FindUsagesMCPCommand
+    file: ai_editor/commands/ast/usages.py
+    line: 96
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/usages.py
+    line: 96
+    method: get_schema
+  - class: FindDependenciesMCPCommand
+    file: ai_editor/commands/ast/dependencies.py
+    line: 73
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/dependencies.py
+    line: 73
+    method: get_schema
+  - class: GetASTMCPCommand
+    file: ai_editor/commands/ast/get_ast.py
+    line: 27
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/get_ast.py
+    line: 27
+    method: get_schema
+  - class: GetCodeEntityInfoMCPCommand
+    file: ai_editor/commands/ast/entity_info.py
+    line: 57
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/ast/entity_info.py
+    line: 57
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/worker_status_mcp_commands/get_database_status_build.py
+    line: 107
+    method: _row0
+  - class: null
+    file: ai_editor/commands/worker_status_mcp_commands/get_database_status_build.py
+    line: 111
+    method: _data
+  - class: PermanentlyDeleteFromTrashMCPCommand
+    file: ai_editor/commands/project_management_mcp_commands/permanently_delete_from_trash.py
+    line: 37
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/project_management_mcp_commands/permanently_delete_from_trash.py
+    line: 37
+    method: get_schema
+  - class: RestoreProjectFromTrashMCPCommand
+    file: ai_editor/commands/project_management_mcp_commands/restore_project_from_trash.py
+    line: 41
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/project_management_mcp_commands/restore_project_from_trash.py
+    line: 41
+    method: get_schema
+  - class: ListTrashedProjectsMCPCommand
+    file: ai_editor/commands/project_management_mcp_commands/list_trashed_projects.py
+    line: 35
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/project_management_mcp_commands/list_trashed_projects.py
+    line: 35
+    method: get_schema
+  - class: ListWatchDirsMCPCommand
+    file: ai_editor/commands/project_management_mcp_commands/list_watch_dirs.py
+    line: 37
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/project_management_mcp_commands/list_watch_dirs.py
+    line: 37
+    method: get_schema
+  - class: ClearTrashMCPCommand
+    file: ai_editor/commands/project_management_mcp_commands/clear_trash.py
+    line: 37
+    method: get_schema
+  - class: null
+    file: ai_editor/commands/project_management_mcp_commands/clear_trash.py
+    line: 37
+    method: get_schema
+  - class: _TmpChunk
+    file: ai_editor/commands/vector_commands/revectorize.py
+    line: 443
+    method: __init__
+  - class: null
+    file: ai_editor/commands/vector_commands/revectorize.py
+    line: 443
+    method: __init__
+  not_implemented_in_non_abstract: []
+summary:
+  any_type_usage: 0
+  classes_without_docstrings: 19
+  files_too_large: 57
+  files_without_docstrings: 0
+  generic_exception_usage: 0
+  imports_in_middle: 0
+  invalid_imports: 141
+  max_lines_limit: 400
+  methods_with_pass: 0
+  methods_without_docstrings: 272
+  not_implemented_in_non_abstract: 0
+  total_issues: 489

@@ -1,0 +1,35 @@
+step_id: T-001
+parent_global_step: G-003
+name: TreeRepresentation model
+description: >
+  Creates the TreeRepresentation model for all supported formats. Classifies
+  JSON, YAML, Python CST, Markdown, and other tree formats as native trees;
+  represents plain text uniformly as paragraphs of lines. Defines stable node
+  identifiers comparable to Python CST sidecar identifiers, stored in a tree file
+  or sidecar per supported file. Specifies checksum-based validity checks and
+  mandatory recreation when the tree is missing or invalid before structural
+  processing proceeds. Emits TreeValidityState (reused vs recreated) alongside
+  the TreeRepresentationRef so downstream filters and grep enrichment can audit
+  sidecar freshness without re-reading disk metadata.
+concepts:
+  - C-015
+inputs:
+  - name: source_file
+    type: ProjectFile
+    description: Supported file whose structural representation is required.
+  - name: format_classification
+    type: FileFormatKind
+    description: Tree format or text format classification for the source file.
+  - name: existing_tree_sidecar
+    type: TreeSidecar
+    description: Optional existing tree sidecar with identifiers and checksum metadata.
+outputs:
+  - name: tree_representation
+    type: TreeRepresentation
+    description: Validated or freshly created tree with stable node identifiers.
+  - name: tree_validity_state
+    type: TreeValidityState
+    description: Indicates whether the tree was reused or recreated for current content.
+atomic_steps:
+- A-001
+status: frozen

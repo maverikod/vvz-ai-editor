@@ -1,0 +1,26 @@
+step_id: T-004
+parent_global_step: G-010
+name: Удалить устаревшие тесты
+description: 'Удалить тесты снятых MCP (без quarantine): session_git, session_write, session_undo, universal_file_search, universal_file_save. Сохранить unit-тесты Internal Edit Engine (C-019) с обновлёнными путями.
+
+  '
+concepts:
+- C-019
+- C-020
+- C-022
+inputs:
+- name: obsolete_test_modules
+  type: array
+  description: Список tests/* для удаления.
+outputs:
+- name: trimmed_test_tree
+  type: object
+  description: Только релевантные thin server тесты.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+status: ready_for_review

@@ -1,0 +1,295 @@
+step_id: A-003
+parent_tactical_step: T-001
+name: Drop mtime tie-break from BlockAssembler sort key
+target_file: ai_editor/core/search_session/block_assembler.py
+operation: modify_file
+priority: 1
+depends_on:
+- A-002
+concepts:
+- C-026
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/search_session/block_assembler.py
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-001-grep-consumer-integration/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-026)
+
+  ## Goal
+  Change `_sort_key` in `_build_relevance_blocks` to `(score_val, result_id)` only (C-026).
+
+  ## MRS excerpt
+
+  C-026: ranking does not use mtime; ordering uses score with result_id tie-break.
+
+  ## Forbidden
+  - Do NOT modify other BlockAssembler methods.
+  - Do NOT read `"mtime"` from finding dicts.
+  - Do NOT touch other files or G-007.
+
+  ## Full current file content (verbatim, 235 lines — change only `_sort_key`)
+
+  ```python
+  """
+  Block assembler protocol for draining raw findings into published blocks.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import json
+  import re
+  from collections.abc import Callable
+  from pathlib import Path
+
+  from ai_editor.core.search_session.atomic_publication import atomic_write_bytes
+  from ai_editor.core.search_session.directory import SearchSessionDirectoryLayout
+  from ai_editor.core.search_session.raw_finding_buffer import RawFindingBuffer
+  from ai_editor.core.search_session.result_block import (
+      assemble_block,
+      serialize_block,
+  )
+  from ai_editor.core.search_session.result_index import (
+      COMPLETENESS_FINISHED,
+      mark_index_finished,
+      read_index,
+  )
+
+  COMPLETENESS_RUNNING = "search_still_running"
+
+  _BLOCK_NAME_PATTERN = re.compile(r"^block_(\d+)\.json$")
+
+
+  class BlockAssembler:
+      """
+      Drains ``RawFindingBuffer`` into immutable result blocks under a buffer lock.
+
+      Temporal blocks are written in arrival order while the search runs.
+      On completion, all findings are re-segmented by relevance score into a
+      separate ``blocks_relevance/`` set.
+      """
+
+      def __init__(
+          self,
+          layout: SearchSessionDirectoryLayout,
+          buffer: RawFindingBuffer,
+          max_block_size_bytes: int,
+          *,
+          append_index_entry: Callable[[int, str], None],
+          update_manifest_metrics: Callable[[dict], None],
+      ) -> None:
+          self._layout = layout
+          self._buffer = buffer
+          self._max_block_size_bytes = max_block_size_bytes
+          self._append_index_entry = append_index_entry
+          self._update_manifest_metrics = update_manifest_metrics
+
+      def run_once(self, *, search_completed: bool) -> int:
+          """
+          Acquire the buffer lock once and publish as many temporal blocks as
+          allowed.  On ``search_completed`` also triggers re-segmentation and
+          finalizes the index.
+
+          Returns:
+              Number of blocks published; ``0`` when the lock is unavailable,
+              already finished, or no work is performed.
+          """
+          if not self._buffer.buffer_dir.exists():
+              return 0
+
+          # Idempotent guard: if index is already finished, nothing to do.
+          if self._layout.index_path.is_file():
+              try:
+                  idx = read_index(self._layout.index_path)
+                  if idx.completeness == COMPLETENESS_FINISHED:
+                      return 0
+              except Exception:
+                  pass
+
+          if not self._buffer.try_acquire_lock():
+              return 0
+
+          blocks_published = 0
+          try:
+              while True:
+                  volume = self._buffer.total_bytes()
+                  if not search_completed and volume < self._max_block_size_bytes:
+                      break
+                  if volume == 0:
+                      if search_completed:
+                          self._finalize()
+                      break
+
+                  finding_paths = self._buffer.list_findings()
+                  findings = [self._load_finding(path) for path in finding_paths]
+                  position = self._next_block_position()
+                  block = assemble_block(
+                      findings,
+                      max_block_size_bytes=self._max_block_size_bytes,
+                      position=position,
+                  )
+                  if not block.results:
+                      break
+
+                  assembled_count = len(block.results)
+                  block_path = self._layout.blocks_dir / f"block_{block.position}.json"
+                  atomic_write_bytes(block_path, serialize_block(block))
+                  self._append_index_entry(block.position, COMPLETENESS_RUNNING)
+                  self._update_manifest_metrics(
+                      {
+                          "produced_results": assembled_count,
+                          "written_blocks": 1,
+                          "block_size_bytes": block.serialized_size_bytes,
+                      }
+                  )
+                  blocks_published += 1
+
+                  if search_completed and self._buffer.total_bytes() == 0:
+                      self._finalize()
+                      break
+
+                  if (
+                      not search_completed
+                      and self._buffer.total_bytes() < self._max_block_size_bytes
+                  ):
+                      break
+          finally:
+              self._buffer.release_lock()
+
+          return blocks_published
+
+      def run_until_idle(self, *, search_completed: bool) -> int:
+          """Repeatedly run ``run_once`` until it publishes no blocks."""
+          total = 0
+          while True:
+              published = self.run_once(search_completed=search_completed)
+              if published == 0:
+                  break
+              total += published
+              if search_completed and not self._buffer.buffer_dir.exists():
+                  break
+          return total
+
+      def _finalize(self) -> None:
+          """
+          One-way finalization: re-segment all findings by relevance, write
+          ``blocks_relevance/``, call ``mark_index_finished``, delete buffer.
+
+          Safe to call when buffer is empty (zero findings -> empty relevance set).
+          """
+          relevance_entries = self._build_relevance_blocks()
+          if self._layout.index_path.is_file():
+              mark_index_finished(
+                  self._layout.index_path,
+                  relevance_blocks=relevance_entries,
+              )
+          else:
+              from ai_editor.core.search_session.atomic_publication import (
+                  atomic_write_json,
+              )
+
+              atomic_write_json(
+                  self._layout.index_path,
+                  {
+                      "blocks": [],
+                      "completeness": COMPLETENESS_FINISHED,
+                      "temporal_blocks": [],
+                      "relevance_blocks": relevance_entries,
+                  },
+              )
+          self._buffer.delete_buffer()
+
+      def _build_relevance_blocks(self) -> list[dict]:
+          """
+          Read all findings from the buffer, sort by relevance, and write
+          ``blocks_relevance/`` files.  Returns the list of index entries
+          ``{position, size_bytes}`` for the relevance set.
+          """
+          if not self._buffer.buffer_dir.exists():
+              return []
+
+          finding_paths = self._buffer.list_findings()
+          if not finding_paths:
+              return []
+
+          findings = [self._load_finding(p) for p in finding_paths]
+
+          def _sort_key(f: dict) -> tuple:
+              score = f.get("score")
+              score_val = -float(score) if score is not None else 0.0
+              mtime = float(f.get("mtime") or 0.0)
+              result_id = str(f.get("result_id") or "")
+              return (score_val, mtime, result_id)
+
+          findings.sort(key=_sort_key)
+
+          relevance_dir = self._layout.relevance_blocks_dir
+          relevance_dir.mkdir(parents=True, exist_ok=True)
+
+          entries: list[dict] = []
+          position = 0
+          remaining = findings
+          while remaining:
+              position += 1
+              block = assemble_block(
+                  remaining,
+                  max_block_size_bytes=self._max_block_size_bytes,
+                  position=position,
+              )
+              if not block.results:
+                  break
+              block_path = relevance_dir / f"block_{block.position}.json"
+              data = serialize_block(block)
+              atomic_write_bytes(block_path, data)
+              entries.append({"position": position, "size_bytes": len(data)})
+              remaining = remaining[len(block.results) :]
+
+          return entries
+
+      def _next_block_position(self) -> int:
+          highest = 0
+          if self._layout.blocks_dir.is_dir():
+              for path in self._layout.blocks_dir.iterdir():
+                  match = _BLOCK_NAME_PATTERN.match(path.name)
+                  if match is not None:
+                      highest = max(highest, int(match.group(1)))
+          return highest + 1
+
+      @staticmethod
+      def _load_finding(path: Path) -> dict:
+          with open(path, "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+          if not isinstance(payload, dict):
+              raise ValueError(f"Finding payload must be a JSON object: {path}")
+          return payload
+  ```
+
+  ## Target `_sort_key` after edit
+
+  ```python
+          def _sort_key(f: dict) -> tuple:
+              score = f.get("score")
+              score_val = -float(score) if score is not None else 0.0
+              result_id = str(f.get("result_id") or "")
+              return (score_val, result_id)
+  ```
+
+  ## Validation (.venv active)
+
+      black ai_editor/core/search_session/block_assembler.py
+      flake8 ai_editor/core/search_session/block_assembler.py
+      mypy ai_editor/core/search_session/block_assembler.py
+      pytest -q
+
+  Post-step ≤400 lines. All tests must pass.
+verification:
+  type: pytest
+  target: tests
+  expected: >
+    _sort_key returns two-tuple (score_val, result_id) with no mtime term.
+    block_assembler.py ≤400 lines. Full pytest suite passes.

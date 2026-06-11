@@ -1,0 +1,34 @@
+step_id: T-002
+parent_global_step: G-006
+name: Close tree-temp and text group sessions
+description: Realise CloseCommand (C-010) for tree-temp and text group sessions.
+  Look up the EditSession (C-001) by session_id; return SESSION_NOT_FOUND (C-014)
+  if unknown.
+  Tree-temp group: compare sha256 of the DraftFile (C-003) against sha256 of
+  the original file using ExistingInfrastructure (C-012). If checksums match,
+  delete the DraftFile (C-003). If checksums do not match, rebuild the DraftFile
+  from the original by re-parsing and re-serialising via ExistingInfrastructure
+  (C-012); set draft_rebuilt=True. In both cases free the in-memory tree and
+  delete the WriteLockfile (C-004) if present.
+  Text group: delete the DraftFile (C-003) and WriteLockfile (C-004) unconditionally.
+  In all cases release the EditSession (C-001) from the session registry.
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-010
+- C-012
+- C-014
+inputs:
+- name: session
+  type: EditSession (C-001)
+  description: Active tree-temp or text group session to close.
+outputs:
+- name: close_result
+  type: response
+  description: 'Contains draft_rebuilt flag: true when DraftFile was rebuilt from
+    source (tree-temp mismatch only); false for text group and matching checksums.'
+atomic_steps:
+- A-001
+status: draft

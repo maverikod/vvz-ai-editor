@@ -1,0 +1,68 @@
+step_id: A-006
+parent_tactical_step: T-003
+name: Paginated semantic execute adapter
+target_file: ai_editor/commands/search_paginated_semantic.py
+operation: create_file
+priority: 6
+depends_on: []
+concepts:
+  - C-021
+  - C-023
+  - C-024
+  - C-001
+  - C-004
+  - C-029
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_paginated_semantic.py
+
+  MRS (C-001 SearchSession): session directory stores blocks and index keyed by job_id (search_id).
+  MRS (C-004 SearchResultBlock): bounded immutable slice of complete results.
+  MRS (C-029 BlockAssembler): publishes blocks when buffer threshold met or search completed.
+  MRS (C-024 OptionalPaginationParameters): optional paginated path without changing legacy defaults.
+
+  Import typing: Any, Callable, Optional from typing.
+
+  Shared types (import only; do not reimplement):
+  - SearchSession, SearchSessionState from ai_editor.core.search_session.session
+  - SearchSessionDirectoryLayout from ai_editor.core.search_session.directory
+  - SearchSessionManifest, write_manifest_atomic, capture_server_process_identity, DEFAULT_METRICS
+    from ai_editor.core.search_session.manifest
+  - initialize_service_metadata from ai_editor.core.search_session.service_metadata
+  - RawFindingBuffer from ai_editor.core.search_session.raw_finding_buffer
+  - BlockAssembler from ai_editor.core.search_session.block_assembler
+  - append_block_entry, mark_index_finished, COMPLETENESS_FINISHED from ai_editor.core.search_session.result_index
+  - update_manifest_atomic from ai_editor.core.search_session.manifest
+  - atomic_write_json from ai_editor.core.search_session.atomic_publication
+  - load_session_ttl_policy from ai_editor.core.search_session.policy
+  - SemanticSearchMCPCommand from ai_editor.commands.semantic_search_mcp
+
+  Implement:
+  - def normalize_semantic_finding(raw: dict[str, Any], *, index: int) -> dict[str, Any]
+    Stable result_id f"semantic-{index:06d}", source="semantic", JSON-safe scalars only in all fields,
+    file_path and score from legacy semantic result shape, preview null unless legacy provides dict.
+
+  - async def run_paginated_semantic(
+        *,
+        command: SemanticSearchMCPCommand,
+        params: dict[str, Any],
+        session: SearchSession,
+        layout: SearchSessionDirectoryLayout,
+        raw_config: dict[str, Any],
+        block_assembler_factory: Callable[..., BlockAssembler],
+    ) -> Optional[int]
+    Same pipeline as run_paginated_fulltext but calls SemanticSearchMCPCommand.execute and reads
+    results from result.data["results"]; returns 1 when first block published else None.
+
+  Constraints:
+  - Under 200 lines.
+  - Author header.
+  - No stubs or NotImplementedError.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_paginated_semantic.py
+  expected: >
+    Semantic legacy results are normalized to JSON-safe findings, first block is published at position 1,
+    and function returns 1; empty results yield None without raising.
+status: ready_for_review

@@ -1,0 +1,132 @@
+step_id: A-007
+parent_tactical_step: T-002
+name: Create PythonHandler with cst_tree wrapper and hybrid integer markers
+target_file: ai_editor/tree/handlers/python_handler.py
+operation: create_file
+priority: 6
+depends_on:
+- A-001
+concepts:
+- C-007
+- C-001
+- C-002
+- C-005
+- C-009
+- C-024
+- C-025
+status: draft
+prompt: |
+  Create `ai_editor/tree/handlers/python_handler.py`.
+
+  ## Parent documents
+  - GS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - TS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/README.yaml`
+  - MRS: `docs/plans/marked_tree_unification/spec.yaml`
+
+  ## Locked syntax (PYTHON / {b005})
+  - Metadata-dict CST nodes: set `metadata["___id___"] = <int>` (exact key three underscores)
+  - Other nodes: trailing comment `# ___id___:<short_id>` on last physical line of block
+  - short_id is decimal integer only — NO UUID in TREE or CST metadata
+  - Canonical UUID4 only in MAP via NodeIdMap (C-025); use optional id_map + resolve_uuid_for_short_id server-internal only
+
+  ## Module docstring must state
+  - Hybrid integer marker contract per {b005}
+  - Markers for `.py.tree` TREE section only; SourceFile `.py` never modified on disk
+  - cst_tree builder oracle with persist_sidecar=False (no `.cst/` JSON sidecar)
+  - G1-13 deferral resolved in marked_tree_unification
+  - Author: Vasiliy Zdanovskiy, vasilyvz@gmail.com
+
+  ## Imports
+  - from __future__ import annotations
+  - import re
+  - from pathlib import Path
+  - from typing import Any, Dict, List, Optional, Set
+  - import libcst as cst
+  - from ai_editor.core.cst_tree.tree_builder import create_tree_from_code
+  - from ai_editor.core.cst_tree.models import CSTTree, TreeNodeMetadata
+  - from ai_editor.core.cst_tree.node_type_utils import get_node_kind
+  - from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  - from ai_editor.tree.tree_node import TreeNode
+
+  ## Constants
+  - `_METADATA_ID_KEY = "___id___"`
+  - `_TRAILING_ID_COMMENT_RE = re.compile(r"\s+# ___id___:(\d+)\s*$")`
+  - `_ADDRESSABLE_TYPES: Set[str] = {"FunctionDef","AsyncFunctionDef","ClassDef","Decorator","SimpleStatementLine","Expr","AnnAssign","Assign","AugAssign"}`
+
+  ## Class PythonHandler(FormatHandler)
+
+  ### parse_content(file_path, content) -> List[TreeNode]
+  Algorithm:
+  1. If content.strip() == "": return []
+  2. tree: CSTTree = create_tree_from_code(str(file_path), content, persist_sidecar=False, register_in_memory=True)
+  3. allocator = ShortIdAllocator(1)
+  4. For each (internal_id, meta) in tree.metadata_map.items():
+     a. Skip if meta.node_type not in _ADDRESSABLE_TYPES
+     b. Skip shebang lines (start_line==1 and content lstrip startswith #!)
+     c. sid = allocator.allocate()
+     d. kind = get_node_kind(tree.index.get_node(internal_id)) or meta.node_type
+     e. content_slice = extract source lines meta.start_line..meta.end_line from content (1-based inclusive)
+     f. parent_short_id: optional int from parent metadata using same allocator order — use None if unknown
+     g. TreeNode(short_id=sid, kind=kind, content=content_slice, attributes={"start_line": meta.start_line, "end_line": meta.end_line, "node_type": meta.node_type, "internal_node_id": internal_id}, parent_short_id=parent_short_id or None)
+  5. Return nodes in start_line order
+  NOTE: TreeNode.short_id is integer per-file handle (C-002), NOT cst_tree stable_id UUID.
+
+  ### mark(content) -> str
+  Algorithm:
+  1. Parse module with libcst.parse_module(content)
+  2. allocator = ShortIdAllocator(1)
+  3. Transform CST: visit addressable blocks; for nodes with metadata dict support (FunctionDef, ClassDef, AsyncFunctionDef, Decorator): set metadata[_METADATA_ID_KEY]=allocator.allocate()
+  4. For SimpleStatementLine and other non-metadata blocks: append ` # ___id___:{sid}` to last line of node code via CST trailing comment transformer
+  5. Shebang unchanged
+  6. Multiline docstring marker on closing triple-quote line
+  7. Return module.code (marked string)
+
+  ### unmark(marked_text) -> str
+  1. Parse with libcst.parse_module(marked_text)
+  2. Remove metadata[_METADATA_ID_KEY] entries from all metadata dicts
+  3. Strip trailing `# ___id___:<digits>` comments via regex on generated code OR CST visitor
+  4. Return cleaned source byte-for-byte equal to original
+
+  ### sidecar_path(source_abs) -> Path
+  `source_abs.parent / (source_abs.name + ".tree")` — NOT `.cst/` path
+
+  ## NodeIdMap integration
+  When self._id_map is set, server code may call `resolve_uuid_for_short_id(node.short_id)`; handler never writes UUID into markers.
+
+  ## Error handling
+  - libcst.ParserSyntaxError / SyntaxError: propagate unchanged
+  - Empty content: parse_content [], mark returns "" or "\n" matching input
+
+  ## Forbidden
+  - NO import uuid or uuid.uuid4()
+  - NO TreeNode.short_id = meta.stable_id
+  - NO TreeNode fields `node_id` or `parent_id` — use `short_id` / `parent_short_id` only
+  - NO persist_sidecar=True
+  - NO NotImplementedError on public methods
+  - NO 36-char UUID in comments or metadata
+  - NO EditSession (C-012) hide/unhide logic
+
+  ## Validation
+  ```
+  black ai_editor/tree/handlers/python_handler.py
+  flake8 ai_editor/tree/handlers/python_handler.py
+  mypy ai_editor/tree/handlers/python_handler.py
+  python -c "
+  from pathlib import Path
+  from ai_editor.tree.handlers.python_handler import PythonHandler
+  src='def foo():\\n    pass\\n'
+  h=PythonHandler()
+  assert h.unmark(h.mark(src))==src
+  nodes=h.parse_content(Path('x.py'), src)
+  assert nodes[0].short_id==1
+  assert isinstance(nodes[0].short_id, int)
+  "
+  pytest -q
+  ```
+  All tests must pass. Estimated ~320 lines (max 400).
+verification:
+  type: import
+  target: ai_editor/tree/handlers/python_handler.py
+  expected: >
+    PythonHandler uses integer ___id___ metadata and trailing comments; byte-exact mark/unmark;
+    parse_content returns int short_id on TreeNode; no uuid.uuid4; sidecar_path is sibling .py.tree.

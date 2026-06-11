@@ -1,0 +1,89 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: FreshnessValidation module
+target_file: ai_editor/core/search_session/file_sets/freshness.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/file_sets/freshness.py
+
+  MRS excerpt (C-014 FreshnessValidation):
+  - Uses checksums and/or modification metadata.
+  - Moves stale indexed files into DynamicFileSet.
+  - Follows the same principle as tree sidecar validation (C-015 TreeRepresentation sidecar uses
+    lowercase SHA-256 hex digests and mtime-based staleness).
+
+  Tree sidecar alignment (resolved — operational rules):
+  - `DiskFileMetadata.checksum` and `IndexedFileRecord.indexed_checksum` are lowercase
+    SHA-256 hex strings (64 characters), same format as tree sidecar `source_sha256` and
+    `hashlib.sha256(bytes).hexdigest()`.
+  - Checksum mismatch => STALE (same principle as sidecar SHA mismatch in sha_sync_policy).
+  - Mtime stale when `disk.mtime > indexed_mtime` (strict greater-than) when indexed_mtime is not None.
+    Do not apply the 1e-6 epsilon used by stable_tree sidecar mtime comparison — indexed DB
+    metadata stores source file mtime, not sidecar file mtime.
+  - When both checksum and mtime are absent on the record => UNAVAILABLE_INDEX.
+
+  Required imports:
+  ```python
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from enum import Enum
+  from typing import Optional
+  ```
+
+  Task:
+  Create freshness.py with module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  1. class FreshnessVerdict(str, Enum):
+       FRESH = "fresh"
+       STALE = "stale"
+       MISSING_INDEX = "missing_index"
+       UNAVAILABLE_INDEX = "unavailable_index"
+     Docstring: outcome of comparing indexed metadata against on-disk content.
+
+  2. @dataclass(frozen=True) class IndexedFileRecord:
+       file_path: str  (project-relative)
+       indexed_checksum: Optional[str]
+       indexed_mtime: Optional[float]
+     Docstring documents each field.
+
+  3. @dataclass(frozen=True) class DiskFileMetadata:
+       checksum: str  (lowercase SHA-256 hex)
+       mtime: float
+     Docstring documents each field.
+
+  4. def validate_freshness(
+         record: Optional[IndexedFileRecord],
+         disk: DiskFileMetadata,
+     ) -> FreshnessVerdict:
+     Rules (document in docstring):
+     - record is None => MISSING_INDEX
+     - record has neither checksum nor mtime => UNAVAILABLE_INDEX
+     - indexed_checksum present and != disk.checksum => STALE
+     - indexed_mtime present and disk.mtime > indexed_mtime => STALE
+     - otherwise => FRESH
+
+  5. def is_stale_for_dynamic_routing(verdict: FreshnessVerdict) -> bool:
+     Return True when verdict is not FRESH.
+     Docstring: non-FRESH verdicts emit the stale routing signal — files leave the indexed
+     set and enter dynamic processing. Realizes T-001 stale-routing outcome without a separate
+     StaleFileSignal type.
+
+  Constraints:
+  - Under 200 lines.
+  - Full type hints on all public symbols.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_freshness_validation.py
+  expected: >
+    Matching SHA-256 checksum and mtime => FRESH; checksum mismatch or disk.mtime newer =>
+    STALE; None record => MISSING_INDEX; record without checksum/mtime => UNAVAILABLE_INDEX;
+    is_stale_for_dynamic_routing True for all non-FRESH verdicts.
+status: frozen

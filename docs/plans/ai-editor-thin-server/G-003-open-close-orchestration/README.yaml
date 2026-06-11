@@ -1,0 +1,74 @@
+step_id: G-003
+name: Оркестрация Open и Close
+description: 'Реализовать Open Stage (C-010) и Close Stage (C-013) в рамках File Workflow (C-009). Идентичность сессии: CA Session (C-004) — единственный session_id в bundle registry и во всех командах universal_file_*; отдельный editor group UUID запрещён (свойство C-004). Open: Session Guard (C-024) выполняет Session Validation (C-014) до стадии — при NOT_FOUND на СА отказ normal-операции; при первом файле создать Editor Session Directory (C-005); через Upstream Client (C-017) по контракту C-023 получить файл с блокировкой; сохранить Origin Snapshot (C-007) в File Subtree (C-006); создать Edit Subdirectory (C-008) и связать Internal Edit Engine (C-019). Close: разблокировка на СА; при успехе удалить File Subtree; при закрытии последнего файла удалить Editor Session Directory. Мультифайловая сессия: несколько File Subtree под одним каталогом session_id.
+
+  '
+executor_brief: 'Session Guard (C-024) — внутренняя точка входа, не MCP. Перед universal_file_open: touch session_id на СА через Upstream Client (C-014). Normal-операции (open/edit/preview): при ответе СА NOT_FOUND — отказ с SESSION_NOT_FOUND, без локального open. Завершающие операции (write/close) — по политике C-015 (вне scope этого G-step). depends_on G-007 задаёт только порядок реализации Session Guard, не семантическую зависимость текста шага.
+
+  '
+concepts:
+- C-004
+- C-005
+- C-006
+- C-007
+- C-008
+- C-009
+- C-010
+- C-013
+- C-014
+- C-016
+- C-017
+- C-018
+- C-019
+- C-023
+- C-024
+relations:
+- from_concept: C-003
+  to_concept: C-004
+  type: owns
+- from_concept: C-004
+  to_concept: C-005
+  type: produces
+- from_concept: C-009
+  to_concept: C-010
+  type: owns
+- from_concept: C-009
+  to_concept: C-013
+  type: owns
+- from_concept: C-010
+  to_concept: C-007
+  type: produces
+- from_concept: C-010
+  to_concept: C-008
+  type: produces
+- from_concept: C-010
+  to_concept: C-017
+  type: uses
+- from_concept: C-013
+  to_concept: C-006
+  type: consumes
+- from_concept: C-013
+  to_concept: C-017
+  type: uses
+source_ranges:
+- start: 21
+  end: 21
+- start: 29
+  end: 29
+- start: 31
+  end: 31
+- start: 35
+  end: 40
+- start: 47
+  end: 47
+depends_on:
+- G-001
+- G-002
+- G-007
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+status: ready_for_review

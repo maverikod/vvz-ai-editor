@@ -1,0 +1,159 @@
+step_id: A-007
+parent_tactical_step: T-003
+name: Remove dead sidecar-stub fallback from checksum recreate_tree_from_content
+target_file: ai_editor/core/tree_lifecycle/checksum.py
+operation: modify_file
+priority: 7
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/core/tree_lifecycle/checksum.py\n\
+  \n## Goal\nRemove the dead, type-broken sidecar-stub fallback in the python_cst
+  branch of\nrecreate_tree_from_content. It calls write_sidecar_atomic with a dict
+  payload\n({\"source_sha256\": ...}), which is incompatible with the post-migration
+  signature\nwrite_sidecar_atomic(py_path: Path, tree: CSTTree) -> Path. The stub
+  also violates\nthe source-of-truth invariant: it writes a sidecar whose digest matches
+  the content\nbut carries no real tree, so a later is_tree_valid check reports the
+  tree as valid\nwhen no tree exists. This is the same unreachable \"if not sidecar_path.is_file()\"\
+  \nfallback that T-003/A-001 deletes from tree_representation; checksum.py carries
+  a\nduplicate that the plan otherwise misses.\n\n## Context\nrecreate_tree_from_content
+  has three format branches. The python_cst branch calls\ncreate_tree_from_code(str(source_abs),
+  content, persist_sidecar=True), which builds\nthe CST tree and writes the sibling
+  sidecar through the normal path. It is then\nfollowed by a dead fallback:\n    create_tree_from_code(str(source_abs),
+  content, persist_sidecar=True)\n    if not sidecar_path.is_file():\n        write_sidecar_atomic(source_abs,
+  {\"source_sha256\": content_checksum})\n    _digest, root_stable_id = _read_cst_digest_and_root(source_abs,
+  sidecar_path)\nThe json/yaml and markdown/text branches write their sidecar directly
+  (json.dumps /\nserialize_sidecar_to_json_text + tmp.write_text + os.replace) and
+  never call\nwrite_sidecar_atomic; write_sidecar_atomic is used in this module ONLY
+  by the dead\nfallback being removed. The invariant chain is: build tree from source,
+  sidecar is\nwritten by the builder, then read its digest and root. If the builder
+  fails to write\nthe sidecar, that is an error surfaced by _read_cst_digest_and_root,
+  not something to\nbe masked by a digest-only stub.\n\n## Required edits (migration-relevant
+  ONLY; do not refactor anything else)\n1. In the python_cst branch local imports,
+  delete the line:\n       from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic\n\
+  \   Keep the create_tree_from_code import and the _read_cst_digest_and_root import.\n\
+  \n2. Delete the two-line dead fallback so the branch body becomes:\n       create_tree_from_code(str(source_abs),
+  content, persist_sidecar=True)\n       _digest, root_stable_id = _read_cst_digest_and_root(source_abs,
+  sidecar_path)\n       return TreeRepresentationRef(\n           file_path=file_path,\n\
+  \           sidecar_path=sidecar_path,\n           content_checksum=content_checksum,\n\
+  \           root_stable_id=root_stable_id,\n       )\n   i.e. remove exactly:\n\
+  \       if not sidecar_path.is_file():\n           write_sidecar_atomic(source_abs,
+  {\"source_sha256\": content_checksum})\n\n## Forbidden\n- Do not change the json/yaml
+  branch or the markdown/text branch. Their direct\n  sidecar writes are the normal
+  build path, not a fallback, and must stay.\n- Do not change compute_content_checksum,
+  is_tree_valid,\n  validate_or_recreate_from_content, or validate_or_recreate_tree_file.\n\
+  - Do not change the module-level import block (TreeFormatKind, TreeRepresentationRef,\n\
+  \  TreeValidityState, classify_tree_format, sidecar_path_for) or __all__.\n- Do
+  not add any replacement fallback. Absence of a sidecar after the builder runs\n\
+  \  is an error condition, not something to mask.\n- Do not touch other files.\n\n\
+  ## Full current file content (verbatim, 233 lines)\n```python\n\"\"\"\nCentralized
+  tree-lifecycle: checksum + validate + recreate.\n\nThis module owns ONE responsibility:
+  \"is there a valid tree (sidecar) for this\ncontent; if not, build it\". Every consumer
+  that needs a structurally valid tree\n(preview, grep, watcher, indexer, edit sessions,
+  builders) routes through here\nso the rule lives in a single place.\n\nDesign:\n\
+  - The CORE works on CONTENT (strings), not file paths. Builders and edit\n  sessions
+  that already hold the source text in memory call the core directly,\n  avoiding
+  a redundant file read.\n- A thin FILE wrapper sits on top: it reads the source once,
+  computes the\n  checksum, reads the sidecar digest, and delegates to the core.\n\
+  \nRepresentation building (turning a valid tree into a preview/structure) is NOT\n\
+  this module's job — that stays in ``tree_representation``. This module only\nguarantees
+  the tree is valid and rebuilds it when stale.\n\nAuthor: Vasiliy Zdanovskiy\nemail:
+  vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__ import annotations\n\nimport hashlib\n\
+  import json\nimport os\nfrom pathlib import Path\n\nfrom ai_editor.core.search_session.tree_representation
+  import (\n    TreeFormatKind,\n    TreeRepresentationRef,\n    TreeValidityState,\n\
+  \    classify_tree_format,\n    sidecar_path_for,\n)\n\n\ndef compute_content_checksum(content:
+  str) -> str:\n    \"\"\"Return the SHA-256 hex digest of *content*.\n\n    This
+  is the content-based counterpart of hashing a file: callers that hold\n    the source
+  text in memory hash it directly, without touching disk.\n    \"\"\"\n    return
+  hashlib.sha256(content.encode(\"utf-8\")).hexdigest()\n\n\ndef is_tree_valid(content_checksum:
+  str, sidecar_digest: str | None) -> bool:\n    \"\"\"Return True when a sidecar
+  digest exists and matches the content checksum.\"\"\"\n    return sidecar_digest
+  is not None and sidecar_digest == content_checksum\n\n\ndef recreate_tree_from_content(\n\
+  \    *,\n    kind: TreeFormatKind,\n    content: str,\n    source_abs: Path,\n \
+  \   sidecar_path: Path,\n    file_path: str,\n    content_checksum: str,\n) -> TreeRepresentationRef:\n\
+  \    \"\"\"Rebuild the sidecar tree for *content* using the per-format tree builders.\n\
+  \n    Takes the already-in-memory ``content`` instead of re-reading the file, so
+  a\n    caller that just hashed the content does not pay a second read. Writes the\n\
+  \    sidecar atomically and returns a validated reference.\n    \"\"\"\n    # Local
+  imports break a module-load cycle with tree_representation and keep\n    # the per-format
+  builder dependencies lazy (heavy modules).\n    if kind == TreeFormatKind.python_cst:\n\
+  \        from ai_editor.core.cst_tree.tree_builder import create_tree_from_code\n\
+  \        from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic\n\
+  \        from ai_editor.core.search_session.tree_representation import (\n \
+  \           _read_cst_digest_and_root,\n        )\n\n        create_tree_from_code(str(source_abs),
+  content, persist_sidecar=True)\n        if not sidecar_path.is_file():\n       \
+  \     write_sidecar_atomic(source_abs, {\"source_sha256\": content_checksum})\n\
+  \        _digest, root_stable_id = _read_cst_digest_and_root(source_abs, sidecar_path)\n\
+  \        return TreeRepresentationRef(\n            file_path=file_path,\n     \
+  \       sidecar_path=sidecar_path,\n            content_checksum=content_checksum,\n\
+  \            root_stable_id=root_stable_id,\n        )\n\n    if kind in {TreeFormatKind.json,
+  TreeFormatKind.yaml}:\n        from ai_editor.core.tree_temp.sidecar_payload
+  import (\n            serialize_sidecar_to_json_text,\n        )\n        from ai_editor.core.search_session.tree_representation
+  import (\n            _read_tree_temp_root_stable_id,\n        )\n\n        if kind
+  == TreeFormatKind.json:\n            from ai_editor.core.json_tree.tree_builder
+  import build_tree_from_data\n\n            data = json.loads(content)\n        \
+  \    tree = build_tree_from_data(data, source_path=str(source_abs))\n        else:\n\
+  \            import yaml as _yaml\n\n            from ai_editor.core.yaml_tree.tree_builder
+  import (\n                build_yaml_tree_from_data,\n            )\n\n        \
+  \    data = _yaml.safe_load(content)\n            tree = build_yaml_tree_from_data(data,
+  source_path=str(source_abs))\n\n        sidecar_text = serialize_sidecar_to_json_text(\n\
+  \            tree, source_sha256=content_checksum\n        )\n        sidecar_path.parent.mkdir(parents=True,
+  exist_ok=True)\n        tmp = sidecar_path.with_suffix(sidecar_path.suffix + \"\
+  .tmp\")\n        tmp.write_text(sidecar_text, encoding=\"utf-8\")\n        os.replace(tmp,
+  sidecar_path)\n        return TreeRepresentationRef(\n            file_path=file_path,\n\
+  \            sidecar_path=sidecar_path,\n            content_checksum=content_checksum,\n\
+  \            root_stable_id=_read_tree_temp_root_stable_id(sidecar_path),\n    \
+  \    )\n\n    # markdown or plain text — adjacent .tree_sidecar\n    from ai_editor.core.structure_extraction.extractor
+  import extract_structure\n    from ai_editor.core.search_session.tree_representation
+  import (\n        _read_adjacent_root_stable_id,\n    )\n\n    extract_structure(str(source_abs),
+  ensure_persisted_tree=True)\n    payload: dict = {\"source_sha256\": content_checksum}\n\
+  \    root_stable_id = _read_adjacent_root_stable_id(sidecar_path)\n    if root_stable_id
+  is not None:\n        payload[\"root_stable_id\"] = root_stable_id\n    tmp = sidecar_path.with_suffix(sidecar_path.suffix
+  + \".tmp\")\n    tmp.write_text(json.dumps(payload, indent=2), encoding=\"utf-8\"\
+  )\n    os.replace(tmp, sidecar_path)\n    return TreeRepresentationRef(\n      \
+  \  file_path=file_path,\n        sidecar_path=sidecar_path,\n        content_checksum=content_checksum,\n\
+  \        root_stable_id=root_stable_id,\n    )\n\n\ndef validate_or_recreate_from_content(\n\
+  \    *,\n    kind: TreeFormatKind,\n    content: str,\n    source_abs: Path,\n \
+  \   sidecar_path: Path,\n    file_path: str,\n    sidecar_digest: str | None,\n\
+  \    root_stable_id: str | None,\n    force: bool = False,\n) -> tuple[TreeRepresentationRef,
+  TreeValidityState]:\n    \"\"\"Decide reuse vs recreate for already-in-memory *content*.\n\
+  \n    The caller supplies the current sidecar digest (and root stable id) it has\n\
+  \    already read. When the digest matches the content checksum and ``force`` is\n\
+  \    false, the existing sidecar is reused; otherwise the tree is rebuilt.\n   \
+  \ \"\"\"\n    content_checksum = compute_content_checksum(content)\n    if not force
+  and is_tree_valid(content_checksum, sidecar_digest):\n        return (\n       \
+  \     TreeRepresentationRef(\n                file_path=file_path,\n           \
+  \     sidecar_path=sidecar_path,\n                content_checksum=content_checksum,\n\
+  \                root_stable_id=root_stable_id,\n            ),\n            TreeValidityState.reused,\n\
+  \        )\n    ref = recreate_tree_from_content(\n        kind=kind,\n        content=content,\n\
+  \        source_abs=source_abs,\n        sidecar_path=sidecar_path,\n        file_path=file_path,\n\
+  \        content_checksum=content_checksum,\n    )\n    return ref, TreeValidityState.recreated\n\
+  \n\ndef validate_or_recreate_tree_file(\n    *,\n    project_root: Path,\n    file_path:
+  str,\n    force: bool = False,\n) -> tuple[TreeRepresentationRef, TreeValidityState]:\n\
+  \    \"\"\"File wrapper over the content core.\n\n    Reads the source once, computes
+  its checksum, reads the current sidecar\n    digest, then delegates to ``validate_or_recreate_from_content``.
+  This is the\n    entry point for path-based consumers (preview, grep, watcher).\n\
+  \n    Raises FileNotFoundError when the source file is absent.\n    \"\"\"\n   \
+  \ from ai_editor.core.search_session.tree_representation import (\n        _read_sidecar_state,\n\
+  \    )\n\n    kind = classify_tree_format(file_path)\n    root = project_root.resolve()\n\
+  \    source_abs = (root / file_path).resolve()\n    if not source_abs.is_file():\n\
+  \        raise FileNotFoundError(f\"source file not found: {source_abs}\")\n   \
+  \ content = source_abs.read_text(encoding=\"utf-8\")\n    sidecar_path = sidecar_path_for(file_path,
+  root)\n    sidecar_digest, root_stable_id = _read_sidecar_state(\n        kind=kind,
+  source_abs=source_abs, sidecar_path=sidecar_path\n    )\n    return validate_or_recreate_from_content(\n\
+  \        kind=kind,\n        content=content,\n        source_abs=source_abs,\n\
+  \        sidecar_path=sidecar_path,\n        file_path=file_path,\n        sidecar_digest=sidecar_digest,\n\
+  \        root_stable_id=root_stable_id,\n        force=force,\n    )\n\n\n__all__
+  = [\n    \"compute_content_checksum\",\n    \"is_tree_valid\",\n    \"recreate_tree_from_content\"\
+  ,\n    \"validate_or_recreate_from_content\",\n    \"validate_or_recreate_tree_file\"\
+  ,\n]\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_lifecycle/checksum.py
+  expected: black, flake8, mypy exit 0; the python_cst branch no longer imports 
+    or calls write_sidecar_atomic; the 'if not sidecar_path.is_file()' stub is 
+    gone; the branch is build-then-read-digest-then-return; json/yaml and 
+    markdown/text branches are unchanged; module-level imports and __all__ 
+    unchanged; grep for 'write_sidecar_atomic' in this file returns nothing.

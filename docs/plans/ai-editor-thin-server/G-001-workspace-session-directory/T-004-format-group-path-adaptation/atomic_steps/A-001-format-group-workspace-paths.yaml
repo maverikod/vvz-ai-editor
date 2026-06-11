@@ -1,0 +1,400 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Draft и lockfile paths в edit subdir
+target_file: ai_editor/commands/universal_file_edit/format_group.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-006
+- C-008
+- C-019
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/commands/universal_file_edit/format_group.py`):
+  ```py
+  """
+  FormatGroup resolution and DraftFile/WriteLockfile path helpers.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+  import os
+
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from typing import List, Optional, Tuple
+
+  from ai_editor.core.file_handlers.registry import RegistryError, resolve_handler
+
+  FORMAT_SIDECAR = "sidecar"
+  FORMAT_TREE_TEMP = "tree-temp"
+  FORMAT_TEXT = "text"
+
+  # Third lockfile line: universal_file_write preview completed (sidecar two-phase).
+  LOCKFILE_WRITE_PREVIEW_READY = "write_preview"
+
+  _HANDLER_TO_FORMAT = {
+      "python": FORMAT_SIDECAR,
+      "json": FORMAT_TREE_TEMP,
+      "yaml": FORMAT_TREE_TEMP,
+      "text": FORMAT_TEXT,
+  }
+
+  _SIX_EDIT_OPERATIONS = [
+      "insert",
+      "delete",
+      "replace",
+      "move",
+      "edit_attributes",
+      "edit_content",
+  ]
+
+  _FORMAT_AVAILABLE_OPERATIONS = {
+      FORMAT_SIDECAR: list(_SIX_EDIT_OPERATIONS),
+      FORMAT_TREE_TEMP: list(_SIX_EDIT_OPERATIONS),
+      FORMAT_TEXT: list(_SIX_EDIT_OPERATIONS),
+  }
+
+
+  @dataclass
+  class FormatDescriptor:
+      """Resolved format group descriptor for one file.
+
+      Attributes:
+          format_group: One of sidecar, tree-temp, or text.
+          handler_id: Handler id from the file handler registry.
+          draft_path: Absolute path to the draft file.
+          lockfile_path: Absolute path to the write lockfile.
+          available_operations: List of operation type strings valid for this group.
+      """
+
+      format_group: str
+      handler_id: str
+      draft_path: Path
+      lockfile_path: Path
+      available_operations: List[str] = field(default_factory=list)
+
+
+  def resolve_format_group(abs_path: Path) -> FormatDescriptor:
+      """Resolve the FormatGroup and return a FormatDescriptor for abs_path.
+
+      Args:
+          abs_path: Absolute path to the file being opened for editing.
+
+      Returns:
+          FormatDescriptor with resolved group, draft path, lockfile path,
+          and available operations.
+
+      Raises:
+          ValueError: with code UNKNOWN_FORMAT when the file extension is not
+              supported by any handler.
+      """
+      try:
+          handler_id = resolve_handler(str(abs_path), "read")
+      except RegistryError as exc:
+          raise ValueError("UNKNOWN_FORMAT") from exc
+      format_group = _HANDLER_TO_FORMAT[handler_id]
+      draft_path = draft_path_for(abs_path, format_group)
+      lockfile_path = lockfile_path_for(abs_path)
+      available_ops = list(_FORMAT_AVAILABLE_OPERATIONS[format_group])
+      return FormatDescriptor(
+          format_group=format_group,
+          handler_id=handler_id,
+          draft_path=draft_path,
+          lockfile_path=lockfile_path,
+          available_operations=available_ops,
+      )
+
+
+  def draft_path_for(abs_path: Path, format_group: str) -> Path:
+      """Return the draft file path for abs_path given its format group.
+
+      Args:
+          abs_path: Absolute path to the original file.
+          format_group: One of sidecar, tree-temp, or text.
+
+      Returns:
+          Absolute path to the draft file.
+      """
+      if format_group == FORMAT_SIDECAR:
+          return abs_path.with_suffix(abs_path.suffix + ".cst_sidecar")
+      return abs_path.with_suffix(abs_path.suffix + ".draft")
+
+
+  def lockfile_path_for(abs_path: Path) -> Path:
+      """Return the write lockfile path for abs_path.
+
+      Args:
+          abs_path: Absolute path to the original file.
+
+      Returns:
+          Absolute path to the lockfile (<file>.write).
+      """
+      return abs_path.with_suffix(abs_path.suffix + ".write")
+
+
+  def read_lockfile_pid(abs_path: Path) -> Optional[Tuple[int, str]]:
+      """Read PID and session_id from the write lockfile.
+
+      Returns:
+          ``(pid, session_id)`` when the lockfile exists and is valid.
+          ``None`` when the lockfile is absent, unreadable, or malformed.
+      """
+      lf = lockfile_path_for(abs_path)
+      try:
+          parts = lf.read_text().strip().splitlines()
+          if len(parts) < 2:
+              return None
+          return int(parts[0]), parts[1].strip()
+      except (OSError, ValueError):
+          return None
+
+
+  def lockfile_write_preview_ready(abs_path: Path) -> bool:
+      """Return True when the lockfile marks a completed universal_file_write preview.
+
+      Open writes only PID and session_id (session lock). The first sidecar write
+      preview adds a third line ``write_preview``; the second write call commits.
+      """
+      lf = lockfile_path_for(abs_path)
+      try:
+          parts = lf.read_text().strip().splitlines()
+          return len(parts) >= 3 and parts[2].strip() == LOCKFILE_WRITE_PREVIEW_READY
+      except OSError:
+          return False
+
+
+  def write_lockfile_pid(
+      abs_path: Path,
+      pid: int,
+      session_id: str,
+      *,
+      write_preview_ready: bool = False,
+  ) -> None:
+      """Write PID and session_id to the write lockfile atomically.
+
+      Format: first line is the integer PID, second line is the session UUID.
+      Optional third line ``write_preview`` after the first sidecar write preview.
+      """
+      lf = lockfile_path_for(abs_path)
+      tmp = lf.with_suffix(".write.tmp")
+      body = f"{pid}\n{session_id}"
+      if write_preview_ready:
+          body = f"{body}\n{LOCKFILE_WRITE_PREVIEW_READY}"
+      tmp.write_text(body)
+      tmp.rename(lf)
+
+
+  def delete_lockfile(abs_path: Path) -> None:
+      """Delete the write lockfile if it exists; silent if absent.
+
+      Args:
+          abs_path: Absolute path to the original file.
+      """
+      lockfile_path_for(abs_path).unlink(missing_ok=True)
+
+
+  def check_lock(abs_path: Path, caller_session_id: str) -> Optional[str]:
+      """Return None if the file is free, or the locking session_id if locked.
+
+      Free when any of:
+        - lockfile absent
+        - lockfile has no session_id (legacy / corrupt)
+        - owning process is dead (os.kill raises OSError with ESRCH)
+        - session_id in lockfile equals caller_session_id
+      Locked when: lockfile present, process alive, session_id != caller.
+      """
+      lock = read_lockfile_pid(abs_path)
+      if lock is None:
+          return None
+      pid, lock_session_id = lock
+      if not lock_session_id:
+          return None
+      if lock_session_id == caller_session_id:
+          return None
+      try:
+          os.kill(pid, 0)
+      except OSError:
+          # Process does not exist (ESRCH) or we lack permission (EPERM).
+          # EPERM means the process exists but belongs to another user;
+          # treat conservatively as alive only when errno is EPERM.
+          import errno as _errno
+          import sys
+
+          exc = sys.exc_info()[1]
+          if getattr(exc, "errno", None) == _errno.ESRCH:
+              return None  # process dead — lock is stale
+          # EPERM or anything else: process alive, file locked
+          return lock_session_id
+      return lock_session_id
+  ```
+
+  Modify `ai_editor/commands/universal_file_edit/format_group.py` (operation: modify_file).
+
+  Parent: `docs/plans/ai-editor-thin-server/G-001-workspace-session-directory/T-004-format-group-path-adaptation/README.yaml`
+  Plan: `docs/plans/ai-editor-thin-server/spec.yaml`
+
+  ## MRS excerpt
+
+  **C-006 File Subtree** — поддерево каталога сессии для одного открытого файла; содержит Origin Snapshot и Edit Subdirectory.
+
+  **C-008 Edit Subdirectory** — подкаталог File Subtree с рабочей копией для правок (draft/CST/tree-temp); единственная цель мутаций на стадии edit.
+
+  **C-019 Internal Edit Engine** — INVARIANT: артефакты редактирования размещаются относительно подкаталога редактирования в файловом поддереве сессии, а не относительно канонического пути проекта на диске upstream-сервера.
+
+  ## Scope (T-004 only — fixes F-036 path anchor, F-026 boundary)
+
+  **IN scope:** `draft_path` and `lockfile_path` only. Both are siblings of the edit working copy (`edit_source_path`) inside **Edit Subdirectory (C-008)** within **File Subtree (C-006)**.
+
+  Path anchor rule (resolved — no "or"): `edit_source_path` is the working-copy file inside Edit Subdirectory (e.g. `{edit_subdir}/{origin_filename}`). `draft_path` and `lockfile_path` are computed from `edit_source_path` as base, never from Origin Snapshot path and never from canonical project file path on CA host.
+
+  **OUT of scope — deferred to T-006** (`G-001-workspace-session-directory/T-006-sidecar-tree-temp-workspace-paths`):
+  - sidecar artifact paths (`.cst_sidecar`, CST sidecar layout)
+  - tree-temp storage roots
+  - any change to `draft_path_for` sidecar branch or tree-temp path rules
+
+  Do NOT call `draft_path_for` from workspace helpers (its sidecar branch belongs to T-006).
+
+  ## Module docstring
+
+  Replace first paragraph with two lines (author/email unchanged):
+
+  ```
+  FormatGroup resolution and DraftFile/WriteLockfile path helpers.
+  Workspace edit uses resolve_format_group_for_edit_source with edit_source_path inside Edit Subdirectory.
+  ```
+
+  ## Imports (unchanged — no new imports)
+
+  ```
+  from __future__ import annotations
+  import os
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from typing import List, Optional, Tuple
+  from ai_editor.core.file_handlers.registry import RegistryError, resolve_handler
+  ```
+
+  ## New functions (add after `lockfile_path_for`, before `read_lockfile_pid`)
+
+  ### `draft_path_for_edit_source(edit_source_path: Path) -> Path`
+
+  Docstring one line: `Return draft path as sibling of edit_source_path inside Edit Subdirectory.`
+
+  Algorithm:
+  1. Return `edit_source_path.with_suffix(edit_source_path.suffix + ".draft")`.
+  2. Do not branch on format_group. Do not use `.cst_sidecar`.
+
+  Edge cases:
+  - `edit_source_path` = `/ws/sid/files/pid/src/foo.py` → `/ws/sid/files/pid/src/foo-{uuid}/foo.py.draft` when edit_source is inside edit subdir.
+  - Extensionless name `README` → `README.draft`.
+
+  Error handling: none (pure path transform).
+
+  ### `lockfile_path_for_edit_source(edit_source_path: Path) -> Path`
+
+  Docstring one line: `Return in-session write lockfile path as sibling of edit_source_path inside Edit Subdirectory.`
+
+  Algorithm:
+  1. Return `edit_source_path.with_suffix(edit_source_path.suffix + ".write")`.
+
+  Edge cases:
+  - Same parent directory as `edit_source_path` and `draft_path_for_edit_source` output.
+
+  Error handling: none (pure path transform).
+
+  ### `resolve_format_group_for_edit_source(edit_source_path: Path) -> FormatDescriptor`
+
+  Docstring:
+  ```
+  Resolve format group where draft_path and lockfile_path are siblings of edit_source_path
+  inside Edit Subdirectory (C-008), not beside canonical project file on CA host.
+  ```
+
+  Algorithm:
+  1. `handler_id = resolve_handler(str(edit_source_path), "read")` inside try/except RegistryError → raise `ValueError("UNKNOWN_FORMAT") from exc` (same as `resolve_format_group`).
+  2. `format_group = _HANDLER_TO_FORMAT[handler_id]`.
+  3. `draft_path = draft_path_for_edit_source(edit_source_path)` — NOT `draft_path_for`.
+  4. `lockfile_path = lockfile_path_for_edit_source(edit_source_path)` — NOT `lockfile_path_for`.
+  5. `available_ops = list(_FORMAT_AVAILABLE_OPERATIONS[format_group])`.
+  6. Return `FormatDescriptor(format_group=..., handler_id=..., draft_path=..., lockfile_path=..., available_operations=available_ops)`.
+
+  Error handling:
+  - `RegistryError` from `resolve_handler` → `ValueError("UNKNOWN_FORMAT")` (re-raise chain preserved).
+
+  Edge cases:
+  - Python file in edit subdir: `format_group` is `FORMAT_SIDECAR` but `draft_path` ends with `.draft` (not `.cst_sidecar`) — sidecar path is T-006.
+  - JSON/YAML: `format_group` is `FORMAT_TREE_TEMP`; `draft_path` still `.draft` suffix only in this step.
+
+  ## Unchanged functions (do not modify bodies or signatures)
+
+  `resolve_format_group`, `draft_path_for`, `lockfile_path_for`, `read_lockfile_pid`, `lockfile_write_preview_ready`, `write_lockfile_pid`, `delete_lockfile`, `check_lock`, `FormatDescriptor`, module constants.
+
+  ## Constants (used by new functions)
+
+  - Draft suffix literal: `".draft"` appended to `edit_source_path.suffix` via `with_suffix`.
+  - Lockfile suffix literal: `".write"` appended to `edit_source_path.suffix` via `with_suffix`.
+  - `UNKNOWN_FORMAT` error message string: `"UNKNOWN_FORMAT"`.
+
+  ## Forbidden
+
+  - Do NOT modify `draft_path_for` or its `FORMAT_SIDECAR` / `.cst_sidecar` branch.
+  - Do NOT add sidecar-path or tree-temp-path helpers in this file.
+  - Do NOT call `draft_path_for` or `lockfile_path_for` inside `resolve_format_group_for_edit_source`.
+  - Do NOT change `resolve_format_group` behavior.
+  - Do NOT modify files other than `ai_editor/commands/universal_file_edit/format_group.py`.
+  - Do NOT add `Any` type annotations.
+  - Do NOT add methods not listed in this step.
+
+  ## Validation (from project root, `.venv` activated)
+
+  ```bash
+  black ai_editor/commands/universal_file_edit/format_group.py
+  flake8 ai_editor/commands/universal_file_edit/format_group.py
+  mypy ai_editor/commands/universal_file_edit/format_group.py
+  pytest tests/test_universal_file_edit_command.py -v
+  pytest tests/test_tree_temp_edit_session_preview.py -v
+  ```
+
+  Expected:
+  - black: "reformatted" or "would be left unchanged"
+  - flake8: no output, exit 0
+  - mypy: "Success: no issues found"
+  - pytest: all tests PASSED
+
+  Post-implementation spot check (manual, same shell):
+
+  ```bash
+  python -c "
+  from pathlib import Path
+  from ai_editor.commands.universal_file_edit.format_group import (
+      resolve_format_group_for_edit_source,
+      draft_path_for_edit_source,
+      lockfile_path_for_edit_source,
+      FORMAT_SIDECAR,
+  )
+  edit = Path('/tmp/ws/sid/files/pid/foo/foo-uuid/foo.py')
+  d = resolve_format_group_for_edit_source(edit)
+  assert d.draft_path == edit.with_suffix('.py.draft')
+  assert d.lockfile_path == edit.with_suffix('.py.write')
+  assert d.draft_path.parent == edit.parent
+  assert d.format_group == FORMAT_SIDECAR
+  assert '.cst_sidecar' not in str(d.draft_path)
+  print('ok')
+  "
+  ```
+
+  Expected: prints `ok`, exit 0.
+
+  **Mandatory:** all tests must pass before handoff.
+verification:
+  type: pytest
+  target: tests/test_universal_file_edit_command.py
+  expected: >
+    Existing universal_file_edit tests pass. resolve_format_group_for_edit_source
+    returns draft_path and lockfile_path as siblings of edit_source_path inside
+    Edit Subdirectory; draft_path always uses .draft suffix (never .cst_sidecar).
+    Sidecar and tree-temp workspace paths are not implemented in this step (T-006).
+status: draft

@@ -1,0 +1,143 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create tree package __init__.py
+target_file: ai_editor/tree/__init__.py
+operation: create_file
+priority: 2
+depends_on:
+- A-002
+concepts:
+- C-001
+- C-002
+- C-005
+- C-024
+status: ready_for_review
+prompt: |
+  Create the file `ai_editor/tree/__init__.py`.
+  Operation: create_file (the file does not exist yet).
+
+  This file is the package initialiser for `ai_editor.tree`. It re-exports the
+  public contract API from `ai_editor/tree/contracts.py` (created in the prior
+  step targeting that module).
+
+  ## MRS excerpt (relevant concepts)
+
+  C-001 MarkerContract: three-operation contract (mark, parse, unmark) with integer
+    short_id markers in TREE section only; round-trip invariant verified by checksum.
+
+  C-002 NodeId: per-file monotonic integer short_id handle (NOT str, NOT UUID);
+    external API uses (project-relative file path, short_id int).
+
+  C-005 AddressableBlock: minimally-addressable block; marker never mid-lexeme.
+
+  C-024 TreeNodeUuid: canonical UUID4 stored in MAP section only; not exported for
+    marker embedding or external node references (type exported for internal MAP typing).
+
+  ## File header (module docstring — exact content)
+
+  """
+  ai_editor.tree — Marked-tree unification package.
+
+  Public API:
+      MarkerContract     - Three-operation protocol (mark, parse, unmark) [C-001]
+      NodeId             - Per-file integer short_id handle                 [C-002]
+      TreeNodeUuid       - MAP-section canonical UUID4 identity             [C-024]
+      AddressableBlock   - Per-format minimal addressable unit              [C-005]
+      Format             - Enumeration of supported file formats
+      UnknownNodeIdError - Raised when a short_id is not recognised         [C-002]
+      validate_short_id  - Validate and coerce int to NodeId
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Complete import list
+
+  Imports:
+  - from ai_editor.tree.contracts import (
+      AddressableBlock,
+      Format,
+      MarkerContract,
+      NodeId,
+      TreeNodeUuid,
+      UnknownNodeIdError,
+      validate_short_id,
+    )
+
+  No other imports. Do NOT add `from __future__ import annotations`.
+
+  ## Required file body
+
+  After the module docstring, write exactly:
+
+  ```python
+  from ai_editor.tree.contracts import (
+      AddressableBlock,
+      Format,
+      MarkerContract,
+      NodeId,
+      TreeNodeUuid,
+      UnknownNodeIdError,
+      validate_short_id,
+  )
+
+  __all__ = [
+      "AddressableBlock",
+      "Format",
+      "MarkerContract",
+      "NodeId",
+      "TreeNodeUuid",
+      "UnknownNodeIdError",
+      "validate_short_id",
+  ]
+  ```
+
+  ## Atomic operations
+
+  1. Create directory `ai_editor/tree/` if missing (only this package dir; no other files).
+  2. Write `__init__.py` with docstring, import block, and __all__ exactly as specified.
+  3. Do NOT add logic, constants, or re-exports beyond the seven names in __all__.
+
+  ## Expected deliverables
+
+  - Single file `ai_editor/tree/__init__.py` (~35 lines)
+  - Package importable as `ai_editor.tree`
+
+  ## Forbidden patterns
+
+  Forbidden:
+  - Do NOT re-export TreeNode, NodeIdMap, FormatHandler, or any handler symbols
+  - Do NOT add runtime logic or side effects
+  - Do NOT import uuid or call uuid.uuid4()
+  - Do NOT define NodeId as str
+  - Do NOT modify ai_editor/tree/contracts.py
+  - Do NOT modify any file other than ai_editor/tree/__init__.py
+  - Do NOT add names to __all__ beyond the seven listed
+  - Do NOT reference other atomic step IDs in comments
+
+  ## Validation commands (run from project root with .venv active)
+
+  Validation:
+  - black ai_editor/tree/__init__.py → "reformatted" or "All done!" / no error
+  - flake8 ai_editor/tree/__init__.py → no output (exit 0)
+  - python -c "
+      import ai_editor.tree as tree
+      expected = {
+          'AddressableBlock', 'Format', 'MarkerContract', 'NodeId',
+          'TreeNodeUuid', 'UnknownNodeIdError', 'validate_short_id',
+      }
+      assert set(tree.__all__) == expected
+      from ai_editor.tree import MarkerContract, NodeId, validate_short_id
+      assert validate_short_id(1) == NodeId(1)
+      " → exit 0, no output
+
+  Mandatory completion: all validation commands pass; all tests pass (no new tests required for this step).
+
+verification:
+  type: import
+  target: ai_editor/tree/__init__.py
+  expected: >
+    Executing `from ai_editor.tree import MarkerContract, NodeId, TreeNodeUuid,
+    AddressableBlock, Format, UnknownNodeIdError, validate_short_id` succeeds without
+    ImportError. Module __all__ contains exactly the seven names listed and no others.
+    validate_short_id(1) returns NodeId(1). File line count is at most 400.

@@ -1,0 +1,76 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: RawFindingBuffer
+target_file: ai_editor/core/search_session/raw_finding_buffer.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-028
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/raw_finding_buffer.py
+
+  MRS excerpt (C-028 RawFindingBuffer):
+  - Dedicated accumulation subdirectory inside SearchSessionDirectory ({g9xv}).
+  - Holds each produced finding as one separate file written by the main search thread.
+  - Contains a lock file recording the owner process PID of the active block assembler.
+  - A lock whose owner PID is no longer alive is stale and may be reclaimed.
+  - Assembled findings are deleted from the buffer after their block is published.
+  - Is deleted once the search status is completed and the buffer is empty.
+  - Is internal to result production and is not exposed to HTTP readers.
+
+  Required imports:
+  - from __future__ import annotations
+  - import json, os
+  - from pathlib import Path
+
+  Module constant LOCK_FILENAME = "assembler.lock"
+
+  Implement class RawFindingBuffer:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. __init__(self, buffer_dir: Path) -> None
+     Docstring: create buffer_dir and record lock path at buffer_dir / LOCK_FILENAME.
+
+  3. @property buffer_dir(self) -> Path
+     Docstring: absolute path to the buffer directory.
+
+  4. @property lock_path(self) -> Path
+     Docstring: absolute path to the assembler lock file.
+
+  5. def append_finding(self, finding_id: str, payload: dict) -> Path
+     Docstring: write {finding_id}.json with json.dump, flush, fsync; return path.
+
+  6. def list_findings(self) -> list[Path]
+     Docstring: return *.json files sorted by mtime ascending.
+
+  7. def total_bytes(self) -> int
+     Docstring: sum st_size of all finding files from list_findings().
+
+  8. def remove_findings(self, paths: list[Path]) -> None
+     Docstring: unlink each path when it exists.
+
+  9. def try_acquire_lock(self) -> bool
+     Docstring: when lock exists and owner pid alive return False; reclaim stale lock;
+     write current os.getpid() via atomic tmp+replace; return True on ownership.
+
+  10. def release_lock(self) -> None
+      Docstring: unlink lock only when owned by current process.
+
+  11. def delete_buffer(self) -> None
+      Docstring: remove all finding files, unlink lock, rmdir buffer_dir when empty.
+      Called by BlockAssembler after final drain when search completed and buffer empty.
+
+  Private helpers _read_lock_pid, _write_lock_pid, _pid_is_alive (os.kill pid,0 semantics).
+
+  Under 250 lines. All public methods documented.
+
+verification:
+  type: pytest
+  target: tests/unit/test_raw_finding_buffer.py
+  expected: >
+    Append/list/remove works; stale lock reclaimed when owner pid dead;
+    delete_buffer removes findings, lock file, and buffer directory.
+status: frozen

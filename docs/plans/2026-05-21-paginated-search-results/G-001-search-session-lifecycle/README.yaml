@@ -1,0 +1,40 @@
+step_id: G-001
+name: Search session lifecycle and directory
+description: "Establishes the search session as the logical execution context for
+  one search request and the on-disk session directory that holds all of its artefacts.
+  A session is created before search execution begins; its directory stores the manifest,
+  the directory index, result blocks, and service metadata. The session records the
+  owning server process identity and a last-access timestamp used by later expiration
+  logic. This step defines the existence, ownership, and basic state of a session
+  and its directory; it does not define how result blocks are produced, how the index
+  is paged over HTTP, or how expiration and cleanup run.\n"
+concepts:
+- C-001
+- C-002
+- C-003
+- C-006
+- C-008
+relations:
+- from_concept: C-001
+  to_concept: C-002
+  type: owns
+- from_concept: C-002
+  to_concept: C-003
+  type: owns
+- from_concept: C-003
+  to_concept: C-008
+  type: owns
+source_labels:
+- '{zhp1}'
+- '{dsy4}'
+- '{hpqf}'
+- '{nyox}'
+- '{xxer}'
+- '{6diy}'
+depends_on: []
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+status: ready_for_review

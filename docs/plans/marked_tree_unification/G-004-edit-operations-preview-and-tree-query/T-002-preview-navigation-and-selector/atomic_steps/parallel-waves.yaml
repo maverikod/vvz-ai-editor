@@ -1,0 +1,15 @@
+global_step: G-004
+tactical_step: T-002
+name: PreviewNavigation and PreviewSelector
+waves:
+  - wave: 1
+    steps:
+      - A-001
+    note: PreviewSelector module — slice/ids selection and render-mode thresholds.
+  - wave: 2
+    depends_on_wave: 1
+    steps:
+      - A-002
+    note: >
+      PreviewNavigation — dynamic compute_line_prefix_width per {i007};
+      IndentedBlock container-skip; legacy Python comment stripping per {i008}.

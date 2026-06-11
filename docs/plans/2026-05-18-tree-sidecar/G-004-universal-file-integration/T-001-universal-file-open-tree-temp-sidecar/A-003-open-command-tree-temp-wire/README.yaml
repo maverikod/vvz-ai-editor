@@ -1,0 +1,421 @@
+step_id: A-003
+parent_tactical_step: T-001
+name: Wire universal_file_open FORMAT_TREE_TEMP to sidecar open pipeline
+target_file: ai_editor/commands/universal_file_edit/open_command.py
+operation: modify_file
+priority: 3
+depends_on:
+  - A-001
+  - A-002
+concepts:
+  - C-003
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-001-universal-file-open-tree-temp-sidecar/README.yaml
+  - MRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - HRS: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+
+  ## Goal
+  When `resolve_format_group` yields `FORMAT_TREE_TEMP`, bypass legacy `_write_tree_temp_draft` JSON/YAML index
+  path and call `open_tree_temp_with_sidecar` from `ai_editor.commands.universal_file_edit.tree_temp_open_pipeline`
+  returning its SuccessResult / ErrorResult. Preserve FORMAT_SIDECAR and FORMAT_TEXT behavior unchanged.
+
+  ## Imports to add
+  - from ai_editor.commands.universal_file_edit.tree_temp_open_pipeline import open_tree_temp_with_sidecar
+
+  ## execute() integration
+  After `_resolve_and_create_draft` succeeds today for tree-temp, the flow **changes**:
+  1. Keep `_cleanup_stale`, path resolution, optional file creation, initial backup as today.
+  2. After descriptor is known for tree-temp: instead of `_write_draft` building draft+json tree_id,
+     call `open_tree_temp_with_sidecar(project_id=project_id, file_path=file_path, abs_path=abs_path,
+     descriptor=descriptor, active_session_for_target=_session_exists_for_abs_path(abs_path))`.
+  3. Return that result directly (SuccessResult or ErrorResult) with the same envelope shape as today
+     plus any extra keys from the pipeline.
+
+  ## Session registry lookup
+  Import and use `has_active_session_for_abs_path` from `ai_editor.commands.universal_file_edit.session`.
+  Pass `active_session_for_target=has_active_session_for_abs_path(abs_path)` into
+  `open_tree_temp_with_sidecar`.
+
+  ## Refactor constraint
+  Remove or bypass call path that assigns `descriptor.__dict__['tree_id']` from `_write_tree_temp_draft` for
+  tree-temp; tree-temp session now uses TreeNode session fields from the extended EditSession dataclass.
+
+  ## Cross-G a8 (modify_file)
+  Prior GS: **G-003** `G-003-sha-sync-and-session/T-002-edit-session-open/A-003-wire-open-command`. Cumulative state
+  before this G-004 AS = that AS output + merged session work (**G-003** T-002 A-001 and **G-004** T-001 A-001) when
+  applied on the branch.
+
+  **Workspace verification (2026-05-18):** `wc -l ai_editor/commands/universal_file_edit/open_command.py` → **355** lines.
+
+  ```python
+  """
+  UniversalFileOpenCommand: starts an editing session for one file.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import json
+  import shutil
+  from pathlib import Path
+  from typing import Any, Dict, Optional, Union, cast
+
+  import yaml
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.commands.universal_file_edit.errors import (
+      PARSE_ERROR,
+      UNKNOWN_FORMAT,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TEXT,
+      FORMAT_TREE_TEMP,
+      FormatDescriptor,
+      delete_lockfile,
+      resolve_format_group,
+  )
+  from ai_editor.commands.universal_file_edit.session import create_session
+
+
+  class UniversalFileOpenCommand(BaseMCPCommand):
+      """MCP command that starts an editing session for one file.
+
+      Cleans stale artefacts, creates draft, creates initial backup when
+      file has no history, registers session, returns session_id.
+      """
+
+      name = "universal_file_open"
+      version = "1.0.0"
+      descr = "Open a project file for universal edit-session workflow."
+      category = "file_management"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+      use_queue = False
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_open"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id and file_path parameters.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {"type": "string"},
+                  "create": {
+                      "type": "boolean",
+                      "default": False,
+                      "description": (
+                          "When True, create the file if it does not exist. "
+                          "Requires initial_content for Python files (.py). "
+                          "For all other formats creates an empty file."
+                      ),
+                  },
+                  "initial_content": {
+                      "type": "string",
+                      "description": (
+                          "Initial file content used only when create=True. "
+                          "For Python (.py): valid Python source code written to disk "
+                          "before the CST tree is built via load_file_to_tree. "
+                          "For other formats: ignored (file is created empty)."
+                      ),
+                  },
+              },
+              "required": ["project_id", "file_path"],
+              "additionalProperties": False,
+          }
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          """Validate parameters; require initial_content for new .py files."""
+          params = super().validate_params(params)
+          if params.get("create"):
+              file_path = str(params.get("file_path", ""))
+              if Path(file_path).suffix == ".py":
+                  content = params.get("initial_content")
+                  if content is None or content == "":
+                      raise ValidationError(
+                          "initial_content is required when create=True for .py files",
+                          field="initial_content",
+                          details={"file_path": file_path},
+                      )
+          return params
+
+      async def execute(
+          self,
+          project_id: str,
+          file_path: str,
+          create: bool = False,
+          initial_content: str = "",
+          **kwargs: Any,
+      ) -> Union[SuccessResult, ErrorResult]:
+          """Execute the open command.
+
+          Args:
+              project_id: Project UUID.
+              file_path: Path relative to project root.
+              create: When True, create the file if it does not exist.
+              initial_content: Initial source for new .py files (create=True).
+              **kwargs: Unused; accepted for adapter compatibility.
+
+          Returns:
+              SuccessResult with session_id, format_group, and available_operations,
+              or ErrorResult on failure.
+          """
+          abs_path = self._resolve_abs_path(project_id, file_path)
+          if abs_path is None:
+              err = make_error(UNKNOWN_FORMAT, f"Cannot resolve path: {file_path}")
+              return ErrorResult(
+                  message=err["message"],
+                  code=str(err["code"]),
+                  details=err.get("details"),
+              )
+
+          created = False
+          if not abs_path.exists():
+              if not create:
+                  err = make_error(PARSE_ERROR, f"File not found: {file_path}")
+                  return ErrorResult(
+                      message=err["message"],
+                      code=str(err["code"]),
+                      details=err.get("details"),
+                  )
+              abs_path.parent.mkdir(parents=True, exist_ok=True)
+              suffix = abs_path.suffix.lower()
+              if suffix == ".py":
+                  abs_path.write_text(initial_content, encoding="utf-8")
+              elif suffix == ".json":
+                  abs_path.write_text("{}\n", encoding="utf-8")
+              else:
+                  abs_path.write_text("", encoding="utf-8")
+              created = True
+
+          cleanup_result = self._cleanup_stale(abs_path)
+          if cleanup_result is not None:
+              return ErrorResult(
+                  message=cleanup_result["message"],
+                  code=str(cleanup_result["code"]),
+                  details=cleanup_result.get("details"),
+              )
+
+          descriptor_result = self._resolve_and_create_draft(abs_path)
+          if isinstance(descriptor_result, dict):
+              return ErrorResult(
+                  message=descriptor_result["message"],
+                  code=str(descriptor_result["code"]),
+                  details=descriptor_result.get("details"),
+              )
+          descriptor: FormatDescriptor = descriptor_result
+
+          self._create_initial_backup(project_id, abs_path)
+          tree_id: Optional[str] = getattr(descriptor, "tree_id", None)
+          session = create_session(
+              abs_path=abs_path,
+              descriptor=descriptor,
+              file_path=file_path,
+              tree_id=tree_id,
+          )
+          data: Dict[str, Any] = {
+              "success": True,
+              "session_id": session.session_id,
+              "available_operations": descriptor.available_operations,
+              "format_group": descriptor.format_group,
+          }
+          if created:
+              data["created"] = True
+          return SuccessResult(data=data)
+
+      def _resolve_abs_path(self, project_id: str, file_path: str) -> Optional[Path]:
+          """Resolve file_path to an absolute Path using the project root.
+
+          Args:
+              project_id: UUID of the project.
+              file_path: Project-relative path to the file.
+
+          Returns:
+              Absolute Path if resolution succeeds, None otherwise.
+          """
+          try:
+              root = BaseMCPCommand._resolve_project_root(project_id)
+              return (Path(root) / file_path).resolve()
+          except Exception:
+              return None
+
+      def _cleanup_stale(self, abs_path: Path) -> Optional[Dict[str, Any]]:
+          """Delete stale write lockfile and stale draft (not sidecar).
+
+          For Python files the sidecar is left intact; only the write
+          lockfile is removed on open.
+
+          Args:
+              abs_path: Absolute path to the original file.
+
+          Returns:
+              None on success; an error dict if an unexpected error occurs.
+          """
+          try:
+              delete_lockfile(abs_path)
+              draft = abs_path.with_suffix(abs_path.suffix + ".draft")
+              draft.unlink(missing_ok=True)
+              return None
+          except OSError as exc:
+              return cast(
+                  Dict[str, Any], make_error(PARSE_ERROR, f"Cleanup failed: {exc}")
+              )
+
+      def _resolve_and_create_draft(
+          self,
+          abs_path: Path,
+      ) -> Union[FormatDescriptor, Dict[str, Any]]:
+          """Resolve format group and create the draft file.
+
+          Args:
+              abs_path: Absolute path to the original file.
+
+          Returns:
+              FormatDescriptor on success, or an error dict.
+          """
+          try:
+              descriptor = resolve_format_group(abs_path)
+          except ValueError:
+              return make_error(
+                  UNKNOWN_FORMAT,
+                  f"Unsupported file type: {abs_path.suffix}",
+              )
+
+          try:
+              tree_id = self._write_draft(abs_path, descriptor)
+              descriptor.__dict__["tree_id"] = tree_id
+          except Exception as exc:
+              return make_error(PARSE_ERROR, f"Cannot parse file: {exc}")
+
+          return descriptor
+
+      def _create_initial_backup(self, project_id: str, abs_path: Path) -> None:
+          """Create initial backup if file has no backup history.
+
+          Uses BackupManager (C-012) to check history and create backup.
+          Only creates backup when list_versions returns an empty list.
+
+          Args:
+              project_id: UUID of the project (used to resolve root dir).
+              abs_path: Absolute path to the original file.
+          """
+          from ai_editor.core.backup_manager import BackupManager
+
+          root_dir = BaseMCPCommand._resolve_project_root(project_id)
+          bm = BackupManager(root_dir=str(root_dir))
+          rel_path = abs_path.relative_to(root_dir)
+          versions = bm.list_versions(str(rel_path))
+          if not versions:
+              bm.create_backup(abs_path, command="universal_file_open")
+
+      def _write_draft(
+          self,
+          abs_path: Path,
+          descriptor: FormatDescriptor,
+      ) -> Optional[str]:
+          """Write the initial draft file for the resolved format group.
+
+          Args:
+              abs_path: Absolute path to the original file.
+              descriptor: Resolved FormatDescriptor.
+
+          Returns:
+              In-memory tree UUID for tree-temp group; None for other groups.
+
+          Raises:
+              Exception: when the file cannot be parsed or written.
+          """
+          fg = descriptor.format_group
+          if fg == FORMAT_SIDECAR:
+              return self._write_sidecar_draft(abs_path)
+          if fg == FORMAT_TREE_TEMP:
+              return self._write_tree_temp_draft(abs_path, descriptor)
+          if fg == FORMAT_TEXT:
+              shutil.copy2(str(abs_path), str(descriptor.draft_path))
+              return None
+          raise ValueError(f"Unknown format group: {fg!r}")
+
+      def _write_sidecar_draft(self, abs_path: Path) -> str:
+          """Load Python file into CST tree and write sidecar.
+
+          Args:
+              abs_path: Absolute path to the Python file.
+
+          Returns:
+              In-memory CST tree UUID for subsequent edit/write commands.
+          """
+          from ai_editor.core.cst_tree import tree_builder as cst_builder
+          from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+
+          tree = cst_builder.load_file_to_tree(str(abs_path))
+          write_sidecar_atomic(abs_path, tree)
+          return str(tree.tree_id)
+
+      def _write_tree_temp_draft(
+          self,
+          abs_path: Path,
+          descriptor: FormatDescriptor,
+      ) -> str:
+          """Load JSON/YAML file into in-memory tree and write draft.
+
+          Args:
+              abs_path: Absolute path to the JSON or YAML file.
+              descriptor: Resolved FormatDescriptor with draft_path.
+
+          Returns:
+              In-memory tree UUID string.
+          """
+          if descriptor.handler_id == "json":
+              from ai_editor.core.json_tree import tree_builder as json_builder
+
+              tree = json_builder.load_file_to_tree(str(abs_path))
+              draft_text = json.dumps(tree.root_data, indent=2, ensure_ascii=False) + "\n"
+              tree_id = tree.tree_id
+          else:
+              from ai_editor.core.yaml_tree import tree_builder as yaml_builder
+
+              tree = yaml_builder.load_file_to_tree(str(abs_path))
+              draft_text = yaml.safe_dump(
+                  tree.root_data,
+                  default_flow_style=False,
+                  allow_unicode=True,
+                  sort_keys=False,
+              )
+              tree_id = tree.tree_id
+          descriptor.draft_path.write_text(draft_text, encoding="utf-8")
+          return str(tree_id)
+  ```
+
+  Line limit after edit: ≤ 400 lines; extract helpers if needed.
+
+  ## Forbidden
+  - Do not change sidecar Python open path.
+  - Do not implement edits, write, close, preview.
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/open_command.py
+  expected: black/flake8 clean; mypy clean if configured for this package
+status: done

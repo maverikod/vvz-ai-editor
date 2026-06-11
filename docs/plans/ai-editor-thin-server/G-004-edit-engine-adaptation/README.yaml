@@ -1,0 +1,45 @@
+step_id: G-004
+name: Адаптация edit и preview к workspace
+description: 'Сохранить семантику Internal Edit Engine (C-019) без изменения внутренней модели операций редактирования. Перевести Edit Stage (C-011) на работу исключительно внутри Edit Subdirectory (C-008) в пределах File Subtree: все привязки рабочей копии и вспомогательные артефакты редактирования размещаются относительно Edit Subdirectory, а не канонического пути проекта на upstream-сервере. Edit и preview не изменяют Origin Snapshot. Preview остаётся единственной read-only командой просмотра открытой рабочей копии. Семантика пакетного edit и операций, зависящих от формата файла, не меняется — обновляются только workspace-relative пути и поиск контекста по идентификатору CA Session.
+
+  '
+concepts:
+- C-004
+- C-007
+- C-008
+- C-011
+- C-014
+- C-016
+- C-017
+- C-019
+- C-023
+relations:
+- from_concept: C-001
+  to_concept: C-019
+  type: uses
+- from_concept: C-009
+  to_concept: C-011
+  type: owns
+- from_concept: C-011
+  to_concept: C-008
+  type: consumes
+- from_concept: C-011
+  to_concept: C-019
+  type: uses
+source_ranges:
+- start: 29
+  end: 29
+- start: 41
+  end: 41
+- start: 67
+  end: 67
+- start: 73
+  end: 73
+depends_on:
+- G-003
+- G-007
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: ready_for_review

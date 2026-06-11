@@ -1,0 +1,36 @@
+step_id: T-001
+parent_global_step: G-005
+name: InsertOperation
+description: Define the InsertOperation entity (C-011). Insert places a new node
+  or subtree at a position relative to a target addressed by StableId (C-003), 
+  or inside a target parent also addressed by StableId, within the Tree (C-004).
+  New nodes receive fresh StableIds; every pre-existing node keeps its StableId 
+  unchanged. After the insert, the IdIndex (C-005), AttributeIndex (C-006), and 
+  ParentRelation (C-007) are updated; no entry points at a removed node and 
+  every surviving node is reachable.
+concepts:
+- C-011
+- C-004
+- C-003
+- C-005
+- C-006
+- C-007
+inputs:
+- name: target Tree
+  type: C-004 instance
+  description: The Tree into which the new content is inserted.
+- name: target address
+  type: StableId
+  description: The StableId of the node relative to which the new content is 
+    placed; obtained by querying the Tree through the QueryInterface (C-008) 
+    before calling this operation.
+- name: new subtree
+  type: IdentifiedNode subtree
+  description: The new node or subtree; its nodes receive fresh StableIds.
+outputs:
+- name: Tree after insert
+  type: C-004 instance
+  description: Tree after insert; new nodes have fresh StableIds; pre-existing 
+    nodes retain theirs; indexes consistent.
+atomic_steps: []
+status: draft

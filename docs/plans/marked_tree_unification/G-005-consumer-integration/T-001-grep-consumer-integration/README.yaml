@@ -1,0 +1,55 @@
+step_id: T-001
+parent_global_step: G-005
+name: GrepConsumer TreeLifecycle Integration
+description: 'Define the GrepConsumer entity (C-020) as the grep subsystem integration
+  that binds disk-scan matches to short_id integers through TreeLifecycle ({g001},
+  {n003}). Establish the three-action contract. Action 1: GrepConsumer routes all
+  tree-validity checks through TreeLifecycle (C-010), never performing ad-hoc validation
+  directly. Action 2: on checksum mismatch, GrepConsumer triggers a tree rebuild via
+  TreeLifecycle before attempting to bind a disk-scan match to a short_id. Action 3:
+  if the rebuild fails, the match is yielded as an ineligible lower-relevance search
+  result rather than as a structural error; the search result is degraded, not aborted.
+  Define SearchSessionFinding (C-026) as the search-session result record whose payload
+  and ranking contract exclude file mtime: findings do not carry source file mtime,
+  ranking does not use mtime as a sort dimension, and ordering uses relevance score
+  with a deterministic result_id tie-break ({g004}). GrepConsumer owns tree binding per
+  {g001}; SearchSessionFinding owns the no-mtime finding contract per {g004}.'
+concepts:
+- C-020
+- C-010
+- C-026
+source_labels:
+- '{g001}'
+- '{g004}'
+- '{n003}'
+inputs:
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: Single entry point for all tree-validity checks and tree rebuilds
+    that GrepConsumer must route through.
+- name: short_id binding contract
+  type: domain constraint (C-020, {n003})
+  description: GrepConsumer binds each disk-scan match to (project-relative file path,
+    short_id integer) per {n003} — short_id is the per-file marker token from that
+    file''s tree; the same integer may differ across files independently; UUID4
+    resolution stays server-internal via node-id-map.
+outputs:
+- name: GrepConsumer entity definition
+  type: domain entity definition
+  description: Grep integration routing validity through TreeLifecycle; rebuilds on
+    mismatch before short_id binding; rebuild failure yields ineligible lower-relevance
+    match, never structural error.
+- name: SearchSessionFinding entity definition
+  type: domain entity definition (C-026)
+  description: Finding record without file mtime; ranking by relevance score with
+    deterministic result_id tie-break only ({g004}).
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+- A-008
+status: ready_for_review

@@ -1,0 +1,42 @@
+step_id: G-005
+name: Result block production and buffering
+description: "Defines how raw findings are turned into immutable result blocks through
+  a buffered producer/assembler protocol. The main search thread writes each finding
+  into a raw finding buffer and continues; a parallel assembler drains the buffer
+  under a lock and forms blocks of whole results bounded by the maximum block size,
+  never splitting a single result. Blocks are published atomically so readers never
+  observe partial content, and tree-query findings feed the same block production.
+  This step defines finding buffering and block assembly only; it does not define
+  the directory index, HTTP access, file-set classification, or session expiration.\n"
+concepts:
+- C-004
+- C-026
+- C-028
+- C-029
+- C-027
+relations:
+- from_concept: C-029
+  to_concept: C-028
+  type: consumes
+- from_concept: C-029
+  to_concept: C-004
+  type: produces
+- from_concept: C-004
+  to_concept: C-026
+  type: depends_on
+- from_concept: C-029
+  to_concept: C-026
+  type: depends_on
+source_labels:
+- '{uj1g}'
+- '{pwy8}'
+- '{g9xv}'
+depends_on:
+- G-001
+- G-003
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+status: frozen

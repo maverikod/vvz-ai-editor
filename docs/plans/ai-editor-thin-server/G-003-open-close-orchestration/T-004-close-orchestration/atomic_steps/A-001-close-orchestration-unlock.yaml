@@ -1,0 +1,576 @@
+step_id: A-001
+parent_tactical_step: T-004
+parent_global_step: G-003
+name: Close — unlock CA и cleanup workspace
+target_file: ai_editor/commands/universal_file_edit/close_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-005
+- C-006
+- C-009
+- C-013
+- C-015
+- C-016
+- C-017
+- C-023
+- C-024
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/close_command.py` only (Close Stage C-013,
+  MCP Workflow Surface C-016 facade). Integrate G-003 Close Stage orchestration **on top of**
+  the multi-file close disambiguation baseline: upstream unlock (C-017/C-023), File Subtree
+  removal via workspace helpers, bundle deregistration, Editor Session Directory removal when
+  last file (C-005/C-006), while preserving multi-file disambiguation (C-004/C-009) and Session
+  Guard terminating close (C-024/C-015).
+
+  ## Parent links (mandatory)
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-003-open-close-orchestration/README.yaml`
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-003-open-close-orchestration/T-004-close-orchestration/README.yaml`
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml`
+  - Multi-file same-session tactical step: `docs/plans/ai-editor-thin-server/G-003-open-close-orchestration/T-003-multi-file-same-session/README.yaml`
+  - G-007 guard integration: terminating close permitted when CA session is broken.
+
+  ## Embedded file state (a8)
+
+  The embedded CURRENT FILE below is `close_command.py` after multi-file close disambiguation
+  is applied (`resolve_session_for_command`, `SESSION_FILE_PATH_REQUIRED`, `remaining_open_files`).
+  This step adds G-003 Close Stage orchestration; do **not** revert multi-file disambiguation behavior.
+
+  ## MRS excerpt (concepts for this step only)
+
+  - **C-004 CA Session**: one `session_id` may hold multiple open files; close disambiguates by `file_path` when N>1.
+  - **C-005 Editor Session Directory**: `workspace_root/{ca_session_id}/` — removed when last file closes.
+  - **C-006 File Subtree**: per `(project_id, file_path)` under session; removed entirely on close (origin + edit subdirs).
+  - **C-009 File Workflow**: close operates on one File Subtree per call; session directory retained until last file.
+  - **C-013 Close Stage**: CA unlock then delete File Subtree; delete Editor Session Directory when last file.
+  - **C-015 Broken Session Policy**: close is terminating — proceed with best-effort unlock and local cleanup even when CA session gone or unlock returns False.
+  - **C-016 MCP Workflow Surface**: `universal_file_close` facade; `session_id` param is CA session id.
+  - **C-017 Upstream Client**: only path to CA lock/unlock RPCs.
+  - **C-023 CA API Contract**: unlock via `session_close_file` wrapped by `unlock_session_file`.
+  - **C-024 Session Guard**: `check(CLOSE, ca_session_id)` → ALLOW or ALLOW_TERMINATING; REJECT only for empty id.
+
+  ## Dependency API contracts (coder must not read source — embed only)
+
+  ### `ai_editor/commands/universal_file_edit/session.py` (multi-file bundle helpers)
+
+  ```python
+  def resolve_session_for_command(ca_session_id: str, file_path: Optional[str]) -> EditSession:
+      """Resolve EditSession; raises ValueError('SESSION_FILE_PATH_REQUIRED') when N>1 and file_path omitted."""
+
+  def list_bundle_file_paths(ca_session_id: str) -> List[str]:
+      """Return sorted project-relative paths still open in the bundle (empty after last file released)."""
+
+  def release_session(session_id: str, file_path: Optional[str] = None) -> None:
+      """Remove one file from bundle and _file_open_index; pops outer key when last file removed."""
+  ```
+
+  ### `ai_editor/core/editor_workspace_paths.py`
+
+  ```python
+  @dataclass(frozen=True)
+  class FileWorkspaceLayout:
+      session_dir: Path          # C-005 Editor Session Directory
+      file_subtree_dir: Path     # C-006 File Subtree root (NOT edit subdir)
+      origin_path: Path          # C-007 Origin Snapshot path inside subtree
+
+  def resolve_workspace_root(*, config_path: Path | None = None) -> Path: ...
+
+  def file_workspace_layout(
+      workspace_root: Path,
+      ca_session_id: str,
+      project_id: str,
+      file_path: str,
+  ) -> FileWorkspaceLayout: ...
+  ```
+
+  Use **`session_dir`**, **`file_subtree_dir`**, **`origin_path`** only. Do **not** reference
+  `layout.edit_subdir` — `FileWorkspaceLayout` has no `edit_subdir` field.
+
+  ### `ai_editor/core/edit_session/workspace_layout.py`
+
+  ```python
+  def remove_file_subtree(*, file_subtree_dir: Path) -> None:
+      """Remove entire File Subtree (C-006): origin snapshot and all edit subdirectories."""
+      if file_subtree_dir.is_dir():
+          shutil.rmtree(file_subtree_dir)
+  ```
+
+  ### `ai_editor/core/upstream/code_analysis_client.py`
+
+  ```python
+  def unlock_session_file(
+      self,
+      *,
+      session_id: str,
+      project_id: str,
+      file_path: str,
+  ) -> bool:
+      """Close Stage unlock via session_close_file; best-effort on broken session (C-015)."""
+      # True on successful unlock; False on empty params, file not found, SESSION_NOT_FOUND,
+      # NOT_LOCKED, NO_LOCK, or other upstream errors.
+  ```
+
+  ### `ai_editor/core/upstream/session_guard.py`
+
+  ```python
+  class OperationKind(str, enum.Enum):
+      CLOSE = "close"
+      ...
+
+  class GuardDecision(str, enum.Enum):
+      ALLOW = "allow"
+      REJECT = "reject"
+      ALLOW_TERMINATING = "allow_terminating"
+
+  class SessionGuard:
+      def check(self, kind: OperationKind, ca_session_id: str) -> GuardDecision: ...
+  ```
+
+  ## CURRENT FILE CONTENT (multi-file close disambiguation + G-007 guard — valid Python; modify this file)
+
+  ```py
+  """
+  UniversalFileCloseCommand: ends an editing session with group-specific cleanup.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import hashlib
+  from typing import Any, Dict, Type, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_FILE_PATH_REQUIRED,
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TEXT,
+      FORMAT_TREE_TEMP,
+      delete_lockfile,
+      read_lockfile_pid,
+  )
+  from ai_editor.commands.universal_file_edit.session import (
+      EditSession,
+      list_bundle_file_paths,
+      release_session,
+      resolve_session_for_command,
+  )
+  from ai_editor.commands.universal_file_edit.close_command_metadata import (
+      get_universal_file_close_metadata,
+  )
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+  from ai_editor.core.upstream.session_guard import OperationKind, SessionGuard
+
+
+  class UniversalFileCloseCommand(BaseMCPCommand):
+      """MCP command that ends a session with format-group-specific cleanup.
+
+      Sidecar: verify checksum; rebuild on mismatch; never delete sidecar.
+      Tree-temp: sha256 compare draft vs original; delete or rebuild draft; free tree.
+      Text: delete draft unconditionally.
+      Lockfile deleted in all cases.
+      """
+
+      name = "universal_file_close"
+
+      version = "1.0.0"
+
+      descr = "End a universal file edit session with format-group-specific cleanup."
+
+      category = "file_management"
+
+      author = "Vasiliy Zdanovskiy"
+
+      email = "vasilyvz@gmail.com"
+
+      use_queue = False
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_close"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id and session_id.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "session_id": {"type": "string"},
+                  "file_path": {
+                      "type": "string",
+                      "description": (
+                          "Project-relative path. Required when the CA session has more "
+                          "than one open file (see multi_file_bundle from open). Optional "
+                          "when exactly one file is open."
+                      ),
+                  },
+              },
+              "required": ["project_id", "session_id"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls: Type["UniversalFileCloseCommand"]) -> Dict[str, Any]:
+          """Return extended AI/docs metadata for universal_file_close.
+
+          Returns:
+              Metadata dict with description, parameters, examples, errors.
+          """
+          return cast(Dict[str, Any], get_universal_file_close_metadata(cls))
+
+      async def execute(  # type: ignore[override]
+          self,
+          project_id: str,
+          session_id: str,
+          file_path: str = "",
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          """Execute the close command.
+
+          Args:
+              project_id: Required by schema; used for CA unlock and workspace paths.
+              session_id: CA session identifier.
+              file_path: Project-relative path when the session holds multiple files.
+              **kwargs: Unused; accepted for adapter compatibility.
+
+          Returns:
+              SuccessResult with cleanup details, or ErrorResult on session not found.
+          """
+          _ = kwargs
+          ca_session_id = str(session_id or "").strip()
+          guard = SessionGuard(get_code_analysis_client())
+          if guard.check(OperationKind.CLOSE, ca_session_id).name == "REJECT":
+              return ErrorResult(
+                  message="session_id is required for universal_file_close",
+                  code=cast(Any, "SESSION_REJECTED"),
+              )
+          try:
+              session = resolve_session_for_command(
+                  ca_session_id,
+                  file_path or None,
+              )
+          except ValueError as exc:
+              msg = str(exc)
+              if msg == "SESSION_FILE_PATH_REQUIRED":
+                  return error_result_from_make_error(
+                      make_error(
+                          SESSION_FILE_PATH_REQUIRED,
+                          "file_path is required when the session has multiple open files",
+                          details={"session_id": ca_session_id},
+                      )
+                  )
+              return error_result_from_make_error(
+                  make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}")
+              )
+          payload: Dict[str, Any] = {"success": True}
+          fg = session.format_group
+          if fg == FORMAT_SIDECAR:
+              payload = self._close_sidecar(session)
+          else:
+              payload = self._close_tree_temp_or_text(session)
+          lock = read_lockfile_pid(session.abs_path)
+          if lock is None or lock[1] == session.session_id:
+              delete_lockfile(session.abs_path)
+          session.core.close()
+          release_session(ca_session_id, session.file_path)
+          remaining = list_bundle_file_paths(ca_session_id)
+          payload["closed_file_path"] = session.file_path
+          payload["remaining_open_files"] = remaining
+          payload["session_retained"] = len(remaining) > 0
+          return SuccessResult(data=payload)
+
+      def _close_sidecar(self, session: EditSession) -> Dict[str, Any]:
+          """Close a sidecar group session.
+
+          Verifies sidecar checksum. On mismatch rebuilds sidecar from source.
+          Sidecar is never deleted.
+
+          Args:
+              session: Active sidecar group EditSession.
+
+          Returns:
+              Dict with success=True and draft_rebuilt flag.
+          """
+          from ai_editor.core.cst_tree import tree_builder as cst_builder
+          from ai_editor.core.cst_tree.tree_sidecar import (
+              read_sidecar_payload,
+              verify_sidecar_against_source,
+              write_sidecar_atomic,
+          )
+
+          tree = cst_builder.load_file_to_tree(str(session.abs_path))
+          payload = read_sidecar_payload(session.abs_path)
+          if payload is not None and verify_sidecar_against_source(
+              tree.module.code, payload
+          ):
+              return {"success": True, "draft_rebuilt": False}
+          write_sidecar_atomic(session.abs_path, tree)
+          return {"success": True, "draft_rebuilt": True}
+
+      def _close_tree_temp_or_text(self, session: EditSession) -> Dict[str, Any]:
+          """Close a tree-temp or text group session.
+
+          Args:
+              session: Active tree-temp or text group EditSession.
+
+          Returns:
+              Dict with success=True and draft_rebuilt flag.
+          """
+          fg = session.format_group
+          abs_path = session.abs_path
+
+          if fg == FORMAT_TEXT:
+              session.draft_path.unlink(missing_ok=True)
+              return {"success": True, "draft_rebuilt": False}
+
+          if fg == FORMAT_TREE_TEMP and session.tree_temp_roots is not None:
+              session.draft_path.unlink(missing_ok=True)
+              session.tree_temp_roots = None
+              draft_rebuilt = False
+          else:
+              draft_rebuilt = False
+              if session.draft_path.exists():
+                  draft_sha = hashlib.sha256(session.draft_path.read_bytes()).hexdigest()
+                  orig_sha = hashlib.sha256(abs_path.read_bytes()).hexdigest()
+                  if draft_sha == orig_sha:
+                      session.draft_path.unlink(missing_ok=True)
+                  else:
+                      if session.handler_id == "json":
+                          import json
+
+                          from ai_editor.core.json_tree import (
+                              tree_builder as json_builder,
+                          )
+
+                          loaded_json = json_builder.load_file_to_tree(str(abs_path))
+                          draft_text = (
+                              json.dumps(
+                                  loaded_json.root_data,
+                                  indent=2,
+                                  ensure_ascii=False,
+                              )
+                              + "\n"
+                          )
+                          session.draft_path.write_text(draft_text, encoding="utf-8")
+                          json_builder.remove_tree(loaded_json.tree_id)
+                      else:
+                          import yaml
+
+                          from ai_editor.core.yaml_tree import (
+                              tree_builder as yaml_builder,
+                          )
+
+                          loaded_yaml = yaml_builder.load_file_to_tree(str(abs_path))
+                          draft_text = yaml.safe_dump(
+                              loaded_yaml.root_data,
+                              default_flow_style=False,
+                              allow_unicode=True,
+                              sort_keys=False,
+                          )
+                          session.draft_path.write_text(draft_text, encoding="utf-8")
+                          yaml_builder.remove_tree(loaded_yaml.tree_id)
+                      draft_rebuilt = True
+
+          if session.tree_id:
+              if session.handler_id == "json":
+                  from ai_editor.core.json_tree import tree_builder as json_builder
+
+                  json_builder.remove_tree(session.tree_id)
+              else:
+                  from ai_editor.core.yaml_tree import tree_builder as yaml_builder
+
+                  yaml_builder.remove_tree(session.tree_id)
+
+          return {"success": True, "draft_rebuilt": draft_rebuilt}
+  ```
+
+  ## Imports to add (exact lines)
+
+  ```
+  import logging
+  import shutil
+
+  from ai_editor.core.editor_workspace_paths import (
+      file_workspace_layout,
+      resolve_workspace_root,
+  )
+  from ai_editor.core.edit_session.workspace_layout import remove_file_subtree
+  ```
+
+  Add `GuardDecision` to the existing `session_guard` import:
+  `from ai_editor.core.upstream.session_guard import GuardDecision, OperationKind, SessionGuard`
+
+  ## Imports to remove
+
+  Remove from `format_group` import: `delete_lockfile`, `read_lockfile_pid`.
+
+  Do **not** remove `SESSION_FILE_PATH_REQUIRED`, `list_bundle_file_paths`, or
+  `resolve_session_for_command` — they come from multi-file close disambiguation and must remain.
+
+  Do **not** add any other new imports.
+
+  ## `get_schema()` updates (same AS)
+
+  Update property descriptions only; keep required fields unchanged:
+
+  - `project_id`: `"Project UUID. Required for CA unlock (C-023) and workspace path resolution."`
+  - `session_id`: `"CA session id (required; same id as session_create on Code Analysis Server)."`
+  - `file_path`: keep multi-file description verbatim (see CURRENT FILE).
+
+  ## Method to modify: `async def execute(...)`
+
+  Keep method signature exactly:
+  `async def execute(self, project_id: str, session_id: str, file_path: str = "", **kwargs: Any) -> SuccessResult | ErrorResult:`
+
+  Replace method body with algorithm below. Keep `_close_sidecar` and `_close_tree_temp_or_text` unchanged.
+
+  ### execute() algorithm (C-013 Close Stage on multi-file disambiguation baseline)
+
+  1. `_ = kwargs`
+  2. `ca_session_id = str(session_id or "").strip()`
+  3. `pid = str(project_id or "").strip()`
+  4. `guard = SessionGuard(get_code_analysis_client())`
+  5. `decision = guard.check(OperationKind.CLOSE, ca_session_id)`
+  6. If `decision == GuardDecision.REJECT`:
+     - Return `ErrorResult(message="session_id is required for universal_file_close", code=cast(Any, "SESSION_REJECTED"))`
+  7. If `decision` is `GuardDecision.ALLOW` or `GuardDecision.ALLOW_TERMINATING`: continue (both permit close).
+  8. Resolve local session (multi-file disambiguation — preserve exactly):
+     - `try: session = resolve_session_for_command(ca_session_id, file_path or None)`
+     - On `ValueError`:
+       - if `str(exc) == "SESSION_FILE_PATH_REQUIRED"`: return `error_result_from_make_error(make_error(SESSION_FILE_PATH_REQUIRED, "file_path is required when the session has multiple open files", details={"session_id": ca_session_id}))`
+       - else: return `error_result_from_make_error(make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}"))`
+  9. Detect last file in bundle **before** release:
+     - `is_last_file = len(list_bundle_file_paths(ca_session_id)) == 1`
+  10. Best-effort CA unlock (C-017/C-023, C-015 terminating):
+      - `client = get_code_analysis_client()`
+      - `unlock_ok = client.unlock_session_file(session_id=ca_session_id, project_id=pid, file_path=session.file_path)`
+      - Do **not** return early when `unlock_ok` is False — always continue local cleanup.
+  11. Format-group facade cleanup (existing helpers):
+      - If `session.format_group == FORMAT_SIDECAR`: `payload = self._close_sidecar(session)`
+      - Else: `payload = self._close_tree_temp_or_text(session)`
+  12. Close core session and deregister bundle entry:
+      - `session.core.close()`
+      - `release_session(ca_session_id, session.file_path)` — removes from `_session_bundles` and `_file_open_index`
+  13. Multi-file payload fields (preserve after release):
+      - `remaining = list_bundle_file_paths(ca_session_id)`
+      - `payload["closed_file_path"] = session.file_path`
+      - `payload["remaining_open_files"] = remaining`
+      - `payload["session_retained"] = len(remaining) > 0`
+  14. Workspace File Subtree removal (C-006):
+      - `workspace_root = resolve_workspace_root()`
+      - `layout = file_workspace_layout(workspace_root, ca_session_id, pid, session.file_path)`
+      - `remove_file_subtree(file_subtree_dir=layout.file_subtree_dir)`
+  15. Editor Session Directory removal when last file (C-005):
+      - If `is_last_file` and `layout.session_dir.is_dir()`:
+        - `shutil.rmtree(layout.session_dir)`
+  16. Build response (Close Stage orchestration fields + multi-file payload fields):
+      - `payload["session_id"] = ca_session_id`
+      - `payload["project_id"] = pid`
+      - `payload["file_path"] = session.file_path`
+      - `payload["unlock_ok"] = unlock_ok`
+      - `payload["workspace_subtree_removed"] = True`
+      - `payload["session_dir_removed"] = is_last_file`
+      - Return `SuccessResult(data=payload)`
+
+  ### Error handling per method
+
+  - `execute`:
+    - Guard REJECT (empty ca_session_id): `ErrorResult` code `SESSION_REJECTED`; no unlock, no disk writes.
+    - Multi-file without file_path: `SESSION_FILE_PATH_REQUIRED` with `details={"session_id": ca_session_id}`; no unlock.
+    - Local session not found: `error_result_from_make_error` with `SESSION_NOT_FOUND`; no unlock after failed resolve.
+    - `unlock_session_file` returns False: log at INFO `"close unlock best-effort failed for %s/%s"`, (ca_session_id, session.file_path); continue cleanup.
+    - `resolve_workspace_root` / `file_workspace_layout` raises `ValidationError`: propagate (not caught in execute).
+    - `remove_file_subtree` / `shutil.rmtree`: let `OSError` propagate.
+  - `_close_sidecar`, `_close_tree_temp_or_text`: unchanged; propagate exceptions from tree/draft operations.
+
+  ### Edge cases
+
+  - Multi-file session closing one file: `is_last_file=False`; `session_retained=True`; `remaining_open_files` lists other paths; `session_dir` kept; only that `file_subtree_dir` removed.
+  - Single-file session: `is_last_file=True`; `remaining_open_files=[]`; `session_retained=False`; both subtree and `session_dir` removed.
+  - Close without file_path when N>1: `SESSION_FILE_PATH_REQUIRED`; no orchestration runs.
+  - CA session NOT_FOUND (guard ALLOW_TERMINATING): unlock returns False; local cleanup and multi-file payload fields still run.
+  - Unlock idempotent (NOT_LOCKED): `unlock_ok=False`; local cleanup still runs.
+  - `pid` empty string: still passed to `unlock_session_file` and layout resolver (upstream/layout may fail unlock; subtree path uses empty project segment — do not synthesize project_id from session record).
+
+  ### Constants and literals
+
+  - Logger name: `__name__` via `logger = logging.getLogger(__name__)`
+  - Log level for failed unlock: INFO
+  - Log message template: `"close unlock best-effort failed for %s/%s"`
+  - Error codes: `"SESSION_REJECTED"`, `SESSION_NOT_FOUND`, `SESSION_FILE_PATH_REQUIRED` (via make_error)
+  - Guard kinds: `OperationKind.CLOSE`
+  - Response keys: `"session_id"`, `"project_id"`, `"file_path"`, `"closed_file_path"`, `"remaining_open_files"`, `"session_retained"`, `"unlock_ok"`, `"workspace_subtree_removed"`, `"session_dir_removed"`, `"success"`, `"draft_rebuilt"`
+
+  ## Class docstring update
+
+  Replace class docstring first paragraph to mention Close Stage workspace cleanup; remove
+  "Lockfile deleted in all cases." line. Keep sidecar/tree-temp/text behavior lines.
+
+  ## Forbidden patterns
+
+  - Do **not** use `async #` or any comment between `async` and `def execute` — must be valid `async def execute(...)`.
+  - Do **not** call `delete_lockfile` or `read_lockfile_pid` (legacy CA-project-disk advisory lock).
+  - Do **not** revert to `get_session` — keep `resolve_session_for_command` from multi-file disambiguation.
+  - Do **not** map `SESSION_FILE_PATH_REQUIRED` to `SESSION_NOT_FOUND` — keep dedicated error code.
+  - Do **not** omit `closed_file_path`, `remaining_open_files`, or `session_retained` from success payload.
+  - Do **not** reference `layout.edit_subdir` or `FileWorkspaceLayout.edit_subdir`.
+  - Do **not** call `get_project_root`.
+  - Do **not** import or mutate `_session_bundles` / `_file_open_index` directly — use `release_session` only.
+  - Do **not** skip local cleanup when `unlock_ok` is False.
+  - Do **not** modify `_close_sidecar` or `_close_tree_temp_or_text` bodies.
+  - Do **not** modify any file other than `close_command.py`.
+  - Do **not** add methods beyond those in the baseline plus optional module-level `logger`.
+  - Do **not** use bare `except:`.
+
+  ## Validation commands (run from project root with `.venv` active)
+
+  ```bash
+  source .venv/bin/activate
+  python -c "import ast; ast.parse(open('ai_editor/commands/universal_file_edit/close_command.py').read())"
+  black ai_editor/commands/universal_file_edit/close_command.py
+  flake8 ai_editor/commands/universal_file_edit/close_command.py
+  mypy ai_editor/commands/universal_file_edit/close_command.py
+  pytest tests/unit/test_universal_file_close_orchestration.py tests/unit/test_session_guard_close.py -v
+  ```
+
+  Expected:
+  - `ast.parse` → exit 0 (no SyntaxError)
+  - black → "reformatted" or "All done!"
+  - flake8 → no output (exit 0)
+  - mypy → "Success: no issues found" on touched file
+  - pytest → all PASSED; close without file_path when N>1 → SESSION_FILE_PATH_REQUIRED; close one of two returns remaining_open_files; mocked unlock + workspace subtree removed; empty ca session dir removed when last file; close cleans workspace when CA session NOT_FOUND
+
+  **Mandatory completion:** all project tests must pass.
+verification:
+  type: pytest
+  target: tests/unit/test_universal_file_close_orchestration.py
+  expected: |
+    Multi-file disambiguation preserved: SESSION_FILE_PATH_REQUIRED when N>1 without file_path;
+    success payload includes closed_file_path, remaining_open_files, session_retained;
+    plus G-003 orchestration: mock unlock + workspace subtree removed via remove_file_subtree;
+    empty ca session dir (layout.session_dir) removed when last file in bundle;
+    unlock failure still performs local cleanup (C-015 terminating);
+    no delete_lockfile/read_lockfile_pid usage;
+    embedded baseline Python is syntactically valid (async def execute, no corruption).
+status: draft

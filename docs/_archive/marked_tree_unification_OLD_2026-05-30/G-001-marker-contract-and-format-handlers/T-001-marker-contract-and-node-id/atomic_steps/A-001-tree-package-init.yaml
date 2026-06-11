@@ -1,0 +1,49 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create tree package __init__.py
+target_file: ai_editor/tree/__init__.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-005
+status: draft
+prompt: "Create the file `ai_editor/tree/__init__.py`.\nOperation: create_file
+  (the file does not exist yet).\n\nThis file is the package initialiser for the new
+  `ai_editor.tree` package.\nIt re-exports the public API defined in `ai_editor/tree/contracts.py`.\n\
+  \n## MRS excerpt (relevant concepts)\n\nC-001 MarkerContract: the three-operation
+  contract (mark, parse, unmark) that defines\nhow a tree is built from and reduced
+  back to source content. Properties:\n  - operation mark(content) embeds node-id
+  markers natively into content\n  - operation parse(marked_text) builds the node
+  tree from markers\n  - operation unmark(marked_text) reproduces original source
+  bytes exactly\n  - round-trip invariant: unmark(mark(source)) equals source, verified
+  by checksum\n  - markers live only in tree files, never in the source file\n\nC-002
+  NodeId: the format-specific identifier that names exactly one addressable block.\n\
+  Properties:\n  - the marker string is the identifier, not a pointer to one stored
+  elsewhere\n  - one node id names exactly one addressable block\n  - an unrecognised
+  node id yields an input error, never silent ignore\n\nC-005 AddressableBlock: the
+  minimally-addressable logical unit a marker may name.\nProperties:\n  - a marker
+  never splits a lexeme or sits inside a literal or token\n  - per-format definition:
+  line (text), md block (markdown), yaml block (YAML),\n    json element (JSON), py
+  logical statement (Python)\n\n## Required file content\n\nWrite exactly this file
+  (no other code, no logic, no additional imports):\n\n\"\"\"\nai_editor.tree
+  - Marked-tree unification package.\n\nPublic API:\n    MarkerContract     - Three-operation
+  protocol (mark, parse, unmark) [C-001]\n    NodeId             - Format-specific
+  block identifier               [C-002]\n    AddressableBlock   - Per-format minimal
+  addressable unit            [C-005]\n    Format             - Enumeration of supported
+  file formats\n    UnknownNodeIdError - Raised when a NodeId is not recognised\n\n\
+  Author: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom ai_editor.tree.contracts
+  import (\n    AddressableBlock,\n    Format,\n    MarkerContract,\n    NodeId,\n\
+  \    UnknownNodeIdError,\n)\n\n__all__ = [\n    \"AddressableBlock\",\n    \"Format\"\
+  ,\n    \"MarkerContract\",\n    \"NodeId\",\n    \"UnknownNodeIdError\",\n]\n\n\
+  ## Constraints\n- No logic, no constants beyond __all__, no other imports.\n- Do
+  NOT add `from __future__ import annotations`.\n- Estimated line count: <= 30 lines."
+verification:
+  expected: Executing `from ai_editor.tree import MarkerContract, NodeId, 
+    AddressableBlock, Format, UnknownNodeIdError` succeeds without ImportError. 
+    The module __all__ contains exactly the five names listed above and no 
+    others.
+  target: ai_editor/tree/__init__.py
+  type: import

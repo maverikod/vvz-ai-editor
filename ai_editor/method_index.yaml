@@ -1,0 +1,1377 @@
+ASTNode:
+- get_ast_data
+- set_ast_data
+- from_dict
+- from_db_row
+- to_db_row
+ASTNormalizer:
+- __init__
+- _get_var_name
+- visit_Name
+- visit_Attribute
+- visit_FunctionDef
+- visit_AsyncFunctionDef
+- visit_arguments
+- _normalize_arg
+- visit_Constant
+- visit_Str
+- visit_Num
+- visit_List
+- visit_Dict
+- visit_Tuple
+ASTStatisticsMCPCommand:
+- get_schema
+- metadata
+AnalysisError:
+- __init__
+AnalyzeComplexityMCPCommand:
+- get_schema
+- metadata
+AnalyzeTimingBottlenecksMCPCommand:
+- get_schema
+- _resolve_worker_log_path
+- _is_timing_enabled
+- metadata
+BackupDatabaseMCPCommand:
+- get_schema
+- metadata
+BackupManager:
+- __init__
+- _load_index
+- _save_index
+- _generate_backup_filename
+- create_backup
+- list_files
+- list_versions
+- restore_file
+- delete_backup
+- clear_all
+- create_database_backup
+- _is_database_empty
+BaseDatabaseDriver:
+- connect
+- disconnect
+- create_table
+- drop_table
+- insert
+- update
+- delete
+- select
+- execute
+- execute_batch
+- begin_transaction
+- commit_transaction
+- rollback_transaction
+- get_table_info
+- sync_schema
+- is_thread_safe
+- connect
+- disconnect
+- execute
+- fetchone
+- fetchall
+- commit
+- rollback
+- lastrowid
+- create_schema
+- get_table_info
+BaseMCPCommand:
+- _ensure_database_integrity
+- _open_database_from_config
+- _open_database
+- _get_project_id_by_root_path
+- _get_project_id
+- _resolve_config_path
+- _get_raw_config
+- _get_shared_storage
+- _resolve_project_root
+- _validate_file_path
+- _resolve_file_path_from_project
+- _handle_error
+- _get_base_schema_properties
+BaseObject:
+- to_dict
+- to_json
+- from_dict
+- from_json
+- from_db_row
+- to_db_row
+- _parse_json_field
+- _to_json_field
+- _parse_timestamp
+- _to_timestamp
+BaseRefactorer:
+- __init__
+- _extract_method_code
+- _find_class_end
+- create_backup
+- extract_init_properties
+- find_class
+- _parse_with_comments
+- load_file
+- restore_backup
+- validate_imports
+- validate_python_syntax
+BaseRequest:
+- validate
+- to_dict
+- from_dict
+BaseResult:
+- to_dict
+- from_dict
+- is_success
+- is_error
+BlockInfo: []
+CSTConvertAndSaveCommand:
+- get_schema
+- metadata
+CSTCreateFileCommand:
+- get_schema
+- metadata
+CSTFindNodeCommand:
+- get_schema
+- metadata
+CSTGetNodeAtLineCommand:
+- get_schema
+CSTGetNodeByRangeCommand:
+- get_schema
+- metadata
+CSTGetNodeInfoCommand:
+- get_schema
+- metadata
+CSTLoadFileCommand:
+- get_schema
+- metadata
+CSTModifyTreeCommand:
+- get_schema
+- metadata
+CSTModulePatchError:
+- __init__
+CSTNode:
+- from_dict
+- from_db_row
+- to_db_row
+CSTReloadTreeCommand:
+- get_schema
+- metadata
+CSTSaveTreeCommand:
+- get_schema
+- metadata
+CSTTree:
+- create
+ChangeProjectIdMCPCommand:
+- get_schema
+- metadata
+CheckVectorsCommand:
+- metadata
+- get_schema
+ChunkerResponseError:
+- __init__
+CircuitState: []
+Class:
+- __post_init__
+- get_bases
+- set_bases
+- from_dict
+- from_db_row
+- to_db_row
+ClassSplitter:
+- _build_new_class_code
+- _build_new_class
+- extract_class_members
+- validate_split_config
+- preview_split
+- split_class
+- _perform_split
+- _get_indent
+- _build_new_class_ast
+- _build_modified_source_class_ast
+- _find_method_in_class
+- _build_modified_source_class
+- _create_method_wrapper
+- validate_completeness
+- validate_docstrings
+CleanupDeletedFilesCommand:
+- __init__
+CleanupDeletedFilesMCPCommand:
+- get_schema
+- metadata
+ClearAllBackupsMCPCommand:
+- get_schema
+- metadata
+ClearTrashCommand:
+- __init__
+- execute
+ClearTrashMCPCommand:
+- get_schema
+CodeAnalysisConfigGenerator:
+- generate
+CodeAnalysisConfigValidator:
+- __init__
+- load_config
+- validate_config
+- _validate_required_sections
+- _validate_server_section
+- _validate_registration_section
+- _validate_queue_manager_section
+- get_validation_summary
+- validate_file
+AIEditorError:
+- __init__
+CodeChunk:
+- get_embedding_vector
+- set_embedding_vector
+- from_dict
+- from_db_row
+- to_db_row
+CodeDatabase:
+- __init__
+- from_existing_driver
+- _do_sync_schema
+- __getattr__
+- _execute
+- _fetchone
+- _fetchall
+- _commit
+- _rollback
+- begin_transaction
+- commit_transaction
+- rollback_transaction
+- execute_batch
+- _in_transaction
+- transaction
+- _lastrowid
+- _get_table_info
+- _create_schema
+- _migrate_to_uuid_projects
+- _migrate_schema
+- close
+- __enter__
+- __exit__
+- get_all_chunks_for_faiss_rebuild
+- get_non_vectorized_chunks
+- _get_schema_definition
+- sync_schema
+CodeDuplicate:
+- from_dict
+- from_db_row
+- to_db_row
+CollapseVersionsCommand:
+- __init__
+CollapseVersionsMCPCommand:
+- get_schema
+- metadata
+ColumnDef: []
+Combinator: []
+ComplexityAnalyzer:
+- __init__
+- visit_If
+- visit_For
+- visit_While
+- visit_Try
+- visit_ExceptHandler
+- visit_With
+- visit_BoolOp
+- visit_IfExp
+- visit_Match
+ComposeCSTModuleCommand:
+- get_schema
+- metadata
+- _selector_from_dict
+- _ops_from_params
+- _backup_file_data
+- _validate_and_write_temp
+- _update_file_record
+- _handle_rollback
+- _apply_changes
+ComprehensiveAnalysisMCPCommand:
+- get_schema
+- metadata
+ComprehensiveAnalyzer:
+- __init__
+- find_placeholders
+- find_stubs
+- find_empty_methods
+- find_imports_not_at_top
+- find_long_files
+- check_flake8
+- check_mypy
+- find_missing_docstrings
+ConfigurationError:
+- __init__
+ConnectionError: []
+CreateOp: []
+CreateProjectCommand:
+- __init__
+- _get_watch_dir_path
+CreateProjectMCPCommand:
+- get_schema
+- metadata
+DBWorkerManager:
+- __init__
+- get_instance
+- get_or_start_worker
+- stop_worker
+- stop_all_workers
+DataResult:
+- to_dict
+- from_dict
+- is_success
+- is_error
+DatabaseClient:
+- __init__
+- connect
+- disconnect
+- is_connected
+- health_check
+DatabaseClientError: []
+DatabaseDriverManager:
+- __init__
+- start_database_driver
+- stop_database_driver
+- restart_database_driver
+- get_database_driver_status
+DatabaseError:
+- __init__
+DatabaseOperationError:
+- __init__
+DatabaseStatusCommand:
+- __init__
+DeleteBackupMCPCommand:
+- get_schema
+- metadata
+DeleteFileMCPCommand:
+- get_schema
+DeleteProjectCommand:
+- __init__
+DeleteProjectMCPCommand:
+- get_schema
+- metadata
+DeleteRequest:
+- validate
+- to_dict
+- from_dict
+DeleteUnwatchedProjectsCommand:
+- __init__
+DeleteUnwatchedProjectsMCPCommand:
+- get_schema
+- metadata
+DocstringChunker:
+- __init__
+- _file_still_exists_and_not_deleted
+- _extract_docstrings
+- _safe_get_docstring
+DocstringValidationError:
+- __init__
+DriverConnectionError: []
+DriverError: []
+DriverNotFoundError: []
+DriverOperationError: []
+DuplicateDetector:
+- __init__
+- normalize_ast
+- ast_to_hash
+- count_lines
+- find_duplicates_in_ast
+- find_duplicates_in_file
+- find_duplicates_in_code
+- calculate_similarity
+- _edit_distance_similarity
+- set_svo_client_manager
+DuplicateProjectIdError:
+- __init__
+ErrorCode: []
+ErrorResult:
+- to_dict
+- from_dict
+- is_success
+- is_error
+- to_rpc_error
+ExportGraphMCPCommand:
+- get_schema
+- metadata
+ExtractSuperclassMCPCommand:
+- get_schema
+- metadata
+FaissIndexManager:
+- __init__
+- _create_index
+- _load_index
+- save_index
+- _normalize_vector
+- add_vector
+- remove_vectors
+- search
+- get_vector
+- check_index_sync
+- get_stats
+- close
+File:
+- from_dict
+- from_db_row
+- to_db_row
+FileChangeProcessor:
+- __init__
+- compute_delta
+- queue_changes
+- process_changes
+FileDelta: []
+FileStructureCommand:
+- get_schema
+- metadata
+FileToPackageSplitter:
+- split_file_to_package
+- _build_module_content
+- _check_duplicate_top_level_names
+- _get_file_docstring
+- _extract_imports
+- _sibling_imports_for_module
+- _extract_class_code
+- _extract_function_code
+- _find_class_in_ast
+- _find_function_in_ast
+FileWatcherWorker:
+- __init__
+- stop
+FindByStart:
+- visit
+FindClassesMCPCommand:
+- get_schema
+- metadata
+FindDependenciesMCPCommand:
+- get_schema
+- metadata
+FindDuplicatesMCPCommand:
+- get_schema
+- metadata
+FindUsagesMCPCommand:
+- get_schema
+- metadata
+Finder:
+- visit
+FormatCodeCommand:
+- get_schema
+- metadata
+FulltextSearchMCPCommand:
+- get_schema
+- metadata
+Function:
+- __post_init__
+- get_args
+- set_args
+- from_dict
+- from_db_row
+- to_db_row
+FunctionChunk:
+- __init__
+GetASTMCPCommand:
+- get_schema
+- metadata
+GetClassHierarchyMCPCommand:
+- get_schema
+- metadata
+GetCodeEntityInfoMCPCommand:
+- get_schema
+- metadata
+GetDatabaseCorruptionStatusMCPCommand:
+- get_schema
+- metadata
+GetDatabaseStatusMCPCommand:
+- get_schema
+- metadata
+GetEntityDependenciesMCPCommand:
+- get_schema
+- metadata
+GetEntityDependentsMCPCommand:
+- get_schema
+- metadata
+GetFileLinesCommand:
+- get_schema
+GetImportsMCPCommand:
+- get_schema
+- metadata
+GetWorkerStatusMCPCommand:
+- get_schema
+- metadata
+GitOperationError:
+- __init__
+Import:
+- from_dict
+- from_db_row
+- to_db_row
+IndexDef: []
+IndexingWorker:
+- __init__
+- stop
+InsertOp: []
+InsertRequest:
+- validate
+- to_dict
+- from_dict
+InvalidNodeIdError: []
+InvalidProjectIdFormatError:
+- __init__
+Issue:
+- __post_init__
+- get_metadata
+- set_metadata
+- from_dict
+- from_db_row
+- to_db_row
+LintCodeCommand:
+- get_schema
+- metadata
+ListBackupFilesMCPCommand:
+- get_schema
+- metadata
+ListBackupVersionsMCPCommand:
+- get_schema
+- metadata
+ListCSTBlocksCommand:
+- get_schema
+- metadata
+ListClassMethodsMCPCommand:
+- get_schema
+- metadata
+ListCodeEntitiesMCPCommand:
+- get_schema
+- metadata
+ListDeletedFilesMCPCommand:
+- get_schema
+ListErrorsByCategoryCommand:
+- __init__
+ListErrorsByCategoryMCPCommand:
+- get_schema
+- metadata
+ListIndexingErrorsMCPCommand:
+- get_schema
+- metadata
+ListLogFilesCommand:
+- __init__
+- _detect_worker_type
+ListLogsByIdCommand:
+- __init__
+ListLogsMCPCommand:
+- get_schema
+- metadata
+ListLongFilesCommand:
+- __init__
+ListLongFilesMCPCommand:
+- get_schema
+- metadata
+ListProjectFilesMCPCommand:
+- get_schema
+- metadata
+ListProjectsMCPCommand:
+- get_schema
+- metadata
+ListTrashedProjectsCommand:
+- __init__
+- execute
+ListTrashedProjectsMCPCommand:
+- get_schema
+ListWatchDirsMCPCommand:
+- get_schema
+ListWorkerLogsMCPCommand:
+- get_schema
+- metadata
+LockManager:
+- __init__
+- _get_lock_key
+- _get_lock_path
+- acquire_lock
+- release_lock
+- _is_process_alive
+- has_lock
+LogViewerCommand:
+- __init__
+- _parse_time
+- _parse_log_line
+- _matches_event_type
+- _matches_filters
+MarkFileDeletedCommand:
+- __init__
+Match: []
+Method:
+- __post_init__
+- get_args
+- set_args
+- from_dict
+- from_db_row
+- to_db_row
+MultiProjectFileWatcherWorker:
+- __init__
+- stop
+- _count_files_on_disk
+- _initialize_watch_dirs
+MultipleProjectIdError:
+- __init__
+MutableNode:
+- __post_init__
+MutableTree:
+- get_node
+NestedProjectError:
+- __init__
+NodeInserter:
+- __init__
+- on_leave
+- leave_Module
+- leave_IndentedBlock
+NodeRemover:
+- __init__
+- on_visit
+- on_leave
+NodeReplacer:
+- __init__
+- on_leave
+- leave_Module
+- leave_IndentedBlock
+- leave_SimpleStatementLine
+NormalizedPath: []
+ParentFinder:
+- visit
+PermanentlyDeleteFromTrashCommand:
+- __init__
+- execute
+PermanentlyDeleteFromTrashMCPCommand:
+- get_schema
+PositionInserter:
+- __init__
+- leave_Module
+- leave_FunctionDef
+- leave_ClassDef
+Predicate: []
+PredicateOp: []
+ProcessorQueueOps:
+- __init__
+- queue_changes
+- _queue_project_delta
+- _queue_file_for_processing
+- _get_project_root_dir
+ProgressTracker:
+- __init__
+- set_progress
+- set_description
+- set_status
+- log
+- is_enabled
+Project:
+- from_dict
+- from_db_row
+- to_db_row
+ProjectDir:
+- validate_uuid
+- validate_path
+ProjectIdError:
+- __init__
+ProjectIdMismatchError:
+- __init__
+ProjectInfo: []
+ProjectManager:
+- __init__
+- get_project_list
+- get_project_info
+- create_project
+- _init_git_repository
+- validate_project_id
+ProjectNotFoundError:
+- __init__
+ProjectRoot: []
+Pseudo: []
+PseudoKind: []
+Query: []
+QueryCSTCommand:
+- get_schema
+- metadata
+QueryChunk:
+- __init__
+QueryParseError:
+- __init__
+QueueStatistics: []
+QueuedRequest:
+- is_expired
+RPCClient:
+- __init__
+- connect
+- disconnect
+- is_connected
+- call
+- _send_request
+- _create_connection
+- _send_data
+- _receive_data
+- health_check
+RPCClientError: []
+RPCEncoder:
+- default
+RPCError:
+- to_dict
+- from_dict
+RPCHandlers:
+- __init__
+RPCRequest:
+- to_dict
+- from_dict
+RPCResponse:
+- to_dict
+- from_dict
+- is_success
+- is_error
+RPCResponseError:
+- __init__
+RPCServer:
+- __init__
+- start
+- stop
+- _handle_client
+- _process_requests_loop
+- _deliver_response
+- _process_request_async
+- _process_request
+- _receive_data
+- _send_data
+RPCServerError: []
+RangeReplacer:
+- __init__
+- leave_Module
+- leave_IndentedBlock
+ReadOnlyBatchMCPCommand:
+- get_schema
+- metadata
+RebuildFaissCommand:
+- get_schema
+- metadata
+RefactorCommand:
+- __init__
+RefactoringError:
+- __init__
+RelativeNodeInserter:
+- __init__
+- leave_Module
+- leave_IndentedBlock
+- on_leave
+RepairDatabaseCommand:
+- __init__
+RepairDatabaseMCPCommand:
+- get_schema
+- metadata
+RepairSQLiteDatabaseMCPCommand:
+- get_schema
+- metadata
+RepairWorkerManager:
+- __init__
+- start
+- stop
+- status
+- _find_worker_processes
+- _get_process_by_pid
+- _get_recent_log_activity
+RepairWorkerStatusMCPCommand:
+- get_schema
+- metadata
+ReplaceFileLinesCommand:
+- get_schema
+ReplaceOp: []
+RequestPriority: []
+RequestQueue:
+- __init__
+- enqueue
+- dequeue
+- get
+- remove
+- _remove_expired
+- size
+- is_empty
+- is_full
+- get_statistics
+- clear
+RequestQueueError: []
+RequestQueueFullError: []
+RequestTimeoutError: []
+RestoreBackupFileMCPCommand:
+- get_schema
+- metadata
+RestoreDatabaseFromConfigMCPCommand:
+- get_schema
+- metadata
+RestoreDeletedFilesCommand:
+- __init__
+RestoreDeletedFilesMCPCommand:
+- get_schema
+RestoreProjectFromTrashMCPCommand:
+- get_schema
+Result:
+- create_success
+- error
+- is_success
+- is_error
+- to_dict
+- from_dict
+RevectorizeCommand:
+- get_schema
+- metadata
+RotateAllLogsMCPCommand:
+- get_schema
+- metadata
+RotateLogsCommand:
+- __init__
+- _rotation_path
+RotateWorkerLogsMCPCommand:
+- get_schema
+- _resolve_worker_log_path
+- metadata
+RunProjectModuleCommand:
+- get_schema
+- metadata
+RunProjectScriptCommand:
+- get_schema
+- metadata
+SQLiteDriver:
+- __init__
+- connect
+- disconnect
+- create_table
+- drop_table
+- insert
+- update
+- delete
+- select
+- execute_batch
+- execute
+- begin_transaction
+- commit_transaction
+- rollback_transaction
+- get_table_info
+- sync_schema
+- is_thread_safe
+- __init__
+- connect
+- disconnect
+- execute
+- fetchone
+- fetchall
+- commit
+- rollback
+- lastrowid
+- create_schema
+- get_table_info
+- begin_transaction
+- sync_schema
+- _get_schema_version
+- _set_schema_version
+SQLiteDriverProxy:
+- is_thread_safe
+- __init__
+- connect
+- _start_worker
+- _ensure_worker_running
+- _send_request
+- _execute_operation
+- disconnect
+- execute
+- fetchone
+- fetchall
+- commit
+- rollback
+- sync_schema
+- lastrowid
+- create_schema
+- get_table_info
+- _truncate_sql
+SQLiteOperations:
+- __init__
+- insert
+- update
+- delete
+- select
+SQLiteQueryJournal:
+- __init__
+- _rotate_if_needed
+- write
+- close
+- path
+SQLiteRepairResult: []
+SQLiteSchemaManager:
+- __init__
+- get_table_info
+- sync_schema
+SQLiteTransactionManager:
+- __init__
+- begin_transaction
+- commit_transaction
+- rollback_transaction
+- close_all
+SVOClientManager:
+- __init__
+- get_circuit_state
+- get_backoff_delay
+- _record_success
+- _record_failure
+- _maybe_transition
+SVOServiceConfig:
+- validate_protocol
+- validate_cert_path
+- validate_mtls_config
+SandboxRunResult: []
+SchemaComparator:
+- __init__
+- _apply_final_state_overrides
+- compare_schemas
+- validate_data_compatibility
+- validate_cst_node_id_not_null_state
+- _recreate_virtual_table
+- _generate_create_table_sql
+- _generate_recreate_table_sql
+- _generate_create_index_sql
+- _tables_recreate_order
+- generate_migration_sql
+SchemaCompareOps:
+- __init__
+- get_current_tables
+- validate_snapshot_invariants
+- get_current_virtual_tables
+- virtual_table_changed
+- compare_table
+- get_table_columns
+- column_has_nulls
+- compare_indexes
+- get_current_indexes
+- _indexes_match
+- find_extra_indexes
+- compare_constraints
+- get_current_foreign_keys
+- get_current_unique_constraints
+- _foreign_keys_match
+- _unique_constraints_match
+- compare_schemas
+SchemaDiff:
+- has_changes
+SearchASTNodesMCPCommand:
+- get_schema
+- metadata
+SearchCommand:
+- __init__
+- full_text_search
+- search_classes
+- search_methods
+SelectRequest:
+- validate
+- to_dict
+- from_dict
+Selector: []
+SelectorStep: []
+SemanticSearchMCPCommand:
+- get_schema
+- metadata
+ServerConfig:
+- validate_port
+- validate_host
+- validate_log_path
+- validate_db_path
+- validate_faiss_index_path
+- validate_vector_dim
+- validate_batch_max_response_bytes
+- validate_batch_output_dir
+- validate_batch_output_retention_seconds
+SettingsManager:
+- __new__
+- __init__
+- _load_from_env
+- set_cli_overrides
+- get
+- code_file_extensions
+- default_ignore_patterns
+- projectid_filename
+- max_file_lines
+- min_chunk_length
+- poll_interval
+- scan_interval
+- server_host
+- server_port
+- vector_dim
+- batch_size
+- retry_attempts
+- retry_delay
+Span: []
+SplitClassMCPCommand:
+- get_schema
+- metadata
+SplitFileToPackageMCPCommand:
+- get_schema
+- metadata
+StartRepairWorkerMCPCommand:
+- get_schema
+- metadata
+StartWorkerMCPCommand:
+- get_schema
+- metadata
+StopRepairWorkerMCPCommand:
+- get_schema
+- metadata
+StopWorkerMCPCommand:
+- get_schema
+- metadata
+StoragePaths: []
+SuccessResult:
+- to_dict
+- from_dict
+- is_success
+- is_error
+SuperclassExtractor:
+- _build_base_class
+- _update_child_class
+- get_class_bases
+- check_multiple_inheritance_conflicts
+- check_method_compatibility
+- _find_method_in_class
+- _get_return_type
+- validate_config
+- validate_completeness
+- validate_docstrings
+- preview_extraction
+- extract_superclass
+- _build_base_class_ast
+- _update_child_class_ast
+TableDiff:
+- has_changes
+TableOperationRequest:
+- validate
+- to_dict
+- from_dict
+TimeoutError: []
+TransactionError: []
+TransactionRequest:
+- validate
+- to_dict
+- from_dict
+TreeAction: []
+TreeNodeMetadata:
+- to_dict
+TreeOperation: []
+TreeOperationType: []
+TypeCheckCodeCommand:
+- get_schema
+- metadata
+UnifiedFormatter:
+- format
+UnmarkDeletedFileCommand:
+- __init__
+UnmarkDeletedFileMCPCommand:
+- get_schema
+- metadata
+UpdateIndexesMCPCommand:
+- get_schema
+- _analyze_file
+- metadata
+UpdateRequest:
+- validate
+- to_dict
+- from_dict
+Usage:
+- __post_init__
+- get_context
+- set_context
+- from_dict
+- from_db_row
+- to_db_row
+UsageTracker:
+- __init__
+- visit_ClassDef
+- visit_FunctionDef
+- visit_AsyncFunctionDef
+- visit_Call
+- visit_Attribute
+- _record_usage
+- get_usages
+ValidationError:
+- __init__
+ValidationResult:
+- __init__
+VectorIndex:
+- from_dict
+- from_db_row
+- to_db_row
+VectorizationWorker:
+- __init__
+- stop
+VenvNotFoundError: []
+ViewWorkerLogsMCPCommand:
+- get_schema
+- _resolve_worker_log_path
+- _resolve_log_path_by_id
+- _log_id_to_worker_type
+- metadata
+WatchDirSpec: []
+WorkerLifecycleManager:
+- __init__
+- stop_worker_type
+- _stop_queue_system
+- _stop_process
+- _stop_worker_instance
+- _stop_by_pid
+- start_file_watcher_worker
+- start_vectorization_worker
+- start_indexing_worker
+WorkerManager:
+- __init__
+- get_instance
+- register_worker
+- unregister_worker
+- get_worker_status
+- stop_worker_type
+- stop_all_workers
+- cleanup_on_shutdown
+- start_monitoring
+- stop_monitoring
+- start_file_watcher_worker
+- start_vectorization_worker
+- start_indexing_worker
+- start_database_driver
+- stop_database_driver
+- restart_database_driver
+- get_database_driver_status
+WorkerMonitor:
+- __init__
+- start_monitoring
+- stop_monitoring
+- set_shutdown_requested
+- _monitor_workers_loop
+- _check_and_restart_workers
+WorkerRegistry:
+- __init__
+- check_and_cleanup_pid_file
+- register_worker
+- unregister_worker
+- get_worker_status
+- get_workers
+- clear_workers
+WorkerStartResult: []
+WorkerStatusCommand:
+- __init__
+- _get_status_file_path
+- _get_worker_progress
+- _get_pid_file_path
+- _get_lock_file_info
+- _get_process_by_pid
+- _get_pid_files_to_verify
+- _verify_pid_files_against_registry
+- _get_recent_log_activity
+XPathFilter:
+- __post_init__
+- to_dict
+- from_dict
+- __str__
+_ClientAPIASTCSTMixin:
+- query_ast
+- query_cst
+- modify_ast
+- modify_cst
+- _parse_result_response
+_ClientAPIAttributesMixin:
+- save_ast
+- get_ast
+- save_cst
+- get_cst
+- save_vectors
+- get_vectors
+_ClientAPIClassesFunctionsMixin:
+- create_class
+- get_class
+- get_file_classes
+- search_classes
+- create_function
+- get_function
+- get_file_functions
+- search_functions
+_ClientAPIComprehensiveAnalysisMixin:
+- should_analyze_file
+- is_analysis_up_to_date
+- get_comprehensive_analysis_results
+- save_comprehensive_analysis_results
+- save_comprehensive_analysis_results_batch
+_ClientAPIDuplicatesStatsMixin:
+- create_code_duplicate
+- get_code_duplicate
+- get_project_duplicates
+- get_project_statistics
+- get_file_statistics
+_ClientAPIFilesMixin:
+- create_file
+- get_file
+- get_file_by_id
+- get_file_by_path
+- add_file
+- save_ast_tree
+- save_cst_tree
+- add_code_content
+- add_class
+- add_method
+- add_function
+- add_import
+- add_usage
+- mark_file_needs_chunking
+- update_file
+- delete_file
+- get_project_file_rows
+- get_project_files
+- index_file
+- mark_file_deleted
+- unmark_file_deleted
+- hard_delete_file
+- get_deleted_files
+_ClientAPIIssuesUsagesMixin:
+- create_issue
+- get_issue
+- get_file_issues
+- get_project_issues
+- search_issues
+- create_usage
+- get_usage
+- get_file_usages
+- search_usages
+_ClientAPIMethodsImportsMixin:
+- create_method
+- get_method
+- get_class_methods
+- search_methods
+- create_import
+- get_import
+- get_file_imports
+- search_imports
+- get_class_with_methods
+- get_file_structure
+_ClientAPIProjectsMixin:
+- create_project
+- get_project
+- update_project
+- delete_project
+- list_projects
+_ClientAPISearchMixin:
+- full_text_search
+_ClientHelpersMixin:
+- _extract_success
+- _extract_result_data
+- _create_response_error
+_ClientOperationsMixin:
+- insert
+- update
+- delete
+- select
+- execute
+- execute_batch
+- add_code_chunk
+_ClientSchemaMixin:
+- create_table
+- drop_table
+- alter_table
+- get_table_info
+- get_schema_version
+- sync_schema
+_ClientTransactionsMixin:
+- begin_transaction
+- commit_transaction
+- rollback_transaction
+_CommandMetadata: []
+_CreateRewriter:
+- __init__
+- _rewrite_body_with_creations
+- leave_Module
+_DatabaseClientBase:
+- _extract_success
+- _extract_result_data
+- execute
+- select
+- insert
+- update
+- delete
+- get_file
+- execute_batch
+- begin_transaction
+- commit_transaction
+- rollback_transaction
+- get_project
+- get_project_files
+- get_class
+- get_file_classes
+- get_file_functions
+- get_file_imports
+- get_class_methods
+- get_file_issues
+- get_file_usages
+_DocItem: []
+_DummyChunk:
+- __init__
+_FunctionCollector:
+- __init__
+- visit_ClassDef
+- visit_FunctionDef
+- visit_AsyncFunctionDef
+_InsertRewriter:
+- __init__
+- _find_insertion_point
+- _span_contains_or_matches
+- _rewrite_body_with_insertions
+- leave_Module
+- leave_IndentedBlock
+_Invocation: []
+_NodeInfo:
+- node_type
+- span_key
+- to_id
+_OutputMetadata: []
+_ParsedPseudo: []
+_RPCHandlersASTCSTQueryMixin:
+- handle_query_ast
+- handle_query_cst
+_RPCHandlersASTModifyMixin:
+- handle_modify_ast
+_RPCHandlersBaseMixin:
+- handle_insert
+- handle_update
+- handle_delete
+- handle_select
+- handle_execute
+- handle_execute_batch
+_RPCHandlersCSTModifyMixin:
+- handle_modify_cst
+_RPCHandlersFileTrashMixin:
+- _get_code_db
+- handle_mark_file_deleted
+- handle_unmark_file_deleted
+- handle_hard_delete_file
+- handle_get_deleted_files
+_RPCHandlersIndexFileMixin:
+- handle_index_file
+_RPCHandlersSchemaMixin:
+- handle_create_table
+- handle_drop_table
+- handle_begin_transaction
+- handle_commit_transaction
+- handle_rollback_transaction
+- handle_get_table_info
+- handle_sync_schema
+_ResultEntry: []
+_SkeletonTransformer:
+- leave_FunctionDef
+_StatementListRewriter:
+- __init__
+- _rewrite_body
+- leave_Module
+- leave_IndentedBlock
+- leave_SimpleStatementLine
+_TmpChunk:
+- __init__
+- __init__
+_ToAst:
+- NAME
+- INT
+- STAR
+- BAREWORD
+- STRING
+- OP
+- predicate
+- pseudo_args
+- pseudo
+- node_type
+- step
+- selector

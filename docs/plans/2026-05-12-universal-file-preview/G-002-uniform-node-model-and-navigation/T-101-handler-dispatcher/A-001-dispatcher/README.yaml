@@ -1,0 +1,68 @@
+step_id: A-001
+parent_tactical_step: T-101
+name: Create HandlerDispatcher routing file extension to FileHandler
+target_file: ai_editor/commands/universal_file_preview/dispatcher.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-002
+- C-003
+- C-014
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/dispatcher.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  HandlerDispatcher — routes file_path to a FileHandler\
+  \ by extension (C-002).\n\n  One extension maps to exactly one FileHandler. Unknown\
+  \ extension\n  produces UNKNOWN_EXTENSION error (C-014). Adding a new handler does\n\
+  \  not change the public command schema.\n\n  Author: Vasiliy Zdanovskiy\n  email:\
+  \ vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from __future__ import annotations\n\
+  \  import logging\n  from pathlib import Path\n  from .base_handler import FileHandler\n\
+  \  from .errors import PreviewError, input_error, INPUT_ERROR_UNKNOWN_EXTENSION\n\
+  \  from .handlers.python_handler import PythonFileHandler\n  from .handlers.text_handler\
+  \ import TextFileHandler\n  from .handlers.json_handler import JsonFileHandler\n\
+  \  from .handlers.jsonl_handler import JsonLinesFileHandler\n  from .handlers.yaml_handler\
+  \ import YamlFileHandler\n\nThe five imported handler classes all extend FileHandler\
+  \ (C-003).\nTheir contracts (relevant to this file only):\n\n  class PythonFileHandler(FileHandler):\n\
+  \      supported_extensions: frozenset = frozenset({'.py', '.pyi', '.pyw'})\n  \
+  \    # Accepts .py, .pyi, .pyw; root NodeKind is tree_node\n\n  class TextFileHandler(FileHandler):\n\
+  \      supported_extensions: frozenset = frozenset({'.md', '.txt', '.rst', '.adoc'})\n\
+  \      # Accepts text files; root NodeKind is lines\n\n  class JsonFileHandler(FileHandler):\n\
+  \      supported_extensions: frozenset = frozenset({'.json'})\n      # Accepts .json;\
+  \ root NodeKind is mapping | sequence | scalar\n\n  class JsonLinesFileHandler(FileHandler):\n\
+  \      supported_extensions: frozenset = frozenset({'.jsonl', '.ndjson'})\n    \
+  \  # Accepts .jsonl, .ndjson; root NodeKind is lines\n\n  class YamlFileHandler(FileHandler):\n\
+  \      supported_extensions: frozenset = frozenset({'.yaml', '.yml'})\n      # Accepts\
+  \ .yaml, .yml; root NodeKind is mapping | sequence | scalar\n\nAll handler classes\
+  \ are instantiated once per HandlerDispatcher instance\nand stored in a dict keyed\
+  \ by lowercase extension.\n\nModule-level:\n  logger = logging.getLogger(__name__)\n\
+  \nClass: HandlerDispatcher\nClass docstring:\n  \"\"\"\n  Routes file_path to a\
+  \ FileHandler (C-003) by extension (C-002).\n\n  Dispatch key is the file extension\
+  \ (case-insensitive, via\n  pathlib.Path.suffix.lower()). Each extension maps to\
+  \ exactly one\n  handler instance. Unknown extension produces UNKNOWN_EXTENSION\
+  \ input\n  error (C-014).\n\n  Attributes:\n      _registry: dict[str, FileHandler]\
+  \ — mapping of lowercase extension\n                 string to the registered FileHandler\
+  \ instance.\n  \"\"\"\n\nMethod: __init__(self) -> None\n  Docstring: \"Initialise\
+  \ dispatcher with the default extension-to-handler registry.\"\n  Body: self._registry:\
+  \ dict[str, FileHandler] = {\n      '.py':    PythonFileHandler(),\n      '.pyi':\
+  \   PythonFileHandler(),\n      '.pyw':   PythonFileHandler(),\n      '.md':   \
+  \ TextFileHandler(),\n      '.txt':   TextFileHandler(),\n      '.rst':   TextFileHandler(),\n\
+  \      '.adoc':  TextFileHandler(),\n      '.json':  JsonFileHandler(),\n      '.jsonl':\
+  \ JsonLinesFileHandler(),\n      '.ndjson':JsonLinesFileHandler(),\n      '.yaml':\
+  \  YamlFileHandler(),\n      '.yml':   YamlFileHandler(),\n  }\n\nMethod: dispatch(self,\
+  \ file_path: str) -> FileHandler | PreviewError\n  Return type: FileHandler | PreviewError\n\
+  \  Docstring:\n    \"\"\"\n    Resolve the FileHandler for the given file_path by\
+  \ extension.\n\n    Extension matching is case-insensitive. Does not read file content.\n\
+  \n    Args:\n        file_path: Project-relative path string.\n\n    Returns:\n\
+  \        FileHandler instance, or PreviewError(UNKNOWN_EXTENSION) when\n       \
+  \ the extension has no registered handler.\n    \"\"\"\n  Body:\n    ext = Path(file_path).suffix.lower()\n\
+  \    handler = self._registry.get(ext)\n    if handler is None:\n        return\
+  \ input_error(\n            INPUT_ERROR_UNKNOWN_EXTENSION,\n            f'No handler\
+  \ registered for extension {ext!r} in {file_path!r}.',\n            details={'extension':\
+  \ ext, 'file_path': file_path},\n        )\n    return handler\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.dispatcher
+  expected: Module imports without error; HandlerDispatcher() instantiates; dispatch('foo.py')
+    returns a PythonFileHandler instance; dispatch('foo.xml') returns a PreviewError
+    with code INPUT_ERROR_UNKNOWN_EXTENSION.

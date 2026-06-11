@@ -1,0 +1,45 @@
+step_id: G-003
+name: Stable identifiers and tree sessions
+description: 'The command reuses identifiers produced by the project''s existing tree
+  infrastructure rather than inventing its own scheme. The identifier format is per-FileHandler
+  and opaque to the dispatcher. NodeReference is the optional caller-supplied parameter
+  that focuses the preview on a specific Node by its StableIdentifier; when omitted,
+  the focus is the file root. TreeSession is the in-memory parsed tree the command
+  may read from when the caller provides a tree_id, or open transiently when the caller
+  does not; the command never closes or invalidates a session it did not create.
+
+  '
+concepts:
+- C-009
+- C-010
+- C-011
+relations:
+- from_concept: C-010
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-006
+  to_concept: C-010
+  type: consumes
+- from_concept: C-001
+  to_concept: C-010
+  type: consumes
+- from_concept: C-006
+  to_concept: C-011
+  type: uses
+- from_concept: C-001
+  to_concept: C-011
+  type: uses
+source_ranges:
+- start: 144
+  end: 169
+- start: 171
+  end: 173
+- start: 175
+  end: 190
+depends_on:
+- G-002
+tactical_steps:
+- T-201
+- T-202
+- T-203
+status: frozen

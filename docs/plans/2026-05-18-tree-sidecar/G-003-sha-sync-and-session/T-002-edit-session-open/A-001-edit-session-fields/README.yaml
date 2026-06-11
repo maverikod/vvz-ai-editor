@@ -1,0 +1,241 @@
+step_id: A-001
+parent_tactical_step: T-002
+parent_global_step_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/README.yaml
+parent_tactical_task_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/T-002-edit-session-open/README.yaml
+machine_spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+source_spec: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+name: Extend EditSession for tree sidecar workflow
+target_file: ai_editor/commands/universal_file_edit/session.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+  - C-007
+  - C-001
+status: done
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/session.py
+  expected: black, flake8, mypy exit 0 on this file; full pytest suite passes.
+prompt: |
+  Executor: coder_auto. Modify only ai_editor/commands/universal_file_edit/session.py.
+
+  Normative concepts: C-007 EditSession (machine_spec), T-002 README, G-003 README.
+
+  Prerequisite: ai_editor.core.tree_temp.tree_node.TreeNode exists (G-001).
+  If that import fails, stop and escalate to orchestrator_tactical; do not stub TreeNode here.
+
+  Repository snapshot (2026-05-18; a8 first-touch baseline): `wc -l ai_editor/commands/universal_file_edit/session.py` → **101** lines. Full file as on disk at authoring:
+
+  ```python
+  """
+  EditSession entity and module-level session registry.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import uuid
+  from dataclasses import dataclass
+  from pathlib import Path
+  from typing import Optional
+
+  from ai_editor.commands.universal_file_edit.format_group import FormatDescriptor
+
+  _sessions: dict[str, EditSession] = {}
+
+
+  @dataclass
+  class EditSession:
+      """In-memory record for one active file-editing session.
+
+      Attributes:
+          session_id: UUID string identifying the session.
+          file_path: Project-relative path to the original file.
+          abs_path: Absolute path to the original file.
+          draft_path: Absolute path to the draft file.
+          lockfile_path: Absolute path to the write lockfile.
+          format_group: One of sidecar, tree-temp, or text.
+          handler_id: Handler id from the file handler registry.
+          tree_id: In-memory tree UUID for tree-temp group; None otherwise.
+      """
+
+      session_id: str
+      file_path: str
+      abs_path: Path
+      draft_path: Path
+      lockfile_path: Path
+      format_group: str
+      handler_id: str
+      tree_id: Optional[str]
+
+
+  def create_session(
+      abs_path: Path,
+      descriptor: FormatDescriptor,
+      file_path: str,
+      tree_id: Optional[str] = None,
+  ) -> EditSession:
+      """Create and register a new EditSession.
+
+      Args:
+          abs_path: Absolute path to the original file.
+          descriptor: Resolved FormatDescriptor for the file.
+          file_path: Project-relative path to the original file.
+          tree_id: In-memory tree UUID for tree-temp group; None for other groups.
+
+      Returns:
+          Newly created and registered EditSession.
+      """
+      session_id = str(uuid.uuid4())
+      session = EditSession(
+          session_id=session_id,
+          file_path=file_path,
+          abs_path=abs_path,
+          draft_path=descriptor.draft_path,
+          lockfile_path=descriptor.lockfile_path,
+          format_group=descriptor.format_group,
+          handler_id=descriptor.handler_id,
+          tree_id=tree_id,
+      )
+      _sessions[session_id] = session
+      return session
+
+
+  def get_session(session_id: str) -> EditSession:
+      """Return the EditSession for session_id, or raise SESSION_NOT_FOUND.
+
+      Args:
+          session_id: UUID string of the session to look up.
+
+      Returns:
+          The registered EditSession.
+
+      Raises:
+          ValueError: with message SESSION_NOT_FOUND when session_id is unknown.
+      """
+      session = _sessions.get(session_id)
+      if session is None:
+          raise ValueError("SESSION_NOT_FOUND")
+      return session
+
+
+  def release_session(session_id: str) -> None:
+      """Remove a session from the registry; silent if session_id is unknown.
+
+      Args:
+          session_id: UUID string of the session to remove.
+      """
+      _sessions.pop(session_id, None)
+  ```
+
+  Replace the entire file with the following implementation (verbatim semantics; formatting may follow black).
+
+  """ 
+  EditSession entity and module-level session registry.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import uuid
+  from dataclasses import dataclass
+  from pathlib import Path
+  from typing import List, Optional
+
+  from ai_editor.commands.universal_file_edit.format_group import FormatDescriptor
+  from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  _sessions: dict[str, EditSession] = {}
+
+
+  @dataclass
+  class EditSession:
+      """In-memory record for one active file-editing session."""
+
+      session_id: str
+      file_path: str
+      abs_path: Path
+      draft_path: Path
+      lockfile_path: Path
+      format_group: str
+      handler_id: str
+      tree_id: Optional[str]
+      source_sha256_at_open: Optional[str] = None
+      dirty: bool = False
+      tree_temp_roots: Optional[List[TreeNode]] = None
+      sidecar_write_intent: Optional[str] = None
+
+
+  def create_session(
+      abs_path: Path,
+      descriptor: FormatDescriptor,
+      file_path: str,
+      tree_id: Optional[str] = None,
+      *,
+      source_sha256_at_open: Optional[str] = None,
+      tree_temp_roots: Optional[List[TreeNode]] = None,
+      sidecar_write_intent: Optional[str] = None,
+  ) -> EditSession:
+      """Create and register a new EditSession."""
+      session_id = str(uuid.uuid4())
+      session = EditSession(
+          session_id=session_id,
+          file_path=file_path,
+          abs_path=abs_path,
+          draft_path=descriptor.draft_path,
+          lockfile_path=descriptor.lockfile_path,
+          format_group=descriptor.format_group,
+          handler_id=descriptor.handler_id,
+          tree_id=tree_id,
+          source_sha256_at_open=source_sha256_at_open,
+          dirty=False,
+          tree_temp_roots=tree_temp_roots,
+          sidecar_write_intent=sidecar_write_intent,
+      )
+      _sessions[session_id] = session
+      return session
+
+
+  def get_session(session_id: str) -> EditSession:
+      """Return the EditSession for session_id, or raise SESSION_NOT_FOUND."""
+      session = _sessions.get(session_id)
+      if session is None:
+          raise ValueError("SESSION_NOT_FOUND")
+      return session
+
+
+  def release_session(session_id: str) -> None:
+      """Remove a session from the registry; silent if session_id is unknown."""
+      _sessions.pop(session_id, None)
+
+
+  def active_session_uses_abs_path(abs_path: Path) -> bool:
+      """Return True if any registered session uses this resolved absolute path."""
+      target = abs_path.resolve()
+      for sess in _sessions.values():
+          if sess.abs_path.resolve() == target:
+              return True
+      return False
+
+  ---
+
+  Contract notes:
+    - create_session remains backward compatible: existing callers pass only positional args through tree_id.
+    - New fields are keyword-only and default to None / False.
+    - Cross-G naming (G-003 authoritative for EditSession): authoritative in-memory TreeNode roots MUST use
+      field name **tree_temp_roots** only — do not use **tree_roots** on EditSession.
+    - Source checksum on the session object MUST use **source_sha256_at_open** only (Optional[str], lowercase hex).
+      Do not add a parallel **source_sha256** field; G-004 downstream steps read/update this same attribute.
+
+  Forbidden: Any, print, logging, bare except, touching other files.
+
+  Validation:
+    black ai_editor/commands/universal_file_edit/session.py
+    flake8 ai_editor/commands/universal_file_edit/session.py
+    mypy ai_editor/commands/universal_file_edit/session.py
+    pytest -q

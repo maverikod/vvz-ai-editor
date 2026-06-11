@@ -1,0 +1,43 @@
+# Parallel waves for G-004 atomic steps (same wave = may execute concurrently).
+# Cross-TS ordering: complete G-004 dependency chain G-001..G-003 in code first.
+
+meta:
+  plan: docs/plans/2026-05-18-tree-sidecar
+  global_step: G-004
+
+waves:
+  T-001:
+    wave_1:
+      - A-001   # session.py
+    wave_2:
+      - A-002   # tree_temp_open_pipeline.py
+    wave_3:
+      - A-003   # open_command.py
+  T-002:
+    wave_1:
+      - A-003   # edit_draft_path_utils.py
+      - A-004   # sidecar_cst_apply.py (parallel; no dep on path utils)
+    wave_2:
+      - A-005   # tree_temp_legacy_apply.py (uses project_root_near)
+      - A-006   # text_draft_apply.py
+    wave_3:
+      - A-007   # edit_command.py ≤400 + re-exports; see README for a8 baseline
+    wave_4:
+      - A-001   # tree_temp_edit_batch.py — depends_on A-007
+    wave_5:
+      - A-002   # edit_command — depends_on: A-007, A-001 (G-004 delegate)
+  T-003:
+    wave_1:
+      - A-001   # tree_temp_write_commit.py
+    wave_2:
+      - A-002   # write_command.py
+  T-004:
+    wave_1:
+      - A-001   # close_command.py
+  T-005:
+    wave_1:
+      - A-001   # tree_temp_preview_focus.py
+      - A-003   # preview session.py (json registry)
+      - A-004   # universal_file_preview_command.py sidecar inject
+    wave_2:
+      - A-002   # navigation.py hook (depends A-001 + A-004)

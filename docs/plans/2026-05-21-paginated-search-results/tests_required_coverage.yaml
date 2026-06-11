@@ -1,0 +1,70 @@
+meta:
+  plan: paginated-search-results
+  g_step: G-008
+  generated_by: T-006/A-008
+
+coverage:
+  unit:
+    - id: block_paging
+      file: tests/unit/test_search_get_page_command.py
+      tests:
+        - test_session_not_found
+        - test_block_not_ready_when_running_and_no_block
+        - test_returns_block_items_when_published
+        - test_closed_session_returns_closed_error
+        - test_block_position_uses_default_1
+
+    - id: backend_pagination
+      files:
+        - tests/unit/test_search_paginated_fulltext.py
+        - tests/unit/test_search_paginated_semantic.py
+        - tests/unit/test_search_paginated_cross.py
+        - tests/unit/test_search_paginated_ggrep.py
+        - tests/unit/test_search_paginated_tree_query.py
+
+    - id: structural_evidence
+      file: tests/unit/test_structural_evidence.py
+      tests:
+        - test_timed_out_rejected
+        - test_classic_line_without_preview_rejected
+        - test_valid_structural_accepted
+
+    - id: cancel_close_lifecycle
+      files:
+        - tests/unit/test_search_cancel_command.py
+        - tests/unit/test_search_close_command.py
+      key_tests:
+        - test_running_session_transitions_to_cancelled
+        - test_repeated_cancel_returns_false
+        - test_cancel_queued_job_invoked_when_queue_job_id_present
+        - test_close_sets_manifest_status_closed
+        - test_buffer_scratch_files_removed
+        - test_blocks_remain_after_close
+        - test_cursor_invalid_after_close
+
+    - id: queue_routing
+      file: tests/unit/test_search_start_command.py
+
+    - id: schema_contracts
+      files:
+        - tests/unit/test_search_session_schema.py
+        - tests/unit/test_fs_ggrep_pagination_schema.py
+        - tests/unit/test_project_cross_search_pagination_schema.py
+        - tests/unit/test_semantic_search_pagination_schema.py
+
+    - id: behavior_inventory
+      file: tests/unit/test_existing_behavior_inventory.py
+
+    - id: compatibility_layer
+      file: tests/unit/test_search_compatibility.py
+
+    - id: get_status
+      file: tests/unit/test_search_get_status_command.py
+      tests:
+        - test_returns_status_without_items
+        - test_cancelled_status_maps_correctly
+        - test_timed_out_status_maps_correctly
+
+status: green
+passed: 69
+failed: 0

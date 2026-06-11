@@ -1,0 +1,26 @@
+step_id: T-001
+parent_global_step: G-004
+name: Tree Write Operation
+description: Define the write operation of the Serializer entity (C-010). The 
+  write operation consumes a package Tree (C-004) and records its full node 
+  structure, every stable_id, and the index state to a file in the package's own
+  format. The recorded form is a same-version, trusted-source artifact intended 
+  to be read back by the same version from a trusted source; cross-version 
+  migration and untrusted deserialization are out of scope. The write operation 
+  is optimized for fast save. This step realizes the C-010 consumes C-004 
+  relation.
+concepts:
+- C-010
+- C-004
+inputs:
+- name: package Tree
+  type: C-004 instance
+  description: The Tree to be serialized; its node structure, stable_id values, 
+    and indexes are all recorded.
+outputs:
+- name: serialized Tree file
+  type: file in package serialization format
+  description: A file recording the full Tree state; same-version trusted-source
+    artifact.
+atomic_steps: []
+status: draft

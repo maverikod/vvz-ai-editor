@@ -1,0 +1,39 @@
+atomic_steps: A-001
+concepts:
+- C-006
+- C-009
+description: "Define the SessionListVisibilityPolicy (C-006) config schema entry,
+  its validator rule, and its generator default. This policy is a sibling of SecurityPolicy
+  (C-009) within the same 'sessions' config section and governs whether session_id
+  is exposed in the session_list output.\n\nConfig schema entry created:\n- Field
+  show_session_ids added to the 'sessions' config section. Type: boolean. Default:
+  false.\n- Semantics: false — session_id is never included in session_list output;
+  session_id parameter in session_list is optional; false and present or absent, no
+  SESSION_ID_REQUIRED error is raised. true — session_id is required in session_list
+  request (error SESSION_ID_REQUIRED if absent); SessionTouchRule applied; session_id
+  included in each output row.\n\nValidator rule created:\n- Config validator rejects
+  any non-boolean value for sessions.show_session_ids.\n- Config validator rejects
+  a missing sessions.show_session_ids field.\n- Validator error message: 'sessions.show_session_ids
+  must be a boolean'.\n\nGenerator default created:\n- Config generator emits sessions:
+  {show_session_ids: false} as the default."
+inputs:
+- description: Existing config validator and generator infrastructure. 
+    SecurityPolicy config entry (C-009) which defines the 'security' section 
+    separately within the same config schema.
+  name: Config schema infrastructure
+  type: existing domain contract
+name: SessionListVisibilityPolicy config schema, validator, and generator
+outputs:
+- description: sessions.show_session_ids boolean field in config schema.
+  name: SessionListVisibilityPolicy config entry
+  type: domain schema
+- description: Validator rule rejecting non-boolean or missing 
+    sessions.show_session_ids.
+  name: SessionListVisibilityPolicy validator rule
+  type: domain contract
+- description: 'Generator emits sessions: {show_session_ids: false} by default.'
+  name: SessionListVisibilityPolicy generator default
+  type: domain contract
+parent_global_step: G-002
+status: done
+step_id: T-002

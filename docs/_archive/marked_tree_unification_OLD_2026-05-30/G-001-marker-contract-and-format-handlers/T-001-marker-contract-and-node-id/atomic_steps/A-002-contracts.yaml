@@ -1,0 +1,146 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Create contracts.py with MarkerContract, NodeId, AddressableBlock
+target_file: ai_editor/tree/contracts.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+cross_ts_depends_on: []
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-009
+status: draft
+prompt: "Create the file `ai_editor/tree/contracts.py`.\nOperation: create_file
+  (the file does not exist yet).\n\nThis file defines the three domain entities from
+  T-001:\n  - MarkerContract (C-001): the three-operation Protocol\n  - NodeId (C-002):
+  the format-specific block identifier\n  - AddressableBlock (C-005): per-format minimal
+  addressable unit\nPlus two supporting types: Format enum and UnknownNodeIdError.\n\
+  \n## MRS excerpt (relevant concepts)\n\nC-001 MarkerContract:\n  definition: The
+  three-operation contract (mark, parse, unmark) that defines\n    how a tree is built
+  from and reduced back to source content.\n  properties:\n    - operation mark(content)
+  embeds node-id markers natively into content\n    - operation parse(marked_text)
+  builds the node tree from markers\n    - operation unmark(marked_text) reproduces
+  original source bytes exactly\n    - round-trip invariant: unmark(mark(source))
+  equals source, verified by checksum\n    - markers live only in tree files, never
+  in the source file\n\nC-007 FormatHandler implements C-001 (relation type: **implements**,
+  NOT extends).\n  FormatHandler is a **parallel ABC** that does **NOT** subclass
+  MarkerContract.\n  See operation mapping below.\n\nC-002 NodeId:\n  definition:
+  The format-specific identifier that names exactly one addressable block;\n    it
+  is both the marker embedded in the tree and the reference passed in queries.\n  properties:\n\
+  \    - the marker string is the identifier, not a pointer to one stored elsewhere\n\
+  \    - one node id names exactly one addressable block\n    - an unrecognised node
+  id yields an input error, never silent ignore\n\nC-003 TreeFile: The on-disk artifact
+  holding source content with node-id markers\n  embedded natively per format. Markers
+  live here, never in the source file.\n\nC-004 SourceFile: The original, unmarked
+  file; its byte content is what unmark must\n  reproduce exactly.\n\nC-005 AddressableBlock:\n\
+  \  definition: The minimally-addressable logical unit a marker may name.\n  properties:\n\
+  \    - a marker never splits a lexeme or sits inside a literal or token\n    - per-format
+  minimal block: line (text), md block (markdown), yaml block (YAML),\n      json
+  element (JSON), py logical statement (Python)\n\nC-009 TreeNode:\n  definition:
+  An in-memory node produced by parsing, carrying node id, type label,\n    attributes,
+  and content.\n  MarkerContract.parse and FormatHandler.parse_content both produce
+  List[TreeNode].\n\n## Operation mapping (C-007 implements C-001 — parallel contracts,
+  NOT inheritance)\n\nFormatHandler (C-007) **does NOT subclass** MarkerContract
+  (C-001). Both define\nparallel operation sets with distinct input semantics:\n\n\
+  | MarkerContract (C-001) | FormatHandler (C-007) | Input | Output |\n|---|---|---|---|\n\
+  | mark(content) | mark(content) | **unmarked** SourceFile body (C-004) | **marked**
+  TreeFile body (C-003) |\n| parse(marked_text) | parse_content(file_path, content)
+  | **marked** TreeFile body vs **unmarked** SourceFile body | List[TreeNode] (C-009)
+  |\n| unmark(marked_text) | unmark(marked_text) | **marked** TreeFile body (C-003)
+  | **unmarked** SourceFile body (C-004) |\n\nKey distinctions:\n  - **MarkerContract.parse(marked_text)**:
+  input is the **marked** TreeFile body\n    (markers already embedded). Builds node
+  tree from marker syntax.\n  - **FormatHandler.parse_content(file_path, content)**:
+  input is the **unmarked**\n    SourceFile body. This is **NOT** MarkerContract.parse;
+  it builds nodes from\n    raw source without requiring pre-marked text.\n  - **mark/unmark
+  pairs**: both contracts share the same marked-text semantics on\n    the TreeFile
+  side; mark takes unmarked source, unmark takes marked text.\n\nFormatHandler adds
+  **sidecar_path** (not part of MarkerContract).\n\n## TreeNode type reference (C-009)\n\
+  \nMarkerContract.parse returns List[TreeNode]. TreeNode is defined in\n`ai_editor/tree/tree_node.py`
+  (created by\n`docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml`).\n\
+  Use TYPE_CHECKING import in this file to avoid circular import at runtime\n(tree_node.py
+  imports NodeId from this module).\n\n```python\n@dataclass\nclass TreeNode:\n\
+  \    node_id: NodeId\n    kind: str\n    content: str\n    attributes: Dict[str,
+  Any] = field(default_factory=dict)\n    parent_id: Optional[NodeId] = None\n```\n\
+  \n## Required file content\n\nCreate exactly this file. Implement every class,
+  method, and docstring as shown.\nDo not add any methods, attributes, or constants
+  not listed here.\n\n```\nfrom __future__ import annotations\n\nimport enum\nfrom
+  abc import ABC, abstractmethod\nfrom typing import TYPE_CHECKING, List\n\nif TYPE_CHECKING:\n\
+  \    from ai_editor.tree.tree_node import TreeNode\n\n\nclass Format(enum.Enum):\n\
+  \    \"\"\"Enumeration of file formats supported by the marked-tree system.\"\"\"\
+  \n\n    TEXT = \"text\"\n    MARKDOWN = \"markdown\"\n    YAML = \"yaml\"\n    JSON
+  = \"json\"\n    PYTHON = \"python\"\n\n\n# NodeId is a plain str alias; the marker
+  string IS the identifier.\nNodeId = str\n\n\nclass UnknownNodeIdError(ValueError):\n\
+  \    \"\"\"Raised when a NodeId is not recognised in the current tree.\n\n    Per
+  C-002: an unrecognised node id must yield an input error,\n    never a silent ignore.\n\
+  \    \"\"\"\n\n    def __init__(self, node_id: NodeId) -> None:\n        super().__init__(f\"\
+  Unknown NodeId: {node_id!r}\")\n        self.node_id = node_id\n\n\nclass AddressableBlock:\n\
+  \    \"\"\"Per-format definition of the minimally-addressable block (C-005).\n\n\
+  \    A marker may only be placed at the boundary of an AddressableBlock;\n    it
+  must never split a lexeme or sit inside a literal or token.\n\n    Per-format
+  minimal block sizes:\n      text     - one line\n      markdown - one paragraph/block
+  element\n      yaml     - one mapping key or sequence element (yaml block)\n   \
+  \   json     - one value element\n      python   - one logical statement (SimpleStatementLine
+  or compound statement)\n    \"\"\"\n\n    FORMAT_GRANULARITY: dict[Format, str]
+  = {\n        Format.TEXT: \"line\",\n        Format.MARKDOWN: \"md block\",\n \
+  \       Format.YAML: \"yaml block\",\n        Format.JSON: \"json element\",\n\
+  \        Format.PYTHON: \"py logical statement\",\n    }\n\n    def __init__(self,
+  fmt: Format, description: str) -> None:\n        \"\"\"Initialise an AddressableBlock
+  for a given format.\n\n        Args:\n            fmt: The file format this block
+  belongs to.\n            description: Human-readable description of the block content.\n\
+  \        \"\"\"\n        self.fmt = fmt\n        self.description = description\n\
+  \n    @classmethod\n    def granularity_for(cls, fmt: Format) -> str:\n        \"\
+  \"\"Return the granularity label for the given format.\n\n        Args:\n      \
+  \      fmt: A Format enum member.\n\n        Returns:\n            The per-format
+  minimal-block label (e.g. 'line', 'py logical statement').\n        \"\"\"\n   \
+  \     return cls.FORMAT_GRANULARITY[fmt]\n\n    def __repr__(self) -> str:  # pragma:
+  no cover\n        return f\"AddressableBlock(fmt={self.fmt!r}, description={self.description!r})\"\
+  \n\n\nclass MarkerContract(ABC):\n    \"\"\"Three-operation contract for marked-tree
+  operations (C-001).\n\n    Defines how a marked tree is built from source content
+  and how source\n    content is recovered from the marked tree.\n\n    FormatHandler
+  (C-007) implements these operations in parallel but does\n    NOT subclass this
+  ABC. See operation mapping in the module docstring\n    of format_handler.py.\n\n\
+  \    Round-trip invariant: unmark(mark(source)) == source (verified by SHA-256).\n\
+  \    Markers live only in TreeFiles (C-003), never in SourceFiles (C-004).\n  \
+  \  \"\"\"\n\n    @abstractmethod\n    def mark(self, content: str) -> str:\n   \
+  \     \"\"\"Embed node-id markers natively into source content.\n\n        Produces
+  a marked version of content (a TreeFile's text body).\n        Markers must be placed
+  only at AddressableBlock boundaries;\n        a marker must never split a lexeme
+  or sit inside a literal.\n\n        Args:\n            content: The original, unmarked
+  source text (from a SourceFile).\n\n        Returns:\n            Marked text with
+  node-id markers embedded per the format's syntax.\n        \"\"\"\n\n    @abstractmethod\n\
+  \    def parse(self, marked_text: str) -> List[TreeNode]:\n        \"\"\"Build the
+  node tree from a marked text.\n\n        Input is the **marked** TreeFile body
+  (markers already embedded).\n        This is distinct from FormatHandler.parse_content
+  which takes\n        **unmarked** SourceFile content.\n\n        Parses the marked_text
+  produced by mark() and returns the ordered\n        list of TreeNodes forming the
+  tree structure.\n\n        Args:\n            marked_text: Text with node-id markers
+  embedded (TreeFile body).\n\n        Returns:\n            Ordered list of TreeNode
+  (C-009) instances.\n\n        Raises:\n            UnknownNodeIdError: if a node
+  id in the text is not valid.\n        \"\"\"\n\n    @abstractmethod\n    def unmark(self,
+  marked_text: str) -> str:\n        \"\"\"Reproduce the original source bytes from
+  a marked text.\n\n        Round-trip invariant: unmark(mark(source)) == source.\n\
+  \        The returned bytes must match the original SourceFile exactly\n       \
+  \ (verified by SHA-256 checksum by the caller).\n\n        Args:\n            marked_text:
+  Text with node-id markers embedded (TreeFile body).\n\n        Returns:\n      \
+  \      Original source text without any markers.\n        \"\"\"\n```\n\n## Constraints\n\
+  - Import only: `from __future__ import annotations`, `enum`, `abc.ABC`,\n  `abc.abstractmethod`,
+  `typing.TYPE_CHECKING`, `typing.List`.\n  Under TYPE_CHECKING: `from ai_editor.tree.tree_node
+  import TreeNode`.\n  No runtime import of tree_node (avoids circular import).\n\
+  - NodeId = str (type alias, not a class or dataclass).\n- MarkerContract.parse return
+  type is List[TreeNode] (forward reference via\n  TYPE_CHECKING import).\n- Do NOT
+  make FormatHandler subclass MarkerContract in this or any other file.\n- Estimated
+  line count: ~130 lines.\n- Author header is NOT required in this file.\n- Do not
+  implement any concrete FormatHandler here; this file is contracts only."
+verification:
+  expected: Running `python -c 'from ai_editor.tree.contracts import MarkerContract,
+    NodeId, AddressableBlock, Format, UnknownNodeIdError; import inspect; assert inspect.isabstract(MarkerContract);
+    assert issubclass(UnknownNodeIdError, ValueError); assert AddressableBlock.granularity_for(Format.PYTHON)
+    == "py logical statement"; sig = inspect.signature(MarkerContract.parse); assert
+    "TreeNode" in str(sig.return_annotation)'` exits with code 0 and no output.
+  target: ai_editor/tree/contracts.py
+  type: import

@@ -1,0 +1,215 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Добавить workspace_root в config.json
+target_file: config.json
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-018
+prompt: |
+  CURRENT FILE CONTENT (`config.json`):
+  ```json
+  {
+    "enable_qa_mcp_hooks": false,
+    "server_presentation": {
+      "title": "AI Editor Server",
+      "version": "1.0.6",
+      "description": "AI Editor server: universal file preview, open, edit, write, and close"
+    },
+    "server": {
+      "host": "0.0.0.0",
+      "port": 15000,
+      "protocol": "https",
+      "servername": "ai-editor-server-new",
+      "advertised_host": "192.168.254.28",
+      "debug": false,
+      "log_level": "INFO",
+      "ssl": {
+        "cert": "mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
+        "key": "mtls_certificates/mtls_certificates/server/ai-editor-server.key",
+        "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+        "crl": null,
+        "dnscheck": false,
+        "check_hostname": false
+      },
+      "log_dir": "./logs"
+    },
+    "client": {
+      "enabled": false,
+      "protocol": "https",
+      "ssl": {
+        "cert": "mtls_certificates/mtls_certificates/client/ai-editor.crt",
+        "key": "mtls_certificates/mtls_certificates/client/ai-editor.key",
+        "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+        "crl": null,
+        "dnscheck": false,
+        "check_hostname": false
+      }
+    },
+    "registration": {
+      "enabled": true,
+      "protocol": "https",
+      "register_url": "https://192.168.254.26:3004/register",
+      "unregister_url": "https://192.168.254.26:3004/unregister",
+      "heartbeat_interval": 30,
+      "server_id": "ai-editor-server",
+      "server_name": "AI Editor Server",
+      "metadata": {
+        "server_id": "ai-editor-server",
+        "server_name": "AI Editor Server",
+        "description": "AI Editor server for project files: preview, open, edit, write, and close across Python, JSON, YAML, Markdown, and text.\n\n### MCP Proxy (recommended)\n- Discover servers: `list_servers`\n- Use `project_id` from the project's `projectid` file for all project-scoped commands\n- Execute: `call_server(server_id=\"ai-editor-server\", copy_number=1, command=\"<name>\", params={...})`\n- Paths are project-relative (`file_path`); do not pass host filesystem `root_dir`\n- Command schemas: `help(server_id=\"ai-editor-server\", command=\"<name>\")`\n\n### Direct API\n- OpenAPI document: `GET /openapi.json` (HTTPS/mTLS per `server` and `registration` in this config)\n- JSON-RPC command execution as described in the OpenAPI schema",
+        "version": "1.0.4"
+      },
+      "instance_uuid": "77b1ec82-48d6-4c4b-a17d-4f8a8c53b557",
+      "auto_on_startup": true,
+      "auto_on_shutdown": true,
+      "ssl": {
+        "cert": "mtls_certificates/mtls_certificates/client/ai-editor.crt",
+        "key": "mtls_certificates/mtls_certificates/client/ai-editor.key",
+        "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+        "crl": null,
+        "dnscheck": false,
+        "check_hostname": false
+      },
+      "heartbeat": {
+        "url": "https://192.168.254.26:3004/proxy/heartbeat",
+        "interval": 30
+      }
+    },
+    "server_validation": {
+      "enabled": false,
+      "protocol": "mtls",
+      "timeout": 10,
+      "use_token": false,
+      "use_roles": false,
+      "tokens": {},
+      "roles": {},
+      "auth_header": "X-API-Key",
+      "roles_header": "X-Roles",
+      "health_path": "/health",
+      "check_hostname": false,
+      "ssl": {
+        "cert": "mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
+        "key": "mtls_certificates/mtls_certificates/server/ai-editor-server.key",
+        "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+        "crl": null,
+        "dnscheck": false,
+        "check_hostname": false
+      }
+    },
+    "auth": {
+      "use_token": false,
+      "use_roles": false,
+      "tokens": {},
+      "roles": {}
+    },
+    "queue_manager": {
+      "enabled": true,
+      "in_memory": true,
+      "registry_path": null,
+      "shutdown_timeout": 30.0,
+      "max_concurrent_jobs": 5,
+      "max_queue_size": null,
+      "per_job_type_limits": null,
+      "completed_job_retention_seconds": 21600
+    },
+    "transport": {
+      "type": "https",
+      "verify_client": true,
+      "chk_hostname": false
+    },
+    "process_management": {
+      "shutdown_grace_seconds": 10.0
+    },
+    "code_analysis_server": {
+      "host": "192.168.254.26",
+      "port": 15001,
+      "protocol": "https",
+      "timeout": 60.0,
+      "check_hostname": false,
+      "ssl": {
+        "cert": "mtls_certificates/mtls_certificates/client/ai-editor.crt",
+        "key": "mtls_certificates/mtls_certificates/client/ai-editor.key",
+        "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+        "crl": null,
+        "dnscheck": false,
+        "check_hostname": false
+      }
+    },
+    "ai_editor": {
+      "git_commit_on_write": true,
+      "host": "0.0.0.0",
+      "port": 15000,
+      "log": "logs/ai_editor.log",
+      "dirs": []
+    }
+  }
+  ```
+
+  Modify `config.json` at project root (operation: modify_file).
+
+  ## MRS excerpt (C-018 Workspace Root Configuration)
+
+  Настраиваемый корень `workspace_root` на стороне редактора для каталогов сессий.
+  Путь `workspace_root/session_id` для каждой CA Session. Не смешивается с деревом
+  проекта СА. Монтируется в контейнере вместе с логами и конфигурацией.
+
+  ## Task
+
+  1. Locate existing top-level `"ai_editor"` object.
+  2. Inside `"ai_editor"`, add `"storage"` object if absent.
+  3. Set exactly one workspace key inside `"storage"`:
+
+  ```json
+  "storage": {
+    "workspace_root": "data/editor_workspaces"
+  }
+  ```
+
+  4. Preserve all other existing `ai_editor` keys unchanged:
+     `git_commit_on_write`, `host`, `port`, `log`, `dirs`.
+  5. Do not add, rename, or reference `editor_workspace_dir` anywhere in this file.
+  6. Do not remove or rename `code_analysis_server` or any other top-level section.
+
+  ## Path resolution rule
+
+  `workspace_root` value `"data/editor_workspaces"` is relative to the directory
+  containing `config.json` (same rule as `ai_editor/core/storage_paths.py`
+  `_resolve_path(config_dir, value)` uses for other storage paths).
+
+  ## Constants
+
+  - Config key path: `ai_editor.storage.workspace_root`
+  - Default dev value: `"data/editor_workspaces"`
+
+  ## Forbidden
+
+  - Do NOT use key name `editor_workspace_dir`
+  - Do NOT add alias keys or fallback keys for workspace path
+  - Do NOT modify files other than `config.json`
+  - Do NOT add secrets
+
+  ## Validation
+
+  Run from project root with `.venv` activated:
+
+  ```bash
+  python -c "import json; d=json.load(open('config.json')); assert d['ai_editor']['storage']['workspace_root']=='data/editor_workspaces'; print('ok')"
+  ```
+
+  Expected: prints `ok` and exits 0.
+
+  ```bash
+  python -m json.tool config.json > /dev/null
+  ```
+
+  Expected: exit 0 (valid JSON).
+verification:
+  type: static_analysis
+  target: config.json
+  expected: >
+    Parsed JSON contains ai_editor.storage.workspace_root string
+    "data/editor_workspaces". Key editor_workspace_dir is absent.
+    All other top-level sections unchanged.
+status: draft

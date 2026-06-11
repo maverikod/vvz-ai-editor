@@ -1,0 +1,40 @@
+atomic_steps:
+- A-001
+concepts:
+- C-005
+- C-009
+- C-003
+description: "Create the shared SecurityPolicy enforcement guard module that all\
+  \ SessionMCPCommands (C-005) use at the command boundary.\n\nGuard module created:\
+  \n- ai_editor/core/security_policy_guard.py containing CommandForbiddenError\
+  \ (subclass of ValueError) and enforce_security_policy(database, session_id,\
+  \ command_name, server_uuid, policy_mode) -> None.\n- enforce_security_policy raises\
+  \ CommandForbiddenError if is_command_permitted returns False; returns None silently\
+  \ if permitted.\n- CommandForbiddenError maps to MCP error code COMMAND_FORBIDDEN.\n\
+  \nIntegration: the guard is called directly within the execute() method of each\
+  \ command that requires a policy check. The prompts for those commands already\
+  \ include the guard calls in the correct execution order:\n- session_delete: SESSION_NOT_FOUND\
+  \ guard -> enforce_security_policy -> delete.\n- session_list: touch_or_error ->\
+  \ enforce_security_policy -> list (when session_id provided).\n- session_open_file,\
+  \ session_close_file, session_list_file_locks: touch_or_error -> enforce_security_policy\
+  \ -> main logic.\n- session_create: no policy check (creation always permitted;\
+  \ session has no roles yet)."
+inputs:
+- description: is_command_permitted(session_id, command_name, server_uuid,
+    policy_mode) -> bool evaluator from SecurityPolicy (C-009).
+  name: Policy evaluator contract
+  type: domain contract
+name: SecurityPolicy enforcement guard module
+outputs:
+- description: enforce_security_policy guard and CommandForbiddenError exception
+    in ai_editor/core/security_policy_guard.py.
+  name: SecurityPolicy enforcement guard
+  type: domain contract
+- description: COMMAND_FORBIDDEN error code returned by all five session commands
+    (session_delete, session_list, session_open_file, session_close_file,
+    session_list_file_locks) when SecurityPolicy denies the command.
+  name: COMMAND_FORBIDDEN error code
+  type: domain contract
+parent_global_step: G-003
+status: done
+step_id: T-003

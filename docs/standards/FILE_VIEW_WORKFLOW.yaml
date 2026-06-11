@@ -1,0 +1,39 @@
+command: universal_file_preview
+forbidden:
+  line_navigation: PROHIBITED without explicit user approval. Text files are 
+    structured as paragraphs and blocks, not as line arrays. Never pass 
+    start_line, end_line, or line index as a navigation target.
+  assumptions: PROHIBITED. Never assume file content. Always call 
+    universal_file_preview first.
+  reuse_stale_text_node_ref: PROHIBITED for text format after line-targeted edits.
+    Python sidecar stable_id from preview/search is preserved across sibling batch
+    edits; re-preview or universal_file_search after structural parent replace.
+  line_based_editing: PROHIBITED without explicit user approval. Working with 
+    raw line numbers requires user permission in chat.
+meta:
+  author: Vasiliy Zdanovskiy
+  description: Mandatory file view lifecycle. Read before opening or inspecting 
+    any project file.
+  email: vasilyvz@gmail.com
+  locale: en
+  title: File View Workflow
+  version: '1.0'
+navigation:
+  model: node-oriented — navigate by node_ref, never by line number
+  node_ref_format:
+    markdown_txt: zero-based paragraph block index string, e.g. '3'
+    python_py: stable UUID (CST node identifier)
+    yaml_json: JSON Pointer string, e.g. /concepts/0
+  pattern:
+    '1': Call universal_file_preview without node_ref — receive root structure 
+      listing top-level nodes
+    '2': Pick a node_ref from the returned blocks list
+    '3': Pass that node_ref in the next call to drill into that node
+    '4': Repeat until the target content is fully visible
+    size_control: Use selector='0:N' or preview_lines=N to cap response size
+  session_draft: Pass session_id from universal_file_open to preview the 
+    in-memory draft instead of disk
+  session_tree_search: After open, universal_file_search(session_id, query) runs
+    XPath/CSTQuery on the same session CST tree only (Python sidecar). Use for
+    selector-based find; use preview for hierarchical drill-down without query.
+trigger: Before opening, reading, or inspecting any project file.

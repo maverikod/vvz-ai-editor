@@ -1,0 +1,19 @@
+step_id: A-003
+parent_tactical_step: T-000
+name: write_command runtime module
+target_file: ai_editor/commands/universal_file_edit/write_command_runtime.py
+operation: create_file
+priority: 3
+depends_on:
+- A-011
+concepts:
+- C-016
+- C-012
+prompt: "Create `ai_editor/commands/universal_file_edit/write_command_runtime.py` (operation: create_file).\n\n```py\n\"\"\"Runtime orchestration for universal_file_write (C-016).\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__ import annotations\n\nimport os\nfrom typing import Any\n\nfrom mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult\n\nfrom ai_editor.commands.universal_file_edit.errors import (\n    SESSION_NOT_FOUND,\n    error_result_from_make_error,\n    make_error,\n)\nfrom ai_editor.commands.universal_file_edit.format_group import (\n    FORMAT_SIDECAR,\n    FORMAT_TEXT,\n    FORMAT_TREE_TEMP,\n    lockfile_write_preview_ready,\n    read_lockfile_pid,\n)\nfrom ai_editor.commands.universal_file_edit.session import get_session\n\nfrom . import write_command_phases as phases\n\nasync def run_write_execute(\n    command: Any,\n    *,\n    project_id: str,\n    session_id: str,\n    write_mode: str = \"preview\",\n    write_mode_explicit:\
+  \ bool = False,\n    file_path: str = \"\",\n    **kwargs: Any,\n) -> SuccessResult | ErrorResult:\n    _ = kwargs\n    try:\n        session = get_session(session_id, file_path=file_path or None)\n    except ValueError as exc:\n        msg = str(exc)\n        if msg == \"SESSION_FILE_PATH_REQUIRED\":\n            return error_result_from_make_error(\n                make_error(\n                    SESSION_NOT_FOUND,\n                    \"file_path is required when the session has multiple open files\",\n                )\n            )\n        return error_result_from_make_error(\n            make_error(SESSION_NOT_FOUND, f\"Unknown session: {session_id}\")\n        )\n\n    if session.format_group == FORMAT_TREE_TEMP:\n        if write_mode == \"preview\":\n            return phases.tree_temp_preview(session)\n        return phases.tree_temp_write_commit(session, project_id)\n\n    if session.format_group == FORMAT_TEXT:\n        if write_mode == \"preview\":\n            return phases.text_preview(session)\n\
+  \        return phases.text_write_commit(session, project_id)\n\n    current_pid = os.getpid()\n    lock = read_lockfile_pid(session.abs_path)\n    is_second_call = (\n        lock is not None\n        and lock[0] == current_pid\n        and lock[1] == session.session_id\n        and lockfile_write_preview_ready(session.abs_path)\n    )\n    if write_mode == \"commit\":\n        return phases.second_call(session, project_id)\n    if write_mode_explicit:\n        return phases.sidecar_preview(session)\n    if is_second_call:\n        return phases.second_call(session, project_id)\n    return phases.first_call(session, current_pid)\n```\n\nExport async run_write_execute(command, **kwargs). Facade stays in write_command.py.\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.write_command_runtime.run_write_execute
+  expected: Callable importable.
+status: draft

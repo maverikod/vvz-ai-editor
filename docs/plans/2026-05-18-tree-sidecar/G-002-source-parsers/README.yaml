@@ -1,0 +1,34 @@
+step_id: G-002
+name: Source parsers and serializers
+status: done
+description: 'Implement format-specific components that convert between raw source
+  bytes and the TreeNode tree. JSON parser: tolerant, accepts // and /* */ comments.
+  YAML parser: ruamel.yaml round-trip, preserves # comments. Both parsers apply CommentOwnershipRule:
+  inline comments become comment_inline on the node to the left; above-line comments
+  become comment_before on the node immediately below. JSON and YAML serializers restore
+  comments at recorded positions on write. Parsers and serializers do not touch Sidecar
+  or EditSession.'
+concepts:
+- C-001
+- C-004
+- C-005
+- C-006
+relations:
+- C-005 produces C-001
+- C-005 uses C-004
+- C-006 consumes C-001
+- C-004 produces C-001
+source_ranges:
+- end: 75
+  start: 46
+- end: 110
+  start: 100
+- end: 145
+  start: 136
+depends_on:
+- G-001
+tactical_steps:
+- 'T-001: JSON tolerant parser with comment extraction'
+- 'T-002: YAML parser with comment extraction'
+- 'T-003: JSON serializer with comment restoration'
+- 'T-004: YAML serializer with comment restoration'

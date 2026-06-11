@@ -1,0 +1,43 @@
+step_id: A-004
+parent_tactical_step: T-005
+name: search_close MCP command
+target_file: ai_editor/commands/search_close_command.py
+operation: create_file
+priority: 4
+depends_on: []
+concepts:
+  - C-001
+  - C-007
+  - C-011
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_close_command.py
+
+  MRS (C-001 SearchSession): closed state releases client continuation; buffers eligible for cleanup.
+  MRS (C-007 SessionTTLPolicy): closed sessions follow TTL cleanup rules.
+  MRS (C-011 BackgroundSessionCleaner): may delete closed sessions after policy allows.
+
+  Implement class SearchCloseCommand(BaseMCPCommand):
+  - name = "search_close"
+  - get_schema() required: job_id (string)
+  - execute():
+      Resolve session directory; if missing return SESSION_NOT_FOUND.
+      Update manifest status to closed via update_manifest_atomic mutator; record closed_at timestamp in service metadata.
+      Delete RawFindingBuffer accumulation files under buffer_dir when safe (blocks and index remain until cleaner TTL).
+      Return SuccessResult {success: true, closed: true, job_id}.
+      Subsequent search_get_page with same job_id and block_position returns ErrorResult code CLOSED_SESSION
+      (primary; SESSION_NOT_FOUND only when directory already removed by cleaner).
+  - metadata() documenting that block_position continuation is invalid after close
+    (tests_required cursor_invalid_after_close maps to CLOSED_SESSION error in G-008/T-006/A-006).
+
+  Constraints:
+  - Under 200 lines.
+  - Author header.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_close_command.py
+  expected: >
+    Close sets manifest status closed; follow-up get_page fails; buffer scratch files removed; index and blocks remain
+    until background cleaner; matches search_close_releases_buffer test intent at unit level.
+status: ready_for_review

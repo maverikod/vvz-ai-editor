@@ -1,0 +1,43 @@
+step_id: T-001
+parent_global_step: G-003
+name: SHASyncPolicy resolver
+description: 'Introduce the SHASyncPolicy decision procedure (C-003): given whether
+  a Sidecar exists for the target source file, the Sidecar''s recorded source_sha256,
+  the current SHA-256 of the source bytes on disk, and whether an active EditSession
+  already holds that file, produce a single deterministic sync outcome. The four outcomes
+  map to MRS: no_sidecar (build from source and prepare to write sidecar), sha_match
+  (load persisted tree from sidecar without rebuild), sha_mismatch_no_session (source
+  has priority; rebuild from source and prepare to overwrite sidecar), sha_mismatch_active_session
+  (sidecar has priority; retain persisted tree; do not rebuild). The resolver does
+  not read files, parse source, or mutate session storage; it only computes the branch
+  label and the boolean guards that downstream open logic consumes.'
+concepts:
+- C-003
+inputs:
+- name: sidecar_exists
+  type: boolean
+  description: True when a Sidecar file is present for the source path; false when
+    no sidecar (C-003 no_sidecar case).
+- name: sidecar_source_sha256
+  type: string or null
+  description: Hex SHA-256 recorded in the Sidecar at source_sha256 when sidecar_exists
+    is true; null when no sidecar.
+- name: current_source_sha256
+  type: string
+  description: Hex SHA-256 of the current source file bytes on disk at open time.
+- name: active_session_holds_file
+  type: boolean
+  description: True when an EditSession for this file is already registered (C-003
+    sha_mismatch_active_session predicate); false for sha_mismatch_no_session.
+outputs:
+- name: sync_decision
+  type: SHASyncPolicy outcome (enum)
+  description: 'One of: no_sidecar, sha_match, sha_mismatch_no_session, sha_mismatch_active_session
+    — the four C-003 cases from source_spec.'
+- name: decision_justification_flags
+  type: structured record
+  description: 'Booleans echoing the predicates: missing_sidecar, sha_equal, sha_unequal_without_active_session,
+    sha_unequal_with_active_session.'
+atomic_steps:
+  - A-001
+status: done

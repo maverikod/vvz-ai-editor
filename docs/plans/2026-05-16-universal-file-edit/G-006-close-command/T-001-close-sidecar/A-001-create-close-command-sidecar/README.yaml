@@ -1,0 +1,186 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create close_command.py with sidecar group close logic
+target_file: ai_editor/commands/universal_file_edit/close_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-003
+- C-004
+- C-010
+- C-012
+- C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/close_command.py
+
+  MRS context:
+  C-010 CloseCommand: ends the session. Behaviour differs by format group.
+    sidecar: checksum verify; mismatch rebuilds sidecar; sidecar not deleted.
+    lockfile deleted in all cases. draft_rebuilt flag returned when rebuild occurred.
+  C-003 DraftFile: sidecar draft is <file>.cst_sidecar (via sidecar_path_for_py).
+  C-004 WriteLockfile: deleted on close.
+  C-001 EditSession: look up by session_id; SESSION_NOT_FOUND if unknown.
+  C-014 ErrorCodes: SESSION_NOT_FOUND.
+  C-012 ExistingInfrastructure:
+    verify_sidecar_against_source(logical_source: str, payload: dict) -> bool
+      - reads sidecar payload, checks source_sha256 against actual file hash
+    write_sidecar_atomic(py_path: Path, tree) -> None
+    sidecar_path_for_py(py_path: Path) -> Path  # .cst/<stem>.tree
+    tree_builder.load_file(file_path: str) -> CSTTree
+    For sidecar verify: load sidecar payload via tree_sidecar.load_sidecar_file(path)
+      then call verify_sidecar_against_source(source_text, payload).
+
+  Task: Create close_command.py with UniversalFileCloseCommand.
+  This A-step covers the sidecar group close.
+  Tree-temp and text group close are added in T-002/A-001.
+
+  Write the following exact content:
+  ```python
+  """
+  UniversalFileCloseCommand: ends an editing session with group-specific cleanup.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  from pathlib import Path
+  from typing import Any, Dict
+
+  from mcp_proxy_adapter.commands.base_command import BaseCommand
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      delete_lockfile,
+  )
+  from ai_editor.commands.universal_file_edit.session import (
+      get_session,
+      release_session,
+  )
+
+
+  class UniversalFileCloseCommand(BaseCommand):
+      """MCP command that ends a session with format-group-specific cleanup.
+
+      Sidecar: verify checksum; rebuild on mismatch; never delete sidecar.
+      Tree-temp: sha256 compare draft vs original; delete or rebuild draft; free tree.
+      Text: delete draft unconditionally.
+      Lockfile deleted in all cases.
+      """
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_close"
+
+      @staticmethod
+      def get_schema() -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id and session_id.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "session_id": {"type": "string"},
+              },
+              "required": ["project_id", "session_id"],
+              "additionalProperties": False,
+          }
+
+      def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          """Execute the close command.
+
+          Args:
+              params: Dict with project_id and session_id.
+
+          Returns:
+              Dict with success flag and draft_rebuilt bool.
+          """
+          session_id: str = params["session_id"]
+          try:
+              session = get_session(session_id)
+          except ValueError:
+              return make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+
+          fg = session.format_group
+          if fg == FORMAT_SIDECAR:
+              result = self._close_sidecar(session)
+          else:
+              result = self._close_tree_temp_or_text(session)
+
+          delete_lockfile(session.abs_path)
+          release_session(session_id)
+          return result
+
+      def _close_sidecar(self, session: Any) -> Dict[str, Any]:
+          """Close a sidecar group session.
+
+          Verifies sidecar checksum. On mismatch rebuilds sidecar from source.
+          Sidecar is never deleted.
+
+          Args:
+              session: Active sidecar group EditSession.
+
+          Returns:
+              Dict with success=True and draft_rebuilt flag.
+          """
+          from ai_editor.core.cst_tree.tree_sidecar import (
+              sidecar_path_for_py,
+              verify_sidecar_against_source,
+              write_sidecar_atomic,
+          )
+          from ai_editor.core.cst_tree import tree_builder as cst_builder
+          sidecar_path = sidecar_path_for_py(session.abs_path)
+          source_text = session.abs_path.read_text()
+          draft_rebuilt = False
+          if sidecar_path.exists():
+              import json
+              try:
+                  payload = json.loads(sidecar_path.read_text())
+              except Exception:
+                  payload = {}
+              if not verify_sidecar_against_source(source_text, payload):
+                  tree = cst_builder.load_file(str(session.abs_path))
+                  write_sidecar_atomic(session.abs_path, tree)
+                  draft_rebuilt = True
+          else:
+              tree = cst_builder.load_file(str(session.abs_path))
+              write_sidecar_atomic(session.abs_path, tree)
+              draft_rebuilt = True
+          return {"success": True, "draft_rebuilt": draft_rebuilt}
+
+      def _close_tree_temp_or_text(self, session: Any) -> Dict[str, Any]:
+          """Close a tree-temp or text group session (stub; filled in T-002).
+
+          Args:
+              session: Active tree-temp or text group EditSession.
+
+          Returns:
+              Result dict (filled in T-002).
+          """
+          raise NotImplementedError
+  ```
+
+  Implementation: Write the file with the exact content shown above.
+  Run lint_code and format_code on the file.
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.close_command
+  expected: >
+    Module imports without errors. UniversalFileCloseCommand exists.
+    get_name() returns "universal_file_close". _close_sidecar is callable.
+status: draft

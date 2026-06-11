@@ -1,0 +1,123 @@
+step_id: A-004
+parent_tactical_step: T-003
+name: Cut stable_tree.py Python sidecar path resolution over to sibling 
+  convention
+target_file: ai_editor/core/structure_extraction/stable_tree.py
+operation: modify_file
+priority: 4
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/core/structure_extraction/stable_tree.py\n\
+  \n## Goal\nCut the Python sidecar path resolution over to the sibling convention
+  (C-003).\nsidecar_path_for_py (which produced <parent>/.cst/<stem>.tree) is removed
+  in\nT-001/A-001. This module resolves the sidecar path in two functions; replace\n\
+  both resolver calls with sibling_tree_path and drop the dead import. No logic\n\
+  changes beyond the path source.\n\n## Dependency (already exists from G-002)\nai_editor/tree/sibling_convention.py
+  provides:\n    def sibling_tree_path(source_abs: Path) -> Path\nmapping <dir>/<stem>.<ext>
+  -> <dir>/<stem>.<ext>.tree (full filename plus \".tree\").\n\n## Required edits
+  (migration-relevant ONLY; do not refactor anything else)\n1. In the cst_tree.tree_sidecar
+  import block, drop sidecar_path_for_py (keep\n   metadata_map_from_payload and read_sidecar_payload):\n\
+  \       from ai_editor.core.cst_tree.tree_sidecar import (\n           metadata_map_from_payload,\n\
+  \           read_sidecar_payload,\n       )\n\n2. Add the sibling import immediately
+  after that tree_sidecar import block and\n   before the structure_extraction.models
+  import:\n       from ai_editor.tree.sibling_convention import sibling_tree_path\n\
+  \n3. In _load_current_sidecar_metadata, replace the resolver call:\n       sidecar_path
+  = sidecar_path_for_py(abs_path)\n   with:\n       sidecar_path = sibling_tree_path(abs_path.resolve())\n\
+  \   Leave the rest of the function (mtime freshness check, read_sidecar_payload,\n\
+  \   _metadata_from_sidecar_payload) unchanged.\n\n4. In resolve_python_metadata_stable,
+  replace the had_sidecar probe:\n       had_sidecar = sidecar_path_for_py(abs_path).is_file()\n\
+  \   with:\n       had_sidecar = sibling_tree_path(abs_path.resolve()).is_file()\n\
+  \   Leave the rest of the function (load_file_to_tree, remove_tree, warning\n  \
+  \ construction, stats updates) unchanged.\n\n## Forbidden\n- No backward-compatibility
+  fallback to .cst/ paths.\n- Do not change read_sidecar_payload call sites, the edit-session
+  branch\n  (_metadata_from_edit_session), the StructureWarning construction, or any\n\
+  \  other function.\n- Do not touch other files.\n\n## Full current file content
+  (verbatim, 193 lines)\n```python\n\"\"\"\nResolve stable preview-compatible Python
+  CST metadata (persisted sidecar).\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\
+  \"\"\"\n\nfrom __future__ import annotations\n\nfrom dataclasses import dataclass\n\
+  from pathlib import Path\nfrom typing import Dict, List, Optional\n\nfrom ai_editor.core.cst_tree.models
+  import TreeNodeMetadata\nfrom ai_editor.core.cst_tree.tree_builder import load_file_to_tree,
+  remove_tree\nfrom ai_editor.core.cst_tree.tree_sidecar import (\n    metadata_map_from_payload,\n\
+  \    read_sidecar_payload,\n    sidecar_path_for_py,\n)\nfrom ai_editor.core.structure_extraction.models
+  import StructureWarning\n\n\n@dataclass\nclass TreeResolutionStats:\n    files_requiring_tree_check:
+  int = 0\n    valid_trees_reused: int = 0\n    stale_trees_rebuilt: int = 0\n   \
+  \ missing_trees_created: int = 0\n\n    def as_dict(self) -> dict[str, int]:\n \
+  \       return {\n            \"files_requiring_tree_check\": self.files_requiring_tree_check,\n\
+  \            \"valid_trees_reused\": self.valid_trees_reused,\n            \"stale_trees_rebuilt\"\
+  : self.stale_trees_rebuilt,\n            \"missing_trees_created\": self.missing_trees_created,\n\
+  \        }\n\n\ndef _metadata_from_sidecar_payload(\n    payload: dict,\n) -> Optional[Dict[str,
+  TreeNodeMetadata]]:\n    meta_blob = payload.get(\"metadata_map\")\n    order_raw
+  = payload.get(\"metadata_node_order\")\n    order = [str(x) for x in order_raw]
+  if isinstance(order_raw, list) else None\n    metadata_map = metadata_map_from_payload(meta_blob,
+  order)\n    return metadata_map or None\n\n\ndef _load_current_sidecar_metadata(\n\
+  \    abs_path: Path,\n) -> Optional[Dict[str, TreeNodeMetadata]]:\n    \"\"\"Reuse
+  sidecar when on-disk file is not newer than the sidecar (preview policy).\"\"\"\n\
+  \    sidecar_path = sidecar_path_for_py(abs_path)\n    if not sidecar_path.is_file():\n\
+  \        return None\n    try:\n        py_mtime = abs_path.stat().st_mtime\n  \
+  \      sidecar_mtime = sidecar_path.stat().st_mtime\n    except OSError:\n     \
+  \   return None\n    if py_mtime > sidecar_mtime + 1e-6:\n        return None\n\
+  \    payload = read_sidecar_payload(abs_path)\n    if payload is None:\n       \
+  \ return None\n    return _metadata_from_sidecar_payload(payload)\n\n\ndef _metadata_from_edit_session(\n\
+  \    session_id: str,\n    abs_path: Path,\n) -> Optional[Dict[str, TreeNodeMetadata]]:\n\
+  \    from ai_editor.commands.universal_file_edit.format_group import FORMAT_SIDECAR\n\
+  \    from ai_editor.commands.universal_file_edit.session import get_session\n\
+  \    from ai_editor.core.cst_tree.tree_builder import get_cst_tree\n\n    try:\n\
+  \        session = get_session(session_id)\n    except ValueError:\n        return
+  None\n    if session.abs_path.resolve() != abs_path.resolve():\n        return None\n\
+  \    if session.format_group != FORMAT_SIDECAR or not session.tree_id:\n       \
+  \ return None\n    tree = get_cst_tree(session.tree_id)\n    if tree is None:\n\
+  \        return None\n    return dict(tree.metadata_map)\n\n\ndef resolve_python_metadata_stable(\n\
+  \    abs_path: Path,\n    content: str,\n    *,\n    source: str,\n    session_id:
+  Optional[str],\n    ensure_persisted_tree: bool,\n) -> tuple[\n    Optional[Dict[str,
+  TreeNodeMetadata]], List[StructureWarning], TreeResolutionStats\n]:\n    \"\"\"\n\
+  \    Return metadata_map whose stable_id values match persisted sidecar / preview.\n\
+  \n    Never returns ids from ``create_tree_from_code(..., persist_sidecar=False)``.\n\
+  \    \"\"\"\n    _ = content  # disk mtime policy; callers pass grep-read text for
+  API symmetry\n    stats = TreeResolutionStats(files_requiring_tree_check=1)\n  \
+  \  warnings: List[StructureWarning] = []\n\n    if source == \"draft_session\" and
+  session_id:\n        meta = _metadata_from_edit_session(session_id, abs_path)\n\
+  \        if meta:\n            stats.valid_trees_reused += 1\n            return
+  meta, warnings, stats\n        warnings.append(\n            StructureWarning(\n\
+  \                code=\"STRUCTURE_TREE_NOT_PERSISTED\",\n                message=\"\
+  Draft session tree not available for stable enrichment.\",\n                file_path=str(abs_path),\n\
+  \            )\n        )\n        return None, warnings, stats\n\n    if not abs_path.is_file():\n\
+  \        warnings.append(\n            StructureWarning(\n                code=\"\
+  STRUCTURE_TREE_ENRICHMENT_FAILED\",\n                message=\"Python file not on
+  disk; cannot persist stable tree.\",\n                file_path=str(abs_path),\n\
+  \            )\n        )\n        return None, warnings, stats\n\n    meta = _load_current_sidecar_metadata(abs_path)\n\
+  \    if meta:\n        stats.valid_trees_reused += 1\n        return meta, warnings,
+  stats\n\n    if not ensure_persisted_tree:\n        warnings.append(\n         \
+  \   StructureWarning(\n                code=\"STRUCTURE_TREE_NOT_PERSISTED\",\n\
+  \                message=\"Stable tree identity was required but no persisted tree
+  was available.\",\n                file_path=str(abs_path),\n            )\n   \
+  \     )\n        return None, warnings, stats\n\n    had_sidecar = sidecar_path_for_py(abs_path).is_file()\n\
+  \    try:\n        tree = load_file_to_tree(str(abs_path))\n        meta = dict(tree.metadata_map)\n\
+  \        remove_tree(tree.tree_id)\n    except Exception as exc:\n        warnings.append(\n\
+  \            StructureWarning(\n                code=\"STRUCTURE_TREE_ENRICHMENT_FAILED\"\
+  ,\n                message=f\"Failed to create persisted CST tree: {exc}\",\n  \
+  \              file_path=str(abs_path),\n            )\n        )\n        return
+  None, warnings, stats\n\n    if not meta:\n        warnings.append(\n          \
+  \  StructureWarning(\n                code=\"STRUCTURE_TREE_ENRICHMENT_FAILED\"\
+  ,\n                message=\"Persisted tree has no metadata.\",\n              \
+  \  file_path=str(abs_path),\n            )\n        )\n        return None, warnings,
+  stats\n\n    if had_sidecar:\n        stats.stale_trees_rebuilt += 1\n        warnings.append(\n\
+  \            StructureWarning(\n                code=\"STRUCTURE_TREE_CREATED\"\
+  ,\n                message=\"A stale structure tree was rebuilt before enrichment.\"\
+  ,\n                file_path=str(abs_path),\n            )\n        )\n    else:\n\
+  \        stats.missing_trees_created += 1\n        warnings.append(\n          \
+  \  StructureWarning(\n                code=\"STRUCTURE_TREE_CREATED\",\n       \
+  \         message=\"A missing structure tree was created before enrichment.\",\n\
+  \                file_path=str(abs_path),\n            )\n        )\n    return
+  meta, warnings, stats\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/core/structure_extraction/stable_tree.py
+  expected: black, flake8, mypy exit 0; the module no longer imports or calls 
+    sidecar_path_for_py; both _load_current_sidecar_metadata and 
+    resolve_python_metadata_stable resolve the sidecar path via 
+    sibling_tree_path(abs_path.resolve()); read_sidecar_payload call sites and 
+    the edit-session branch are unchanged; grep for 'sidecar_path_for_py' and 
+    '.cst' in this file returns nothing.

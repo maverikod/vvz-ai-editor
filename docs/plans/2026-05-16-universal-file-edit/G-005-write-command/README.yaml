@@ -1,0 +1,52 @@
+step_id: G-005
+name: Write command
+description: Implement WriteCommand with a two-phase protocol. The first call
+  generates code from draft, computes diff, writes the WriteLockfile, and
+  returns the diff without touching the original. The second call, when the
+  lockfile PID matches, creates a BackupPair atomically, renames temp to
+  original, deletes the lockfile, and optionally commits via git. A PID
+  mismatch is treated as a first call. Write failure restores the original
+  from the backup.
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-009
+- C-011
+- C-012
+- C-014
+relations:
+- from_concept: C-009
+  to_concept: C-001
+  type: consumes
+- from_concept: C-009
+  to_concept: C-002
+  type: consumes
+- from_concept: C-009
+  to_concept: C-003
+  type: uses
+- from_concept: C-009
+  to_concept: C-004
+  type: produces
+- from_concept: C-009
+  to_concept: C-011
+  type: produces
+- from_concept: C-009
+  to_concept: C-012
+  type: uses
+- from_concept: C-009
+  to_concept: C-014
+  type: produces
+source_ranges:
+- start: 177
+  end: 213
+- start: 265
+  end: 275
+depends_on:
+- G-002
+- G-007
+tactical_steps:
+- T-001
+- T-002
+status: draft

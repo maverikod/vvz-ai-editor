@@ -1,0 +1,33 @@
+step_id: T-003
+parent_global_step: G-003
+name: Register EditSession and return response
+description: Register the EditSession (C-001) in the module-level session registry
+  using the FormatDescriptor and optional in-memory tree reference produced during
+  draft creation. Return a success response containing the session_id and the list
+  of available operations valid for the resolved FormatGroup (C-002).
+concepts:
+- C-001
+- C-002
+- C-005
+- C-014
+inputs:
+- name: abs_path
+  type: Path
+  description: Absolute path to the original file.
+- name: format_descriptor
+  type: FormatDescriptor
+  description: Resolved descriptor containing format_group, handler_id, draft path,
+    lockfile path, and available operations.
+- name: tree_id
+  type: str | None
+  description: In-memory tree reference for tree-temp group; None for sidecar and text.
+outputs:
+- name: session_id
+  type: UUID string
+  description: Identifier for the newly registered EditSession (C-001).
+- name: available_operations
+  type: list of operation descriptors
+  description: Operations valid for this FormatGroup (C-002), each describing the operation type (insert, delete, replace).
+atomic_steps:
+- A-001
+status: draft

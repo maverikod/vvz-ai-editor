@@ -1,0 +1,84 @@
+step_id: A-001
+parent_tactical_step: T-003
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: YAML SourceParser pytest module
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_source_parser_yaml.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-003-source-parser-yaml/README.yaml
+concepts:
+- C-005
+- C-001
+- C-004
+
+mrs_excerpt_this_step_only: >
+  YAML SourceParser round-trip retains # comments; CommentOwnershipRule C-004 parallels JSON semantics; mappings and sequences flatten per implementation contract enumerated in THIS prompt’s normative ROOT rule.
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_source_parser_yaml.py
+  expected: Pytest exits 0 when run against this module path only using project .venv interpreter.
+
+prompt: |-
+  EXECUTOR coder_auto CREATE tests/test_tree_temp_source_parser_yaml.py (≤400 lines). Module docstring: """YAML SourceParser pytest coverage for tree_temp plan; Author Vasiliy Zdanovskiy; email vasilyvz@gmail.com.""". Use from __future__ import annotations.
+
+
+  IMPORTS (exact):
+    import pytest
+
+    from ai_editor.core.tree_temp.tree_node import TreeNode, kind_as_str
+    from ai_editor.core.tree_temp.yaml_frontend import parse_yaml_source_to_roots
+
+
+  SYMBOL CONTRACT AFTER G-002 IMPLEMENTATION:
+
+    parse_yaml_source_to_roots(source_text: str) -> list[TreeNode]
+
+      NORMATIVE ROOT RULE FOR FLOW / BLOCK SEQUENCES: when document root parses as YAML sequence (list / flow sequence represented as YAML sequence), emitted roots list MUST be length ONE whose sole node has kind ARRAY with children TreeNode ordering mirroring textual order of sequence elements.
+
+      When document root is mapping, emitted roots MUST be length ONE whose sole TreeNode kind OBJECT encapsulating keyed children order identical to textual mapping traversal order emitted by ruinamel round-trip traversal.
+
+      If shipped code violates this STOP escalate.
+
+
+  HELPERS local:
+
+    def _first_root_must_be_objects_or_array(parsed: list[TreeNode]) -> TreeNode:
+      assert len(parsed)==1; return parsed[0]
+
+
+  REQUIRED TESTS:
+
+  test_yaml_hash_inline_maps_to_scalar_member
+    source = "top: leaf  # mark\n"; node=_first_root... must be OBJECT; locate child keyed top containing value leaf; comment_inline includes `mark`; falsy stripped comment_before.
+
+  test_yaml_above_line_maps_before_next_mapping_pair
+    source = "# head\naaa: bbb\n"; child keyed aaa comment_before includes head.
+
+  test_yaml_sequence_three_elements_under_array_root
+    source = "- 1\n- 2\n- 3\n"; root=_first...; assert kind_as_str(root)=="array"; assert len(root.children)==3; numeric coercion float equals 1,2,3 sequential.
+
+  test_yaml_mapping_order_not_alphabetical
+    source = "zzz: 0\naaa: 1\n"; iterate children order verifying keys sequence ['zzz','aaa'] extracted.
+
+  test_yaml_nested_mapping_value
+    source = "wrapper:\n  inner: true\n"; locate wrapper object child inner boolean True.
+
+  test_yaml_null_keyword
+    source = "hole: null\n"; child typed null value None equivalence.
+
+  test_yaml_truncated_raises_value_error
+    source = "broken:" incomplete file with no further indented content (exact string `broken:`) expecting ValueError from parse_yaml_source_to_roots.
+
+  QUALITY GATE after write: python -m black/flake8/pytest -q path; python -m mypy path.
+
+
+  FORBIDDEN: filesystem operations outside tmp not needed anyway; MCP; ambiguous branching.

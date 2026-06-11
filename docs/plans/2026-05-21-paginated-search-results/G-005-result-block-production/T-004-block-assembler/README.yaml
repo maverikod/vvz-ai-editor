@@ -1,0 +1,49 @@
+step_id: T-004
+parent_global_step: G-005
+name: BlockAssembler thread protocol
+description: >
+  Creates the BlockAssembler parallel thread protocol that drains RawFindingBuffer
+  without blocking the main search thread. On entry, acquires the buffer lock,
+  exits immediately when a live owner holds it, or reclaims a stale lock whose
+  owner PID is dead. Loops under the lock to form SearchResultBlock slices when
+  buffered volume reaches the maximum block size or search status is completed,
+  publishes each block through AtomicBlockPublication, appends the block entry to
+  the directory index, updates SearchSessionManifest metrics and block readiness,
+  then deletes assembled findings from the buffer. Releases the lock and exits
+  when volume is below the limit and search is not completed. On completed status
+  with an empty buffer, sets the index completeness marker to search finished,
+  invokes RawFindingBuffer.delete_buffer to remove findings, lock, and buffer
+  subdirectory, and leaves the session directory for later TTL cleanup. Requires
+  one final assembler run by the main thread after status becomes completed to
+  drain trailing findings.
+concepts:
+  - C-029
+inputs:
+  - name: raw_finding_buffer
+    type: RawFindingBuffer
+    description: Accumulation subdirectory containing pending finding files and lock state.
+  - name: search_session_manifest
+    type: SearchSessionManifest
+    description: Manifest supplying running or completed status, metrics, and block readiness fields.
+  - name: maximum_block_size_bytes
+    type: BlockSizeLimit
+    description: Block size threshold that triggers assembly when buffered volume is reached.
+  - name: atomic_block_publication
+    type: AtomicBlockPublication
+    description: Publication primitive used for each finalized block and index append.
+outputs:
+  - name: published_search_result_blocks
+    type: SearchResultBlockSet
+    description: Blocks atomically published during assembler execution.
+  - name: updated_manifest_metrics
+    type: ManifestMetricsUpdate
+    description: Progress metrics including produced result count and written block count.
+  - name: appended_index_entries
+    type: IndexAppendBatch
+    description: Block position entries appended to the directory index in order.
+  - name: final_completeness_marker
+    type: IndexCompletenessMarker
+    description: Search finished marker set when completed status and empty buffer are confirmed.
+atomic_steps:
+- A-001
+status: frozen

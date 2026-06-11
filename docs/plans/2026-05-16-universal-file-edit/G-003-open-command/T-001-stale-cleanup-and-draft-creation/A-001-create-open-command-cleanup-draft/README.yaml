@@ -1,0 +1,296 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create open_command.py skeleton with stale cleanup and draft creation
+target_file: ai_editor/commands/universal_file_edit/open_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-002
+- C-003
+- C-004
+- C-005
+- C-012
+- C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/open_command.py
+
+  MRS context:
+  C-005 OpenCommand: MCP command that starts an editing session.
+    - deletes stale lockfile and draft (not sidecar) on entry
+    - resolves format group from file extension
+    - creates draft appropriate for format group
+    - creates initial backup if file has no backup history
+    - returns session_id and available operations for the format
+  C-002 FormatGroup: sidecar (Python) | tree-temp (JSON/YAML) | text (MD/txt/rst/adoc)
+  C-003 DraftFile: sidecar=<file>.cst_sidecar, tree-temp=<file>.draft, text=<file>.draft
+  C-004 WriteLockfile: <file>.write - deleted on open if stale
+  C-012 ExistingInfrastructure: sidecar, json tree, yaml tree builders; backup manager
+  C-014 ErrorCodes: UNKNOWN_FORMAT, PARSE_ERROR
+
+  Existing infrastructure signatures needed:
+  From ai_editor.core.cst_tree.tree_sidecar:
+    def write_sidecar_atomic(py_path: Path, tree: CSTTree) -> None
+    def sidecar_path_for_py(py_path: Path) -> Path
+    # Returns path like {parent}/.cst/{stem}.tree
+  From ai_editor.core.cst_tree.tree_builder:
+    # load_file(file_path: str) -> CSTTree  (raises SyntaxError on parse fail)
+    # get_tree(tree_id: str) -> CSTTree
+  From ai_editor.core.json_tree.tree_builder:
+    # load_file_to_tree(file_path: str) -> str  (returns tree_id)
+    # serialize_tree(tree_id: str) -> str  (returns JSON string)
+    # remove_tree(tree_id: str) -> bool
+  From ai_editor.core.yaml_tree.tree_builder:
+    # load_file_to_tree(file_path: str) -> str  (returns tree_id)
+    # serialize_tree(tree_id: str) -> str  (returns YAML string)
+    # remove_tree(tree_id: str) -> bool
+  From ai_editor.commands.universal_file_edit.format_group:
+    class FormatDescriptor: format_group, handler_id, draft_path, lockfile_path, available_operations
+    def resolve_format_group(abs_path: Path) -> FormatDescriptor
+    def delete_lockfile(abs_path: Path) -> None
+    FORMAT_SIDECAR = "sidecar"
+    FORMAT_TREE_TEMP = "tree-temp"
+    FORMAT_TEXT = "text"
+  From ai_editor.commands.universal_file_edit.errors:
+    UNKNOWN_FORMAT = "UNKNOWN_FORMAT"
+    PARSE_ERROR = "PARSE_ERROR"
+    def make_error(code: str, message: str, details=None) -> dict
+
+  Task: Create the file with the skeleton of UniversalFileOpenCommand.
+  This A-step implements: class scaffold + _cleanup_stale + _create_draft methods.
+  (Backup and session registration are added by subsequent A-steps in T-002/T-003.)
+
+  Write the following exact content:
+
+  ```python
+  """
+  UniversalFileOpenCommand: starts an editing session for one file.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  import shutil
+  from pathlib import Path
+  from typing import Any, Dict, Optional
+
+  from mcp_proxy_adapter.commands.base_command import BaseCommand
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      PARSE_ERROR,
+      UNKNOWN_FORMAT,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TEXT,
+      FORMAT_TREE_TEMP,
+      FormatDescriptor,
+      delete_lockfile,
+      resolve_format_group,
+  )
+
+
+  class UniversalFileOpenCommand(BaseCommand):
+      """MCP command that starts an editing session for one file.
+
+      Cleans stale artefacts, creates draft, creates initial backup when
+      file has no history, registers session, returns session_id.
+      """
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_open"
+
+      @staticmethod
+      def get_schema() -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id and file_path parameters.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {"type": "string"},
+              },
+              "required": ["project_id", "file_path"],
+              "additionalProperties": False,
+          }
+
+      def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          """Execute the open command.
+
+          Args:
+              params: Dict with project_id and file_path.
+
+          Returns:
+              Dict with success flag; on success includes session_id and
+              available_operations; on failure includes code and message.
+          """
+          project_id: str = params["project_id"]
+          file_path: str = params["file_path"]
+          abs_path = self._resolve_abs_path(project_id, file_path)
+          if abs_path is None:
+              return make_error(UNKNOWN_FORMAT, f"Cannot resolve path: {file_path}")
+
+          cleanup_result = self._cleanup_stale(abs_path)
+          if cleanup_result is not None:
+              return cleanup_result
+
+          descriptor_result = self._resolve_and_create_draft(abs_path)
+          if isinstance(descriptor_result, dict):
+              return descriptor_result
+          descriptor: FormatDescriptor = descriptor_result
+
+          # Backup and session registration handled in subsequent steps.
+          return {"success": True, "_descriptor": descriptor, "_abs_path": abs_path,
+                  "_file_path": file_path}
+
+      def _resolve_abs_path(self, project_id: str, file_path: str) -> Optional[Path]:
+          """Resolve file_path to an absolute Path using the project root.
+
+          Args:
+              project_id: UUID of the project.
+              file_path: Project-relative path to the file.
+
+          Returns:
+              Absolute Path if resolution succeeds, None otherwise.
+          """
+          try:
+              root = self._get_project_root(project_id)
+              return (Path(root) / file_path).resolve()
+          except Exception:
+              return None
+
+      def _cleanup_stale(self, abs_path: Path) -> Optional[Dict[str, Any]]:
+          """Delete stale write lockfile and stale draft (not sidecar).
+
+          For Python files the sidecar is left intact; only the write
+          lockfile is removed on open.
+
+          Args:
+              abs_path: Absolute path to the original file.
+
+          Returns:
+              None on success; an error dict if an unexpected error occurs.
+          """
+          try:
+              delete_lockfile(abs_path)
+              draft = abs_path.with_suffix(abs_path.suffix + ".draft")
+              draft.unlink(missing_ok=True)
+              return None
+          except OSError as exc:
+              return make_error(PARSE_ERROR, f"Cleanup failed: {exc}")
+
+      def _resolve_and_create_draft(
+          self, abs_path: Path
+      ) -> FormatDescriptor | Dict[str, Any]:
+          """Resolve format group and create the draft file.
+
+          Args:
+              abs_path: Absolute path to the original file.
+
+          Returns:
+              FormatDescriptor on success, or an error dict.
+          """
+          try:
+              descriptor = resolve_format_group(abs_path)
+          except ValueError:
+              return make_error(UNKNOWN_FORMAT, f"Unsupported file type: {abs_path.suffix}")
+
+          try:
+              tree_id = self._write_draft(abs_path, descriptor)
+              descriptor.__dict__["tree_id"] = tree_id
+          except Exception as exc:
+              return make_error(PARSE_ERROR, f"Cannot parse file: {exc}")
+
+          return descriptor
+
+      def _write_draft(
+          self, abs_path: Path, descriptor: FormatDescriptor
+      ) -> Optional[str]:
+          """Write the initial draft file for the resolved format group.
+
+          Args:
+              abs_path: Absolute path to the original file.
+              descriptor: Resolved FormatDescriptor.
+
+          Returns:
+              In-memory tree UUID for tree-temp group; None for other groups.
+
+          Raises:
+              Exception: when the file cannot be parsed or written.
+          """
+          fg = descriptor.format_group
+          if fg == FORMAT_SIDECAR:
+              return self._write_sidecar_draft(abs_path)
+          if fg == FORMAT_TREE_TEMP:
+              return self._write_tree_temp_draft(abs_path, descriptor)
+          # FORMAT_TEXT
+          shutil.copy2(str(abs_path), str(descriptor.draft_path))
+          return None
+
+      def _write_sidecar_draft(self, abs_path: Path) -> None:
+          """Load Python file into CST tree and write sidecar.
+
+          Args:
+              abs_path: Absolute path to the Python file.
+
+          Returns:
+              None (sidecar group uses no in-memory tree id).
+          """
+          from ai_editor.core.cst_tree import tree_builder as cst_builder
+          from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+          tree = cst_builder.load_file(str(abs_path))
+          write_sidecar_atomic(abs_path, tree)
+          return None
+
+      def _write_tree_temp_draft(
+          self, abs_path: Path, descriptor: FormatDescriptor
+      ) -> str:
+          """Load JSON/YAML file into in-memory tree and write draft.
+
+          Args:
+              abs_path: Absolute path to the JSON or YAML file.
+              descriptor: Resolved FormatDescriptor with draft_path.
+
+          Returns:
+              In-memory tree UUID string.
+          """
+          if descriptor.handler_id == "json":
+              from ai_editor.core.json_tree import tree_builder as json_builder
+              tree_id = json_builder.load_file_to_tree(str(abs_path))
+              draft_text = json_builder.serialize_tree(tree_id)
+          else:
+              from ai_editor.core.yaml_tree import tree_builder as yaml_builder
+              tree_id = yaml_builder.load_file_to_tree(str(abs_path))
+              draft_text = yaml_builder.serialize_tree(tree_id)
+          descriptor.draft_path.write_text(draft_text)
+          return tree_id
+  ```
+
+  Implementation: Write the file with the exact content shown above.
+  Run lint_code and format_code on the file.
+
+  Constraints:
+  - All methods must have complete docstrings.
+  - All parameters and return types must have type hints.
+  - File must be syntactically valid Python.
+  - File line count must not exceed 400.
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.open_command
+  expected: >
+    Module imports without errors. UniversalFileOpenCommand class exists.
+    get_name() returns "universal_file_open". get_schema() returns a dict
+    with required fields ["project_id", "file_path"].
+status: draft

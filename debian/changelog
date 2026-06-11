@@ -1,0 +1,11 @@
+code-analysis-server (1.0.3-1) unstable; urgency=medium
+
+  * Initial Debian package release
+  * Systemd service integration
+  * Standard FHS directory layout
+  * Configuration in /etc/code-analysis-server/
+  * Data in /var/lib/code-analysis-server/
+  * Logs in /var/log/code-analysis-server/
+
+ -- Vasiliy Zdanovskiy <vasilyvz@gmail.com>  Mon, 30 Dec 2025 17:00:00 +0200
+

@@ -1,0 +1,48 @@
+step_id: A-005
+parent_tactical_step: T-001
+name: Allow search_session key in ai_editor config
+target_file: ai_editor/core/config_validator/constants.py
+operation: modify_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-007
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/config_validator/constants.py
+
+  MRS (C-007 SessionTTLPolicy): ai_editor.search_session is a valid configuration subsection.
+
+  Current full file content (apply edits to this baseline):
+
+  ```python
+  """
+  Constants for config validator (allowed keys, etc.).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from ai_editor.core.config import ServerConfig
+
+  # Allowed keys in ai_editor section: ServerConfig fields + "database" (driver only).
+  # Config must contain only what is used in code.
+  ALLOWED_AI_EDITOR_KEYS = frozenset(ServerConfig.model_fields) | {
+      "database",
+      "all_logs_rotation",
+      "git_commit_on_write",
+  }
+  ```
+
+  Required edit: add "search_session" to the set literal alongside "database".
+
+  Forbidden: remove existing keys; widen allowed keys beyond search_session addition.
+
+  Run black/flake8/mypy on constants.py.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/config_validator/constants.py
+  expected: ALLOWED_AI_EDITOR_KEYS includes search_session string member.
+status: ready_for_review

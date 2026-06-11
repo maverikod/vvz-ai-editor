@@ -1,0 +1,102 @@
+#!/bin/bash
+# postrm must be self-contained: package files under /usr/lib/ai-editor are already
+# removed before this script runs (Debian maintainer script order).
+set -u
+
+# shellcheck source=/dev/null
+[ -f /etc/default/ai-editor ] && . /etc/default/ai-editor
+AI_EDITOR_USER="${AI_EDITOR_USER:-ai-editor}"
+AI_EDITOR_CONTAINER="${AI_EDITOR_CONTAINER:-ai-editor}"
+AI_EDITOR_STATE_DIR="/var/lib/ai-editor"
+AI_EDITOR_IMAGE_REF_FILE="${AI_EDITOR_STATE_DIR}/uninstall-image-ref"
+CONFIG_DIR="${AI_EDITOR_CONFIG_DIR:-/etc/ai-editor}"
+LOG_DIR="${AI_EDITOR_LOG_DIR:-/var/log/ai-editor}"
+DATA_DIR="${AI_EDITOR_DATA_DIR:-/var/ai-editor}"
+MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
+
+ai_editor_cleanup_stop_service() {
+  systemctl stop ai-editor-docker.service 2>/dev/null || true
+  systemctl disable ai-editor-docker.service 2>/dev/null || true
+  systemctl stop ai-editor-docker-recreate.service 2>/dev/null || true
+  systemctl disable ai-editor-docker-recreate.service 2>/dev/null || true
+  systemctl reset-failed ai-editor-docker.service 2>/dev/null || true
+}
+
+ai_editor_cleanup_remove_container() {
+  if command -v docker >/dev/null 2>&1; then
+    docker rm -f "${AI_EDITOR_CONTAINER}" 2>/dev/null || true
+  fi
+}
+
+ai_editor_cleanup_remove_images() {
+  local image_ref=""
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -f "$AI_EDITOR_IMAGE_REF_FILE" ]; then
+    image_ref="$(tr -d '[:space:]' <"$AI_EDITOR_IMAGE_REF_FILE")"
+    rm -f "$AI_EDITOR_IMAGE_REF_FILE"
+    if [ -n "$image_ref" ]; then
+      echo "[ai-editor-docker] Removing Docker image ${image_ref} ..."
+      docker rmi -f "$image_ref" 2>/dev/null || true
+    fi
+  fi
+}
+
+purge_remove_package_files_in_dir() {
+  local dir="$1"
+  local user="$2"
+  [ -d "$dir" ] || return 0
+  find "$dir" -mindepth 1 -user "$user" -delete 2>/dev/null || true
+}
+
+purge_rmdir_if_empty() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  if [ -n "$(find "$dir" -mindepth 1 -print -quit 2>/dev/null)" ]; then
+    echo "[ai-editor-docker] Keeping ${dir} (additional files present)"
+    return 0
+  fi
+  rmdir "$dir" 2>/dev/null || true
+}
+
+purge_host_data_dirs() {
+  purge_remove_package_files_in_dir "$LOG_DIR" "$AI_EDITOR_USER"
+  purge_rmdir_if_empty "$LOG_DIR"
+
+  purge_remove_package_files_in_dir "${DATA_DIR}/editor_workspaces" "$AI_EDITOR_USER"
+  purge_remove_package_files_in_dir "${DATA_DIR}/versions" "$AI_EDITOR_USER"
+  purge_rmdir_if_empty "${DATA_DIR}/editor_workspaces"
+  purge_rmdir_if_empty "${DATA_DIR}/versions"
+  purge_remove_package_files_in_dir "$DATA_DIR" "$AI_EDITOR_USER"
+  purge_rmdir_if_empty "$DATA_DIR"
+
+  purge_rmdir_if_empty "$MTLS_DIR"
+  purge_rmdir_if_empty "$CONFIG_DIR"
+}
+
+unregister_man_doc() {
+  if command -v mandb >/dev/null 2>&1; then
+    mandb -q /usr/share/man 2>/dev/null || true
+  fi
+}
+
+case "${1:-}" in
+  purge)
+    ai_editor_cleanup_stop_service
+    ai_editor_cleanup_remove_container
+    ai_editor_cleanup_remove_images
+    purge_host_data_dirs
+    unregister_man_doc
+    rm -rf "$AI_EDITOR_STATE_DIR" 2>/dev/null || true
+    ;;
+  remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    unregister_man_doc
+    ;;
+  *)
+    echo "postrm called with unknown argument: ${1:-}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

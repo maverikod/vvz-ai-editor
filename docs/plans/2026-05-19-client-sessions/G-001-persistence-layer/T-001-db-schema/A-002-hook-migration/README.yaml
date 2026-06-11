@@ -1,0 +1,45 @@
+concepts:
+- C-001
+- C-002
+- C-007
+- C-008
+depends_on:
+- A-001
+name: Register ensure_client_session_tables in run_all_ensure
+operation: modify_file
+parent_tactical_step: T-001
+priority: 1
+prompt: "Modify the existing file at the exact path:\n  ai_editor/core/database_driver_pkg/drivers/sqlite_migrations.py\n\
+  \nOperation: modify_file. The file already exists with the content shown below.\n\
+  Make exactly one change: add one import and one function call to run_all_ensure.\n\
+  \nCurrent content of run_all_ensure (the only function you need to modify):\n\n\
+  \    def run_all_ensure(\n        conn: Any,\n        schema_manager: Any,\n   \
+  \     db_path: Path,\n    ) -> None:\n        \"\"\"Run all connection-time migrations
+  in order.\"\"\"\n        from ai_editor.core.database.schema_creation_migrate
+  import run_migrate_schema\n        run_migrate_schema(_SqliteConnMigrateAdapter(conn,
+  schema_manager))\n        ensure_files_table_migrations(conn, schema_manager)\n\
+  \        ensure_code_chunks_migrations(conn, schema_manager)\n        ensure_indexing_worker_stats_table(conn,
+  schema_manager)\n        ensure_indexing_errors_table(conn)\n        ensure_project_activity_locks_table(conn)\n\
+  \        ensure_runtime_file_lock_tables(conn)\n\nRequired change 1 — add import
+  at the top of the file, after the existing imports block\n(after 'from typing import
+  Any, Dict, List, Optional, cast'):\n\n    from ai_editor.core.client_sessions
+  import ensure_client_session_tables\n\nRequired change 2 — add one line at the END
+  of run_all_ensure body, after the existing\nlast call ensure_runtime_file_lock_tables(conn):\n\
+  \n        ensure_client_session_tables(conn)\n\nThe final run_all_ensure body must
+  be:\n        run_migrate_schema(_SqliteConnMigrateAdapter(conn, schema_manager))\n\
+  \        ensure_files_table_migrations(conn, schema_manager)\n        ensure_code_chunks_migrations(conn,
+  schema_manager)\n        ensure_indexing_worker_stats_table(conn, schema_manager)\n\
+  \        ensure_indexing_errors_table(conn)\n        ensure_project_activity_locks_table(conn)\n\
+  \        ensure_runtime_file_lock_tables(conn)\n        ensure_client_session_tables(conn)\n\
+  \nDo not modify any other part of the file. Do not change any existing function.\n\
+  Do not add any other imports. Do not reformat any existing code."
+status: done
+step_id: A-002
+target_file: ai_editor/core/database_driver_pkg/drivers/sqlite_migrations.py
+verification:
+  expected: Importing the module succeeds and calling run_all_ensure with 
+    conn=None raises no exception. The ensure_client_session_tables import is 
+    present at the top of the file. The last statement in run_all_ensure is 
+    ensure_client_session_tables(conn).
+  target: ai_editor/core/database_driver_pkg/drivers/sqlite_migrations.py
+  type: import

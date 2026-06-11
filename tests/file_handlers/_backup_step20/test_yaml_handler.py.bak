@@ -1,0 +1,234 @@
+"""
+Tests for YAML file handler vs plain-text handler separation.
+
+Author: Vasiliy Zdanovskiy
+email: vasilyvz@gmail.com
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import patch
+
+from code_analysis.core.file_handlers import (
+    HANDLER_YAML,
+    FileHandlerRequest,
+    TextFileHandler,
+    YamlFileHandler,
+    resolve_handler,
+)
+from code_analysis.core.file_handlers.yaml_handler import (
+    delete_at_path,
+    get_at_path,
+    parse_yaml_path,
+)
+
+
+def test_resolve_yaml_handler() -> None:
+    assert resolve_handler("dir/config.yaml", "replace") == HANDLER_YAML
+    assert resolve_handler("dir/config.yml", "read") == HANDLER_YAML
+
+
+def test_parse_yaml_path_root_and_indices() -> None:
+    assert parse_yaml_path("") == []
+    assert parse_yaml_path("/a/0") == ["a", "0"]
+    assert parse_yaml_path("/d~1e") == ["d/e"]
+    assert parse_yaml_path("/d~0e") == ["d~e"]
+
+
+def test_get_at_path() -> None:
+    doc = {"x": [{"y": 2}]}
+    assert get_at_path(doc, "") is doc
+    assert get_at_path(doc, "/x/0/y") == 2
+
+
+def test_delete_at_path() -> None:
+    doc = {"a": 1, "b": 2}
+    delete_at_path(doc, "/a")
+    assert doc == {"b": 2}
+
+
+def test_text_handler_rejects_yaml_suffix_for_replace(tmp_path: Path) -> None:
+    f = tmp_path / "x.yaml"
+    f.write_text("a: 1\n", encoding="utf-8")
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="x.yaml",
+        handler_id="text",
+        operation="replace",
+        extra={
+            "absolute_path": f,
+            "start_line": 1,
+            "end_line": 1,
+            "new_lines": [],
+        },
+    )
+    h = TextFileHandler()
+    out = h.replace(req)
+    assert out.success is False
+    assert "plain-text" in out.message.lower() or "suffix" in out.message.lower()
+
+
+def test_yaml_read_rejects_line_range_params(tmp_path: Path) -> None:
+    f = tmp_path / "a.yaml"
+    f.write_text("k: 1\n", encoding="utf-8")
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="a.yaml",
+        handler_id="yaml",
+        operation="read",
+        extra={"absolute_path": f, "start_line": 1, "end_line": 1},
+    )
+    h = YamlFileHandler()
+    out = h.read(req)
+    assert out.success is False
+    assert "line" in out.message.lower() or "yaml_path" in out.message.lower()
+
+
+def test_yaml_read_document_and_paths(tmp_path: Path) -> None:
+    f = tmp_path / "b.yaml"
+    f.write_text("a: 1\n", encoding="utf-8")
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="b.yaml",
+        handler_id="yaml",
+        operation="read",
+        extra={"absolute_path": f},
+    )
+    out = YamlFileHandler().read(req)
+    assert out.success is True
+    assert out.data.get("document") == {"a": 1}
+    assert "" in (out.data.get("paths") or [])
+    assert "/a" in (out.data.get("paths") or [])
+
+
+def test_yaml_replace_invalid_path_before_backup(tmp_path: Path) -> None:
+    f = tmp_path / "c.yaml"
+    f.write_text("x: 1\n", encoding="utf-8")
+    raw_before = f.read_text(encoding="utf-8")
+    root = tmp_path
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="c.yaml",
+        handler_id="yaml",
+        operation="replace",
+        extra={
+            "absolute_path": f,
+            "root_dir": root,
+            "yaml_path": "/x/nested",
+            "value": 9,
+        },
+    )
+    with patch(
+        "code_analysis.core.file_handlers.yaml_handler.BackupManager.create_backup",
+    ) as bu:
+        bu.side_effect = AssertionError("backup must not run for bad path")
+        out = YamlFileHandler().replace(req)
+    assert out.success is False
+    assert f.read_text(encoding="utf-8") == raw_before
+    bu.assert_not_called()
+
+
+def test_yaml_replace_invalid_pointer_syntax_before_backup(tmp_path: Path) -> None:
+    f = tmp_path / "d.yaml"
+    f.write_text("x: 1\n", encoding="utf-8")
+    root = tmp_path
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="d.yaml",
+        handler_id="yaml",
+        operation="replace",
+        extra={
+            "absolute_path": f,
+            "root_dir": root,
+            "yaml_path": "no-leading-slash",
+            "value": 1,
+        },
+    )
+    with patch(
+        "code_analysis.core.file_handlers.yaml_handler.BackupManager.create_backup",
+    ) as bu:
+        out = YamlFileHandler().replace(req)
+    assert out.success is False
+    bu.assert_not_called()
+
+
+def test_yaml_replace_dry_run_leaves_file_unchanged(tmp_path: Path) -> None:
+    f = tmp_path / "e.yaml"
+    f.write_text("x: 1\n", encoding="utf-8")
+    raw_before = f.read_text(encoding="utf-8")
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="e.yaml",
+        handler_id="yaml",
+        operation="replace",
+        dry_run=True,
+        diff=True,
+        extra={
+            "absolute_path": f,
+            "root_dir": tmp_path,
+            "yaml_path": "/x",
+            "value": 99,
+        },
+    )
+    with patch(
+        "code_analysis.core.file_handlers.yaml_handler.BackupManager.create_backup",
+    ) as bu:
+        out = YamlFileHandler().replace(req)
+    assert out.success is True
+    assert out.dry_run is True
+    assert f.read_text(encoding="utf-8") == raw_before
+    bu.assert_not_called()
+    assert "diff" in out.data
+
+
+def test_yaml_handler_registration_ready() -> None:
+    h = YamlFileHandler()
+    assert h.handler_id == "yaml"
+    assert h.ready_for_all_operations_schema()
+
+
+def test_yaml_save_round_trip_dry_run(tmp_path: Path) -> None:
+    f = tmp_path / "f.yaml"
+    f.write_text("a: 1\n", encoding="utf-8")
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="f.yaml",
+        handler_id="yaml",
+        operation="save",
+        dry_run=True,
+        extra={
+            "absolute_path": f,
+            "root_dir": tmp_path,
+            "content": "a: 2\n",
+        },
+    )
+    raw = f.read_text(encoding="utf-8")
+    out = YamlFileHandler().save(req)
+    assert out.success is True
+    assert f.read_text(encoding="utf-8") == raw
+
+
+def test_delete_path_invalid_before_backup(tmp_path: Path) -> None:
+    f = tmp_path / "g.yaml"
+    f.write_text("x: 1\n", encoding="utf-8")
+    raw_before = f.read_text(encoding="utf-8")
+    req = FileHandlerRequest(
+        project_id="p1",
+        file_path="g.yaml",
+        handler_id="yaml",
+        operation="delete",
+        extra={
+            "absolute_path": f,
+            "root_dir": tmp_path,
+            "yaml_path": "/missing",
+        },
+    )
+    with patch(
+        "code_analysis.core.file_handlers.yaml_handler.BackupManager.create_backup",
+    ) as bu:
+        bu.side_effect = AssertionError("backup must not run")
+        out = YamlFileHandler().delete(req)
+    assert out.success is False
+    assert f.read_text(encoding="utf-8") == raw_before
+    bu.assert_not_called()

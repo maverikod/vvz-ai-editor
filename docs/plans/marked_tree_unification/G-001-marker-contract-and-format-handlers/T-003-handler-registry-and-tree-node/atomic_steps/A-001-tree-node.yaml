@@ -1,0 +1,197 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Create TreeNode dataclass
+target_file: ai_editor/tree/tree_node.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-009
+- C-002
+- C-024
+- C-025
+- C-007
+status: draft
+prompt: |
+  Create the file `ai_editor/tree/tree_node.py`.
+  Operation: create_file (the file does not exist yet).
+
+  ## Parent documents
+
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml`
+  - Global step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/README.yaml`
+
+  ## Purpose
+
+  Define the `TreeNode` dataclass (C-009) — the in-memory unit produced by a
+  FormatHandler's `parse_content` operation. The ordered list returned by
+  `parse_content` forms the tree structure for one source file.
+
+  ## LOCKED MODEL (mandatory)
+
+  - TreeNode carries `short_id: int` (NodeId / C-002). NodeId is a type alias
+    for `int` in `ai_editor/tree/contracts.py`.
+  - `short_id` is NOT `str`, NOT `UUID`, NOT a string token.
+  - TreeNode MUST NOT expose a `uuid`, `node_uuid`, `tree_node_uuid`, or any
+    UUID4 field. Internal UUID4 (C-024) lives only in the MAP section and is
+    resolved via NodeIdMap (C-025) outside TreeNode.
+  - External API consumers address nodes by integer `short_id` only.
+
+  ## MRS excerpt
+
+  C-002 NodeId:
+    - short_id is a per-file monotonic decimal integer token, not canonical identity
+    - one short_id names exactly one addressable block within one tree file
+    - an unrecognised short_id yields an input error, never silent ignore
+    - short_id resolves to UUID4 via NodeIdMap when internal UUID lookup is required
+
+  C-024 TreeNodeUuid:
+    - UUID4 stored only in MAP section; never embedded in TreeNode or external API
+
+  C-025 NodeIdMap:
+    - bidirectional short_id↔UUID4 resolution within one tree file context
+
+  C-007 FormatHandler:
+    - parse_content(file_path, content) builds the node tree from unmarked source
+    - returns ordered List[TreeNode]
+
+  C-009 TreeNode:
+    - produced by FormatHandler from source content
+    - carries short_id, type label, attributes, and text or value
+    - ordered set of TreeNodes forms the tree structure
+
+  ## File header (module docstring)
+
+  ```
+  """In-memory tree node produced by FormatHandler.parse_content (C-009).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list — no others)
+
+  ```
+  from __future__ import annotations
+
+  from dataclasses import dataclass, field
+  from typing import Any, Dict, Optional
+
+  from ai_editor.tree.contracts import NodeId
+  ```
+
+  ## Class skeleton
+
+  ```
+  @dataclass
+  class TreeNode:
+      short_id: NodeId
+      kind: str
+      content: str
+      attributes: Dict[str, Any] = field(default_factory=dict)
+      parent_short_id: Optional[NodeId] = None
+
+      def __post_init__(self) -> None:
+          ...
+  ```
+
+  ### Field specifications
+
+  - `short_id: NodeId` — integer per-file short_id handle (C-002). Required.
+  - `kind: str` — format-specific type label (e.g. `"paragraph"`, `"FunctionDef"`).
+    Required, non-empty.
+  - `content: str` — source text or string value of the node without markers.
+    Required (may be empty string `""`).
+  - `attributes: Dict[str, Any]` — optional per-node metadata (line_no, level,
+    key_path, etc.). Defaults to empty dict via `field(default_factory=dict)`.
+  - `parent_short_id: Optional[NodeId]` — parent's short_id, or `None` for roots.
+    Defaults to `None`.
+
+  ### Method: __post_init__(self) -> None
+
+  Docstring: `"""Validate short_id and kind invariants (C-002, C-009)."""`
+
+  Algorithm:
+  1. If `not isinstance(self.short_id, int)`: raise `TypeError("TreeNode.short_id must be int")`.
+  2. If `self.short_id < 1`: raise `ValueError("TreeNode.short_id must be a positive integer")`.
+  3. If `not self.kind`: raise `ValueError("TreeNode.kind must be a non-empty string")`.
+  4. If `self.parent_short_id is not None`:
+     a. If `not isinstance(self.parent_short_id, int)`: raise `TypeError("TreeNode.parent_short_id must be int or None")`.
+     b. If `self.parent_short_id < 1`: raise `ValueError("TreeNode.parent_short_id must be a positive integer when set")`.
+  5. Return None (implicit).
+
+  Error handling:
+  - Raise `TypeError` for wrong types on short_id or parent_short_id.
+  - Raise `ValueError` for non-positive integers or empty kind.
+  - Do not catch exceptions.
+
+  Edge cases:
+  - `short_id=0` → ValueError (must be >= 1).
+  - `short_id=-1` → ValueError.
+  - `kind=""` → ValueError.
+  - `content=""` → allowed.
+  - `parent_short_id=None` → allowed (root).
+  - `parent_short_id=0` → ValueError.
+  - `attributes` omitted at construction → defaults to `{}`.
+
+  ## Forbidden patterns
+
+  - Do NOT add fields named `node_id`, `uuid`, `node_uuid`, `stable_id`, or `tree_node_uuid`.
+  - Do NOT use `str` for short_id or parent_short_id.
+  - Do NOT use `Any` as a field type (only in `Dict[str, Any]` for attributes).
+  - Do NOT use `@dataclass(frozen=True)` or other dataclass options.
+  - Do NOT add methods other than `__post_init__`.
+  - Do NOT modify any file other than `ai_editor/tree/tree_node.py`.
+  - Do NOT import uuid or NodeIdMap in this file.
+  - Do NOT use `print()` for logging.
+
+  ## Constants and literals
+
+  - Validation message strings exactly as listed in the algorithm above.
+  - Minimum valid short_id: `1`.
+
+  ## Estimated line count
+
+  ~55 lines (must stay ≤ 400).
+
+  ## Mandatory validation (run from project root with `.venv` activated)
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/tree_node.py
+  flake8 ai_editor/tree/tree_node.py
+  mypy ai_editor/tree/tree_node.py
+  python -c "
+  from ai_editor.tree.tree_node import TreeNode
+  n = TreeNode(short_id=1, kind='paragraph', content='hello')
+  assert n.short_id == 1
+  assert n.attributes == {}
+  assert n.parent_short_id is None
+  try:
+      TreeNode(short_id=0, kind='x', content='')
+  except ValueError:
+      pass
+  else:
+      raise SystemExit('expected ValueError for short_id=0')
+  "
+  pytest -q
+  ```
+
+  Expected:
+  - black → "reformatted" or "All done" / no error
+  - flake8 → no output, exit 0
+  - mypy → "Success: no issues found"
+  - python -c → exit 0, no output
+  - pytest → all tests pass
+
+  All tests in the repository must pass before marking this step complete.
+verification:
+  type: import
+  target: ai_editor/tree/tree_node.py
+  expected: >
+    Import TreeNode succeeds. TreeNode(short_id=1, kind="line", content="x")
+    has short_id int 1, empty attributes dict, parent_short_id None.
+    TreeNode(short_id=0, kind="x", content="") raises ValueError.
+    No uuid or node_id attribute exists on TreeNode instances.

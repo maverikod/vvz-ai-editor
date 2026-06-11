@@ -1,0 +1,60 @@
+step_id: T-001
+parent_global_step: G-004
+name: universal_file_open for tree-temp with sidecar
+description: 'Extend the universal_file_open operation so that when the classified
+  format group is tree-temp (JSON or YAML), the command assembles the predicate inputs
+  for SHASyncPolicy (C-003), obtains the authoritative TreeNode tree (C-001) either
+  from the persisted Sidecar (C-002) or by rebuild from source according to the resolved
+  branch, registers a new EditSession (C-007) with session identifier, in-memory
+  root list, source checksum at load time, dirty=false, and format_group tree-temp,
+  and returns session_id and format_group to the caller. The integration maps request-level
+  identifiers to the policy and acquisition services, enforces tree-temp routing only
+  for eligible formats, surfaces policy outcomes as stable operation errors when preconditions
+  fail, and does not define edit mutations, write commit, close teardown, or preview
+  drill-down.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-007
+inputs:
+- name: requested_target
+  type: project-bound file reference
+  description: Client-supplied identity of the source data file to open; resolved inside
+    the project sandbox without exposing host layout to the plan layer.
+- name: format_group
+  type: enum including tree-temp
+  description: Format routing label; this branch executes only when the label is
+    tree-temp for JSON or YAML data files.
+- name: sidecar_presence
+  type: boolean
+  description: Indicator that a persisted Sidecar exists for the requested target.
+- name: persisted_sidecar_checksum
+  type: string or null
+  description: source_sha256 recorded in the Sidecar when present; null when no Sidecar.
+- name: current_source_checksum
+  type: string
+  description: Checksum of the source payload at open time for comparison with the
+    Sidecar record.
+- name: active_session_for_target
+  type: boolean
+  description: Whether an EditSession already holds the same target, driving the session-priority
+    SHA mismatch branch of C-003.
+outputs:
+- name: session_handle
+  type: session identifier
+  description: Opaque session_id returned to the client for subsequent edit, write,
+    and close operations on the same EditSession.
+- name: acknowledged_format_group
+  type: enum
+  description: Echo or confirmation of tree-temp so clients pin follow-up calls to
+    the sidecar-backed pathway.
+- name: acquisition_outcome
+  type: structured status
+  description: Machine-actionable summary distinguishing load-from-sidecar versus
+    rebuilt-tree paths without exposing transport details.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: done

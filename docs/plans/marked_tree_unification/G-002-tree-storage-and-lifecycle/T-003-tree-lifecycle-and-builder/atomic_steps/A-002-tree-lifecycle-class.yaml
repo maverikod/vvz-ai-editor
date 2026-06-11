@@ -1,0 +1,109 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Create TreeLifecycle entity class in lifecycle module
+target_file: ai_editor/core/tree_lifecycle/lifecycle.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-010
+- C-006
+- C-011
+- C-008
+status: ready_for_review
+prompt: |
+  Create `ai_editor/core/tree_lifecycle/lifecycle.py`.
+  Operation: create_file.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-010, C-006, C-011)
+
+  ## Locked model
+  - TreeLifecycle (C-010) is the named single entry point over checksum helpers.
+  - Exposes class attributes `policy = ChecksumSyncPolicy`, `builder = TreeBuilder`.
+  - Delegates to validate_or_recreate_from_content / validate_or_recreate_tree_file.
+  - Rebuild dispatch to TreeBuilder.build is completed in checksum.py by the unified
+    pipeline integration modify step (not in this file).
+
+  ## Module docstring (exact)
+  """
+  TreeLifecycle (C-010): named entity layer over the checksum core.
+
+  Single entry point coordinating tree validity and creation. Delegates to
+  checksum.py helpers; unified rebuild wiring lives in checksum validate path.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact)
+  ```python
+  from __future__ import annotations
+
+  from pathlib import Path
+
+  from ai_editor.core.search_session.tree_representation import (
+      TreeFormatKind,
+      TreeRepresentationRef,
+      TreeValidityState,
+  )
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+  from ai_editor.core.tree_lifecycle.checksum import (
+      ChecksumSyncPolicy,
+      validate_or_recreate_from_content,
+      validate_or_recreate_tree_file,
+  )
+  ```
+
+  ## Class TreeLifecycle
+  ```python
+  class TreeLifecycle:
+      """TreeLifecycle (C-010): single entry point for tree validity and creation."""
+
+      policy: type[ChecksumSyncPolicy] = ChecksumSyncPolicy
+      builder: type[TreeBuilder] = TreeBuilder
+
+      @staticmethod
+      def from_content(...) -> tuple[TreeRepresentationRef, TreeValidityState]: ...
+
+      @staticmethod
+      def from_path(...) -> tuple[TreeRepresentationRef, TreeValidityState]: ...
+  ```
+
+  ### from_content algorithm
+  1. Return `validate_or_recreate_from_content(kind=kind, content=content, source_abs=source_abs, sidecar_path=sidecar_path, file_path=file_path, sidecar_digest=sidecar_digest, root_stable_id=root_stable_id, force=force)` unchanged.
+
+  ### from_path algorithm
+  1. Return `validate_or_recreate_tree_file(project_root=project_root, file_path=file_path, force=force)` unchanged.
+
+  ### Signatures (exact)
+  - `from_content(*, kind: TreeFormatKind, content: str, source_abs: Path, sidecar_path: Path, file_path: str, sidecar_digest: str | None, root_stable_id: str | None, force: bool = False)`
+  - `from_path(*, project_root: Path, file_path: str, force: bool = False)`
+
+  ### Error handling
+  - Propagate FileNotFoundError and all callee exceptions.
+
+  ## __all__
+  `__all__ = ["TreeLifecycle"]`
+
+  ## Forbidden
+  - Do NOT call recreate_tree_from_content directly.
+  - Do NOT duplicate validate logic.
+  - Do NOT modify checksum.py or builder.py.
+
+  ## Validation
+  ```bash
+  black ai_editor/core/tree_lifecycle/lifecycle.py
+  flake8 ai_editor/core/tree_lifecycle/lifecycle.py
+  mypy ai_editor/core/tree_lifecycle/lifecycle.py
+  python -c "from ai_editor.core.tree_lifecycle.lifecycle import TreeLifecycle; assert TreeLifecycle.policy is not None and TreeLifecycle.builder is not None"
+  pytest -q
+  ```
+
+  Estimated lines: ~75 (≤400). All tests must pass.
+verification:
+  type: import
+  target: ai_editor/core/tree_lifecycle/lifecycle.py
+  expected: TreeLifecycle exposes policy and builder references; delegates to checksum helpers; pytest green.

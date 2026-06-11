@@ -1,0 +1,27 @@
+step_id: T-002
+parent_global_step: G-003
+name: Outbound Conversion and Identity Stripping
+description: "Define the outbound conversion operation of the LibcstConverter entity
+  (C-009). Outbound conversion takes a package Tree and produces a plain LibCST tree
+  with no identity markers. Every IdentifiedNode (C-001) is reverted to its base LibCST
+  category type with the stable_id attribute removed. The identity is removed during
+  this conversion pass, not before it and not after it, so the resulting LibCST tree
+  renders to ordinary Python source text with no identity markers. This identity-stripping
+  pass is the only whole-tree reconstruction the package performs; it is the one intended
+  use of whole-tree traversal precisely because discarding the identity-bearing form
+  is its goal.\n"
+concepts:
+- C-009
+- C-001
+inputs:
+- name: package Tree
+  type: C-004 instance
+  description: The Tree to be converted outbound; all IdentifiedNodes will be 
+    stripped of stable_id.
+outputs:
+- name: LibCST tree
+  type: LibCST Module
+  description: A plain LibCST tree with no stable_id attributes; ready for 
+    rendering to Python source text.
+atomic_steps: []
+status: draft

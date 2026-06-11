@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Portable aiedmgr launcher: project root and config paths are relative to the repo.
+# Installed into .venv/bin by setuptools script-files (shebang is /usr/bin/env bash).
+#
+# Author: Vasiliy Zdanovskiy
+# email: vasilyvz@gmail.com
+
+set -euo pipefail
+
+_script="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  _script="$(readlink -f "$_script" 2>/dev/null || readlink "$_script" 2>/dev/null || echo "$_script")"
+fi
+_bindir="$(cd "$(dirname "$_script")" && pwd)"
+
+if [[ "$_bindir" == */.venv/bin ]] || [[ "$_bindir" == */venv/bin ]]; then
+  _root="$(cd "$_bindir/../.." && pwd)"
+else
+  _root="$(cd "$_bindir/.." && pwd)"
+fi
+
+cd "$_root"
+export PYTHONPATH="${_root}${PYTHONPATH:+:${PYTHONPATH}}"
+
+_python="${AIEDMGR_PYTHON:-${CASMGR_PYTHON:-}}"
+if [[ -z "$_python" ]]; then
+  for _cand in "$_root/.venv/bin/python" "$_root/venv/bin/python"; do
+    if [[ -x "$_cand" ]]; then
+      _python="$_cand"
+      break
+    fi
+  done
+fi
+if [[ -z "$_python" ]]; then
+  _python="$(command -v python3 || command -v python)"
+fi
+
+exec "$_python" -m ai_editor.cli.server_manager_cli "$@"

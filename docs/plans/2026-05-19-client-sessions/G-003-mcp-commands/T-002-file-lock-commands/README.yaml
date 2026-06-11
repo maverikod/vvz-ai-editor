@@ -1,0 +1,48 @@
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+concepts:
+- C-005
+- C-002
+- C-003
+description: "Expose three SessionMCPCommands (C-005) covering SessionFileLock (C-002)
+  operations: session_open_file, session_close_file, and session_list_file_locks.
+  All three implement SessionTouchRule (C-003) as their first action.\n\nsession_open_file
+  command:\n- Input: session_id (string, required), project_id (string, required),
+  file_id (string, required).\n- Action: applies SessionTouchRule first (touch_or_error);
+  acquires SessionFileLock via SessionService (INSERT OR IGNORE).\n- Output: {acquired:
+  bool, session_id, project_id, file_id}. acquired=false when lock already existed
+  (idempotent success).\n- Error: SESSION_NOT_FOUND if session absent.\n\nsession_close_file
+  command:\n- Input: session_id (string, required), project_id (string, required),
+  file_id (string, required).\n- Action: applies SessionTouchRule first; releases
+  SessionFileLock via SessionService (DELETE by PK).\n- Output: {released: bool, was_locked:
+  bool, session_id, project_id, file_id}. was_locked=false when no lock existed (idempotent
+  success).\n- Error: SESSION_NOT_FOUND if session absent.\n\nsession_list_file_locks
+  command:\n- Input: session_id (string, required).\n- Action: applies SessionTouchRule
+  first; queries all SessionFileLocks for the session.\n- Output: {session_id, locks:
+  list[{project_id, file_id, locked_at}], count: int}.\n- Error: SESSION_NOT_FOUND
+  if session absent."
+inputs:
+- description: 'SessionFileLock acquire/release/query operations from SessionService
+    (C-004): open_session_file, close_session_file, list_session_file_locks, touch_or_error.'
+  name: SessionService file lock operations
+  type: domain contract
+name: 'File lock MCP commands: session_open_file, session_close_file, session_list_file_locks'
+outputs:
+- description: session_open_file MCP command registered in the command registry.
+  name: session_open_file command
+  type: MCP command
+- description: session_close_file MCP command registered in the command 
+    registry.
+  name: session_close_file command
+  type: MCP command
+- description: session_list_file_locks MCP command registered in the command 
+    registry.
+  name: session_list_file_locks command
+  type: MCP command
+parent_global_step: G-003
+status: done
+step_id: T-002

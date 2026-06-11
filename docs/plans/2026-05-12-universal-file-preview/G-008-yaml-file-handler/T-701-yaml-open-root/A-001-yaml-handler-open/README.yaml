@@ -1,0 +1,92 @@
+step_id: A-001
+parent_tactical_step: T-701
+name: Create YamlFileHandler — open_root with mapping/sequence/scalar root
+target_file: ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-003
+- C-004
+- C-014
+- C-020
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/handlers/yaml_handler.py\n\nFile-level\
+  \ docstring (required):\n  \"\"\"\n  YamlFileHandler — FileHandler for .yaml, .yml\
+  \ files (C-020).\n\n  Root NodeKind depends on the top-level YAML value:\n    mapping\
+  \  -> mapping\n    sequence -> sequence\n    scalar   -> scalar\n  YAML anchors\
+  \ and aliases are resolved before producing the node tree.\n  Identifier source:\n\
+  \    T-702 mode: project YAML tree infrastructure (when present).\n    T-703 mode:\
+  \ JSON-pointer-style path traversal (fallback).\n\n  Author: Vasiliy Zdanovskiy\n\
+  \  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from __future__ import annotations\n\
+  \  import logging\n  from pathlib import Path\n  from typing import Any\n  from\
+  \ ..base_handler import FileHandler\n  from ..errors import (\n      PreviewError,\
+  \ file_structure_error, input_error,\n      INPUT_ERROR_UNKNOWN_NODE_REF,\n  )\n\
+  \  from ..models import Node, NodeKind\n\nModule-level:\n  logger = logging.getLogger(__name__)\n\
+  \nClass: YamlFileHandler(FileHandler)\nDocstring:\n  \"\"\"\n  FileHandler for YAML\
+  \ files (.yaml, .yml) (C-020).\n\n  Root NodeKind: mapping, sequence, or scalar.\n\
+  \  Anchors and aliases resolved before tree production.\n  node_ref resolution:\
+  \ JSON-pointer-style path (T-703 fallback always used;\n  T-702 infrastructure mode\
+  \ deferred to a later integration step).\n  FILE_STRUCTURE_ERROR with parser 'yaml'\
+  \ on invalid YAML.\n\n  Attributes:\n      supported_extensions: frozenset({'.yaml',\
+  \ '.yml'}).\n  \"\"\"\n\nProperty: supported_extensions -> frozenset[str]\n  Body:\
+  \ return frozenset({'.yaml', '.yml'})\n\nMethod: open_root(self, file_path, session)\
+  \ -> Node | PreviewError\n  Docstring:\n    \"\"\"\n    Parse the YAML file and\
+  \ return the root Node.\n\n    Root NodeKind is mapping, sequence, or scalar depending\
+  \ on the\n    top-level YAML value. Anchors and aliases are resolved. On invalid\n\
+  \    YAML returns FILE_STRUCTURE_ERROR with parser 'yaml'.\n\n    Args:\n      \
+  \  file_path: Project-relative path to the .yaml/.yml file.\n        session: Existing\
+  \ YAML tree session or None.\n\n    Returns:\n        Root Node or PreviewError.\n\
+  \    \"\"\"\n  Body:\n    try:\n        import yaml  # PyYAML\n        self._last_file_path\
+  \ = file_path\n        raw = Path(file_path).read_text(encoding='utf-8', errors='replace')\n\
+  \        doc = yaml.safe_load(raw)  # resolves anchors/aliases; returns None for\
+  \ empty\n        if doc is None:\n            doc = {}  # empty YAML → empty mapping\n\
+  \        self._doc = doc\n        return _yaml_value_to_node(doc, '')\n    except\
+  \ yaml.YAMLError as exc:\n        mark = getattr(exc, 'problem_mark', None)\n  \
+  \      line = (mark.line + 1) if mark else None\n        return file_structure_error(parser='yaml',\
+  \ message=str(exc),\n                                    line_start=line, line_end=line)\n\
+  \    except Exception as exc:\n        return file_structure_error(parser='yaml',\
+  \ message=str(exc))\n\nMethod: resolve_node_ref(self, node_ref, session) -> Node\
+  \ | PreviewError\n  Docstring:\n    \"\"\"\n    Resolve a JSON-pointer-style path\
+  \ to the addressed YAML Node (T-703).\n\n    Path format: '' (root), '/key', '/key/subkey',\
+  \ '/list/0'.\n    RFC-6901 escaping (~0 ~1) is applied.\n    Returns UNKNOWN_NODE_REF\
+  \ when any segment does not exist.\n\n    Args:\n        node_ref: JSON-pointer-style\
+  \ path string.\n        session: Ignored in T-703 fallback mode.\n\n    Returns:\n\
+  \        Resolved Node or PreviewError.\n    \"\"\"\n  Body:\n    doc = getattr(self,\
+  \ '_doc', None)\n    if doc is None:\n        return input_error(INPUT_ERROR_UNKNOWN_NODE_REF,\n\
+  \                           'open_root must be called before resolve_node_ref.')\n\
+  \    result = _resolve_yaml_pointer(doc, node_ref)\n    if result is None:\n   \
+  \     return input_error(\n            INPUT_ERROR_UNKNOWN_NODE_REF,\n         \
+  \   f'Path {node_ref!r} does not exist in YAML document.',\n            details={'node_ref':\
+  \ node_ref},\n        )\n    value, pointer = result\n    return _yaml_value_to_node(value,\
+  \ pointer)\n\nPrivate function: _yaml_value_to_node(value: Any, pointer: str) ->\
+  \ Node\nDocstring: \"Convert a YAML value to a preview Node with JSON-pointer path\
+  \ as node_ref.\"\nBody: same structure as _json_value_to_node in json_handler but\
+  \ for YAML dicts/lists/scalars.\n      import from json_handler is avoided; re-implement\
+  \ locally:\n  if isinstance(value, dict):\n      def _load_mapping() -> list[Node]:\n\
+  \          return [\n              Node(node_kind=NodeKind.MAPPING, node_ref=f'{pointer}/{k}',\n\
+  \                   name=str(k), attributes={'value_kind': type(v).__name__})\n\
+  \              for k, v in value.items()\n          ]\n      return Node(node_kind=NodeKind.MAPPING,\
+  \ node_ref=pointer,\n                  _children_loader=_load_mapping)\n  elif isinstance(value,\
+  \ list):\n      def _load_seq() -> list[Node]:\n          return [_yaml_value_to_node(v,\
+  \ f'{pointer}/{i}')\n                  for i, v in enumerate(value)]\n      return\
+  \ Node(node_kind=NodeKind.SEQUENCE, node_ref=pointer,\n                  _children_loader=_load_seq)\n\
+  \  else:\n      return Node(node_kind=NodeKind.SCALAR, node_ref=pointer,\n     \
+  \             attributes={'value': str(value)})\n\nPrivate function: _resolve_yaml_pointer(doc:\
+  \ Any, pointer: str) -> tuple[Any,str] | None\nDocstring: \"Traverse YAML doc following\
+  \ JSON-pointer-style path.\"\nBody: identical to _resolve_json_pointer in json_handler\
+  \ but imported locally to avoid coupling:\n  if pointer == '':\n      return (doc,\
+  \ '')\n  if not pointer.startswith('/'):\n      return None\n  parts = [p.replace('~1',\
+  \ '/').replace('~0', '~') for p in pointer[1:].split('/')]\n  current, path = doc,\
+  \ ''\n  for part in parts:\n      path = f'{path}/{part}'\n      if isinstance(current,\
+  \ dict):\n          if part not in current:\n              return None\n       \
+  \   current = current[part]\n      elif isinstance(current, list):\n          try:\n\
+  \              current = current[int(part)]\n          except (ValueError, IndexError):\n\
+  \              return None\n      else:\n          return None\n  return (current,\
+  \ path)\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.handlers.yaml_handler
+  expected: Module imports without error; YamlFileHandler instantiates; supported_extensions
+    == frozenset({'.yaml', '.yml'}).

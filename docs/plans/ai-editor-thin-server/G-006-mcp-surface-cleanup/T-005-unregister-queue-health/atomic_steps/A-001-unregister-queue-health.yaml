@@ -1,0 +1,65 @@
+step_id: A-001
+parent_tactical_step: T-005
+name: Снять queue_health
+target_file: ai_editor/hooks_register_part1.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-016
+- C-020
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/hooks_register_part1.py`):
+  ```py
+  """
+  Register minimal infrastructure commands for AI Editor (health only).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  import logging
+
+  from mcp_proxy_adapter.commands.command_registry import registry
+
+  logger = logging.getLogger(__name__)
+
+
+  def register_commands_part1(reg: registry) -> None:
+      """Register health commands."""
+      try:
+          from .commands.health_command import HealthCommand
+          from .commands.queue_health_command import QueueHealthCommand
+
+          reg.register(HealthCommand, "custom")
+          reg.register(QueueHealthCommand, "custom")
+      except ImportError:
+          pass
+  ```
+
+  Modify `ai_editor/hooks_register_part1.py` only.
+
+  Remove:
+  - import of QueueHealthCommand,
+  - reg.register(QueueHealthCommand, "custom").
+
+  Keep HealthCommand registration unchanged.
+
+  Module docstring and register_commands_part1 docstring already state health only; leave them as-is.
+
+  Forbidden:
+  - Do NOT delete queue_health_command.py module on disk.
+  - Do NOT register any command other than health in part1.
+
+  Validation (project root, .venv active):
+  - black ai_editor/hooks_register_part1.py
+  - flake8 ai_editor/hooks_register_part1.py
+  - mypy ai_editor/hooks_register_part1.py
+  - python -c "from ai_editor.hooks_register_part1 import register_commands_part1" (exit 0)
+verification:
+  type: manual
+  target: ai_editor/hooks_register_part1.py
+  expected: >
+    Only HealthCommand is registered in part1; no import or reg.register for QueueHealthCommand;
+    per C-016 MCP Workflow Surface exposes health only (queue_health must not register).
+status: draft

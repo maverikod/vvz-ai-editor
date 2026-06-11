@@ -1,0 +1,132 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Helper allocate_edit_subdir в workspace_layout
+target_file: ai_editor/core/edit_session/workspace_layout.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-005
+- C-006
+- C-007
+- C-008
+- C-019
+prompt: |
+  Create `ai_editor/core/edit_session/workspace_layout.py` (operation: create_file).
+
+  ## Parent scope (T-003)
+
+  Bind Edit Subdirectory (C-008) and Origin Snapshot path (C-007) inside File Subtree
+  (C-006) under Editor Session Directory (C-005). Called from workspace open flow
+  after T-002 path resolver supplies `file_subtree_dir`.
+
+  ## OUT OF SCOPE (do NOT implement in this AS)
+
+  - draft_path and lockfile_path relocation → T-004
+  - sidecar (CST) and tree-temp workspace paths → T-006
+  - EditSession.open workspace mode with `workspace_*` kwargs in `edit_session_impl.py`
+
+  ## File header (exact module docstring)
+
+  ```python
+  """Edit subdir allocation inside File Subtree (C-005–C-008, C-019).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list)
+
+  ```python
+  from __future__ import annotations
+
+  import uuid
+  from dataclasses import dataclass
+  from pathlib import Path
+  ```
+
+  ## Class skeleton
+
+  ```python
+  @dataclass(frozen=True)
+  class CoreSessionPaths:
+      """Paths for one core EditSession workspace-mode open."""
+
+      origin_path: Path
+      edit_subdir: Path
+      session_source_path: Path
+      session_dir: Path
+  ```
+
+  Fields:
+  - `origin_path`: sibling file in file_subtree_dir (C-007 location, not copied here)
+  - `edit_subdir`: `{origin_basename}-{uuid4}/` under file_subtree_dir (C-008)
+  - `session_source_path`: `edit_subdir / origin_basename` (working copy target)
+  - `session_dir`: alias of `edit_subdir` (in-session artefact root for this open)
+
+  ## Function signature
+
+  ```python
+  def allocate_edit_subdir(*, file_subtree_dir: Path, origin_filename: str) -> CoreSessionPaths:
+      """Create ``file_subtree_dir/{origin_filename}-{uuid4}/`` (mkdir only).
+
+      Does not copy origin snapshot; caller writes ``origin_path`` separately.
+      """
+  ```
+
+  ## Method algorithm: allocate_edit_subdir
+
+  1. `name = Path(origin_filename).name`
+  2. If `not name`: raise `ValueError("origin_filename must be non-empty")`
+  3. `subdir_name = f"{name}-{uuid.uuid4()}"`
+  4. `edit_subdir = (file_subtree_dir / subdir_name).resolve()`
+  5. `edit_subdir.mkdir(parents=True, exist_ok=False)` — must fail if exists
+  6. `origin_path = file_subtree_dir / name`
+  7. `session_source_path = edit_subdir / name`
+  8. Return `CoreSessionPaths(origin_path=..., edit_subdir=..., session_source_path=..., session_dir=edit_subdir)`
+
+  ## Error handling
+
+  - Empty origin_filename → `ValueError("origin_filename must be non-empty")`
+  - mkdir race / exists → propagate `FileExistsError` from `mkdir(exist_ok=False)`
+
+  ## Edge cases
+
+  - `origin_filename` with directories → only basename used (`Path(...).name`)
+  - Relative `file_subtree_dir` → resolved before mkdir
+
+  ## Constants
+
+  - UUID suffix separator: `"-"` in `f"{name}-{uuid.uuid4()}"`
+
+  ## Forbidden patterns
+
+  - Do NOT import or call `sidecar_path_for`
+  - Do NOT compute draft_path or lockfile_path
+  - Do NOT create tree-temp directories
+  - Do NOT modify files other than target + new unit test file
+
+  ## Tests (create `tests/unit/test_workspace_layout.py`)
+
+  - `test_allocate_edit_subdir_creates_unique_subdir`: tmp_path subtree; call twice with
+    same origin name; assert two distinct edit_subdir paths under subtree; assert
+    origin_path is sibling in subtree; assert session_source_path inside edit_subdir.
+
+  ## Validation commands
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/workspace_layout.py tests/unit/test_workspace_layout.py
+  flake8 ai_editor/core/edit_session/workspace_layout.py tests/unit/test_workspace_layout.py
+  mypy ai_editor/core/edit_session/workspace_layout.py
+  pytest tests/unit/test_workspace_layout.py -v
+  ```
+
+  Expected: black ok; flake8 silent; mypy success; all tests PASSED.
+  **Mandatory:** all project tests must pass before handoff.
+verification:
+  type: pytest
+  target: tests/unit/test_workspace_layout.py
+  expected: allocate_edit_subdir creates unique subdir under file_subtree_dir; origin_path is sibling in subtree.
+status: draft

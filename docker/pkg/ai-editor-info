@@ -1,0 +1,60 @@
+#!/bin/bash
+# Display host-visible ai-editor user, port, image, and container status.
+set -e
+
+# shellcheck source=/dev/null
+[ -f /etc/default/ai-editor ] && . /etc/default/ai-editor
+
+AI_EDITOR_USER="${AI_EDITOR_USER:-ai-editor}"
+AI_EDITOR_GROUP="${AI_EDITOR_GROUP:-ai-editor}"
+PORT="${AI_EDITOR_PORT:-15000}"
+CONTAINER="${AI_EDITOR_CONTAINER:-ai-editor}"
+CONFIG_DIR="${AI_EDITOR_CONFIG_DIR:-/etc/ai-editor}"
+CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"
+LOG_DIR="${AI_EDITOR_LOG_DIR:-/var/log/ai-editor}"
+DATA_DIR="${AI_EDITOR_DATA_DIR:-/var/ai-editor}"
+IMAGE_SPEC="/usr/lib/ai-editor/image-spec"
+
+if [ -f "$IMAGE_SPEC" ]; then
+  # shellcheck source=/dev/null
+  . "$IMAGE_SPEC"
+fi
+IMAGE="${DOCKERHUB_REPO:-unknown}:${IMAGE_TAG:-unknown}"
+
+uid=""
+gid=""
+if getent passwd "$AI_EDITOR_USER" >/dev/null 2>&1; then
+  uid="$(id -u "$AI_EDITOR_USER")"
+  gid="$(id -g "$AI_EDITOR_GROUP" 2>/dev/null || id -g "$AI_EDITOR_USER")"
+fi
+
+echo "AI Editor service (ai-editor)"
+echo "  host user:     ${AI_EDITOR_USER}:${AI_EDITOR_GROUP} (uid=${uid:-n/a}, gid=${gid:-n/a})"
+echo "  host port:     ${PORT} -> container 15000"
+echo "  config file:   ${CONFIG_DIR}/${CONFIG_FILE}"
+echo "  log dir:       ${LOG_DIR}"
+echo "  data dir:      ${DATA_DIR}"
+echo "  docker image:  ${IMAGE}"
+
+if command -v docker >/dev/null 2>&1; then
+  if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    state="$(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null || echo unknown)"
+    published="$(docker port "$CONTAINER" 15000/tcp 2>/dev/null | head -1 || true)"
+    echo "  container:     ${CONTAINER} (${state})"
+    if [ -n "$published" ]; then
+      echo "  published:     ${published}"
+    fi
+  else
+    echo "  container:     ${CONTAINER} (not created)"
+  fi
+else
+  echo "  container:     docker CLI not available"
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+  if systemctl is-active ai-editor-docker.service >/dev/null 2>&1; then
+    echo "  systemd:       ai-editor-docker.service active"
+  else
+    echo "  systemd:       ai-editor-docker.service inactive"
+  fi
+fi

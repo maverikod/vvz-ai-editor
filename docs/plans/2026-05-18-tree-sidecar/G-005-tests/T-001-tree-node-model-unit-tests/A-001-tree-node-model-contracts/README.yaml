@@ -1,0 +1,115 @@
+step_id: A-001
+parent_tactical_step: T-001
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: TreeNode and Sidecar JSON contract pytest module
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_tree_node_model.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-001-tree-node-model-unit-tests/README.yaml
+concepts:
+- C-001
+- C-002
+
+mrs_excerpt_this_step_only: >
+  TreeNode C-001: stable_id UUID v4; type ∈ {object, array, string, number, boolean, null}; key present only when node is member of object; value on scalars only; ordered children list on containers; optional comment_before, comment_inline. Sidecar C-002: JSON file {"source_sha256": hex_sha256_string, "root": array<TreeNode>} with format JSON; root semantics: top-level object → single object TreeNode root child; top-level array → root array exposes element nodes as root list items per source_spec §Sidecar Format and §Node Structure.
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_tree_node_model.py
+  expected: >-
+    Activate repository .venv then run pytest on this module path; process exits code 0
+    and every collected test completes with PASSED outcome.
+
+prompt: |-
+  EXECUTOR: coder_auto. Produce one new pytest module only.
+
+  PARENT ARTIFACT LINKS — read these README paths for wording alignment (do not import them at runtime): parent tactical step readme path is parent_links.parent_tactical_step_readme; tech machine spec at parent_links.tech_spec_yaml; human spec parent_links.human_readable_spec_md.
+
+  TARGET FILE AND OPERATION — create project-relative tests/test_tree_temp_tree_node_model.py (ASCII text, LF endings). Maximum file length after implementation must stay ≤400 lines.
+
+
+  MODULE HEADER — Exact module docstring to use:
+    """Pytest contracts for structured TreeNode (C-001) plus Sidecar (C-002) JSON payloads.
+
+    Author: Vasiliy Zdanovskiy
+    email: vasilyvz@gmail.com
+    """
+
+
+  FUTURES / IMPORT CONTRACT — Use only these imports unless Python stdlib/pytest additions are unavoidable for assertions:
+    from __future__ import annotations
+
+    import json
+    import re
+    import uuid
+
+    import pytest
+
+
+  PRODUCTION SYMBOLS — Assume G-001 has published the following immutable public API under package ai_editor.core.tree_temp:
+    Module ai_editor.core.tree_temp.tree_node exposes:
+      - class NodeKind with string enum-like members OBJECT, ARRAY, STRING, NUMBER, BOOLEAN, NULL (implementation may use typing.Literal or StrEnum — tests must compare using string values "object"|"array"|"string"|"number"|"boolean"|"null").
+      - @dataclass class TreeNode with fields: stable_id: uuid.UUID | str (tests normalize via str(...) == UUID string form), kind: NodeKind-compatible value, key: str | None, value: str | int | float | bool | None (only populated for scalar kinds), children: list[TreeNode], comment_before: str | None, comment_inline: str | None.
+      - function validate_tree_instance(node: TreeNode, *, member_of_object: bool) -> None raising ValueError with message containing substring "TreeNode_contract" whenever C-001 field presence violates: object/array must have children list (possibly empty) and must not carry value except None placeholder; scalar kinds must carry value compatible with JSON scalars (no nested dict/list in value slot); key must be non-None iff member_of_object is True AND kind is applicable to object-member (any child of object carries key); root nodes validated with member_of_object=False MUST have key=None; comment fields remain optional strings.
+      - helper new_uuid_str() -> str returning canonical UUID v4 lowercase hex string with hyphens — use for synthetic stable ids in tests where creation is tester-controlled.
+
+    Module ai_editor.core.tree_temp.sidecar_payload exposes:
+      - class SidecarDocument with attrs source_sha256: str exactly 64 lowercase hex chars, root_nodes: list[TreeNode].
+      - function dumps_sidecar(doc: SidecarDocument) -> str producing minified-valid JSON UTF-8 text with top-level keys exactly "source_sha256" then "root" (ordering not asserted in dumps string; re-parse dict must contain both keys).
+      - function loads_sidecar(text: str) -> SidecarDocument round-tripping TreeNode identities: every stable_id in JSON textual form must reconstruct identical UUID string casing as input serialization used by dumps_sidecar implementation.
+      - function validate_sidecar_digest_format(digest: str) -> None raising ValueError with message substring "digest_format" unless digest matches regex ^[0-9a-f]{64}$.
+
+  If any symbol name differs after implementation, STOP and escalate (do not guess): update this atomic README only via planner — but for execution now, import using the identifiers above as the authoritative contract pinned by G-001.
+
+
+  CONSTANT LITERALS:
+    SAMPLE_DIGEST = "0" * 64  # valid placeholder sha256 lowercase hex length 64
+
+
+  REQUIRED TEST FUNCTIONS (names exact):
+
+  test_object_member_requires_non_empty_key
+    Algorithm: Instantiate object root with empty children using new_uuid_str; append child scalar number with key="", value=7, stable_id=new_uuid_str, member_of_object True expectation: validate_tree_instance raises ValueError whose message contains "TreeNode_contract".
+
+  test_scalar_root_must_not_carry_key
+    Algorithm: Instantiate TreeNode(kind STRING, stable_id uuid, children=[], value="x", key="forbidden"); call validate_tree_instance(..., member_of_object=False); expect ValueError with "TreeNode_contract".
+
+  test_each_scalar_kind_accepts_expected_value_shapes
+    Algorithm: Loop kinds (STRING value "a"), (NUMBER value 3), (NUMBER value -1.25), (BOOLEAN True), (BOOLEAN False), (NULL None); for each construct node with empty children list, stable_id uuid, validate_tree_instance member_of_object=False — must NOT raise.
+
+  test_container_children_ordering_stable
+    Algorithm: Build container object with keys "first","second"; ensure children iterator order preserved when stuffing into SidecarDocument and loading back — compare repr of keys list from loaded tree must equal ["first","second"].
+
+  test_sidecar_digest_validation_rejects_non_hex
+    Algorithm: validate_sidecar_digest_format("g" + "0" * 63) raises ValueError "digest_format"; validate_sidecar_digest_format(SAMPLE_DIGEST) silent.
+
+  test_sidecar_roundtrip_preserves_comments_and_stable_ids
+    Algorithm: Compose small tree: root object carrying one keyed number child whose comment_inline is "//trail" style text "inline note" literal string without requiring JSON comment parsing here (store plain text), comment_before="//top" literal on root; DUMP via dumps_sidecar, LOAD via loads_sidecar; assert str(child_loaded.stable_id)==str(original child stable_id ) and comments equal.
+
+  test_root_encoding_single_object_vs_root_array_contract
+    Algorithm CASE A — Build SidecarDocument with root_nodes=[single TreeNode(kind=OBJECT key=None children=[], stable_id uuid)] AFTER adding one numeric child keyed "x" perhaps but ensure single ROOT object semantics: instantiate object node with TWO children keyed "a" and "b" with scalars ensuring len(root_nodes)==1 and root_nodes[0].kind resolves to string "object" through string compare `str(nodes[0].kind) == "object"` if NodeKind compares differently map via `.value` accessor if exists else str(). CASE B — Build SidecarDocument with root_nodes TWO scalar NUMBER nodes lacking parent object intentionally to model array-root top-level semantics from source_spec §Sidecar Format root array rule: assert len(root_nodes)==2 and numeric values {1,2} present irrespective of ordering by sorting extracted values ascending list equals [1,2].
+
+
+  EDGE CASE REQUIREMENTS — test_empty_object_root_roundtrips: OBJECT node zero children persists through dumps_sidecar()/loads_sidecar() with unchanged len(children).
+
+
+  OPTIONAL LOCAL HELPER ONLY IF NEEDED — def _kid_keys(node_obj): extract sorted list of `.key` for each TreeNode child where key is not None.
+
+
+  BLACKSTOPS — Do not exceed 400 lines; do not add network or MCP tests; keep module pytest-only.
+
+
+  STATIC QUALITY GATE AFTER FILE EXISTS — coder must execute from repo root with active .venv:
+    python -m black tests/test_tree_temp_tree_node_model.py
+    python -m flake8 tests/test_tree_temp_tree_node_model.py
+    python -m pytest tests/test_tree_temp_tree_node_model.py -q
+    python -m mypy tests/test_tree_temp_tree_node_model.py
+    Expected: black reports reformatted already formatted message; flake8 exit 0; pytest all passed; mypy emits success per repository configuration (annotate test functions minimal types if repository requires typing on tests).

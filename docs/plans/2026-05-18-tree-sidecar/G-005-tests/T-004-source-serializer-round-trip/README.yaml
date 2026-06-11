@@ -1,0 +1,33 @@
+step_id: T-004
+parent_global_step: G-005
+name: SourceSerializer round-trip tests
+status: done
+description: 'Establish verification obligations on SourceSerializer (C-006) consuming
+  TreeNode graphs (C-001) and emitting source bytes that restore comments per positions
+  captured in comment_before and comment_inline. Prove for JSON output that serialised
+  documents remain parseable by the tolerant JSON grammar and that a parse cycle yields
+  an equivalent tree modulo stable_id policy where only structural and comment equivalence
+  is required. Prove for YAML output that round-trip through the YAML parser preserves
+  structure and comment attachment fields per C-004. Prove comment restoration places
+  inline fragments on the same structural line as their nodes and before-comments on the
+  lines preceding their assigned nodes, including the first root node case. Prove identity
+  of semantic content and comment placement across the serializer obligations for every
+  representative case classified for the JSON and YAML parsers.'
+concepts:
+- C-006
+- C-001
+- C-004
+inputs:
+- name: tree_fixtures
+  type: TreeNode graphs with populated comments and structure
+  description: Trees derived from representative parse outcomes and hand-built cases
+    covering containers, scalars, and boundary comment placements for both JSON and YAML
+    serialisers.
+outputs:
+- name: round_trip_verdict
+  type: verification outcome
+  description: Confirmed structural and comment-equivalence after serialize-then-parse
+    cycles for JSON and YAML branches of C-006.
+atomic_steps:
+- A-001
+- A-002

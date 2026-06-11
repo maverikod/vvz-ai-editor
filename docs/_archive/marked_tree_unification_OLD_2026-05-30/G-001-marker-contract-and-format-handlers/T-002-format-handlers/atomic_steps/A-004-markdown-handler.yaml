@@ -1,0 +1,89 @@
+step_id: A-004
+parent_tactical_step: T-002
+name: Create MarkdownHandler for .md files
+target_file: ai_editor/tree/handlers/markdown_handler.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml
+concepts:
+- C-007
+- C-001
+- C-003
+- C-004
+- C-005
+- C-009
+status: draft
+prompt: "Create the file `ai_editor/tree/handlers/markdown_handler.py`.\nOperation:
+  create_file (the file does not exist yet).\n\nThis file implements `MarkdownHandler`
+  — the FormatHandler (C-007) for .md files.\nIt subclasses `FormatHandler`; it
+  does **NOT** subclass MarkerContract.\n\n**Cross-TS execution order:** complete\n\
+  `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml`\n\
+  before this step so `TreeNode` is available.\n\n## MRS excerpt\n\nC-005 AddressableBlock
+  for markdown: ATX headings, paragraphs, code blocks,\n  blockquotes, list items.\n\
+  \nC-007 FormatHandler for markdown:\n  - marker form: HTML comment `<!-- id:<uuid>
+  -->` on its own line\n  - parser: `markdown-it-py` (`from markdown_it import MarkdownIt`)\n\
+  \  - parse_content takes **unmarked** source (NOT MarkerContract.parse)\n\nC-009
+  TreeNode fields from MarkdownHandler.parse_content:\n  - node_id, kind, content\n\
+  \  - level (heading level 1-6; 0 for others) in TreeNode.attributes[\"level\"]\n\
+  \n## TreeNode dataclass (from ai_editor/tree/tree_node.py)\n\n```python\nfrom
+  __future__ import annotations\n\nfrom dataclasses import dataclass, field\nfrom
+  typing import Any, Dict, Optional\n\nfrom ai_editor.tree.contracts import NodeId\n\
+  \n\n@dataclass\nclass TreeNode:\n    node_id: NodeId\n    kind: str\n    content:
+  str\n    attributes: Dict[str, Any] = field(default_factory=dict)\n    parent_id:
+  Optional[NodeId] = None\n\n    def __post_init__(self) -> None:\n        if not
+  self.node_id:\n            raise ValueError(\"TreeNode.node_id must be a non-empty
+  string\")\n        if not self.kind:\n            raise ValueError(\"TreeNode.kind
+  must be a non-empty string\")\n```\n\n## Required file content\n\n```python\nfrom
+  __future__ import annotations\n\nimport re\nimport uuid\nfrom pathlib import Path\n\
+  from typing import List\n\nfrom markdown_it import MarkdownIt\n\nfrom ai_editor.tree.format_handler
+  import FormatHandler\nfrom ai_editor.tree.tree_node import TreeNode\n\n_MARKER_RE
+  = re.compile(r\"^<!-- id:[0-9a-f-]{36} -->\\n\", re.MULTILINE)\n_MD = MarkdownIt()\n\
+  \n_TOKEN_TO_KIND: dict[str, str] = {\n    \"heading_open\": \"heading\",\n    \"\
+  paragraph_open\": \"paragraph\",\n    \"fence\": \"code_block\",\n    \"code_block\"\
+  : \"code_block\",\n    \"blockquote_open\": \"blockquote\",\n    \"list_item_open\"\
+  : \"list_item\",\n}\n\n\nclass MarkdownHandler(FormatHandler):\n    \"\"\"FormatHandler
+  for Markdown files (.md) (C-007).\"\"\"\n\n    def parse_content(\n        self,
+  file_path: Path, content: str\n    ) -> List[TreeNode]:\n        \"\"\"Build TreeNode
+  list from unmarked markdown content via markdown-it-py.\"\"\"\n        tokens =
+  _MD.parse(content)\n        nodes: List[TreeNode] = []\n        lines = content.splitlines()\n\
+  \        i = 0\n        while i < len(tokens):\n            tok = tokens[i]\n  \
+  \          kind = _TOKEN_TO_KIND.get(tok.type)\n            if kind is None:\n \
+  \               i += 1\n                continue\n            node_id = str(uuid.uuid4())\n\
+  \            level_str = tok.tag[1:] if kind == \"heading\" and tok.tag else \"0\"\
+  \n            level = int(level_str) if level_str.isdigit() else 0\n           \
+  \ start = tok.map[0] if tok.map else 0\n            end = tok.map[1] if tok.map else
+  start + 1\n            block_content = \"\\n\".join(lines[start:end])\n        \
+  \    nodes.append(\n                TreeNode(\n                    node_id=node_id,\n\
+  \                    kind=kind,\n                    content=block_content,\n  \
+  \                  attributes={\"level\": level},\n                )\n           \
+  \ )\n            i += 1\n        return nodes\n\n    def mark(self, content: str)
+  -> str:\n        \"\"\"Insert ``<!-- id:<uuid> -->`` before each addressable block.\"\
+  \"\"\n        tokens = _MD.parse(content)\n        lines = content.splitlines(keepends=True)\n\
+  \        inserts: dict[int, str] = {}\n        for tok in tokens:\n            if
+  tok.type not in _TOKEN_TO_KIND:\n                continue\n            if tok.map:\n\
+  \                line_no = tok.map[0]\n                if line_no not in inserts:\n\
+  \                    inserts[line_no] = f\"<!-- id:{uuid.uuid4()} -->\\n\"\n   \
+  \     result: List[str] = []\n        for i, line in enumerate(lines):\n       \
+  \     if i in inserts:\n                result.append(inserts[i])\n            result.append(line)\n\
+  \        return \"\".join(result)\n\n    def unmark(self, marked_text: str) -> str:\n\
+  \        \"\"\"Remove all ``<!-- id:... -->`` comment lines.\"\"\"\n        return
+  _MARKER_RE.sub(\"\", marked_text)\n\n    def sidecar_path(self, source_abs: Path)
+  -> Path:\n        \"\"\"Return ``<stem>.<ext>.tree`` sibling of source_abs.\"\"\"\
+  \n        return source_abs.parent / (source_abs.name + \".tree\")\n```\n\n## Constraints\n\
+  - Imports: `from __future__ import annotations`, `re`, `uuid`, `pathlib.Path`,\n\
+  \  `typing.List`, `markdown_it.MarkdownIt`,\n  `ai_editor.tree.format_handler.FormatHandler`,\n\
+  \  `ai_editor.tree.tree_node.TreeNode`. No other imports.\n- parse_content returns
+  List[TreeNode], not List[Dict].\n- level stored in attributes[\"level\"], not as
+  top-level dict key.\n- Use markdown-it-py only.\n- Estimated line count: ~95 lines.\n"
+verification:
+  type: import
+  target: ai_editor/tree/handlers/markdown_handler.py
+  expected: "`from ai_editor.tree.handlers.markdown_handler import MarkdownHandler;
+    from ai_editor.tree.tree_node import TreeNode; h = MarkdownHandler(); nodes
+    = h.parse_content(__import__(\"pathlib\").Path(\"/tmp/x.md\"), \"# Hello\\n\\\
+    nPara\"); assert all(isinstance(n, TreeNode) for n in nodes); marked = h.mark(\"\
+    # Hello\\n\\nPara\"); assert h.unmark(marked) == \"# Hello\\n\\nPara\"` runs without
+    error.\n"

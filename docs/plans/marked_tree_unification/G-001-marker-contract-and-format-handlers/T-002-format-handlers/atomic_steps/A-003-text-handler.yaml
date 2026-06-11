@@ -1,0 +1,145 @@
+step_id: A-003
+parent_tactical_step: T-002
+name: Create TextHandler for .txt and .rst files
+target_file: ai_editor/tree/handlers/text_handler.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-007
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-009
+- C-025
+status: draft
+prompt: |
+  Create the file `ai_editor/tree/handlers/text_handler.py`.
+  Operation: create_file.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml`
+
+  ## Prerequisite
+  - `ai_editor/tree/format_handler.py` with FormatHandler, ShortIdAllocator
+  - `ai_editor/tree/tree_node.py` with TreeNode (`short_id: NodeId`, `parent_short_id: Optional[NodeId]`)
+
+  ## Locked marker syntax (TEXT / HRS {b001})
+  - Each marked non-blank line: `<short_id>:` + original line (including trailing newline from keepends)
+  - NO `P:` / `L:` prefixes — forbidden
+  - Paragraph vs continuation level stored in TreeNode.attributes for MAP, not in marker
+  - Blank separator lines: no marker, reproduced verbatim
+
+  ## MRS excerpt
+  C-005 text granularity: one line; paragraph boundaries at `\n\n`; two levels paragraph+line.
+  C-002 short_id: monotonic integer starting at 1 per mark/parse pass.
+  Round-trip: `unmark(mark(source)) == source` byte-exact; verify with SHA-256 via base helper.
+
+  ## Module docstring
+  """
+  Text FormatHandler (.txt, .rst) — integer short_id line prefixes (C-007).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact)
+  - from __future__ import annotations
+  - import re
+  - from pathlib import Path
+  - from typing import List
+  - from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  - from ai_editor.tree.tree_node import TreeNode
+
+  ## Constants
+  - `_MARKER_LINE_RE = re.compile(r"^(\d+):", re.MULTILINE)` — strips short_id prefix only
+  - `_MARKER_PREFIX_RE = re.compile(r"^\d+:")` — used per marked line in unmark
+
+  ## Class TextHandler(FormatHandler)
+
+  ### parse_content(file_path, content) -> List[TreeNode]
+  Algorithm:
+  1. If content == "": return []
+  2. Create ShortIdAllocator(start=1)
+  3. Split content with splitlines(keepends=True); track in_paragraph=False
+  4. For each line index i (1-based):
+     a. stripped = line.rstrip("\n")
+     b. If stripped == "": set in_paragraph=False; continue (no node)
+     c. kind = "paragraph" if not in_paragraph else "line"
+     d. sid = allocator.allocate()
+     e. attributes = {"line_no": i, "block_level": kind}
+     f. If kind == "paragraph": attributes["is_paragraph_start"] = True
+     g. Append TreeNode(short_id=sid, kind=kind, content=stripped, attributes=attributes)
+     h. in_paragraph = True
+  5. Return nodes list in document order
+
+  ### mark(content) -> str
+  Algorithm:
+  1. allocator = ShortIdAllocator(1); in_paragraph=False; result=[]
+  2. For each line in content.splitlines(keepends=True):
+     a. stripped = line.rstrip("\n")
+     b. If stripped == "": in_paragraph=False; append line unchanged; continue
+     c. sid = allocator.allocate()
+     d. prefix = f"{sid}:"
+     e. If line ends with "\n": append f"{prefix}{stripped}\n"
+        else append f"{prefix}{stripped}"
+     f. in_paragraph = True
+  3. Return "".join(result)
+
+  ### unmark(marked_text) -> str
+  Algorithm:
+  1. Process line-by-line with splitlines(keepends=True)
+  2. For each line: if `_MARKER_PREFIX_RE.match(line_without_newline)` then remove `\d+:` prefix from content portion only; preserve newline suffix
+  3. Return joined string — must equal original source byte-for-byte
+
+  ### sidecar_path(source_abs) -> Path
+  Return `source_abs.parent / (source_abs.name + ".tree")`
+
+  ## NodeIdMap integration
+  Optional id_map passed to FormatHandler.__init__; TextHandler does not call UUID resolve during mark/unmark/parse_content (short_id only in TREE).
+
+  ## Edge cases
+  - Empty file → parse_content [], mark returns ""
+  - File ending without newline → preserve (no added newline)
+  - Line that looks like `12:hello` in source becomes `1:12:hello` when marked (marker is always at line start after unmark restores)
+
+  ## Forbidden
+  - NO uuid, uuid.uuid4, import uuid
+  - NO P:/L: prefixes or regex for UUID
+  - NO 36-char hex UUID patterns
+  - NO TreeNode fields `node_id` or `parent_id` — use `short_id` / `parent_short_id` only
+  - NO EditSession (C-012) hide/unhide logic — FormatHandler mark/unmark only
+  - NO files other than target
+
+  ## Validation
+  ```
+  black ai_editor/tree/handlers/text_handler.py
+  flake8 ai_editor/tree/handlers/text_handler.py
+  mypy ai_editor/tree/handlers/text_handler.py
+  python -c "
+  from pathlib import Path
+  from ai_editor.tree.handlers.text_handler import TextHandler
+  from ai_editor.tree.tree_node import TreeNode
+  h = TextHandler()
+  src = 'hello\nworld\n\nnext para\n'
+  assert h.unmark(h.mark(src)) == src
+  assert h.verify_checksum_round_trip(src)
+  nodes = h.parse_content(Path('/tmp/x.txt'), src)
+  assert all(isinstance(n, TreeNode) for n in nodes)
+  assert nodes[0].short_id == 1
+  assert nodes[0].attributes['block_level'] == 'paragraph'
+  "
+  pytest -q
+  ```
+  All tests must pass.
+verification:
+  type: import
+  target: ai_editor/tree/handlers/text_handler.py
+  expected: >
+    TextHandler mark uses `<int>:` line prefixes only; unmark(mark(src))==src byte-exact;
+    parse_content returns TreeNode list with integer short_id; no uuid usage.

@@ -1,0 +1,38 @@
+step_id: T-002
+parent_global_step: G-002
+name: ChecksumSyncPolicy Four-Branch Decision
+description: 'Define the ChecksumSyncPolicy entity (C-006) as the single mechanism
+  that decides tree-vs-source truth by SHA-256 checksum. Specify the four decision
+  branches: (1) no TreeFile present — build tree from source; (2) checksum match —
+  tree is current, no action needed; (3) checksum mismatch outside an active session
+  — rebuild tree from source; (4) checksum mismatch inside an active session — tree
+  is truth, source is stale, do not rebuild. Establish that SHA-256 checksum of source
+  content is the synchronization trigger; checksum computation and verification happen
+  only inside this mechanism. Establish that this mechanism applies uniformly to all
+  formats. An existing implementation exists in the codebase; this step extends and
+  integrates it rather than replacing it.'
+concepts:
+- C-006
+- C-003
+- C-004
+inputs:
+- name: SourceFile content
+  type: C-004 instance
+  description: The source file whose SHA-256 checksum is computed and compared 
+    to the stored checksum to determine the synchronization branch.
+- name: TreeFile presence flag
+  type: boolean
+  description: Whether a co-located TreeFile already exists for the SourceFile.
+outputs:
+- name: ChecksumSyncPolicy entity definition
+  type: domain entity definition
+  description: Four-branch decision mechanism keyed by TreeFile presence and 
+    checksum match; SHA-256 is the only allowed synchronization trigger; applies
+    uniformly to all formats.
+- name: Four-branch decision table
+  type: domain constraint definition
+  description: Enumeration of the four branches with their preconditions and 
+    resulting actions (build, no-op, rebuild, or treat tree as truth).
+atomic_steps:
+- A-001
+status: needs_review

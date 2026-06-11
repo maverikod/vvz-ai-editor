@@ -1,0 +1,65 @@
+step_id: A-001
+parent_tactical_step: T-104
+name: Create selector module — three forms and rejection rules
+target_file: ai_editor/commands/universal_file_preview/selector.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-005
+- C-007
+- C-013
+- C-014
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/selector.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  Selector (C-007) — three-form block-set picker for universal_file_preview.\n\
+  \n  Form A: slice string (contains ':' or starts with '-').\n  Form B: list[int]\
+  \ — explicit zero-based block indices.\n  Form C: list[str] — explicit block node\
+  \ identifiers.\n  When selector is omitted, returns first preview_lines blocks.\n\
+  \n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n\
+  \  from __future__ import annotations\n  from .errors import (\n      PreviewError,\
+  \ input_error,\n      INPUT_ERROR_INVALID_SELECTOR_FORM,\n      INPUT_ERROR_MIXED_SELECTOR_LIST,\n\
+  \      INPUT_ERROR_DUPLICATE_SELECTOR_ENTRY,\n      INPUT_ERROR_OUT_OF_RANGE_INDEX,\n\
+  \      INPUT_ERROR_UNKNOWN_IDENTIFIER,\n      INPUT_ERROR_SELECTOR_ON_EMPTY,\n \
+  \ )\n  from .models import Node\n\nFunction: apply_selector(\n    raw: str | list\
+  \ | None,\n    block_set: list[Node],\n    preview_lines: int,\n  ) -> list[Node]\
+  \ | PreviewError\nReturn type: list[Node] | PreviewError\nDocstring:\n  \"\"\"\n\
+  \  Apply the Selector to a block set and return the selected subset.\n\n  Dispatches\
+  \ on the runtime type and shape of raw:\n    None        → first preview_lines blocks\
+  \ (natural order)\n    str         → Form A slice (must contain ':' or start with\
+  \ '-')\n    list[int]   → Form B explicit index list (natural order NOT preserved;\n\
+  \                   order follows caller-given sequence)\n    list[str]   → Form\
+  \ C explicit identifier list (caller-given order)\n\n  Args:\n      raw: Selector\
+  \ value from the caller, or None.\n      block_set: Complete ordered block set of\
+  \ the focus node.\n      preview_lines: Cap used when raw is None.\n\n  Returns:\n\
+  \      Ordered list of selected Node objects, or PreviewError.\n  \"\"\"\nBody:\n\
+  \  If raw is None:\n    return block_set[:preview_lines]\n\n  If isinstance(raw,\
+  \ str):\n    if ':' not in raw and not raw.startswith('-'):\n        return input_error(INPUT_ERROR_INVALID_SELECTOR_FORM,\
+  \ ...)\n    # Parse Python-style slice from string using _parse_slice(raw, len(block_set))\n\
+  \    indices = _parse_slice(raw, len(block_set))\n    return [block_set[i] for i\
+  \ in indices]\n\n  If isinstance(raw, list) and raw:\n    # Homogeneity check\n\
+  \    if not (all(isinstance(x, int) for x in raw) or\n            all(isinstance(x,\
+  \ str) for x in raw)):\n        return input_error(INPUT_ERROR_MIXED_SELECTOR_LIST,\
+  \ ...)\n    # Duplicate check\n    if len(raw) != len(set(raw)):\n        return\
+  \ input_error(INPUT_ERROR_DUPLICATE_SELECTOR_ENTRY, ...)\n    # Empty block_set\
+  \ check\n    if not block_set:\n        return input_error(INPUT_ERROR_SELECTOR_ON_EMPTY,\
+  \ ...)\n    if isinstance(raw[0], int):\n        # Form B: validate indices then\
+  \ fetch\n        for idx in raw:\n            if idx < 0 or idx >= len(block_set):\n\
+  \                return input_error(INPUT_ERROR_OUT_OF_RANGE_INDEX,\n          \
+  \                         f'Index {idx} out of range [0, {len(block_set)}).', ...)\n\
+  \        return [block_set[i] for i in raw]\n    else:\n        # Form C: resolve\
+  \ identifiers\n        ref_map = {n.node_ref: n for n in block_set}\n        result\
+  \ = []\n        for ident in raw:\n            node = ref_map.get(ident)\n     \
+  \       if node is None:\n                return input_error(INPUT_ERROR_UNKNOWN_IDENTIFIER,\n\
+  \                                   f'Identifier {ident!r} not found in block set.',\
+  \ ...)\n            result.append(node)\n        return result\n\n  return block_set[:preview_lines]\
+  \  # empty list case\n\nPrivate function: _parse_slice(raw: str, length: int) ->\
+  \ range\nDocstring: \"Parse a Python-style slice string into an index range.\"\n\
+  Body: parse start/stop/step from raw using str.split(':');\n      apply Python slice\
+  \ semantics over range(length); return list of ints.\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.selector
+  expected: Module imports without error; apply_selector(None, nodes, 20) returns
+    first 20 nodes; apply_selector('bad', nodes, 20) returns PreviewError(INVALID_SELECTOR_FORM).

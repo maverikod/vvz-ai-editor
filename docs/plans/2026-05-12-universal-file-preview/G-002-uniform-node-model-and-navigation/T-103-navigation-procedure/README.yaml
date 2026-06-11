@@ -1,0 +1,49 @@
+step_id: T-103
+parent_global_step: G-002
+name: Navigation procedure — three phases
+status: frozen
+concepts:
+- C-004
+- C-006
+- C-007
+- C-008
+- C-013
+description: "Define the NavigationProcedure (C-006) as the single procedure that\
+  \ the command executes on every request. The procedure is shared across all NodeKind\
+  \ values and all file types; it operates on one focus Node per request and runs\
+  \ in exactly three phases.\nPhase 1 — enumerate:\n  Produce the ordered block set\
+  \ of the focus node. The focus node is\n  either the file root (when node_ref is\
+  \ absent) or the node resolved\n  from node_ref by the FileHandler. The block set\
+  \ is the complete\n  ordered list of the focus node's addressable children. For\
+  \ a scalar\n  focus node, the block set is empty.\n\nPhase 2 — select:\n  Apply\
+  \ the Selector (C-007) to the block set produced in phase 1 to\n  obtain the ordered\
+  \ list of selected blocks. If no Selector was\n  supplied, return the first preview_lines\
+  \ blocks in natural order\n  (capped by PreviewBudget C-013). If the Selector is\
+  \ supplied, apply\n  it according to its form (slice, int list, or string list).\n\
+  \nPhase 3 — render:\n  For each selected block in the order determined by phase\
+  \ 2, invoke\n  the BlockHandler (C-008) keyed by that block's own NodeKind to\n\
+  \  produce the block's compact summary. Collect the summaries into the\n  blocks\
+  \ list for the ResponseEnvelope.\n\nRecursive drill-down:\n  Drilling into a selected\
+  \ block is not performed within a single\n  request. The caller issues a follow-up\
+  \ request with that block's\n  node_ref as the new node_ref parameter. The NavigationProcedure\n\
+  \  then runs its three phases against that block as the new focus node.\n"
+inputs:
+- name: focus_node
+  type: Node with NodeKind (C-004)
+  description: 'The node to navigate: the file root or the node resolved from node_ref.
+    Produced by the FileHandler.'
+- name: selector
+  type: Selector (C-007) or null
+  description: The caller-supplied selector, already validated and typed by form.
+    Null when the caller omitted the selector parameter.
+- name: preview_budget
+  type: PreviewBudget (C-013)
+  description: The cap values (preview_lines and value_preview_len) for this request.
+outputs:
+- name: navigation_result
+  type: structured navigation output
+  description: Focus node metadata (node_kind, node_ref, type, name, attributes),
+    total block count, and the ordered list of rendered block summaries ready for
+    assembly into the ResponseEnvelope.
+atomic_steps:
+- A-001

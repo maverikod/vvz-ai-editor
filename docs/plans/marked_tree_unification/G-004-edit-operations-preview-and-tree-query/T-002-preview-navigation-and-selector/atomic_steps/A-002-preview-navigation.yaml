@@ -1,0 +1,239 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: PreviewNavigation module with dynamic short_id prefix width
+target_file: ai_editor/tree/preview_navigation.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-016
+- C-017
+- C-002
+- C-010
+- C-009
+- C-025
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-002-preview-navigation-and-selector/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-016, C-017, C-002, C-010, C-009, C-025)
+
+  Create `ai_editor/tree/preview_navigation.py`.
+  Operation: create_file.
+
+  PreviewNavigation (C-016): enumerate → select → render. node_ref is integer short_id only.
+  NodeIdMap.resolve is server-internal (C-025); never exposed in preview API results.
+
+  CRITICAL {i007}: line prefix `[<short_id>] ` with blank padding width =
+  `compute_line_prefix_width(max_short_id)` where max_short_id is the maximum short_id
+  integer present in the loaded tree context. This equals len(f"[{max_short_id}] ").
+  FORBIDDEN: NODE_ID_PREFIX_WIDTH=40, UUID-width padding, fixed 36-char hex assumptions,
+  padding based on len(str(max_short_id)) without brackets.
+
+  ## MRS excerpt
+
+  C-016:
+  - IndentedBlock transparent in enumeration ({i006})
+  - annotated/full-text: prefix physical lines with `[short_id] ` or blank padding to dynamic width ({i007})
+  - strip legacy Python identity comments before render ({i008})
+  - JSON/YAML: locate node via MAP short_id; walk to object/array ancestor when needed ({i004})
+  - session_id → in-session draft tree ({i003})
+  - TreeLifecycle validates/builds tree when absent/invalid ({f001})
+
+  C-002: node_ref short_id int; unrecognised → input error.
+
+  ## Module docstring
+
+  """
+  PreviewNavigation three-phase preview (C-016).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports
+
+  - from __future__ import annotations
+  - import json
+  - import re
+  - from dataclasses import dataclass
+  - from enum import Enum
+  - from pathlib import Path
+  - from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Union
+  - from ai_editor.tree.contracts import NodeId, UnknownNodeIdError
+  - from ai_editor.tree.preview_selector import (
+      PreviewRenderMode, PreviewSelector, PreviewSelectorConfig, PreviewSelectorError,
+    )
+
+  ## Constants (regex only — NO fixed prefix width constant)
+
+  _CST_NODE_IDS_BEGIN = re.compile(r"^\s*# cst-node-ids:\s*begin\s*$", re.MULTILINE)
+  _CST_NODE_IDS_END = re.compile(r"^\s*# cst-node-ids:\s*end\s*$", re.MULTILINE)
+  _LEGACY_NODE_ID_LINE = re.compile(r"^\s*# @node-id:\s*[0-9a-f-]{36}\s*$", re.MULTILINE | re.IGNORECASE)
+  INDENTED_BLOCK_KIND = "IndentedBlock"
+
+  ## Dynamic prefix width helpers ({i007}) — REQUIRED
+
+  def compute_max_short_id_in_tree(tree: Any) -> int:
+      """
+      Walk tree nodes exposed by tree_loader result; return max short_id int, minimum 1.
+      If tree empty, return 1.
+      Each node exposes .short_id: int.
+      """
+      Algorithm:
+      1. Initialize max_sid = 1.
+      2. Iterate every node in tree.all_nodes() or tree.nodes iterable (whichever loader provides).
+      3. For each node with .short_id attribute: if isinstance(sid, int) and sid >= 1: max_sid = max(max_sid, sid).
+      4. Return max_sid.
+
+  def compute_line_prefix_width(max_short_id: int) -> int:
+      """
+      Return len(f"[{max_short_id}] ") — dynamic digit width for max short_id in tree ({i007}).
+      NOT a module-level constant. NOT UUID width. NOT fixed 40.
+      """
+      Algorithm:
+      1. If max_short_id < 1: raise ValueError("max_short_id must be >= 1").
+      2. sample_prefix = f"[{max_short_id}] "
+      3. Return len(sample_prefix).
+      Examples: max=1 → 4; max=9 → 4; max=10 → 5; max=42 → 5; max=999 → 6.
+
+  def strip_legacy_python_identity_comments(source: str) -> str:
+      """
+      {i008}: remove whole-line `# @node-id:` UUID comments and the inclusive
+      `# cst-node-ids: begin` … `# cst-node-ids: end` block from logical source
+      used for preview display. Preview ids come from TREE short_id prefixes only.
+      """
+      Algorithm:
+      1. lines = source.splitlines(keepends=True)
+      2. out: List[str] = []
+      3. in_cst_block = False
+      4. For each line in lines:
+         a. stripped = line.rstrip("\n\r")
+         b. If _CST_NODE_IDS_BEGIN.match(stripped): set in_cst_block = True; continue (drop line)
+         c. If in_cst_block:
+            - If _CST_NODE_IDS_END.match(stripped): set in_cst_block = False; continue (drop line)
+            - Else: continue (drop interior lines)
+         d. If _LEGACY_NODE_ID_LINE.match(stripped): continue (drop whole-line legacy comment)
+         e. Append original line (with keepends) to out
+      5. Return "".join(out)
+
+  Edge cases for strip_legacy_python_identity_comments:
+  - Empty source → return ""
+  - Source with only legacy comments → return "" or trailing newline preserved per join
+  - Nested begin without end → drop from begin through EOF
+  - Normal code lines adjacent to stripped comments → preserved unchanged
+
+  def normalize_json_for_line_count(raw: str) -> str:
+      """{i005}: json.loads + dumps(indent=2); JSONDecodeError → return raw unchanged."""
+
+  def compute_line_span(source: str) -> int:
+      """len(source.splitlines()) treating trailing empty line consistently."""
+
+  def apply_line_id_prefixes(
+      source: str,
+      line_to_short_id: Mapping[int, NodeId],
+      *,
+      mode: PreviewTextMode,
+      max_short_id: int,
+  ) -> str:
+      """
+      {i007} annotated/full_text modes:
+      prefix_width = compute_line_prefix_width(max_short_id)  # dynamic, never NODE_ID_PREFIX_WIDTH
+      For each 1-based line index i, content = line without trailing newline handling per splitlines(keepends=False):
+        - if line_to_short_id has entry sid for i: prefix = f"[{sid}] " + line content
+        - else: prefix = (" " * prefix_width) + line content
+      STRUCTURAL mode: return source unchanged.
+      Join lines with "\n"; preserve final trailing newline if source.endswith("\n").
+      """
+
+  ## Enums and dataclasses
+
+  PreviewNavigationError(ValueError): unrecognised focus short_id.
+  PreviewTextMode: ANNOTATED, FULL_TEXT, STRUCTURAL
+
+  @dataclass PreviewBlockRecord:
+    short_id: NodeId
+    type_label: str
+    attribute_summary: str
+    text_excerpt: str
+    render_mode: PreviewRenderMode
+    line_span: int
+
+  @dataclass PreviewNavigationResult:
+    focus_short_id: NodeId
+    blocks: List[PreviewBlockRecord]
+    serialized_envelope: str
+
+  ## class PreviewNavigation
+
+  __init__(self, *, tree_loader: Callable[[Path, Optional[str]], Any]) -> None
+
+  navigate(*, source_path, focus_short_id: NodeId, selector, session_id=None, config=None, text_mode=ANNOTATED) -> PreviewNavigationResult:
+  1. tree = tree_loader(source_path, session_id)
+  2. max_sid = compute_max_short_id_in_tree(tree)
+  3. Phase 1: _enumerate_children(tree, focus_short_id) — IndentedBlock transparent ({i006})
+  4. Phase 2: PreviewSelector.parse(selector).apply(children)
+  5. Phase 3: _render_block(..., max_short_id=max_sid) for each selected child
+  6. Serialize JSON envelope; PreviewSelector.paginate_envelope(config.max_chars)
+  Missing focus short_id → PreviewNavigationError (or UnknownNodeIdError wrapped).
+
+  _enumerate_children(tree, focus_short_id):
+  - Resolve focus by int short_id via tree node index; missing → PreviewNavigationError
+  - Collect direct children of focus node in document order
+  - Container-skip ({i006}): when child.kind == INDENTED_BLOCK_KIND ("IndentedBlock"):
+      extend result with grandchildren (statement nodes inside the block) in order;
+      do NOT emit the IndentedBlock container itself as a preview block
+  - JSON/YAML: if focus node is scalar wrapper, walk up to nearest object/array ancestor ({i004})
+    before enumerating children
+  - Each emitted block exposes .short_id: int for phase-2 selector
+
+  _render_block(block, *, format_key, config, text_mode, source_path, max_short_id):
+  - python: strip_legacy_python_identity_comments on excerpt
+  - json: normalize_json_for_line_count before line_span
+  - decide_render_mode via PreviewSelector
+  - INLINE + annotated/full_text: apply_line_id_prefixes(..., max_short_id=max_short_id)
+  - DRILLDOWN/STRUCTURAL: structural summary f"{kind} L{start}-{end}"
+
+  ## Tree acquisition note
+
+  tree_loader must ensure valid tree via TreeLifecycle when session_id is None ({f001}).
+  This module does NOT import TreeLifecycle (integration wires loader in consumer step).
+
+  ## Forbidden
+
+  - FORBIDDEN: NODE_ID_PREFIX_WIDTH = 40 or any UUID-width fixed padding
+  - FORBIDDEN: returning UUID in PreviewBlockRecord or API fields
+  - FORBIDDEN: using line numbers as node_ref
+  - NO G-007, non-standard cross-TS ordering fields, {l*}/{m*}
+  - Do NOT preserve legacy # @node-id in rendered output
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/preview_navigation.py
+  flake8 ai_editor/tree/preview_navigation.py
+  mypy ai_editor/tree/preview_navigation.py
+  python -c "
+  from ai_editor.tree.preview_navigation import compute_line_prefix_width, apply_line_id_prefixes, PreviewTextMode
+  assert compute_line_prefix_width(1) == len('[1] ')
+  assert compute_line_prefix_width(999) == len('[999] ')
+  out = apply_line_id_prefixes('alpha\nbeta\n', {1: 1}, mode=PreviewTextMode.ANNOTATED, max_short_id=42)
+  assert out.startswith('[1] alpha')
+  assert ' ' * len('[42] ') in out.splitlines()[1]  # padded second line
+  "
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/preview_navigation.py
+  expected: >
+    compute_line_prefix_width and apply_line_id_prefixes use dynamic width from max
+    short_id int; no NODE_ID_PREFIX_WIDTH constant; IndentedBlock skipped in enumeration;
+    legacy Python comments stripped; JSON normalized before line count; estimated ~340 lines (≤400).

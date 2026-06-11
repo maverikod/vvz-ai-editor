@@ -1,0 +1,52 @@
+atomic_steps: []
+concepts:
+- C-023
+- C-003
+- C-006
+description: 'Cut the format-dispatch resolver, the reader functions, and all remaining
+  legacy-path consumers over to the sibling convention, and align tests and scripts.
+  In search_session/tree_representation.py, the dispatch resolver sidecar_path_for
+  resolves to the existing sibling_tree_path for every format (its inline .tree_sidecar
+  branch for text/markdown is removed), and the reader functions (_read_sidecar_state,
+  _read_cst_digest_and_root, _read_tree_temp_digest, _read_adjacent_sidecar_digest,
+  and related) read from the sibling path. The tree-validity wrapper validate_or_recreate_tree_file
+  in tree_lifecycle/checksum.py resolves the sibling path and its TreeRepresentationRef
+  carries the sibling path. The remaining direct legacy-path consumers are pointed
+  at the sibling path: tree_builder.py and tree_saver.py (their write_sidecar_atomic
+  calls follow the cutover), stable_tree.py and grep_block_resolver.py (their former
+  sidecar_path_for_py calls), and the universal-file-edit commands open_command, close_command,
+  invalid_write_support, sidecar_cst_apply. Finally, existing tests and scripts that
+  assert or construct .cst/, .trees/, or .tree_sidecar paths are updated to the sibling
+  path, and a project scan confirms zero legacy artifacts remain. This step uses the
+  existing sibling_tree_path (created in G-002) and does not create it.'
+inputs:
+- description: The existing sibling-path function (created in G-002), used by 
+    the dispatcher, the readers, and every remaining consumer to locate tree 
+    files.
+  name: sibling_tree_path
+  type: tree-file path resolver
+- description: The format-dispatch resolver and reader functions in 
+    tree_representation.py whose legacy-layout logic must be removed.
+  name: tree_representation.py
+  type: legacy dispatcher and readers
+- description: The tree-validity wrapper whose reference object must carry the 
+    sibling path after the cutover.
+  name: validate_or_recreate_tree_file
+  type: tree-validity wrapper
+name: Dispatcher, Readers and Remaining Consumers Cutover
+outputs:
+- description: The dispatcher and readers resolve only the sibling path for all 
+    formats; TreeRepresentationRef carries the sibling path; all remaining 
+    consumers (tree_builder, tree_saver, stable_tree, grep_block_resolver, 
+    open/close/invalid_write_support/sidecar_cst_apply) observe the sibling 
+    path.
+  name: sibling_dispatch_and_consumers
+  type: read and consumption behavior
+- description: Tests and scripts assert the sibling location with no legacy 
+    assertions; a project scan confirms zero .cst/, .trees/, or .tree_sidecar 
+    artifacts remain.
+  name: sibling_aligned_tests
+  type: test alignment and cutover verification
+parent_global_step: G-000
+status: draft
+step_id: T-003

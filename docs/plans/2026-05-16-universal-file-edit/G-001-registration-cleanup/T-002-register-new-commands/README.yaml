@@ -1,0 +1,29 @@
+step_id: T-002
+parent_global_step: G-001
+name: Register four new editing commands
+description: Add registration entries for the four new MCP commands (C-005 OpenCommand,
+  C-006 EditCommand, C-009 WriteCommand, C-010 CloseCommand) to the command
+  registration module. The four command classes must already exist in the
+  universal_file_edit package before this step executes. Register
+  universal_file_open, universal_file_edit, universal_file_write, and
+  universal_file_close using the same registration pattern as existing commands.
+concepts:
+- C-005
+- C-006
+- C-009
+- C-010
+- C-013
+inputs:
+- name: registration_module
+  type: existing source file
+  description: The command registration module already modified to remove legacy
+    registrations. The four new command classes exist in the universal_file_edit
+    package.
+outputs:
+- name: updated_registration_module
+  type: modified source file
+  description: 'Registration module with four new command registrations added:
+    universal_file_open, universal_file_edit, universal_file_write, universal_file_close.'
+atomic_steps:
+- A-001
+status: draft

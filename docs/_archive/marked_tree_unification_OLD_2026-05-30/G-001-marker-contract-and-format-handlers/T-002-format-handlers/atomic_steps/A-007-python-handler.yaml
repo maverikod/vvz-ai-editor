@@ -1,0 +1,198 @@
+step_id: A-007
+parent_tactical_step: T-002
+name: Create PythonHandler with cst_tree wrapper and hybrid markers
+target_file: ai_editor/tree/handlers/python_handler.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml
+status: needs_review
+concepts:
+- C-007
+- C-001
+- C-003
+- C-004
+- C-005
+- C-009
+prompt: |
+  Create the file `ai_editor/tree/handlers/python_handler.py`.
+  Operation: create_file (the file does not exist yet).
+
+  ## Purpose
+
+  Implement `PythonHandler` — the real FormatHandler (C-007) for `.py` files.
+  **Decision A2 (locked):** NOT a NotImplementedError stub. G1-13 deferral is
+  **resolved-in-plan**; Python CST ownership stays in marked_tree_unification.
+
+  ### parse_content — thin wrapper over cst_tree
+
+  Delegate to `create_tree_from_code` from `ai_editor/core/cst_tree/tree_builder.py`:
+
+  ```python
+  def create_tree_from_code(
+      file_path: str,
+      source_code: str,
+      node_types: Optional[List[str]] = None,
+      max_depth: Optional[int] = None,
+      include_children: bool = True,
+      *,
+      persist_sidecar: bool = False,
+      register_in_memory: bool = True,
+  ) -> CSTTree:
+  ```
+
+  Call with `persist_sidecar=False` (forbidden: `.cst/` JSON sidecar path).
+
+  ### metadata_map → List[TreeNode] adapter
+
+  `CSTTree.metadata_map: Dict[str, TreeNodeMetadata]` keyed by internal `node_id`.
+
+  For each metadata entry passing granularity filter, emit:
+
+  ```python
+  TreeNode(
+      node_id=meta.stable_id,  # UUID — NOT internal node_id
+      kind=get_node_kind(node) or metadata.node_type string,
+      content=<source slice for block>,
+      attributes={
+          "start_line": meta.start_line,
+          "end_line": meta.end_line,
+          "node_type": meta.node_type,
+          "internal_node_id": meta.node_id,  # diagnostic only
+      },
+      parent_id=<parent stable_id if known else None>,
+  )
+  ```
+
+  **stable_id ↔ node_id mapping rule:** `TreeNode.node_id` always equals
+  `TreeNodeMetadata.stable_id`. Never expose unstable internal `node_id` as
+  TreeNode.node_id.
+
+  ### Granularity filter (C-005 / HRS {b005})
+
+  Emit TreeNode only for addressable blocks:
+    - FunctionDef, AsyncFunctionDef, ClassDef (metadata-dict marker path)
+    - Decorator
+    - SimpleStatementLine, Expr, AnnAssign, Assign, AugAssign (trailing-comment path)
+  Exclude:
+    - Module root as leaf unless spec requires
+    - Shebang lines (not addressable)
+    - Nodes with no source position
+
+  **Node-type coverage:**
+    - **Covered:** FunctionDef, AsyncFunctionDef, ClassDef, Decorator,
+      SimpleStatementLine, Expr, AnnAssign, Assign, AugAssign
+    - **Unverified (skip or include without marker guarantee — document in module docstring):**
+      Import, If, For, While, Try, With
+
+  ### mark / unmark — NEW code (HRS {b005} hybrid contract)
+
+  Marker metadata key: `___id___` (exact string, three underscores each side).
+
+  **mark(content: str) -> str:**
+    1. Parse with LibCST (may reuse cst_tree internals).
+    2. For each addressable block, assign stable UUID (reuse stable_id logic from
+       cst_tree where possible).
+    3. Named constructs with metadata dict: set `metadata["___id___"] = uuid`.
+    4. Other blocks: append ` # ___id___:<uuid>` on last physical line of block.
+    5. Shebang: leave unchanged, no marker.
+    6. Multiline docstring: marker on closing `"""` line after quotes.
+    7. Return marked source string (for TreeFile `.py.tree` only).
+
+  **unmark(marked_text: str) -> str:**
+    1. Remove all `___id___` entries from metadata dicts.
+    2. Strip trailing ` # ___id___:<uuid>` comments.
+    3. Reproduce original source byte-for-byte (C-001 invariant).
+
+  ### sidecar_path
+
+  ```python
+  def sidecar_path(self, source_abs: Path) -> Path:
+      return source_abs.parent / (source_abs.name + ".tree")
+  ```
+
+  Same sibling convention as G-002 T-001; NOT `.cst/<stem>.tree`.
+
+  ## Cross-TS prerequisite
+
+  Complete G-001 T-003 A-001 (`TreeNode` in `ai_editor/tree/tree_node.py`) first.
+
+  ## TreeNode dataclass (from T-003/A-001)
+
+  ```python
+  @dataclass
+  class TreeNode:
+      node_id: NodeId
+      kind: str
+      content: str
+      attributes: Dict[str, Any] = field(default_factory=dict)
+      parent_id: Optional[NodeId] = None
+  ```
+
+  ## FormatHandler base (from T-002/A-001)
+
+  Subclass `FormatHandler` from `ai_editor/tree/format_handler.py`.
+
+  ## Required imports
+
+  ```python
+  from __future__ import annotations
+
+  from pathlib import Path
+  from typing import Any, Dict, List, Optional
+  import uuid
+
+  import libcst as cst
+
+  from ai_editor.core.cst_tree.tree_builder import create_tree_from_code
+  from ai_editor.core.cst_tree.models import CSTTree, TreeNodeMetadata
+  from ai_editor.core.cst_tree.node_type_utils import get_node_kind
+  from ai_editor.tree.format_handler import FormatHandler
+  from ai_editor.tree.tree_node import TreeNode
+  ```
+
+  Adjust imports to symbols that actually exist; do not import tracked_deferrals.
+
+  ## Module docstring must state
+
+  - Hybrid marker contract per HRS {b005}
+  - Markers written to `.py.tree` only; SourceFile `.py` never modified by tree system
+  - cst_tree used as builder oracle; unified path does not use `.cst/` JSON sidecar
+  - G1-13 deferral **resolved** in marked_tree_unification (owner_plan = this plan)
+
+  ## Concrete examples
+
+  **parse_content input:** `content = "def foo():\\n    pass\\n"`, `file_path = Path("x.py")`
+  **output:** List with one TreeNode, kind ~"function", node_id = stable UUID,
+  attributes start_line/end_line set.
+
+  **mark input:** same unmarked content
+  **output:** marked string with `___id___` in function metadata OR trailing comment.
+
+  **unmark(mark(marked)) == original** byte-for-byte.
+
+  ## Error handling
+
+  - SyntaxError on invalid Python: propagate from LibCST/cst_tree
+  - Empty content: return [] from parse_content; mark returns "" or "\\n" per cst_tree
+
+  ## Forbidden approaches
+
+  - Do NOT raise NotImplementedError on parse_content, mark, or unmark
+  - Do NOT use DEFERRAL_OWNER_PLAN = None or G1-13 stub pattern
+  - Do NOT call persist_sidecar=True or write `.cst/` JSON sidecars
+  - Do NOT modify SourceFile on disk in mark/unmark (pure string transforms)
+  - Do NOT delete or refactor legacy cst_tree / recreate_tree_from_content
+  - Do NOT import tracked_deferrals as required dependency
+
+  ## Estimated line count: ~280 lines (≤350 cap)
+
+verification:
+  type: import
+  target: ai_editor/tree/handlers/python_handler.py
+  expected: >
+    PythonHandler imports successfully. parse_content returns List[TreeNode] on
+    sample .py content. mark/unmark round-trip preserves bytes. sidecar_path returns
+    sibling .py.tree path. No NotImplementedError on public methods.

@@ -1,0 +1,18 @@
+step_id: A-002
+parent_tactical_step: T-000
+name: open_command slim facade
+target_file: ai_editor/commands/universal_file_edit/open_command.py
+operation: create_file
+priority: 3
+depends_on:
+- A-007
+concepts:
+- C-016
+prompt: "Create slim facade (≤120 lines).\n\n```py\n\"\"\"MCP command: universal_file_open — facade (C-016).\"\"\"\nfrom __future__ import annotations\n\nimport logging\nfrom typing import Any, Dict, cast\n\nfrom mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult\n\nfrom ..core.exceptions import ValidationError\nfrom .base_mcp_command import BaseMCPCommand\nfrom .open_command_metadata import get_universal_file_open_metadata\nfrom .open_command_runtime import run_open_execute\n\nlogger = logging.getLogger(__name__)\n\nclass UniversalFileOpenCommand(BaseMCPCommand):\n    name = \"universal_file_open\"\n    version = \"1.0.0\"\n    descr = \"Open project file into editor workspace\"\n    category = \"universal_file_edit\"\n    author = \"Vasiliy Zdanovskiy\"\n    email = \"vasilyvz@gmail.com\"\n\n    @classmethod\n    def get_schema(cls) -> Dict[str, Any]:\n        return {\n            \"type\": \"object\",\n            \"properties\": {\n                \"project_id\": {\"\
+  type\": \"string\"},\n                \"file_path\": {\"type\": \"string\"},\n                \"session_id\": {\"type\": \"string\", \"description\": \"CA session id (required)\"},\n                \"create\": {\"type\": \"boolean\"},\n                \"initial_content\": {\"type\": \"string\"},\n            },\n            \"required\": [\"project_id\", \"file_path\", \"session_id\"],\n            \"additionalProperties\": False,\n        }\n\n    @classmethod\n    def metadata(cls) -> Dict[str, Any]:\n        return get_universal_file_open_metadata(cls)\n\n    def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:\n        params = super().validate_params(params)\n        return params\n\n    def execute(self, **kwargs: Any) -> SuccessResult | ErrorResult:\n        try:\n            return run_open_execute(self, **kwargs)\n        except ValidationError as exc:\n            return ErrorResult(message=str(exc), code=cast(Any, \"VALIDATION_ERROR\"))\n        except Exception\
+  \ as exc:\n            logger.error(\"universal_file_open failed: %s\", exc, exc_info=True)\n            return ErrorResult(message=str(exc), code=cast(Any, \"OPEN_ERROR\"))\n```\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.open_command.UniversalFileOpenCommand
+  expected: Class importable; file under 120 lines.
+status: draft

@@ -1,0 +1,84 @@
+step_id: A-002
+parent_tactical_step: T-008
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: YAML preview scalar persistence SHA
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_universal_yaml_preview_sessions.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-008-universal-file-integration-yaml/README.yaml
+concepts:
+- C-009
+- C-001
+- C-002
+- C-003
+
+mrs_excerpt_this_step_only: >
+  Same PreviewNavigation C-009 specialization as JSON tests: scalar node_ref maps through nearest container or root_view fallback; SHA rebuild changes identifiers when sidecar removed and source edited.
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_universal_yaml_preview_sessions.py
+  expected: Pytest module-only pass under .venv interpreter.
+
+prompt: |-
+  EXECUTOR coder_auto CREATE tests/test_tree_temp_universal_yaml_preview_sessions.py (≤400 lines). Module docstring mirrors JSON preview module but states YAML tree-temp preview coverage. Author Vasiliy Zdanovskiy / email vasilyvz@gmail.com.
+
+  PRE-CODING (no runtime plan imports): determine `BLOCK_ID_KEY` from `tests/test_universal_file_preview_smoke.py`; determine `UniversalFilePreviewCommand.execute` parameter name for node reference by reading `ai_editor/commands/universal_file_preview/preview_command.py`.
+
+  IMPORTS:
+    from __future__ import annotations
+
+    import asyncio
+    import json
+    from pathlib import Path
+    from unittest.mock import MagicMock, patch
+
+    import pytest
+
+    from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+    from ai_editor.commands.base_mcp_command import BaseMCPCommand
+    from ai_editor.commands.universal_file_edit.close_command import UniversalFileCloseCommand
+    from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+    from ai_editor.commands.universal_file_preview.preview_command import (
+        UniversalFilePreviewCommand,
+    )
+
+  MOCK DB helper `_db(tmp: Path)` MagicMock project root.
+
+  CONST `_PID_YAML = "1cedeced-1111-4222-8111-fedba5eba111"`
+
+  REGISTRY CLEAR: `ytb._trees.clear()` for yaml_tree tree_builder each test.
+
+  HYDRATION: write nested file `cluster/cfg/detail.yaml` UTF-8 literal:
+      svc:
+        env: prod
+      tag: go
+      # fin
+
+  Path sidecar expect `tmp/.trees/cluster/cfg/detail.yaml.tree`.
+
+  Root scalar file `solo.yaml` content EXACT `false\n` (YAML boolean false) for boolean-root scenario.
+
+  POINTER WALKER reuse JSON pointer strings (`/svc`, `/svc/env`, ``) identical to JSON module because bridging layer stores JSON-shaped document.
+
+  TESTS (function names must include yaml prefix):
+    test_yaml_scalar_node_ref_matches_container_preview_set
+    test_yaml_root_scalar_matches_absent_node_ref
+    test_yaml_sidecar_regenerates_stable_id_after_external_edit_with_sidecar_removed
+    test_yaml_stable_id_stable_across_reopen_without_disk_change
+    test_yaml_unknown_node_ref_raises
+
+  Same deterministic preview scenarios as the JSON integration preview module, with YAML-specific cleanup and optional PyYAML parse for auxiliary assertions (not required core).
+
+  FAILURE unknown ref uses uuid `00000000-0000-4000-8000-00000000ffff`; expect `ErrorResult`.
+
+  QUALITY GATE `python -m black|flake8|pytest -q|mypy` on module path.

@@ -1,0 +1,20 @@
+step_id: T-003
+parent_global_step: G-010
+name: Lock contention и broken session
+description: 'Тесты: вторая CA session не может open тот же файл (mock lock error) — C-022 п.5; broken session отклоняет edit, close очищает workspace — C-015, C-022.
+
+  '
+concepts:
+- C-015
+- C-022
+inputs:
+- name: lock_error_fixture
+  type: object
+  description: Mock отказ второй сессии.
+outputs:
+- name: policy_tests_green
+  type: boolean
+  description: Contention и broken session покрыты.
+atomic_steps:
+- A-001
+status: ready_for_review

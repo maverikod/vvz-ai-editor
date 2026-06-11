@@ -1,0 +1,541 @@
+meta:
+  plan_name: ai-editor-thin-server
+  source_spec: source_spec.md
+  status: ready_for_review
+  concept_count: 25
+concepts:
+- concept_id: C-001
+  name: AI Editor Server
+  definition: >
+    Отдельный MCP-сервер, единственная задача которого — безопасный цикл
+    редактирования файлов проекта с опорой на Code Analysis Server.
+  properties:
+  - не хранит каталог проектов и не ведёт БД проектов/файлов
+  - не индексирует код и не выполняет поиск
+  - владеет каталогами сессий на диске редактора и оркестрацией workflow
+  - экспонирует единый набор MCP-команд universal_file_*
+  source_ranges:
+  - start: 5
+    end: 5
+  - start: 15
+    end: 15
+- concept_id: C-002
+  name: Code Analysis Server
+  definition: >
+    Upstream-сервер: реестр проектов, client_sessions, session_file_locks,
+    chunked transfer; session_open_file/close_file = lock/unlock.
+  properties:
+  - единственный источник истины для блокировок и содержимого на диске проекта
+  - session_id создаёт и удаляет агент на СА (session_create/delete)
+  - редактор вызывает только C-023 через Upstream Client, не как MCP редактора
+  - доступ к ресурсам сессии — только при совпадении session_id
+  source_ranges:
+  - start: 9
+    end: 9
+  - start: 13
+    end: 13
+- concept_id: C-003
+  name: Agent Model
+  definition: >
+    Модель-агент, управляющая жизненным циклом сессии СА и последовательностью
+    вызовов команд редактора и СА.
+  properties:
+  - создаёт и закрывает сессию на СА
+  - передаёт session_id во все команды редактора
+  - решает о write/close
+  source_ranges:
+  - start: 7
+    end: 7
+  - start: 17
+    end: 17
+  - start: 21
+    end: 21
+- concept_id: C-004
+  name: CA Session
+  definition: >
+    Клиентская сессия Code Analysis Server, идентифицируемая session_id,
+    обязательный контекст любой работы редактора с файлами.
+  properties:
+  - идентификатор задаётся СА и передаётся агентом
+  - единственный session_id в universal_file_*; отдельный editor group UUID запрещён
+  - одна сессия может удерживать несколько открытых файлов
+  - валидность проверяется на СА перед командами редактора
+  source_ranges:
+  - start: 21
+    end: 21
+  - start: 31
+    end: 31
+  - start: 15
+    end: 15
+  - start: 13
+    end: 13
+- concept_id: C-005
+  name: Editor Session Directory
+  definition: >
+    Каталог на диске редактора workspace_root/session_id, создаваемый под
+    одну сессию СА; корень всех локальных артефактов сессии.
+  properties:
+  - имя каталога равно session_id СА
+  - создаётся при первом открытии файла в сессии
+  - удаляется целиком, когда в сессии не осталось открытых файлов
+  - все пути сессии — только внутри этого каталога и подкаталогов
+  source_ranges:
+  - start: 15
+    end: 15
+  - start: 23
+    end: 25
+  - start: 47
+    end: 47
+  - start: 37
+    end: 37
+- concept_id: C-006
+  name: File Subtree
+  definition: >
+    Поддерево каталога сессии для одного открытого файла, привязанное к
+    паре project_id и file_path.
+  properties:
+  - выделяется внутри Editor Session Directory
+  - содержит Origin Snapshot и Edit Subdirectory
+  - уникально в рамках одной CA Session на file_path
+  source_ranges:
+  - start: 27
+    end: 29
+- concept_id: C-007
+  name: Origin Snapshot
+  definition: >
+    Локальная копия файла, полученная с СА при open; неизменна на стадии edit;
+    обновляется только после успешного write на СА.
+  properties:
+  - хранится в File Subtree внутри Editor Session Directory
+  - служит baseline для сравнения на write
+  - не обновляется при edit
+  source_ranges:
+  - start: 27
+    end: 27
+  - start: 37
+    end: 37
+  - start: 39
+    end: 39
+  - start: 41
+    end: 41
+  - start: 43
+    end: 43
+- concept_id: C-008
+  name: Edit Subdirectory
+  definition: >
+    Подкаталог File Subtree с рабочей копией для правок (draft/CST/tree-temp).
+  properties:
+  - создаётся при open по существующей схеме редактирования
+  - единственная цель мутаций на стадии edit
+  - удаляется при успешном close
+  source_ranges:
+  - start: 27
+    end: 27
+  - start: 35
+    end: 37
+  - start: 47
+    end: 47
+- concept_id: C-009
+  name: File Workflow
+  definition: >
+    Обязательный четырёхстадийный цикл open → edit → write → close для одного
+    файла в контексте CA Session.
+  properties:
+  - реализуется командами universal_file_open/edit/write/close
+  - блокировка и разблокировка — через СА
+  - локальные артефакты — только в Editor Session Directory
+  source_ranges:
+  - start: 33
+    end: 47
+- concept_id: C-010
+  name: Open Stage
+  definition: >
+    Стадия загрузки файла с СА с блокировкой, сохранения Origin Snapshot и
+    создания Edit Subdirectory; ветка create=true через upload на СА.
+  properties:
+  - создаёт Editor Session Directory при первом файле
+  - вызывает API СА для download с lock или upload+lock при create=true
+  - Session Guard перед open
+  - не пишет в дерево проекта СА напрямую
+  source_ranges:
+  - start: 35
+    end: 40
+- concept_id: C-011
+  name: Edit Stage
+  definition: >
+    Стадия применения мутаций только к содержимому Edit Subdirectory;
+    preview — read-only просмотр без изменения origin.
+  properties:
+  - допускает universal_file_preview как read-only внутри открытой рабочей копии
+  - допускает одноразовое чтение с СА без удержания блокировки как режим preview
+  - одна команда preview без дублирования session_view
+  - Origin Snapshot не изменяется
+  - может использовать внутренний CST/draft-движок
+  source_ranges:
+  - start: 41
+    end: 41
+  - start: 67
+    end: 67
+- concept_id: C-012
+  name: Write Stage
+  definition: >
+    Стадия сравнения Origin Snapshot с Edit Subdirectory и условной отправки
+    на СА; write_mode=preview — локальный diff без upload.
+  properties:
+  - сравнение — format-specific export (sidecar, tree-temp, text) vs origin bytes
+  - write_mode preview — локальный diff; commit — compare-and-upload
+  - in-session lockfile не gate для RPC к СА
+  - при равенстве содержимого — успешный no-op без вызова СА
+  - при отличии — upload на СА
+  - при успехе СА — перезапись Origin Snapshot
+  - при ошибке СА — состояние локальных копий не меняется
+  source_ranges:
+  - start: 43
+    end: 45
+- concept_id: C-013
+  name: Close Stage
+  definition: >
+    Стадия разблокировки файла на СА и удаления File Subtree.
+  properties:
+  - вызывает API СА для unlock
+  - при успехе удаляет Edit Subdirectory и Origin Snapshot
+  - удаляет Editor Session Directory при закрытии последнего файла
+  source_ranges:
+  - start: 47
+    end: 47
+- concept_id: C-014
+  name: Session Validation
+  definition: >
+    Проверка session_id на СА через Session Guard и touch
+    (session_list_file_locks).
+  properties:
+  - единая точка входа — C-024 Session Guard
+  - обязательна перед universal_file_open/edit/preview
+  - SESSION_NOT_FOUND при отсутствии сессии
+  - не использует session_view
+  - только через Upstream Client
+  source_ranges:
+  - start: 13
+    end: 13
+  - start: 51
+    end: 51
+  - start: 65
+    end: 65
+- concept_id: C-015
+  name: Broken Session Policy
+  definition: >
+    Правила поведения редактора, когда сессия на СА отсутствует или
+    невалидна.
+  properties:
+  - запрещает open/edit/preview нового файла
+  - допускает write и close как завершающие операции
+  source_ranges:
+  - start: 55
+    end: 55
+- concept_id: C-016
+  name: MCP Workflow Surface
+  definition: >
+    Единственный публичный MCP-контракт редактора для файлового workflow
+    и health.
+  properties:
+  - universal_file_open, edit, write, close, preview
+  - health только; queue_health не регистрируется
+  - дублирующие семейства команд запрещены
+  - вызовы СА не экспонируются модели отдельно
+  source_ranges:
+  - start: 61
+    end: 61
+  - start: 63
+    end: 63
+- concept_id: C-017
+  name: Upstream Client
+  definition: >
+    Внутренний клиент редактора к Code Analysis Server (JSON-RPC / MCP Proxy).
+  properties:
+  - конфигурация host/port/TLS/timeout и server_id в конфиге редактора
+  - секреты не хранятся в git
+  - вызывает только контракт C-023; не регистрируется как MCP редактора
+  - session_open_file и session_close_file на СА — lock/unlock, не editor workflow
+  - единственный путь изменения блокировок и содержимого файлов на СА
+  - get_project_root не используется в file workflow
+  - прямой SQL и файловый доступ к дереву проекта СА запрещены
+  source_ranges:
+  - start: 9
+    end: 9
+  - start: 63
+    end: 63
+  - start: 65
+    end: 65
+  - start: 77
+    end: 77
+  - start: 79
+    end: 79
+- concept_id: C-023
+  name: CA API Contract
+  definition: >
+    Минимальный набор команд СА, вызываемых только из Upstream Client;
+    не экспонируется на MCP редактора.
+  properties:
+  - session_create и session_delete — агент на СА, вне редактора
+  - валидация — touch через session_list_file_locks или эквивалент
+  - блокировка — session_open_file(session_id, project_id, file_id)
+  - разблокировка — session_close_file(...)
+  - передача байтов — download_begin, upload_save; download_without_lock для preview
+  - create=true — upload_save затем lock
+  - метаданные — list_project_files, list_projects (internal only)
+  - session_view и subordinate_session_* не входят в контракт
+  - get_project_root не используется в file workflow
+  - доступ к ресурсам сессии только при совпадении session_id с владельцем на СА
+  source_ranges:
+  - start: 13
+    end: 13
+  - start: 39
+    end: 39
+  - start: 65
+    end: 65
+- concept_id: C-018
+  name: Workspace Root Configuration
+  definition: >
+    Настраиваемый корень workspace_root на стороне редактора для каталогов
+    сессий; персистентен в Docker/Debian.
+  properties:
+  - путь workspace_root/session_id для каждой CA Session
+  - монтируется в контейнере вместе с логами и конфигурацией
+  - не смешивается с деревом проекта СА
+  - локальные каталоги сессий эфемерны относительно рестарта редактора
+  - блокировки и состояние сессий переживают рестарт только на СА
+  source_ranges:
+  - start: 23
+    end: 25
+  - start: 85
+    end: 85
+- concept_id: C-019
+  name: Internal Edit Engine
+  definition: >
+    Внутренний движок редактирования (CST, format groups, draft, tree-temp,
+    sidecar), не регистрируемый отдельными MCP-командами.
+  properties:
+  - вызывается только из universal_file_edit и preview
+  - 'INVARIANT: артефакты редактирования (sidecar, tree-temp, in-session lockfile для preview) размещаются относительно подкаталога редактирования в файловом поддереве сессии, а не относительно канонического пути проекта на диске upstream-сервера'
+  - 'BEHAVIOR: переиспользует существующую внутреннюю инфраструктуру редактирования редактора (управление сессией правок, группы форматов экспорта, поддержка временных деревьев при open) без регистрации отдельных MCP-команд'
+  - работает внутри Edit Subdirectory
+  source_ranges:
+  - start: 27
+    end: 29
+  - start: 73
+    end: 73
+- concept_id: C-024
+  name: Session Guard
+  definition: >
+    Внутренняя сущность: единая проверка session_id и политика normal vs
+    terminating операций (C-014, C-015).
+  properties:
+  - normal — open, edit, preview; reject при NOT_FOUND
+  - terminating — write, close; allow с best-effort при NOT_FOUND
+  - write при NOT_FOUND — upload attempt, ошибка СА, draft сохраняется
+  - zombie cleanup делегирует C-025 Workspace Session Cleanup
+  - не экспонируется как MCP
+  source_ranges:
+  - start: 51
+    end: 53
+- concept_id: C-025
+  name: Workspace Session Cleanup
+  definition: >
+    Удаление зомби-каталога сессии и связанных метаданных при подтверждённом
+    отсутствии сессии на СА.
+  properties:
+  - rmtree Editor Session Directory
+  - очистка session bundle registry
+  - вызывается из Session Guard / close при NOT_FOUND
+  source_ranges:
+  - start: 57
+    end: 57
+- concept_id: C-020
+  name: Legacy Removal Scope
+  definition: >
+    Объём устаревшего кода и MCP-команд, подлежащих удалению как не
+    обслуживающих thin workflow.
+  properties:
+  - локальная БД проектов, воркеры, поиск, анализ как MCP
+  - session_*, subordinate_session_*, project_file_transfer_* как публичный API
+  - editor group UUID в universal_file_*
+  - дублирующие client facades
+  source_ranges:
+  - start: 71
+    end: 71
+  - start: 87
+    end: 87
+- concept_id: C-021
+  name: Editor Scope Boundaries
+  definition: >
+    Явные границы ответственности редактора относительно Code Analysis Server.
+  properties:
+  - редактор не заменяет СА для создания проектов
+  - редактор не выполняет полнотекстовый и семантический поиск
+  - редактор не экспонирует cst_* и комплексный анализ СА
+  - редактор не управляет очередями фоновых задач СА
+  source_ranges:
+  - start: 83
+    end: 83
+- concept_id: C-022
+  name: Product Acceptance Criteria
+  definition: >
+    Набор продуктовых критериев готовности thin AI Editor Server после
+    выполнения плана.
+  properties:
+  - 'verification-only invariant: продуктовый чеклист приёмки (source_spec.md L91); не описывает runtime-поведение редактора — критерии проверяются acceptance-тестами после реализации плана'
+  - все файлы сессии только под workspace_root/session_id
+  - open загружает с СА и создаёт подкаталог редактирования
+  - write без изменений — no-op без вызова СА
+  - write с изменениями — upload и обновление origin при успехе
+  - close снимает блокировку на СА и удаляет поддерево файла
+  - конкуренция блокировок между CA sessions
+  - help без дублирующих семейств команд
+  source_ranges:
+  - start: 91
+    end: 91
+relations:
+- from_concept: C-001
+  to_concept: C-002
+  type: depends_on
+- from_concept: C-001
+  to_concept: C-005
+  type: owns
+- from_concept: C-001
+  to_concept: C-009
+  type: implements
+- from_concept: C-001
+  to_concept: C-016
+  type: owns
+- from_concept: C-001
+  to_concept: C-017
+  type: uses
+- from_concept: C-001
+  to_concept: C-018
+  type: depends_on
+- from_concept: C-001
+  to_concept: C-019
+  type: uses
+- from_concept: C-003
+  to_concept: C-004
+  type: owns
+- from_concept: C-004
+  to_concept: C-005
+  type: produces
+- from_concept: C-005
+  to_concept: C-006
+  type: owns
+- from_concept: C-006
+  to_concept: C-007
+  type: owns
+- from_concept: C-006
+  to_concept: C-008
+  type: owns
+- from_concept: C-009
+  to_concept: C-010
+  type: owns
+- from_concept: C-009
+  to_concept: C-011
+  type: owns
+- from_concept: C-009
+  to_concept: C-012
+  type: owns
+- from_concept: C-009
+  to_concept: C-013
+  type: owns
+- from_concept: C-010
+  to_concept: C-007
+  type: produces
+- from_concept: C-010
+  to_concept: C-008
+  type: produces
+- from_concept: C-010
+  to_concept: C-017
+  type: uses
+- from_concept: C-011
+  to_concept: C-008
+  type: consumes
+- from_concept: C-011
+  to_concept: C-019
+  type: uses
+- from_concept: C-012
+  to_concept: C-007
+  type: consumes
+- from_concept: C-012
+  to_concept: C-008
+  type: consumes
+- from_concept: C-012
+  to_concept: C-017
+  type: uses
+- from_concept: C-013
+  to_concept: C-006
+  type: consumes
+- from_concept: C-013
+  to_concept: C-017
+  type: uses
+- from_concept: C-014
+  to_concept: C-004
+  type: consumes
+- from_concept: C-014
+  to_concept: C-017
+  type: uses
+- from_concept: C-014
+  to_concept: C-024
+  type: consumes
+- from_concept: C-024
+  to_concept: C-004
+  type: consumes
+- from_concept: C-024
+  to_concept: C-017
+  type: uses
+- from_concept: C-024
+  to_concept: C-015
+  type: implements
+- from_concept: C-015
+  to_concept: C-005
+  type: consumes
+- from_concept: C-015
+  to_concept: C-025
+  type: uses
+- from_concept: C-025
+  to_concept: C-005
+  type: consumes
+- from_concept: C-001
+  to_concept: C-024
+  type: owns
+- from_concept: C-017
+  to_concept: C-002
+  type: depends_on
+- from_concept: C-017
+  to_concept: C-023
+  type: consumes
+- from_concept: C-002
+  to_concept: C-023
+  type: owns
+- from_concept: C-010
+  to_concept: C-023
+  type: uses
+- from_concept: C-013
+  to_concept: C-023
+  type: uses
+- from_concept: C-014
+  to_concept: C-023
+  type: uses
+- from_concept: C-018
+  to_concept: C-005
+  type: produces
+- from_concept: C-016
+  to_concept: C-009
+  type: implements
+- from_concept: C-020
+  to_concept: C-016
+  type: depends_on
+- from_concept: C-001
+  to_concept: C-020
+  type: owns
+- from_concept: C-001
+  to_concept: C-021
+  type: depends_on
+- from_concept: C-022
+  to_concept: C-009
+  type: consumes

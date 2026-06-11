@@ -1,0 +1,95 @@
+step_id: A-002
+parent_tactical_step: T-007
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: JSON preview scalar focus persistence SHA
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_universal_json_preview_sessions.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-007-universal-file-integration-json/README.yaml
+concepts:
+- C-009
+- C-001
+- C-002
+- C-003
+
+mrs_excerpt_this_step_only: >
+  PreviewNavigation C-009; scalar_node_ref_effective_focus climbs to nearest object/array ancestor and lists its ordered children; if no ancestor, root_view. Cross-session validity of Sidecar-backed stable ids when unchanged; digest mismatch without active session prioritises source rebuild yielding new identifiers.
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_universal_json_preview_sessions.py
+  expected: pytest success for this module only with .venv
+
+prompt: |-
+  EXECUTOR coder_auto CREATE tests/test_tree_temp_universal_json_preview_sessions.py (≤400 lines). Docstring Author Vasiliy Zdanovskiy vasilyvz@gmail.com.
+
+  BEFORE CODING STEPS FOR THE CODER (no runtime import of planning docs): (1) Open `tests/test_universal_file_preview_smoke.py` locating how Json tree-temp previews format block dictionaries; define module-level constant `BLOCK_ID_KEY` set to whichever key carries the identifier string returned to clients (`node_ref`, `stable_id`, etc.—single assignment after inspection). (2) Open `ai_editor/commands/universal_file_preview/preview_command.py` `UniversalFilePreviewCommand.execute` signature; record literal kwargs order used in tests referencing optional preview node parameter exact name (`node_ref` etc.).
+
+  IMPORT CLUSTER:
+    from __future__ import annotations
+
+    import asyncio
+    import json
+    from pathlib import Path
+    from typing import Any, Iterable
+    from unittest.mock import MagicMock, patch
+
+    import pytest
+
+    from mcp_proxy_adapter.commands.result import SuccessResult
+
+    from ai_editor.commands.base_mcp_command import BaseMCPCommand
+    from ai_editor.commands.universal_file_edit.close_command import UniversalFileCloseCommand
+    from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+    from ai_editor.commands.universal_file_preview.preview_command import (
+        UniversalFilePreviewCommand,
+    )
+
+  MOCK DB helper `_db(tmp: Path)` returns MagicMock where `.get_project` returns MagicMock(root_path=str(tmp)).
+
+  PROJECT UUID constant `_PID = "baddbadd-badd-4badd-badd-baddbaddbadd"` shared across previews/opens.
+
+  PURGE registries `(json_tree)._trees.clear()` before each testcase.
+
+  ASYNC tests `@pytest.mark.asyncio`.
+
+  SIDE HYDRATION PATTERN universal_file_open then immediate universal_file_close (no edits) AFTER writing baseline JSON ensures `.trees/<rel>.tree` exists before preview-only scenarios.
+
+  PREVIEW HELPERS synchronous wrappers allowed via `await UniversalFilePreviewCommand().execute(...)`.
+
+  Extract block id set helper `_ids(blocks_iterable)` reading key `BLOCK_ID_KEY`.
+
+  Tree walking helper `_find_stable_by_path(sidecar_payload: dict, json_pointer: str) -> str` manually navigates simplified assumption: ONLY needs pointers `/svc` object, `/svc/env` scalar string `'prod'` for nested doc and root boolean file — implement pointer split logic sufficient for fixtures (no generalized library required).
+
+  FIXTURE DOCUMENT A relative `cfg/detail.json` text:
+      {"svc":{"env":"prod"},"tag":"go"}
+
+  FLOW test_scalar_stable_id_resolves_container_children_matching_parent_preview — numbered:
+    1. Write file under tmp respecting nested dirs.
+    2. Patch `_open_database_from_config`; await open Success -> session id; await close Success.
+    3. Parse sidecar json at tmp/.trees/cfg/detail.json.tree.
+    4. Identify `svc_uuid=_find_stable_by_path(payload,'/svc')` MUST raise if missing.
+    5. Identify `scalar_uuid=_find_stable_by_path(payload,'/svc/env')`.
+    6. `preview_parent = await previewexecute(file_path relative, node_ref=svc_uuid)` Success blocks ids set P.
+    7. `preview_scalar = await previewexecute(... node_ref=scalar_uuid)` ids set S.
+    8. Assert sets P == S (unordered). Also assert nonempty.
+
+  SECOND TEST test_root_scalar_json_preview_equivalent_without_ref — File `solo.json` text `false` sans extra whitespace? use `false\n`; hydrate open/close; sidecar walker obtains boolean root node's stable id root_uuid (pointer empty string \"\" mapping to sole root primitive). previews with omit parameter vs node_ref root_uuid MUST yield identical id sets compared sorted lists equal.
+
+  THIRD TEST test_rescan_after_external_edit_and_removed_sidecar_generates_new_uuid — Start doc same fixture A capturing old_scalar uuid `/svc/env`. Close sessions cleanly. Delete sidecar `.trees/cfg/detail.json.tree`. Rewrite source JSON altering `prod`→`staging`. Run open hydration close again. Extract new uuid news; assert news != old_scalar.
+
+  FOURTH TEST test_stable_id_persists_across_sessions_without_disk_change — After third test rewind? Instead standalone fresh tmp: two successive open-close cycles WITHOUT mutation nor deleting sidecar; capture uuid intermediate; reopen third time verifying uuid unchanged (equality).
+
+  FAILURE ERROR TEST — optional small `test_unknown_node_ref_errors` invoking preview with `'00000000-0000-4000-8000-00000000ffff'` expects Error variant (type `ErrorResult`) with non-empty `.code`; assert `'UNKNOWN'` substring OR `'INPUT'` substring whichever matches implementation after reading errors definitions.
+
+  QUALITY GATE black flake8 pytest q mypy.
+
+  FORBIDDEN editing production modules; forbids reading unrelated secret files.

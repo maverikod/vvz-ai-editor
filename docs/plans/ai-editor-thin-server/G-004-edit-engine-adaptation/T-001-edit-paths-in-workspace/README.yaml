@@ -1,0 +1,22 @@
+step_id: T-001
+parent_global_step: G-004
+name: Edit command в workspace
+description: 'Адаптировать контракт команд Edit Stage (C-011): чтение и мутация выполняются только над рабочей копией внутри Edit Subdirectory (C-008) в пределах File Subtree; привязка путей рабочей копии указывает на workspace, а не на дерево проекта upstream-сервера. Origin Snapshot (C-007) не изменяется. Internal Edit Engine (C-019) сохраняет семантику операций без изменений.
+
+  '
+concepts:
+- C-007
+- C-008
+- C-011
+- C-019
+inputs:
+- name: edit_params
+  type: object
+  description: CA Session identifier, file_path, пакет операций edit.
+outputs:
+- name: edit_result
+  type: object
+  description: Результат мутаций рабочей копии внутри Edit Subdirectory.
+atomic_steps:
+- A-001
+status: ready_for_review

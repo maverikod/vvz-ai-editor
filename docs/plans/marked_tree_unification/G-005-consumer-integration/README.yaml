@@ -1,0 +1,42 @@
+step_id: G-005
+name: Consumer Integration
+description: 'Integrates TreeLifecycle into the three existing consumers. GrepConsumer
+  (C-020) routes all tree-validity checks through TreeLifecycle; on checksum mismatch
+  it rebuilds the TreeFile before binding a disk-scan match to a short_id via
+  TreeLifecycle; a rebuild failure yields an ineligible Finding rather than a structural
+  error. GrepConsumer owns {g001} only. Watcher calls the TreeLifecycle path wrapper
+  before inserting or updating a file record, and persists the computed source checksum
+  in the database alongside the file row via an idempotent schema extension that
+  requires no migration. Indexer replaces its modification-time-based skip guard with
+  a checksum-based guard: if the current source checksum matches the stored value the
+  file is not reindexed; if they differ, reindexing proceeds. SearchSessionFinding
+  (C-026) does not carry source file mtime; ranking uses relevance score with a
+  deterministic result_id tie-break ({g004}).'
+concepts:
+- C-020
+- C-021
+- C-022
+- C-026
+depends_on:
+- G-001
+- G-002
+relations:
+- from_concept: C-020
+  to_concept: C-010
+  type: uses
+- from_concept: C-021
+  to_concept: C-010
+  type: uses
+- from_concept: C-022
+  to_concept: C-006
+  type: uses
+source_labels:
+- '{g001}'
+- '{g002}'
+- '{g003}'
+- '{g004}'
+status: ready_for_review
+tactical_steps:
+- T-001
+- T-002
+- T-003

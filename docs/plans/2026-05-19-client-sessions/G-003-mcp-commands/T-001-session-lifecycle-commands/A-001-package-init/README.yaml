@@ -1,0 +1,20 @@
+concepts:
+- C-005
+depends_on: []
+name: Create sessions command package __init__.py
+operation: create_file
+parent_tactical_step: T-001
+priority: 1
+prompt: "Create a new Python file at the exact path:\n  ai_editor/commands/sessions/__init__.py\n\
+  \nThis file is new with no pre-existing content.\n\nFile content (exact):\n\"\"\"\
+  \nSession management MCP commands package.\n\nAuthor: Vasiliy Zdanovskiy\nemail:
+  vasilyvz@gmail.com\n\"\"\"\n\nConstraints:\n- File must not exceed 10 lines.\n-
+  Only the module docstring shown above. No imports, no exports."
+status: done
+step_id: A-001
+target_file: ai_editor/commands/sessions/__init__.py
+verification:
+  expected: "The file is importable as a package: python -c 'import ai_editor.commands.sessions'
+    succeeds without error."
+  target: ai_editor/commands/sessions/__init__.py
+  type: import

@@ -1,0 +1,56 @@
+plan: marked_tree_unification
+global_step: G-003
+name: Edit Session and Session Git API
+cross_ts_execution_waves:
+  wave_1:
+    description: Marker cycle foundation (T-001/A-004)
+    steps:
+      - T-001/A-004
+  wave_2:
+    description: Core entities — EditSession and SessionRepo modules (parallel files)
+    parallel: true
+    steps:
+      - T-001/A-001
+      - T-002/A-001
+      - T-002/A-004
+    requires:
+      - T-001/A-004
+  wave_3:
+    description: Package __init__ exports (independent files; not edit_session.py)
+    parallel: true
+    steps:
+      - T-001/A-002
+      - T-002/A-002
+    requires:
+      - T-001/A-001
+      - T-002/A-001
+  wave_4:
+    description: Active-session registry on EditSession (single-file modify)
+    steps:
+      - T-001/A-003
+    requires:
+      - T-001/A-001
+  wave_5:
+    description: SessionRepo wiring into EditSession (same file; after registry)
+    steps:
+      - T-002/A-003
+    requires:
+      - T-001/A-003
+      - T-002/A-001
+  wave_6:
+    description: SessionGitApi MCP commands (five independent command files)
+    parallel: true
+    steps:
+      - T-003/A-001
+      - T-003/A-002
+      - T-003/A-003
+      - T-003/A-004
+      - T-003/A-005
+    requires:
+      - T-002/A-003
+  wave_7:
+    description: session_write two-stage external copy-out MCP command
+    steps:
+      - T-004/A-001
+    requires:
+      - T-001/A-003

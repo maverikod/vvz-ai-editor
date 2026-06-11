@@ -1,0 +1,40 @@
+step_id: T-003
+parent_global_step: G-003
+name: Несколько файлов в одной CA Session
+description: 'Расширить workflow для N>1 файлов под одним ca_session_id (инвариант {8b1h}). Базовая оркестрация первого файла выполняется потоком open-orchestration; этот шаг добавляет повторный universal_file_open (C-016) с тем же session_id и другим file_path: дополнительный File Subtree (C-006) в существующем Editor Session Directory (C-005) без пересоздания каталога сессии. Предпосылка: bundle registry и индекс (project_id, file_path) → ca_session_id уже созданы на этапе инициализации bundle registry; этот шаг только использует реестр (C-004), не создаёт его. При нескольких открытых файлах universal_file_edit, universal_file_write и universal_file_close требуют явный file_path; иначе — ошибка неоднозначности (C-009). Блокировка на СА через Upstream Client (C-017) — только при repeat-open в рамках Open Stage (C-010); per-file unlock при close (C-017 через Upstream Client) — в scope оркестрации close и guard terminating-close; этот шаг не реализует unlock на close. При multi-file close ответ включает closed_file_path, remaining_open_files, session_retained без вызова upstream unlock.
+
+  '
+concepts:
+- C-004
+- C-005
+- C-006
+- C-009
+- C-010
+- C-016
+- C-017
+inputs:
+- name: ca_session_id
+  type: string
+  description: Валидная CA Session (C-004) с уже открытым хотя бы одним файлом через поток open-orchestration.
+- name: project_id
+  type: string
+  description: Идентификатор проекта на СА.
+- name: additional_file_path
+  type: string
+  description: Новый file_path, отличный от уже открытых в этой сессии.
+- name: create
+  type: boolean
+  description: Опционально; при true — ветка create=true Open Stage (C-010) для нового файла на СА.
+outputs:
+- name: multi_file_bundle
+  type: object
+  description: Bundle CA Session с N File Subtree (C-006) под одним session_dir (C-005); список открытых file_path и локальных путей origin/edit по каждому файлу. При close в multi-file режиме — также closed_file_path, remaining_open_files, session_retained (без upstream unlock).
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+status: ready_for_review

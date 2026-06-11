@@ -1,0 +1,59 @@
+step_id: T-003
+parent_global_step: G-003
+name: SessionGitApi Commands
+description: 'Define the SessionGitApi entity (C-014) as the set of session-scoped
+  MCP commands that expose the SessionRepo (C-013) for history inspection, comparison,
+  content retrieval, status check, and rollback. Define session_git_log, session_git_diff,
+  session_git_show, session_git_status, and session_git_revert. session_git_diff supports
+  two modes — tree mode (commit versus commit, tree-level comparison of three-section
+  tree artefacts) and source mode (tree revision rev_a versus the most recent per-mutation
+  unmark-exported in-session source copy; the live project SourceFile on disk is NOT an
+  input to source mode per MRS C-014). session_git_revert rolls the tree back to a prior
+  revision by creating a new revert commit, not by destructive reset. Establish that
+  session_id is required on every SessionGitApi command and each command refuses to execute
+  without an active EditSession; there is no sessionless git access. Session git commands
+  inspect committed tree and source artefacts; they do not expose UUID4 or accept UUID
+  node references — external node addressing remains (file path, short_id) in preview and
+  edit APIs per {n003}. Write-stage external diff against live files is owned by the
+  session-scoped write command entity (two-stage session_write boundary per {d004}/{n7k2}),
+  not session_git_diff ({e003} scope).'
+concepts:
+- C-014
+- C-013
+- C-012
+source_labels:
+- '{e001}'
+- '{e002}'
+- '{e003}'
+- '{e004}'
+- '{e005}'
+- '{e006}'
+inputs:
+- name: SessionRepo entity definition
+  type: domain entity definition (C-013)
+  description: The repository that all SessionGitApi commands operate on; must be
+    active (session open) for any command to execute.
+- name: EditSession entity definition
+  type: domain entity definition (C-012)
+  description: The owning context that must be active for SessionGitApi commands
+    to accept requests.
+outputs:
+- name: SessionGitApi entity definition
+  type: domain entity definition
+  description: Set of session_git_* MCP commands each requiring session_id; session_git_diff
+    supports tree mode (commit vs commit on three-section tree files) and source mode
+    (tree revision vs most recent per-mutation unmark-exported in-session source);
+    revert creates a new commit rather than destructive reset; no sessionless access;
+    distinct from write-stage external diff (session_write two-stage external copy-out
+    per {d004}).
+- name: Session-required invariant
+  type: domain constraint definition
+  description: session_id is required on every SessionGitApi command; commands refuse
+    without an active EditSession.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+status: ready_for_review

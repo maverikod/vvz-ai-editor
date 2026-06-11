@@ -1,0 +1,24 @@
+step_id: T-002
+parent_global_step: G-004
+name: Preview открытой рабочей копии
+description: 'Адаптировать команду preview MCP Workflow Surface (C-016) для read-only просмотра открытой рабочей копии в Edit Subdirectory (C-008): параметры preview привязываются к bundle открытого файла по CA Session identifier (C-004) и file_path. Session Validation (C-014) обязательна перед чтением. Одна команда preview без использования запрещённого upstream view API. Scope ограничен файлом, уже открытым в editor session; логика одноразового чтения с upstream не входит в этот шаг.
+
+  '
+concepts:
+- C-004
+- C-007
+- C-008
+- C-011
+- C-014
+- C-016
+inputs:
+- name: preview_params
+  type: object
+  description: CA Session identifier, file_path, параметры preview для открытой рабочей копии.
+outputs:
+- name: preview_payload
+  type: object
+  description: Структурированный read-only просмотр рабочей копии без мутации Origin Snapshot.
+atomic_steps:
+- A-001
+status: ready_for_review

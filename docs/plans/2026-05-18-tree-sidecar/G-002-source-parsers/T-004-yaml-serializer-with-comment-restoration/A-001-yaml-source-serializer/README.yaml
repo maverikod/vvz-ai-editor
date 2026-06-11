@@ -1,0 +1,84 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: YAML SourceSerializer module
+target_file: ai_editor/core/tree_temp/yaml_source_serializer.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-004
+- C-006
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/tree_temp/yaml_source_serializer.py
+
+  Prerequisite: TreeNode from ai_editor.core.tree_temp.tree_node (G-001 T-001).
+  Prerequisite: ruamel.yaml declared in project dependencies and installed (`pip install -e .`) before mypy.
+
+  MRS excerpts:
+  C-006 YAML serializer: produces YAML with # comments restored via ruamel.yaml.
+  C-004 same placement semantics as JSON but # comments in YAML.
+
+  Module docstring (exact):
+  """
+  TreeNode to round-trip YAML SourceSerializer with comment restoration (C-006, C-004).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  Imports (exact):
+  from __future__ import annotations
+  from io import StringIO
+  from typing import List
+
+  from ruamel.yaml import YAML
+  from ruamel.yaml.comments import CommentedMap, CommentedSeq
+
+  from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  Public API:
+  def serialize_yaml_source(root_nodes: List[TreeNode]) -> str:
+      """Serialize root TreeNode list to UTF-8 YAML text with comments (C-006).
+
+      Root shape (aligned with source_spec and T-002 parser):
+      - Zero roots: emit YAML flow empty sequence exactly `[]` followed by newline (parses as empty root array).
+      - One root, type object: YAML mapping as document root.
+      - One root, scalar: that scalar as document root (plain YAML scalar).
+      - More than one root: YAML block or flow sequence at document root listing each TreeNode subtree in order
+        (same “expanded root array” convention as JSON parser when the source was a sequence at top level).
+      - Single root with type array: invalid — raise ValueError like JSON serializer.
+
+      Use YAML(typ='rt'); preserve_quotes=True; default_flow_style=False; write to StringIO;
+      return .getvalue() with trailing newline.
+
+      Raises:
+          ValueError: prefix \"Invalid tree for YAML serialization:\" for field/type inconsistencies (same
+          object/array/scalar key/value invariants as T-003 serializer text).
+
+  Implementation requirements (deterministic):
+  1. Implement `_tree_to_commented(node: TreeNode) -> Any` building nested CommentedMap | CommentedSeq | scalar Python values from TreeNode.children and keys; validate TreeNode invariants before building.
+  2. Apply comments: walk the TreeNode tree together with the parallel ruamel structure; for each node set
+     comment_before as line-above / pre-token comments and comment_inline as end-of-line comments using ruamel’s
+     `.ca` cells on CommentedMap and CommentedSeq entries. If a stored comment string already includes `#`, keep it;
+     otherwise prepend `# ` once when ruamel expects comment bodies without the hash.
+  3. Assemble the document root from root_nodes: exactly one CommentedMap when len==1 and type object; exactly one
+     scalar when len==1 and scalar types; CommentedSeq with N entries when len>1; empty CommentedSeq when len==0.
+  4. Dump via `yaml.dump(root, stream)` with stream=StringIO.
+
+  Known limitation (same class as JSON): one top-level YAML sequence element that is a scalar cannot be
+  distinguished from a document that is a bare scalar when both deserialize to a single scalar TreeNode; do not
+  add parameters to serialize_yaml_source.
+
+  Forbidden:
+  - No PyYAML yaml.safe_dump for this serializer.
+  - No Sidecar / EditSession / universal_file_*.
+  - Max 400 lines.
+
+  Validation: black, flake8, mypy after editable install.
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/yaml_source_serializer.py
+  expected: ruamel round-trip dump; serialize_yaml_source exported; linters pass; file at most 400 lines.
+status: done

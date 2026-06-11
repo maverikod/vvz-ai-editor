@@ -1,0 +1,105 @@
+step_id: A-008
+parent_tactical_step: T-002
+name: Create resolved-deferrals registry module (G1-13 closed)
+target_file: ai_editor/tree/tracked_deferrals.py
+operation: create_file
+priority: 1
+depends_on:
+- A-007
+cross_ts_depends_on: []
+status: needs_review
+concepts:
+- C-007
+- C-009
+prompt: |
+  Create the file `ai_editor/tree/tracked_deferrals.py`.
+  Operation: create_file (the file does not exist yet).
+
+  ## Purpose
+
+  Register **historical** deferral G1-13-python-cst-integration as **resolved-in-plan**.
+  Supersedes cross-plan record G2-CORR-001 (not found on disk; Python CST ownership
+  confirmed in marked_tree_unification per decision C1). PythonHandler (A-007)
+  implements full CST integration via cst_tree wrapper — not a stub.
+
+  ## MRS excerpt
+
+  C-007 FormatHandler for Python: real handler in default_registry(); implements
+  parse_content, mark, unmark, sidecar_path.
+
+  ## Required file content
+
+  ```python
+  """
+  Tracked implementation deferrals for the marked-tree package.
+
+  G1-13-python-cst-integration: RESOLVED in marked_tree_unification plan.
+  PythonHandler wraps ai_editor.core.cst_tree (decision A2, C1 supersession).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from typing import Any, Dict, Literal, Optional
+
+  DeferralStatus = Literal["open", "resolved_in_plan", "superseded"]
+
+  TRACKED_DEFERRALS: Dict[str, Dict[str, Any]] = {
+      "G1-13-python-cst-integration": {
+          "deferral_id": "G1-13-python-cst-integration",
+          "status": "resolved_in_plan",
+          "reason": (
+              "PythonHandler CST mark/parse/unmark implemented in "
+              "ai_editor/tree/handlers/python_handler.py via cst_tree wrapper "
+              "(create_tree_from_code + {b005} hybrid markers). "
+              "Supersedes G2-CORR-001 cross-plan deferral record."
+          ),
+          "owner_plan": "marked_tree_unification",
+          "resolution_atomic_step": (
+              "G-001/T-002/A-007-python-handler.yaml"
+          ),
+          "target": "ai_editor.tree.handlers.python_handler.PythonHandler",
+          "methods": ["parse_content", "mark", "unmark", "sidecar_path"],
+          "supersedes": ["G2-CORR-001"],
+      },
+  }
+
+
+  def get_deferral(deferral_id: str) -> Optional[Dict[str, Any]]:
+      return TRACKED_DEFERRALS.get(deferral_id)
+
+
+  def is_deferred(deferral_id: str) -> bool:
+      """Return True only for OPEN deferrals. G1-13 is resolved — returns False."""
+      record = TRACKED_DEFERRALS.get(deferral_id)
+      if record is None:
+          return False
+      return record.get("status") == "open"
+
+
+  def is_resolved(deferral_id: str) -> bool:
+      record = TRACKED_DEFERRALS.get(deferral_id)
+      return record is not None and record.get("status") == "resolved_in_plan"
+  ```
+
+  ## Constraints
+
+  - `owner_plan` MUST be `"marked_tree_unification"` (not None)
+  - `status` MUST be `"resolved_in_plan"` for G1-13 entry
+  - `is_deferred("G1-13-python-cst-integration")` returns **False**
+  - `is_resolved("G1-13-python-cst-integration")` returns **True**
+  - Include `supersedes: ["G2-CORR-001"]` on the record
+  - Do not import python_handler (avoid circular imports)
+
+  ## Estimated line count: ~65 lines
+
+verification:
+  type: import
+  target: ai_editor/tree/tracked_deferrals.py
+  expected: >
+    is_deferred("G1-13-python-cst-integration") is False.
+    is_resolved("G1-13-python-cst-integration") is True.
+    get_deferral returns owner_plan "marked_tree_unification" and status
+    resolved_in_plan. supersedes list contains G2-CORR-001.

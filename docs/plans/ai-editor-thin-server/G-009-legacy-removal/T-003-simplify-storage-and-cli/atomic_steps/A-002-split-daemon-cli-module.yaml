@@ -1,0 +1,19 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Вынести daemon lifecycle из server_manager_cli
+target_file: ai_editor/cli/daemon_cli_commands.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-001
+- C-021
+prompt: "Create `ai_editor/cli/daemon_cli_commands.py` (operation: create_file).\n\n```py\n\"\"\"Daemon lifecycle commands for thin AI Editor Server (C-001, C-021).\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__ import annotations\n\nimport os\nimport signal\nimport subprocess\nimport sys\nfrom pathlib import Path\nfrom typing import List, Optional\n\ndef _resolve_config_path(config_path: Optional[str]) -> Path:\n    if config_path and str(config_path).strip():\n        return Path(config_path).expanduser().resolve()\n    return (Path.cwd() / \"config.json\").resolve()\n\ndef find_daemon_pids(config_path: Optional[str]) -> List[int]:\n    \"\"\"Return PIDs of editor daemon processes for the given config path.\"\"\"\n    cfg = _resolve_config_path(config_path)\n    marker = f\"--config={cfg}\"\n    pids: List[int] = []\n    proc = subprocess.run(\n        [\"ps\", \"-eo\", \"pid,args\"],\n        check=False,\n        capture_output=True,\n        text=True,\n\
+  \    )\n    for line in proc.stdout.splitlines():\n        if \"ai_editor\" in line and marker in line.replace(\" \", \"\"):\n            parts = line.strip().split(None, 1)\n            if parts:\n                try:\n                    pids.append(int(parts[0]))\n                except ValueError:\n                    continue\n    return pids\n\ndef cmd_status(config_path: Optional[str]) -> int:\n    pids = find_daemon_pids(config_path)\n    if pids:\n        print(f\"running pid={pids[0]}\")\n        return 0\n    print(\"stopped\")\n    return 1\n\ndef cmd_stop(config_path: Optional[str]) -> int:\n    for pid in find_daemon_pids(config_path):\n        try:\n            os.kill(pid, signal.SIGTERM)\n        except ProcessLookupError:\n            pass\n    return 0\n\ndef cmd_start(config_path: Optional[str]) -> int:\n    cfg = _resolve_config_path(config_path)\n    if find_daemon_pids(str(cfg)):\n        return 0\n    subprocess.Popen(\n        [\n            sys.executable,\n \
+  \           \"-m\",\n            \"ai_editor.main\",\n            \"--config\",\n            str(cfg),\n        ],\n        cwd=str(cfg.parent),\n        start_new_session=True,\n    )\n    return 0\n\ndef cmd_restart(config_path: Optional[str]) -> int:\n    rc = cmd_stop(config_path)\n    return rc if cmd_start(config_path) != 0 else 0\n```\n\nExports: `cmd_status`, `cmd_start`, `cmd_stop`, `cmd_restart`, `find_daemon_pids`.\n"
+verification:
+  type: import
+  target: ai_editor.cli.daemon_cli_commands
+  expected: Module importable with cmd_* callables.
+status: draft

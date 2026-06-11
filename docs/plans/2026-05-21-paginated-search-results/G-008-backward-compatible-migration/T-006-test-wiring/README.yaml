@@ -1,0 +1,48 @@
+step_id: T-006
+parent_global_step: G-008
+name: tests_required wiring
+description: "Creates pytest modules that implement every tests_required entry from
+  plan README.md.\nUnit tests exercise session block paging (job_id + block_position
+  model), backend\npagination, structural evidence rules, cancel/close lifecycle,
+  and queue routing without\nrecursive auto-queue. MCP tests exercise search_start,
+  search_get_page, search_cancel,\nand server responsiveness through in-process Command.run
+  registration (no live daemon).\nUses job_id and block_position — not README opaque
+  cursor.\n"
+concepts:
+- C-001
+- C-005
+- C-018
+- C-020
+- C-022
+inputs:
+- name: tests_required_list
+  type: plan README tests_required block
+  description: Twelve unit and six MCP test identifiers that define 
+    definition_of_done coverage.
+- name: incremental_compatibility_layer
+  type: IncrementalCompatibilityLayer
+  description: search_start and maybe_route_paginated from the 
+    IncrementalCompatibilityLayer.
+- name: search_session_page_lifecycle_commands
+  type: SearchGetPageCommand
+  description: search_get_page, search_get_status, search_cancel, search_close 
+    lifecycle commands.
+- name: search_session_infrastructure
+  type: SearchSession
+  description: SearchSession, result blocks (C-004), SearchResultIndex (C-027), 
+    and HTTPResultAccess (C-005) infrastructure.
+outputs:
+- name: tests_required_coverage
+  type: pytest modules
+  description: Eight test files under tests/unit/ and tests/mcp/ mapped in 
+    tests_required_coverage.yaml.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+- A-008
+status: ready_for_review

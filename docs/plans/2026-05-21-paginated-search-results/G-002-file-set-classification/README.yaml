@@ -1,0 +1,35 @@
+step_id: G-002
+name: Indexed and dynamic file-set classification
+description: "Defines how the search engine partitions the files in scope into the
+  indexed file set and the dynamic file set before any result is produced. The indexed
+  set is the intersection of database-known files and on-disk files that pass freshness
+  validation; the dynamic set is the difference that must be processed directly from
+  disk or a draft session. Freshness validation by checksum or modification metadata
+  decides membership, and files that are current in the index must not be rescanned
+  directly. Default dynamic scanning is limited to known supported formats. This step
+  defines set membership and freshness only; it does not define tree construction,
+  structural filtering, or result paging.\n"
+concepts:
+- C-012
+- C-013
+- C-014
+relations:
+- from_concept: C-014
+  to_concept: C-012
+  type: produces
+- from_concept: C-014
+  to_concept: C-013
+  type: produces
+source_labels:
+- '{ulzd}'
+- '{5l14}'
+- '{vmo8}'
+- '{jq0g}'
+- '{3454}'
+depends_on:
+- G-001
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: ready_for_review

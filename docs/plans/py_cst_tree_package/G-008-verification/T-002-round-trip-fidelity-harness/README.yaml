@@ -1,0 +1,29 @@
+step_id: T-002
+parent_global_step: G-008
+name: Round-trip Fidelity Harness
+description: Define the round-trip fidelity verification component of the 
+  VerificationHarness entity (C-018). This component exercises two lossless 
+  round-trip invariants. The persistence round trip uses the Serializer (C-010) 
+  — write a Tree, read it back, verify the same structure, same stable_id on 
+  every node, and indexes populated; no stable_id lost, altered, or regenerated.
+  The mutate-nothing fidelity round trip exercises the TextualFidelity invariant
+  (C-015) — parse Python source, convert inbound, apply no mutation, convert 
+  outbound, render; verify the rendered text is identical to a plain LibCST 
+  parse-and-render. Both round trips are verified across varied Python source 
+  inputs.
+concepts:
+- C-018
+- C-010
+- C-015
+inputs:
+- name: Python source text samples
+  type: collection of str
+  description: Varied valid Python source texts used to exercise the fidelity 
+    round trips.
+outputs:
+- name: round-trip fidelity results
+  type: verification report
+  description: Pass or fail verdict for the persistence lossless round trip and 
+    the mutate-nothing textual fidelity round trip.
+atomic_steps: []
+status: draft

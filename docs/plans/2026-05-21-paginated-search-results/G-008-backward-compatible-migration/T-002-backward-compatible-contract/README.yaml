@@ -1,0 +1,30 @@
+step_id: T-002
+parent_global_step: G-008
+name: BackwardCompatibleCommandContract
+description: "Establishes shared pagination schema helpers (search_session_schema.py)
+  that encode\nBackwardCompatibleCommandContract invariants for ExistingSearchCommand
+  surfaces: current\nnon-paginated behavior remains default, optional pagination fields
+  are non-required, and\ncontinuation uses job_id plus block_position (not README
+  opaque cursor). C-023\npreservation rules are enforced in merge_pagination_schema
+  and documented in module\ndocstrings; a separate preservation doc AS is not required
+  because A-001 embeds\ncontract prose in schema helpers and metadata keys.\n"
+concepts:
+- C-021
+- C-023
+inputs:
+- name: existing_behavior_inventory
+  type: ExistingBehaviorInventory
+  description: Catalog distinguishing existing command behavior from new plan 
+    behavior.
+- name: existing_command_schema
+  type: CommandSchema
+  description: Current public input and output schema for a working search 
+    command.
+outputs:
+- name: search_session_schema_helpers
+  type: SearchSessionSchemaHelpers
+  description: merge_pagination_schema and OPTIONAL_PAGINATION_PROPERTIES shared
+    by schema extension steps.
+atomic_steps:
+- A-001
+status: ready_for_review

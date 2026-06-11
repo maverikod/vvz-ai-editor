@@ -1,0 +1,42 @@
+# Global Step G-004 — Persistence
+
+# Level 3 artifact. Conceptual block. Domain objects and operations only.
+step_id: G-004
+name: Persistence
+description: "Establish persistence of the tree object to and from a file in the package's
+  own format. The write operation consumes a tree object and records its full node
+  structure, the stable identity of every node, and the tree's indexes; the recorded
+  form is the package's own serialization, neither source text nor an artifact of
+  the underlying syntax library. The read operation produces a tree object that is
+  identical to the one written: the same structure, the same node categories, the
+  same fields, the same stable identity on every node, and the indexes ready for query
+  without a rebuild pass. A write-then-read round trip is lossless — it alters no
+  stable identity and changes no rendered source text. Because the tree object is
+  written and read repeatedly across a working session and load latency affects every
+  operation that begins from a stored tree, persistence is optimized for fast load
+  and save, and the recorded form keeps the indexes so a loaded tree is immediately
+  queryable. The recorded form is a same-version, trusted-source artifact: it is meant
+  to be read back by the same version of the package from a source the operator trusts,
+  and cross-version migration and the reading of untrusted recorded data are out of
+  scope and not guaranteed safe. This step defines the write operation, the read operation,
+  the lossless round-trip guarantee, the inclusion of indexes in the recorded form,
+  the fast-load-and-save objective, and the same-version trusted-source boundary of
+  the recorded form. It does not define the tree object or index structure themselves,
+  conversion to or from the source syntax tree, mutation, or query."
+concepts:
+- C-010  # Serializer
+relations:
+- C-010 consumes C-004  # write consumes a tree object
+- C-010 produces C-004 # read produces a tree object
+source_labels:
+- '{m6si}'
+- '{6par}'
+- '{dmv8}'
+- '{1ba4}'
+- '{p9sn}'
+depends_on:
+- G-002
+tactical_steps:
+- T-001
+- T-002
+status: draft

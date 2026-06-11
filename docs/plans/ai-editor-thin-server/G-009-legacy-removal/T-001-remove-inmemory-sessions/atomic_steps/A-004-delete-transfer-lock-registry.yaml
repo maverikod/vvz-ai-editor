@@ -1,0 +1,17 @@
+step_id: A-004
+parent_tactical_step: T-001
+name: Удалить transfer_lock_registry
+target_file: ai_editor/core/transfer_lock_registry.py
+operation: delete_file
+priority: 4
+depends_on:
+- A-001
+concepts:
+- C-020
+prompt: |
+  Delete `ai_editor/core/transfer_lock_registry.py`.
+verification:
+  type: static_analysis
+  target: ai_editor/core/transfer_lock_registry.py
+  expected: File absent.
+status: draft

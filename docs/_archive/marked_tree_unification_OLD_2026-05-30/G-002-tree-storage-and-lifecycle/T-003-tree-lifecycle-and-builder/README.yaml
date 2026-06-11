@@ -1,0 +1,56 @@
+step_id: T-003
+parent_global_step: G-002
+name: TreeLifecycle and TreeBuilder
+description: 'Define the TreeBuilder entity (C-011) in ai_editor/core/tree_lifecycle/builder.py
+  and the TreeLifecycle entity (C-010) in ai_editor/core/tree_lifecycle/lifecycle.py.
+  TreeBuilder is the single place that writes TreeFiles on the canonical unified path:
+  it resolves FormatHandler via HandlerRegistry.default_registry().resolve(source_abs),
+  calls FormatHandler.mark(content), and writes marked bytes to FormatHandler.sidecar_path(source_abs).
+  It does NOT call recreate_tree_from_content or TreeFormatKind (legacy parity oracle
+  only, untouched in checksum.py). TreeLifecycle is the single owner and coordinator
+  of tree validity and tree creation; every consumer routes through it. TreeLifecycle
+  owns ChecksumSyncPolicy (C-006, added in T-002) and TreeBuilder (C-011), and provides
+  path-based (from_path → validate_or_recreate_tree_file) and content-based (from_content)
+  entry points. T-004 wires validate_or_recreate_from_content rebuild branches to
+  TreeBuilder.build. Pure checksum helpers remain in checksum.py (T-002 scope); entity
+  wrapper classes live in separate modules to stay within the 400-line file cap.'
+concepts:
+- C-010
+- C-011
+- C-006
+- C-007
+- C-008
+- C-003
+depends_on:
+- T-002
+- G-001
+inputs:
+- name: ChecksumSyncPolicy definition
+  type: domain entity definition (C-006)
+  description: 'T-002 MUST complete first. ChecksumSyncPolicy class must exist in
+    ai_editor/core/tree_lifecycle/checksum.py before T-003 atomic steps run.
+    Cross-TS file-state dependency: T-003 AS prompts assume post-T-002/A-001 checksum.py
+    state (ChecksumSyncPolicy, ShaSyncBranch, ShaSyncDecision present).'
+- name: HandlerRegistry and FormatHandler implementations
+  type: MRS concept definitions (C-008, C-007)
+  description: 'G-001 MUST complete first. default_registry() must register all five
+    handlers including PythonHandler (A-007 cst_tree wrapper, not NotImplementedError
+    stub). TreeBuilder resolves handlers only via HandlerRegistry — never via TreeFormatKind.'
+outputs:
+- name: TreeBuilder entity definition
+  type: domain entity definition
+  description: Component in builder.py that dispatches to FormatHandler and writes
+    TreeFile as sibling; sole writer of TreeFiles; records source checksum after write.
+- name: TreeLifecycle entity definition
+  type: domain entity definition
+  description: Coordinator in lifecycle.py owning ChecksumSyncPolicy and TreeBuilder;
+    all consumers route through it; no ad-hoc validation outside it.
+- name: Package public API
+  type: module re-export surface
+  description: __init__.py re-exports TreeLifecycle, TreeBuilder, ChecksumSyncPolicy,
+    and all checksum/helper functions from the package root.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: needs_review

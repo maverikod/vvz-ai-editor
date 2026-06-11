@@ -1,0 +1,143 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Снять вспомогательные universal_file MCP
+target_file: ai_editor/hooks_register_part2.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-016
+- C-020
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/hooks_register_part2.py` — post session/transfer unregister; no register_file_management_commands block):
+  ```py
+  """
+  Register file-editing commands for AI Editor (preview, open, edit, write, close, sessions).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  import logging
+
+  from mcp_proxy_adapter.commands.command_registry import registry
+
+  logger = logging.getLogger(__name__)
+
+
+  def register_commands_part2(reg: registry) -> None:
+      """Register universal file editing commands."""
+      try:
+          from .commands.universal_file_preview_command import (
+              UniversalFilePreviewCommand,
+          )
+
+          reg.register(UniversalFilePreviewCommand, "custom")
+          logger.info("Registered universal_file_preview command")
+      except ImportError as e:
+          logger.warning("Failed to import universal_file_preview command: %s", e)
+      except Exception as e:
+          logger.error(
+              "Failed to register universal_file_preview command: %s",
+              e,
+              exc_info=True,
+          )
+
+      try:
+          from .commands.universal_file_edit.open_command import UniversalFileOpenCommand
+          from .commands.universal_file_edit.edit_command import UniversalFileEditCommand
+          from .commands.universal_file_edit.write_command import (
+              UniversalFileWriteCommand,
+          )
+          from .commands.universal_file_edit.close_command import (
+              UniversalFileCloseCommand,
+          )
+          from .commands.universal_file_edit.move_nodes_command import (
+              UniversalFileMoveNodesCommand,
+          )
+          from .commands.universal_file_edit.search_command import (
+              UniversalFileSearchCommand,
+          )
+          from .commands.universal_file_edit.session_git_log_command import (
+              SessionGitLogCommand,
+          )
+          from .commands.universal_file_edit.session_git_diff_command import (
+              SessionGitDiffCommand,
+          )
+          from .commands.universal_file_edit.session_git_show_command import (
+              SessionGitShowCommand,
+          )
+          from .commands.universal_file_edit.session_git_status_command import (
+              SessionGitStatusCommand,
+          )
+          from .commands.universal_file_edit.session_git_revert_command import (
+              SessionGitRevertCommand,
+          )
+          from .commands.universal_file_edit.session_redo_command import (
+              SessionRedoCommand,
+          )
+          from .commands.universal_file_edit.session_undo_command import (
+              SessionUndoCommand,
+          )
+          from .commands.universal_file_edit.session_write_command import (
+              SessionWriteCommand,
+          )
+
+          reg.register(UniversalFileOpenCommand, "custom")
+          reg.register(UniversalFileEditCommand, "custom")
+          reg.register(UniversalFileWriteCommand, "custom")
+          reg.register(UniversalFileCloseCommand, "custom")
+          reg.register(UniversalFileMoveNodesCommand, "custom")
+          reg.register(UniversalFileSearchCommand, "custom")
+          reg.register(SessionGitLogCommand, "custom")
+          reg.register(SessionGitDiffCommand, "custom")
+          reg.register(SessionGitShowCommand, "custom")
+          reg.register(SessionGitStatusCommand, "custom")
+          reg.register(SessionGitRevertCommand, "custom")
+          reg.register(SessionUndoCommand, "custom")
+          reg.register(SessionRedoCommand, "custom")
+          reg.register(SessionWriteCommand, "custom")
+          logger.info("Registered universal_file_edit commands")
+      except ImportError as e:
+          logger.warning("Failed to import universal_file_edit commands: %s", e)
+      except Exception as e:
+          logger.error(
+              "Failed to register universal_file_edit commands: %s",
+              e,
+              exc_info=True,
+          )
+  ```
+
+  Modify `ai_editor/hooks_register_part2.py` only.
+
+  Unregister from hooks_register_part2 (remove imports and reg.register for each):
+  - universal_file_move_nodes (UniversalFileMoveNodesCommand)
+  - universal_file_search (UniversalFileSearchCommand)
+  - session_git_* (SessionGitLogCommand, SessionGitDiffCommand, SessionGitShowCommand, SessionGitStatusCommand, SessionGitRevertCommand)
+  - session_undo (SessionUndoCommand), session_redo (SessionRedoCommand)
+  - session_write (SessionWriteCommand)
+
+  Keep registered: universal_file_open, edit, write, close, preview only.
+  health is registered in hooks_register_part1 (not this file); queue_health must not be added here (C-016).
+
+  Remove dead imports for unregistered command classes.
+
+  Update module docstring and register_commands_part2 docstring to describe core universal_file_* workflow only.
+
+  Forbidden:
+  - Do NOT register G-009 commands or alter hooks beyond aux removal.
+  - Do NOT re-add session_*, transfer, or lock registrations.
+
+  Validation (project root, .venv active):
+  - black ai_editor/hooks_register_part2.py
+  - flake8 ai_editor/hooks_register_part2.py
+  - mypy ai_editor/hooks_register_part2.py
+  - python -c "from ai_editor.hooks_register_part2 import register_commands_part2" (exit 0)
+verification:
+  type: manual
+  target: ai_editor/hooks_register_part2.py
+  expected: >
+    part2 registers only universal_file_open, edit, write, close, preview;
+    no session_*, transfer, lock, move_nodes, search, session_git_*, session_undo/redo/write;
+    health remains in hooks_register_part1 (not part2).
+status: draft

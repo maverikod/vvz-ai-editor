@@ -1,0 +1,43 @@
+step_id: A-002
+parent_tactical_step: T-005
+name: search_get_status MCP command
+target_file: ai_editor/commands/search_get_status_command.py
+operation: create_file
+priority: 2
+depends_on: []
+concepts:
+  - C-001
+  - C-003
+  - C-020
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_get_status_command.py
+
+  MRS (C-003 SearchSessionManifest): stores status, phase, metrics, warnings, errors.
+  MRS (C-020 SearchStatus): running, completed, failed, cancelled, timed_out, dead; phase enum;
+  distinguishes block-not-ready from whole-search failure.
+  MRS (C-001 SearchSession): identified by job_id parameter.
+
+  Implement class SearchGetStatusCommand(BaseMCPCommand):
+  - name = "search_get_status"
+  - get_schema() required: job_id (string)
+  - execute():
+      Load manifest for job_id session directory; if missing return SESSION_NOT_FOUND.
+      Build SearchStatusSnapshot via snapshot_from_manifest from ai_editor.core.search_session.status.
+      Return SuccessResult with job_id, status, phase, block_not_ready flag, progress object from manifest metrics,
+      summary object (request params subset, produced_results, written_blocks), warnings, errors.
+      Do not include result row payloads or block JSON bodies (distinct from search_get_page and HTTP block reads).
+      Refresh last_access_at in service metadata on successful read.
+  - metadata() documenting MCP-specific status read distinct from HTTP GET status route.
+
+  Constraints:
+  - Under 220 lines.
+  - Author header.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_get_status_command.py
+  expected: >
+    Returns status and metrics without items/block payloads; cancelled and timed_out manifest states map correctly;
+    SESSION_NOT_FOUND for missing job_id; last_access refreshed.
+status: ready_for_review

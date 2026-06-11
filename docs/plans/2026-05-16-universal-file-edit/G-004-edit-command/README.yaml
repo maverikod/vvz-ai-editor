@@ -1,0 +1,54 @@
+step_id: G-004
+name: Edit command
+description: Implement EditCommand that applies a batch of EditOperations to the
+  DraftFile. The original file is never touched. For the sidecar group,
+  BatchValidation forbids ancestor-descendant pairs; violation rejects the
+  batch atomically. Each format group has its own apply and draft-write
+  strategy. Addressing is format-specific.
+concepts:
+- C-001
+- C-002
+- C-003
+- C-006
+- C-007
+- C-008
+- C-012
+- C-014
+relations:
+- from_concept: C-006
+  to_concept: C-001
+  type: consumes
+- from_concept: C-006
+  to_concept: C-002
+  type: consumes
+- from_concept: C-006
+  to_concept: C-003
+  type: uses
+- from_concept: C-006
+  to_concept: C-007
+  type: consumes
+- from_concept: C-006
+  to_concept: C-008
+  type: uses
+- from_concept: C-006
+  to_concept: C-012
+  type: uses
+- from_concept: C-006
+  to_concept: C-014
+  type: produces
+- from_concept: C-008
+  to_concept: C-007
+  type: consumes
+source_ranges:
+- start: 138
+  end: 175
+- start: 265
+  end: 275
+depends_on:
+- G-002
+- G-007
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: draft

@@ -1,0 +1,31 @@
+step_id: T-001
+parent_global_step: G-004
+name: XPathLikeFilter universal engine
+description: "Creates the XPathLikeFilter as a single universal structural engine
+  operating on\nvalidated TreeRepresentation data rather than ad-hoc text. Applies
+  the same selector\nsemantics across database-backed structural data, indexer in-memory
+  structures,\ndynamically created trees, and draft-session content. Aligns structure
+  model, node\nidentifiers, and selector semantics with the indexer while excluding
+  vectorization from\nthe tree construction and filtering path. Node-to-preview serialization
+  delegates to\nPreviewReference (C-017); this step does not redefine preview helper
+  contracts.\n"
+concepts:
+- C-016
+inputs:
+- name: tree_representation
+  type: TreeRepresentation
+  description: Validated tree for one file from any supported source path.
+- name: structural_query
+  type: XPathLikeQuery
+  description: XPath-like selector evaluated against the tree node set.
+- name: tree_source_kind
+  type: TreeSourceKind
+  description: Source classification among indexed, in-memory, dynamic, or 
+    draft-session trees.
+outputs:
+- name: matched_nodes
+  type: TreeNodeSet
+  description: Tree nodes satisfying the structural query.
+atomic_steps:
+- A-001
+status: ready_for_review

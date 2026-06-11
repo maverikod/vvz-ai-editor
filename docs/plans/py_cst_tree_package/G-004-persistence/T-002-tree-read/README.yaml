@@ -1,0 +1,24 @@
+step_id: T-002
+parent_global_step: G-004
+name: Tree Read Operation
+description: Define the read operation of the Serializer entity (C-010). The read
+  operation consumes a serialized Tree file and produces a package Tree (C-004) identical
+  to the one written — same structure, same node categories, same stable_id on every
+  node, and indexes already populated without a rebuild pass. A write-then-read round
+  trip is lossless. No stable_id is lost, altered, or regenerated, and rendered Python
+  source is unchanged. The read operation is optimized for fast load. This step realizes
+  the C-010 produces C-004 relation.
+concepts:
+- C-010
+- C-004
+inputs:
+- name: serialized Tree file
+  type: file in package serialization format
+  description: A file previously produced by the write operation.
+outputs:
+- name: package Tree
+  type: C-004 instance
+  description: A Tree identical to the one written; stable_id values and indexes fully
+    restored; immediately queryable.
+atomic_steps: []
+status: draft

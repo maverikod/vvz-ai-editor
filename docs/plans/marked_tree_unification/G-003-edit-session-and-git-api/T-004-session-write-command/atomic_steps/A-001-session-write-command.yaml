@@ -1,0 +1,198 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Create session_write MCP command for two-stage external copy-out
+target_file: ai_editor/commands/universal_file_edit/session_write_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-012
+- C-003
+- C-004
+status: ready_for_review
+prompt: |
+  > Cross-TS and within-TS execution ordering is expressed ONLY via the standard depends_on field plus parallel-waves.yaml. Do not add non-standard cross-TS ordering fields. Cross-TS FILE dependencies must be satisfied by INLINING full post-prior-AS file state into the prompt (a8), NOT by referencing other steps. No atomic, tactical, or global step identifiers may appear in any prompt: prose.
+
+  Create `ai_editor/commands/universal_file_edit/session_write_command.py`.
+  Operation: create_file.
+
+  Define `session_write` MCP command exposing EditSession (C-012) two-stage external
+  copy-out per {d004} (preview) and {n7k2} (confirm). Distinct from session_git_diff
+  (C-014), which diffs session git history — not live external files.
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-012, C-003, C-004)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-004-session-write-command/README.yaml`
+
+  ## MRS excerpt (C-012)
+
+  - Stage 1 preview ({d004}): diffs in-session unmark-exported source + in-session tree
+    vs live external source + sibling tree; no external writes; no-op when no diffs.
+  - Stage 2 confirm ({n7k2}): atomically copies both artefacts externally on explicit
+    confirmation only; both or neither when valid; source-only when invalid.
+  - In-session artefacts finalized per {d003} post-mutation; write gates external copy-out.
+
+  ## Inlined dependency — EditSession write methods (C-012)
+
+  Module: `ai_editor/core/edit_session/edit_session.py`
+
+  ```python
+  def preview_external_write(self) -> dict[str, Any]:
+      """Returns {"has_changes": bool, "source_diff": str, "tree_diff": str}."""
+
+  def confirm_external_copy_out(self) -> None:
+      """Atomic external copy-out; no-op when has_changes=False."""
+  ```
+
+  `preview_external_write` algorithm (inlined contract):
+  1. Read in-session source and tree from session paths.
+  2. Read external source_abs and tree_abs.
+  3. Build unified diffs via difflib; set has_changes when either diff non-empty.
+  4. Does NOT call unmark or modify external files.
+
+  `confirm_external_copy_out` algorithm (inlined contract):
+  1. Call preview_external_write(); return immediately if not has_changes.
+  2. VALID: tmp-copy tree then source to external paths (both or neither rollback).
+  3. INVALID: copy in-session source only; external tree unchanged.
+
+  Session resolution:
+  ```python
+  from ai_editor.core.edit_session.edit_session import get_active_session
+  ```
+  Raises KeyError when session_id absent.
+
+  ## Imports (exact)
+
+  ```python
+  from __future__ import annotations
+
+  from typing import Any, Dict, Type, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.core.edit_session.edit_session import get_active_session
+  ```
+
+  ## Class SessionWriteCommand(BaseMCPCommand)
+
+  Class attributes:
+  - `name = "session_write"`
+  - `version = "1.0.0"`
+  - `descr = "Two-stage external copy-out for an active edit session (preview or confirm)."`
+  - `category = "file_management"`
+  - `author = "Vasiliy Zdanovskiy"`
+  - `email = "vasilyvz@gmail.com"`
+  - `use_queue = False`
+
+  ### get_schema()
+
+  ```python
+  {
+      "type": "object",
+      "properties": {
+          "project_id": {"type": "string", "description": "Project UUID."},
+          "session_id": {"type": "string", "description": "Active edit session id."},
+          "confirm": {
+              "type": "boolean",
+              "description": "False (default): preview diffs only. True: atomic external copy-out.",
+              "default": False,
+          },
+      },
+      "required": ["project_id", "session_id"],
+      "additionalProperties": False,
+  }
+  ```
+
+  ### metadata()
+
+  Return dict with keys: name, version, description, category, author, email,
+  detailed_description, parameters, return_value, usage_examples, error_cases, best_practices.
+
+  detailed_description must state:
+  - Preview (confirm=false/default) never modifies external files.
+  - Confirm (confirm=true) calls confirm_external_copy_out(); both artefacts when valid.
+  - Distinct from session_git_diff (session history vs live external files).
+  - No SessionRepo commit in this command.
+
+  usage_examples (parameter dicts only):
+  1. `{"project_id": "<uuid>", "session_id": "<uuid>"}` — preview.
+  2. `{"project_id": "<uuid>", "session_id": "<uuid>", "confirm": true}` — confirm copy-out.
+
+  error_cases must include SESSION_NOT_FOUND with solution "Open session first".
+
+  ### execute(project_id, session_id, confirm=False, **kwargs)
+
+  Algorithm:
+  1. `_ = project_id; _ = kwargs`.
+  2. Try `session = get_active_session(session_id)`.
+  3. On KeyError → `error_result_from_make_error(make_error(SESSION_NOT_FOUND, f"No active session: {session_id}"))`.
+  4. If `confirm is True`:
+     - Call `session.confirm_external_copy_out()`.
+     - Return SuccessResult `{"success": True, "phase": "confirmed", "has_changes": True}`.
+       When confirm is no-op (identical content), still return SuccessResult
+       `{"success": True, "phase": "confirmed", "has_changes": False}` — detect by
+       calling preview first internally: if not preview["has_changes"], set has_changes False
+       before confirm (confirm returns immediately).
+  5. Else (preview):
+     - `preview = session.preview_external_write()`.
+     - Return SuccessResult:
+       ```python
+       {
+           "success": True,
+           "phase": "preview",
+           "has_changes": preview["has_changes"],
+           "source_diff": preview["source_diff"],
+           "tree_diff": preview["tree_diff"],
+       }
+       ```
+
+  Error handling:
+  - RuntimeError from EditSession (session not open) — propagate (should not occur for active registry entry).
+  - OSError from confirm — return ErrorResult with code WRITE_FAILED if errors module defines it,
+    else re-raise ValueError with message prefix "session_write failed:".
+
+  Import WRITE_FAILED only if present in errors module; otherwise catch OSError and return:
+  `error_result_from_make_error(make_error("WRITE_FAILED", str(exc)))`.
+
+  Edge cases:
+  - confirm=true with has_changes=false → confirm_external_copy_out returns immediately; response has_changes=false.
+  - Missing external files → preview shows full in-session content as diff (EditSession contract).
+
+  ## Forbidden patterns
+
+  - Do NOT register command in hooks (separate step).
+  - Do NOT import dulwich.
+  - Do NOT read live external files directly in command (delegate to EditSession).
+  - Do NOT implement session_git_diff logic.
+  - Do NOT use universal-id, UUID-in-marker, G-007, {l*}, {m*}, mtime-on-finding.
+  - Do NOT add write_copy_out or legacy lockfile two-phase protocol.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/session_write_command.py
+  flake8 ai_editor/commands/universal_file_edit/session_write_command.py
+  mypy ai_editor/commands/universal_file_edit/session_write_command.py
+  python -c "from ai_editor.commands.universal_file_edit.session_write_command import SessionWriteCommand; assert SessionWriteCommand.get_name()=='session_write'"
+  pytest -q
+  ```
+
+  All tests must pass. Estimated lines: 180–220 (≤400).
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/session_write_command.py
+  expected: |
+    SessionWriteCommand defines name session_write, schema with confirm boolean default
+    false, execute resolves get_active_session, preview path returns has_changes/source_diff/
+    tree_diff from preview_external_write, confirm=true path calls confirm_external_copy_out
+    and returns phase confirmed. SESSION_NOT_FOUND on missing session. No dulwich import.
+    All tests pass.

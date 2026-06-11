@@ -1,0 +1,115 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: StructuralEvidence qualification
+target_file: ai_editor/core/search_session/structural_evidence.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-018
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/structural_evidence.py
+
+  MRS excerpt (C-018 StructuralEvidence):
+  - Search evidence valid only when backed by a validated TreeRepresentation and a
+    preview-compatible result node or block.
+  - Required when grep participates in project cross-search as structural evidence.
+  - Line-only grep is not structural evidence unless converted into validated
+    preview-compatible nodes.
+  - Timed-out dynamic or structural phases must not contribute invalid partial
+    structural evidence.
+
+  Parent GS (G-004): structural filtering and evidence qualification; only validated
+  tree-backed, preview-compatible results count as cross-search evidence.
+
+  Parent TS (T-002): qualification rules only — no XPath engine, no grep execution.
+
+  Required imports:
+  ```python
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from enum import Enum
+  from typing import Optional
+
+  from ai_editor.core.search_session.preview_reference import PreviewReference
+  from ai_editor.core.search_session.tree_representation import TreeRepresentationRef
+  ```
+
+  PreviewReference excerpt (from ai_editor/core/search_session/preview_reference.py):
+  ```python
+  @dataclass(frozen=True)
+  class PreviewReference:
+      file_path: str
+      node_id: Optional[str]
+      selector: Optional[str]
+      draft_session_id: Optional[str]
+  ```
+
+  TreeRepresentationRef excerpt (from ai_editor/core/search_session/tree_representation.py):
+  ```python
+  @dataclass(frozen=True)
+  class TreeRepresentationRef:
+      file_path: str
+      sidecar_path: Path
+      content_checksum: str
+      root_stable_id: Optional[str]
+  ```
+
+  Task:
+  Create structural_evidence.py with module docstring (Author: Vasiliy Zdanovskiy,
+  email: vasilyvz@gmail.com).
+
+  1. class PhaseOutcome(str, Enum):
+       completed = "completed"
+       cancelled = "cancelled"
+       timed_out = "timed_out"
+       running = "running"
+     Docstring: completion state of the producing search phase. running means the phase
+     has not finished — partial candidates must not qualify as structural evidence.
+
+  2. @dataclass(frozen=True) class StructuralEvidenceVerdict:
+       accepted: bool
+       reason_code: str
+       preview_ref: Optional[PreviewReference]
+     Docstring on each field.
+
+  3. Module-level reason codes (Final[str] or str constants):
+       REJECTED_PHASE_INCOMPLETE = "REJECTED_PHASE_INCOMPLETE"  (running)
+       REJECTED_PHASE_CANCELLED = "REJECTED_PHASE_CANCELLED"
+       REJECTED_PHASE_TIMED_OUT = "REJECTED_PHASE_TIMED_OUT"
+       REJECTED_LINE_ONLY = "REJECTED_LINE_ONLY"
+       REJECTED_MISSING_TREE = "REJECTED_MISSING_TREE"
+       REJECTED_MISSING_PREVIEW = "REJECTED_MISSING_PREVIEW"
+       ACCEPTED_STRUCTURAL = "ACCEPTED_STRUCTURAL"
+
+  4. def qualify_structural_evidence(
+         *,
+         phase_outcome: PhaseOutcome,
+         tree_ref: Optional[TreeRepresentationRef],
+         preview_ref: Optional[PreviewReference],
+         source_mode: str,
+     ) -> StructuralEvidenceVerdict
+     Docstring must document decision order:
+     - phase_outcome == running => reject REJECTED_PHASE_INCOMPLETE (no partial evidence while running)
+     - phase_outcome == cancelled => reject REJECTED_PHASE_CANCELLED
+     - phase_outcome == timed_out => reject REJECTED_PHASE_TIMED_OUT
+     - source_mode == "classic_line" and preview_ref is None => reject REJECTED_LINE_ONLY
+     - tree_ref is None => reject REJECTED_MISSING_TREE
+     - preview_ref is None => reject REJECTED_MISSING_PREVIEW
+     - phase_outcome == completed with both tree_ref and preview_ref => accept ACCEPTED_STRUCTURAL
+     Return StructuralEvidenceVerdict with preview_ref echoed on accept, None on reject.
+
+  Constraints:
+  - No grep execution, XPath filtering, or HTTP logic in this file.
+  - Under 180 lines. All public symbols typed and documented.
+
+verification:
+  type: pytest
+  target: tests/unit/test_structural_evidence.py
+  expected: >
+    running phase rejected with REJECTED_PHASE_INCOMPLETE; timed_out and cancelled rejected;
+    classic_line without preview rejected; missing tree or preview rejected;
+    completed phase with tree_ref and preview_ref accepted with ACCEPTED_STRUCTURAL.
+status: frozen

@@ -1,0 +1,54 @@
+plan: marked_tree_unification
+global_step: G-005
+name: Consumer Integration
+cross_ts_execution_waves:
+  wave_1:
+    description: Independent foundation — grep routing, Finding contract, schema column, guard module
+    parallel: true
+    steps:
+      - T-001/A-001
+      - T-001/A-002
+      - T-002/A-002
+      - T-003/A-001
+  wave_2:
+    description: Mtime removal producers + watcher schema tail (parallel across files)
+    parallel: true
+    requires:
+      - T-001/A-002
+    steps:
+      - T-001/A-003
+      - T-001/A-004
+      - T-001/A-005
+      - T-001/A-008
+      - T-002/A-003
+      - T-002/A-004
+  wave_3:
+    description: Watcher TreeLifecycle precondition on queue path
+    steps:
+      - T-002/A-001
+    requires:
+      - T-002/A-002
+      - T-002/A-003
+      - T-002/A-004
+  wave_4:
+    description: Indexer update.py delegation (needs guard module)
+    steps:
+      - T-003/A-002
+    requires:
+      - T-003/A-001
+    note: Runtime tree_checksum population comes from T-002; no cross_ts_depends_on in AS.
+  wave_5:
+    description: Cascade verify — spec and HRS alignment
+    steps:
+      - T-001/A-006
+    requires:
+      - T-001/A-003
+      - T-001/A-004
+      - T-001/A-005
+      - T-001/A-008
+  wave_6:
+    description: HRS {g004} verify-first
+    steps:
+      - T-001/A-007
+    requires:
+      - T-001/A-006

@@ -1,0 +1,328 @@
+step_id: A-013
+parent_tactical_step: T-003
+name: Align test_cst_stable_ids.py save assertion with sibling sidecar path
+target_file: tests/test_cst_stable_ids.py
+operation: modify_file
+priority: 12
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: tests/test_cst_stable_ids.py
+
+  ## Goal
+  Replace the legacy `.cst/{stem}.tree` existence assertion with the sibling
+  convention `<source>.py.tree` next to the source file.
+
+  ## Full current file content (verbatim baseline, 280 lines)
+
+  ```python
+    """
+    Tests for persisted CST UUID4 identifiers.
+    
+    Author: Vasiliy Zdanovskiy
+    email: vasilyvz@gmail.com
+    """
+    
+    from __future__ import annotations
+    
+    import uuid
+    from pathlib import Path
+    from typing import Any, Dict, List
+    from unittest.mock import MagicMock
+    
+    import libcst as cst
+    
+    from ai_editor.core.cst_tree.models import TreeOperation, TreeOperationType
+    from ai_editor.core.cst_tree.node_id_markers import (
+        MARKERS_BEGIN,
+        MARKERS_END,
+        append_persisted_node_ids,
+        strip_persisted_node_ids,
+    )
+    from ai_editor.core.cst_tree.models import CSTTree
+    from ai_editor.core.cst_tree.node_stable_id import (
+        set_stable_id,
+        strip_inline_node_id_lines_from_source,
+    )
+    from ai_editor.core.cst_tree.tree_builder import (
+        _build_tree_index,
+        create_tree_from_code,
+        load_file_to_tree,
+    )
+    from libcst.metadata import MetadataWrapper, PositionProvider
+    from ai_editor.core.cst_tree.tree_finder import find_nodes
+    from ai_editor.core.cst_tree.tree_modifier import modify_tree
+    from ai_editor.core.cst_tree.tree_saver import save_tree_to_file
+    
+    
+    def _make_db_mock_for_sync() -> MagicMock:
+        """Mock DB for sync_file_to_db_atomic (transaction + execute_batch path)."""
+        db = MagicMock()
+        db.get_file_by_path = MagicMock(return_value={"id": 1})
+        db.begin_transaction = MagicMock(return_value="tid-mock")
+        db.commit_transaction = MagicMock(return_value=True)
+        db.rollback_transaction = MagicMock(return_value=True)
+    
+        def _exec(sql: str, params=None, transaction_id=None):
+            _ = transaction_id
+            if (sql or "").strip().upper().startswith("SELECT"):
+                return {"data": [{"editing_pid": None}], "affected_rows": 0}
+            return {"affected_rows": 1, "data": None}
+    
+        db.execute = MagicMock(side_effect=_exec)
+    
+        def _batch(ops, transaction_id=None):
+            _ = transaction_id
+            return [{"affected_rows": 1, "data": None} for _ in ops]
+    
+        db.execute_batch = MagicMock(side_effect=_batch)
+        return db
+    
+    
+    def _make_db_mock() -> MagicMock:
+        db = MagicMock()
+        db.select = MagicMock(return_value=[])
+        created = MagicMock()
+        created.id = 1
+        db.create_file = MagicMock(return_value=created)
+        db.update_file = MagicMock(return_value=created)
+        db.begin_transaction = MagicMock(return_value="tid-mock")
+        db.commit_transaction = MagicMock(return_value=True)
+        db.rollback_transaction = MagicMock(return_value=True)
+    
+        def _exec(sql: str, params=None, transaction_id=None):
+            _ = transaction_id
+            if (sql or "").strip().upper().startswith("SELECT"):
+                return {"data": [{"editing_pid": None}], "affected_rows": 0}
+            return {"affected_rows": 1, "data": None}
+    
+        db.execute = MagicMock(side_effect=_exec)
+    
+        def _batch(ops, transaction_id=None):
+            _ = transaction_id
+            return [{"affected_rows": 1, "data": None} for _ in ops]
+    
+        db.execute_batch = MagicMock(side_effect=_batch)
+        return db
+    
+    
+    def test_marker_block_round_trip_keeps_clean_source() -> None:
+        """Appending and stripping the marker block must preserve logical source."""
+        source = '"""Doc."""\n\nx = 1\n'
+        tree = create_tree_from_code("/tmp/example.py", source)
+    
+        persisted_source = append_persisted_node_ids(
+            source,
+            tree.metadata_map,
+            tree.root_node_id,
+        )
+        clean_source, persisted_node_ids = strip_persisted_node_ids(persisted_source)
+    
+        assert MARKERS_BEGIN in persisted_source
+        assert MARKERS_END in persisted_source
+        assert clean_source == source
+        assert len(persisted_node_ids) == len(tree.metadata_map)
+    
+    
+    def test_metadata_positions_after_text_strip_of_legacy_inline_marker(
+        tmp_path: Path,
+    ) -> None:
+        """Legacy ``# @node-id:`` lines removed from source text before parse keep spans aligned."""
+        sid = str(uuid.uuid4())
+        module = cst.parse_module("class Foo:\n    pass\n")
+        new_body: list[cst.CSTNode] = []
+        for stmt in module.body:
+            if isinstance(stmt, cst.ClassDef) and stmt.name.value == "Foo":
+                stmt = set_stable_id(stmt, sid)
+            new_body.append(stmt)
+        dirty = module.with_changes(body=tuple(new_body)).code
+        assert "# @node-id:" in dirty
+        clean = strip_inline_node_id_lines_from_source(dirty)
+        module = cst.parse_module(clean)
+    
+        tree = CSTTree.create(str(tmp_path / "virtual.py"), module)
+        _build_tree_index(
+            tree,
+            node_types=["ClassDef"],
+            max_depth=None,
+            include_children=True,
+        )
+        class_ids = [
+            nid
+            for nid, m in tree.metadata_map.items()
+            if m.type == "ClassDef" and m.name == "Foo"
+        ]
+        assert len(class_ids) == 1
+        nid = class_ids[0]
+    
+        meta = tree.metadata_map[nid]
+        node = tree.node_map[nid]
+        wrapper = MetadataWrapper(tree.module, unsafe_skip_copy=True)
+        pos = wrapper.resolve(PositionProvider).get(node)
+        assert pos is not None
+        assert meta.start_line == pos.start.line
+        assert meta.start_col == pos.start.column
+        assert meta.end_line == pos.end.line
+        assert meta.end_col == pos.end.column
+        assert "# @node-id:" not in tree.module.code
+    
+    
+    def test_save_and_reload_preserve_node_ids(tmp_path: Path) -> None:
+        """Saving with marker block and loading again must reproduce the same UUIDs."""
+        db = _make_db_mock()
+        file_path = tmp_path / "sample.py"
+        tree = create_tree_from_code(
+            str(file_path),
+            '"""Doc."""\n\nimport os\n\n\ndef foo() -> int:\n    return 1\n',
+        )
+        result = save_tree_to_file(
+            tree_id=tree.tree_id,
+            file_path=str(file_path),
+            root_dir=tmp_path,
+            project_id=str(uuid.uuid4()),
+            database=db,
+            validate=True,
+            backup=False,
+        )
+    
+        assert result["success"] is True
+        persisted_text = file_path.read_text(encoding="utf-8")
+        assert MARKERS_BEGIN not in persisted_text
+        assert MARKERS_END not in persisted_text
+        assert (file_path.parent / ".cst" / f"{file_path.stem}.tree").is_file()
+    
+        reloaded = load_file_to_tree(str(file_path))
+        assert reloaded.root_node_id == tree.root_node_id
+        before_function = find_nodes(
+            tree.tree_id,
+            search_type="simple",
+            node_type="FunctionDef",
+            name="foo",
+        )[0]
+        after_function = find_nodes(
+            reloaded.tree_id,
+            search_type="simple",
+            node_type="FunctionDef",
+            name="foo",
+        )[0]
+        assert before_function.node_id == after_function.node_id
+    
+    
+    def test_modify_save_reload_preserves_replaced_function_id(tmp_path: Path) -> None:
+        """A replaced function keeps its UUID after save and reload."""
+        db = _make_db_mock()
+        file_path = tmp_path / "sample.py"
+        tree = create_tree_from_code(
+            str(file_path),
+            "def foo() -> int:\n    return 1\n",
+        )
+        function_meta = find_nodes(
+            tree.tree_id,
+            search_type="simple",
+            node_type="FunctionDef",
+        )[0]
+        original_function_id = function_meta.node_id
+    
+        modify_tree(
+            tree.tree_id,
+            [
+                TreeOperation(
+                    action=TreeOperationType.REPLACE,
+                    node_id=original_function_id,
+                    code_lines=[
+                        "def foo() -> int:",
+                        '    """Updated."""',
+                        "    return 2",
+                    ],
+                )
+            ],
+        )
+    
+        save_result = save_tree_to_file(
+            tree_id=tree.tree_id,
+            file_path=str(file_path),
+            root_dir=tmp_path,
+            project_id=str(uuid.uuid4()),
+            database=db,
+            validate=True,
+            backup=False,
+        )
+        assert save_result["success"] is True
+    
+        reloaded = load_file_to_tree(str(file_path))
+        reloaded_function = find_nodes(
+            reloaded.tree_id,
+            search_type="simple",
+            node_type="FunctionDef",
+            name="foo",
+        )[0]
+        assert "return 2" in file_path.read_text(encoding="utf-8")
+        assert reloaded_function is not None
+    
+    
+    def test_sync_with_marked_source_writes_same_root_node_id() -> None:
+        """sync_file_to_db_atomic with source that has markers produces same node_ids; snapshot stores them."""
+        from ai_editor.core.database.file_tree_sync import sync_file_to_db_atomic
+    
+        clean = '"""Doc."""\n\ndef foo() -> int:\n    return 1\n'
+        path = "/tmp/sync_align.py"
+        tree = create_tree_from_code(path, clean)
+        source_with_markers = append_persisted_node_ids(
+            clean, tree.metadata_map, tree.root_node_id
+        )
+        tree2 = create_tree_from_code(path, source_with_markers)
+        assert (
+            tree.root_node_id == tree2.root_node_id
+        ), "same source with markers => same IDs"
+    
+        db = _make_db_mock_for_sync()
+        root_captured: list = []
+    
+        def capture_batch(ops, transaction_id=None):
+            for sql, params in ops:
+                if "file_tree_snapshot_roots" in sql and "INSERT" in sql:
+                    root_captured.append(params)
+            return [{"affected_rows": 1, "data": None} for _ in ops]
+    
+        db.execute_batch = MagicMock(side_effect=capture_batch)
+        sync_file_to_db_atomic(
+            database=db,
+            project_id="test-project",
+            absolute_path=path,
+            source_code=source_with_markers,
+            file_mtime=0.0,
+            file_id=1,
+        )
+        assert len(root_captured) >= 1
+        (snapshot_id, root_node_id) = root_captured[0]
+        assert root_node_id == tree.root_node_id
+  ```
+
+  ## Required edits
+  1. Add import after existing tree_sidecar imports (if not present):
+         from ai_editor.tree.sibling_convention import sibling_tree_path
+
+  2. Replace assertion (inside test that saves tree to disk):
+         assert (file_path.parent / ".cst" / f"{file_path.stem}.tree").is_file()
+     with:
+         assert sibling_tree_path(file_path.resolve()).is_file()
+
+  3. Grep file for '.cst' and sidecar_path_for_py; remove/replace any remaining hits.
+
+  ## Forbidden
+  - Do not change stable-id semantics under test.
+  - Do not touch other files.
+
+  All tests must pass before marking this step complete.
+
+verification:
+  type: pytest
+  target: tests/test_cst_stable_ids.py
+  expected: >
+    Save/reload test asserts sibling_tree_path(file_path.resolve()).is_file();
+    grep for '.cst' and 'sidecar_path_for_py' in this file returns nothing;
+    pytest tests/test_cst_stable_ids.py -v all PASSED.

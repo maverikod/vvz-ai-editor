@@ -1,0 +1,241 @@
+step_id: A-004
+parent_tactical_step: T-002
+name: Persist tree_checksum into the files row
+target_file: ai_editor/core/file_disk_registration.py
+operation: modify_file
+priority: 1
+depends_on:
+- A-002
+concepts:
+- C-021
+status: ready_for_review
+prompt: |
+  Persist the already-computed source checksum into the `files` table row, for both a newly inserted row and an already-existing (re-processed) row (C-021, Action 2). This is an additive change to one helper function over working code; do NOT rewrite the watcher, the queue, or `add_file`.
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-002-watcher-integration/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-021)
+
+  ## MRS excerpt
+
+  C-021 Watcher: the file watcher that ensures a valid tree and persists the source checksum before inserting or updating a database file row.
+    - persists the computed source checksum in the database alongside the file row
+
+  ## Operation
+
+  modify_file: ai_editor/core/file_disk_registration.py
+
+  ## Background facts (no need to open other files)
+
+  - The caller (the watcher's processor queue) obtains the source checksum from the TreeLifecycle path wrapper and passes it in. This step only stores the value it is given; it MUST NOT compute a checksum itself.
+  - The database object exposes `execute(sql, params)`; the existing helper `_mark_file_needs_chunking` in this same file already uses `getattr(database, "execute", None)` to run `UPDATE files SET needs_chunking = 1 WHERE id = ?`. The new checksum write follows exactly this mechanism and writes by row id.
+  - The `files` table has a nullable `tree_checksum` column (added declaratively elsewhere). Writing it is a plain column UPDATE; do NOT write ALTER TABLE or any schema DDL here.
+  - `add_file` is NOT modified by this step; the checksum is written by a separate UPDATE after the row exists, covering both the insert and the existing-row paths uniformly.
+
+  ## Current full content of the target file (verbatim, 135 lines)
+
+  ```python
+  """
+  Register on-disk project files in the ``files`` table (shared by file watcher and transfer).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import logging
+  from pathlib import Path
+  from typing import Any, Dict, Optional, Tuple
+
+  from ai_editor.core.file_identity import (
+      FILE_ROW_PATH_MATCH_SQL,
+      file_row_path_match_values,
+  )
+
+  logger = logging.getLogger(__name__)
+
+
+  def collect_file_disk_metadata(path: Path) -> Tuple[int, bool]:
+      """Read line count and docstring flag from a regular file on disk."""
+      lines = 0
+      has_docstring = False
+      if not path.exists() or not path.is_file():
+          return lines, has_docstring
+      try:
+          text = path.read_text(encoding="utf-8", errors="ignore")
+          lines = text.count("\n") + (1 if text else 0)
+          stripped = text.lstrip()
+          has_docstring = stripped.startswith('"""') or stripped.startswith("'''")
+      except Exception:
+          logger.debug("Failed to read file for metadata: %s", path, exc_info=True)
+      return lines, has_docstring
+
+
+  def ensure_file_row_for_disk_path(
+      database: Any,
+      project_id: str,
+      absolute_path: Path | str,
+      *,
+      last_modified: Optional[float] = None,
+      mark_needs_chunking: bool = False,
+  ) -> Optional[Dict[str, Any]]:
+      """
+      Ensure a ``files`` row exists for an on-disk project file.
+
+      Uses ``database.add_file`` when the row is missing. Returns the active row
+      dict (with ``id``) or ``None`` when the path is not a regular file.
+
+      Args:
+          database: Database client with ``get_file_by_path`` and ``add_file``.
+          project_id: Registered project UUID.
+          absolute_path: Absolute filesystem path to the file.
+          last_modified: Optional mtime; when omitted, taken from ``stat``.
+          mark_needs_chunking: When True, set ``needs_chunking = 1`` (file watcher).
+      """
+      path = Path(absolute_path)
+      try:
+          path = path.resolve()
+      except OSError:
+          path = Path(absolute_path)
+      if not path.is_file():
+          return None
+
+      pid = str(project_id).strip()
+      abs_str = str(path)
+      get_by_path = getattr(database, "get_file_by_path", None)
+      if not callable(get_by_path):
+          logger.warning("database has no get_file_by_path; skip register %s", abs_str)
+          return None
+
+      existing = get_by_path(abs_str, pid, include_deleted=False)
+      if existing and existing.get("id") is not None:
+          row: Optional[Dict[str, Any]] = dict(existing)
+      else:
+          mtime = last_modified
+          if mtime is None:
+              try:
+                  mtime = path.stat().st_mtime
+              except OSError:
+                  mtime = 0.0
+          lines, has_docstring = collect_file_disk_metadata(path)
+          add_file = getattr(database, "add_file", None)
+          if not callable(add_file):
+              logger.warning("database has no add_file; skip register %s", abs_str)
+              return None
+          add_file(abs_str, lines, float(mtime), has_docstring, pid)
+          fetched = get_by_path(abs_str, pid, include_deleted=False)
+          row = dict(fetched) if fetched else None
+
+      if not row or row.get("id") is None:
+          return row
+
+      if mark_needs_chunking:
+          _mark_file_needs_chunking(database, pid, path, row)
+
+      return row
+
+
+  def _mark_file_needs_chunking(
+      database: Any,
+      project_id: str,
+      absolute_path: Path,
+      row: Optional[Dict[str, Any]] = None,
+  ) -> None:
+      """Set ``needs_chunking = 1`` for one file row (file watcher indexing queue)."""
+      execute = getattr(database, "execute", None)
+      if not callable(execute):
+          return
+      file_id = (row or {}).get("id")
+      if file_id is not None:
+          execute("UPDATE files SET needs_chunking = 1 WHERE id = ?", (file_id,))
+          return
+      project = None
+      get_project = getattr(database, "get_project", None)
+      if callable(get_project):
+          project = get_project(project_id)
+      root = getattr(project, "root_path", None) if project is not None else None
+      if isinstance(project, dict):
+          root = project.get("root_path")
+      if not root:
+          return
+      try:
+          r1, r2, r3 = file_row_path_match_values(
+              project_root=Path(root).resolve(),
+              absolute_path=str(absolute_path),
+          )
+      except ValueError:
+          return
+      execute(
+          f"UPDATE files SET needs_chunking = 1 WHERE project_id = ? AND {FILE_ROW_PATH_MATCH_SQL}",
+          (project_id, r1, r2, r3),
+      )
+  ```
+
+  ## Required change
+
+  1. Add a keyword-only parameter `tree_checksum: Optional[str] = None` to `ensure_file_row_for_disk_path`, placed in the existing keyword-only block after `mark_needs_chunking`. The signature becomes:
+
+  ```python
+  def ensure_file_row_for_disk_path(
+      database: Any,
+      project_id: str,
+      absolute_path: Path | str,
+      *,
+      last_modified: Optional[float] = None,
+      mark_needs_chunking: bool = False,
+      tree_checksum: Optional[str] = None,
+  ) -> Optional[Dict[str, Any]]:
+  ```
+
+  2. Extend the docstring Args with one line:
+  ```
+          tree_checksum: Optional source content checksum to persist on the row.
+  ```
+
+  3. Add a new module-level helper that writes the checksum by row id, mirroring `_mark_file_needs_chunking`'s mechanism (use `getattr(database, "execute", None)`, guard non-callable, write by id):
+
+  ```python
+  def _persist_tree_checksum(
+      database: Any,
+      row: Optional[Dict[str, Any]],
+      tree_checksum: str,
+  ) -> None:
+      """Store the source checksum on one ``files`` row by id."""
+      execute = getattr(database, "execute", None)
+      if not callable(execute):
+          return
+      file_id = (row or {}).get("id")
+      if file_id is not None:
+          execute("UPDATE files SET tree_checksum = ? WHERE id = ?", (tree_checksum, file_id))
+  ```
+
+  4. In `ensure_file_row_for_disk_path`, after the `if not row or row.get("id") is None: return row` guard (so the row is known valid and has an id), and alongside the existing `mark_needs_chunking` handling, persist the checksum when provided. The tail of the function becomes:
+
+  ```python
+      if not row or row.get("id") is None:
+          return row
+
+      if tree_checksum is not None:
+          _persist_tree_checksum(database, row, tree_checksum)
+
+      if mark_needs_chunking:
+          _mark_file_needs_chunking(database, pid, path, row)
+
+      return row
+  ```
+
+  This single UPDATE covers both paths: the existing-row branch and the freshly-inserted-row branch both reach this point with a valid `row` id.
+
+  ## Constraints
+  - Store ONLY the value passed in `tree_checksum`; do NOT compute any checksum in this file.
+  - When `tree_checksum is None`, behaviour is identical to before (no UPDATE).
+  - Use `database.execute` with parameterized SQL exactly as shown; do NOT use string formatting for the value, and do NOT add ALTER TABLE or any schema DDL.
+  - Do NOT modify `add_file`, `_mark_file_needs_chunking`'s existing body, `collect_file_disk_metadata`, or any other file.
+  - Keep all other behaviour (resolve, is_file guard, add_file insert path, needs_chunking) unchanged.
+  - All docstrings and comments in English (ARTIFACT_LOCALE=en, CR-010).
+verification:
+  type: pytest
+  target: tests/test_file_disk_registration.py
+  expected: ensure_file_row_for_disk_path accepts a keyword-only tree_checksum parameter (default None) and, after a valid files row with an id is obtained (both for a newly inserted row and for an already-existing row), when tree_checksum is not None it issues a single UPDATE writing tree_checksum onto that row by id through database.execute, mirroring the existing needs_chunking update mechanism. When tree_checksum is None the behaviour is unchanged. No raw SQL is added outside this UPDATE, no second checksum is computed, and add_file is not modified.

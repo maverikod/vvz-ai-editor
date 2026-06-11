@@ -1,0 +1,75 @@
+step_id: T-001
+parent_global_step: G-006
+name: NodeIdMap build, validate_and_repair, and resolve
+description: 'Create the NodeIdMap module (C-025) as the sole owner of short_id↔UUID4
+  map mutation within one tree file context. The module exposes exactly three public
+  operations — build, validate_and_repair, and resolve — and no other public entry
+  points perform map mutation. TreeNodeUuid (C-024) is the canonical UUID4 identity
+  of each addressable node: exactly one UUID4 per node stored in the tree file MAP
+  section, assigned at node creation, kept stable across validate_and_repair when
+  underlying content identity is unchanged, and never embedded in marked TREE content,
+  never returned by preview/edit/query/grep MCP commands, and never accepted as an
+  external node reference. A tree file comprises three sections — CHECKSUMS, MAP, and
+  TREE — per the sibling sidecar layout. The MAP section holds next_free (the lowest
+  integer not yet issued as a short_id), per-node UUID4 entries, and the short_id↔UUID
+  map. Operation build scans the TREE and MAP sections to generate or refresh the
+  short_id↔UUID map and per-node UUID entries when constructing or rebuilding a tree.
+  Operation validate_and_repair detects inconsistencies between markers in TREE, map
+  entries, UUID entries, and next_free, then fixes them while preserving UUID4 for
+  nodes whose underlying content identity is unchanged per {a007}. Operation resolve
+  performs bidirectional lookup short_id→UUID and UUID→short_id within one tree file
+  context. Short_id allocation follows {a007}: next_free lives in MAP; each new
+  addressable node receives short_id = next_free then next_free increments by 1;
+  short_ids are never reused after node deletion; on rebuild from an existing tree
+  file next_free is copied from the prior MAP so new ids continue above all previously
+  issued ids; on first-time creation next_free starts at 1. External consumers address
+  nodes by (project-relative file path, short_id) only per {n003}; resolution to UUID4
+  happens only inside the server via NodeIdMap.resolve when operating on a loaded tree.
+  This module replaces the retired generate/validate pair and centralizes map logic
+  previously split across format handlers; format handlers use NodeIdMap but do not
+  own map mutation.'
+concepts:
+- C-025
+- C-024
+inputs:
+- name: Tree file three-section layout
+  type: tree file structure
+  description: CHECKSUMS, MAP, and TREE sections of a sibling sidecar tree file;
+    MAP holds next_free, UUID4 entries, and short_id↔UUID map; TREE holds marked
+    content with integer short_id markers only.
+- name: TreeNodeUuid identity rules
+  type: domain invariant (C-024)
+  description: UUID4 assigned at node creation, stored only in MAP, preserved across
+    validate_and_repair for unchanged content identity, never exposed at API or
+    embedded in TREE markers.
+- name: Short_id allocation rules
+  type: allocation policy
+  description: Per-tree-file next_free counter per {a007}; monotonic issuance, no
+    reuse after deletion, copy next_free on rebuild from existing tree, initialize
+    to 1 on first-time creation.
+- name: FormatHandler marker contract
+  type: upstream consumer context (C-007)
+  description: Format handlers embed short_id markers in TREE via mark/unmark; they
+    invoke NodeIdMap for resolution during parse/build but do not mutate the map
+    directly.
+outputs:
+- name: NodeIdMap module
+  type: domain module (C-025)
+  description: Dedicated module with exactly three public operations — build,
+    validate_and_repair, resolve — and no other map-mutation entry points.
+- name: MAP section entries
+  type: persisted map data
+  description: Per-node UUID4 entries and short_id↔UUID associations written or
+    refreshed in the MAP section by build and validate_and_repair.
+- name: next_free counter
+  type: allocation state
+  description: MAP-held counter tracking the lowest unissued short_id; maintained
+    and repaired by build and validate_and_repair per {a007}.
+source_labels:
+- '{n001}'
+- '{n002}'
+- '{n003}'
+- '{a007}'
+atomic_steps:
+- A-001
+status: ready_for_review

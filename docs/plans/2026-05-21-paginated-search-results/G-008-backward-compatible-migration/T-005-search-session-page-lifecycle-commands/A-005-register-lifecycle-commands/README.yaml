@@ -1,0 +1,278 @@
+step_id: A-005
+parent_tactical_step: T-005
+name: Register page lifecycle MCP commands
+target_file: ai_editor/hooks_register_part1.py
+operation: modify_file
+priority: 5
+depends_on:
+  - A-001
+  - A-002
+  - A-003
+  - A-004
+concepts:
+  - C-022
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/hooks_register_part1.py
+
+  MRS (C-022 IncrementalCompatibilityLayer): bridge and lifecycle commands must be registered for MCP discovery.
+
+  Precondition: search_get_page_command.py, search_get_status_command.py, search_cancel_command.py,
+  search_close_command.py exist with command classes SearchGetPageCommand, SearchGetStatusCommand,
+  SearchCancelCommand, SearchCloseCommand. SearchStartCommand already registered by G-008/T-004/A-003.
+
+  Required edits within the search commands try block (after SearchStartCommand registration):
+  1. Import SearchGetPageCommand, SearchGetStatusCommand, SearchCancelCommand, SearchCloseCommand
+     from ai_editor.commands.search_*_command modules.
+  2. Register each with reg.register(<CommandClass>, "custom") in this order:
+     SearchGetPageCommand, SearchGetStatusCommand, SearchCancelCommand, SearchCloseCommand.
+  3. Do not alter unrelated registrations or remove SearchStartCommand registration.
+
+  Current full file content (post G-008/T-004/A-003; apply lifecycle imports and reg.register lines):
+
+  ```python
+  """
+  Register first part of code analysis commands (CST, AST, analysis, search, code_mapper).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  import logging
+
+  from mcp_proxy_adapter.commands.command_registry import registry
+
+  logger = logging.getLogger(__name__)
+
+
+  def register_commands_part1(reg: registry) -> None:
+      """Register CST, AST, analysis, search, and code_mapper commands."""
+      try:
+          from .commands.health_command import HealthCommand
+          from .commands.queue_health_command import QueueHealthCommand
+          from .commands.qa_sleep_command import QASleepCommand
+          from .commands.qa_mcp_plan_hooks_command import QAMcpPlanHooksCommand
+
+          reg.register(HealthCommand, "custom")
+          reg.register(QueueHealthCommand, "custom")
+          reg.register(QASleepCommand, "custom")
+          reg.register(QAMcpPlanHooksCommand, "custom")
+      except ImportError:
+          pass
+
+      try:
+          from .commands.check_vectors_command import CheckVectorsCommand
+
+          reg.register(CheckVectorsCommand, "custom")
+      except ImportError:
+          pass
+
+      try:
+          from .commands.file_structure_command import FileStructureCommand
+
+          reg.register(FileStructureCommand, "custom")
+      except ImportError:
+          pass
+
+      try:
+          from .commands.fs_ggrep_command import FsGgrepCommand
+          from .commands.fs_copy_move_remove_commands import (
+              FsCopyCommand,
+              FsMoveCommand,
+              FsRemoveCommand,
+          )
+
+          reg.register(FsGgrepCommand, "custom")
+          reg.register(FsCopyCommand, "custom")
+          reg.register(FsMoveCommand, "custom")
+          reg.register(FsRemoveCommand, "custom")
+          logger.info("✅ Registered fs_ggrep, fs_copy, fs_move, fs_remove")
+      except ImportError as e:
+          logger.warning("Failed to import fs_* commands: %s", e)
+
+      try:
+          from .commands.registration import register_file_management_commands
+
+          register_file_management_commands(reg)
+          logger.info("✅ Registered file_management universal + legacy commands")
+      except ImportError as e:
+          logger.warning("Failed to import project text file commands: %s", e)
+      except Exception as e:
+          logger.error(
+              "Failed to register project text file commands: %s", e, exc_info=True
+          )
+
+      try:
+          from .commands.list_yaml_blocks_command import ListYamlBlocksCommand
+
+          reg.register(ListYamlBlocksCommand, "custom")
+          logger.info("✅ Registered list_yaml_blocks")
+      except ImportError as e:
+          logger.warning("Failed to import list_yaml_blocks command: %s", e)
+      except Exception as e:
+          logger.error("Failed to register list_yaml_blocks: %s", e, exc_info=True)
+
+      try:
+          from .commands.ast_mcp_commands import (
+              ASTStatisticsMCPCommand,
+              ExportGraphMCPCommand,
+              FindDependenciesMCPCommand,
+              FindUsagesMCPCommand,
+              GetASTMCPCommand,
+              GetClassHierarchyMCPCommand,
+              GetCodeEntityInfoMCPCommand,
+              GetEntityDependenciesMCPCommand,
+              GetEntityDependentsMCPCommand,
+              GetImportsMCPCommand,
+              ListCodeEntitiesMCPCommand,
+              ListProjectFilesMCPCommand,
+              ReadOnlyBatchMCPCommand,
+              SearchASTNodesMCPCommand,
+          )
+
+          reg.register(GetASTMCPCommand, "custom")
+          reg.register(SearchASTNodesMCPCommand, "custom")
+          reg.register(ASTStatisticsMCPCommand, "custom")
+          reg.register(ListProjectFilesMCPCommand, "custom")
+          reg.register(GetCodeEntityInfoMCPCommand, "custom")
+          reg.register(ListCodeEntitiesMCPCommand, "custom")
+          reg.register(GetImportsMCPCommand, "custom")
+          reg.register(FindDependenciesMCPCommand, "custom")
+          reg.register(GetEntityDependenciesMCPCommand, "custom")
+          reg.register(GetEntityDependentsMCPCommand, "custom")
+          reg.register(GetClassHierarchyMCPCommand, "custom")
+          reg.register(FindUsagesMCPCommand, "custom")
+          reg.register(ExportGraphMCPCommand, "custom")
+          reg.register(ReadOnlyBatchMCPCommand, "custom")
+      except ImportError:
+          pass
+
+      try:
+          from .commands.vector_commands import RebuildFaissCommand, RevectorizeCommand
+
+          reg.register(RebuildFaissCommand, "custom")
+          reg.register(RevectorizeCommand, "custom")
+      except ImportError:
+          pass
+
+      try:
+          from .commands.semantic_search_mcp import SemanticSearchMCPCommand
+
+          reg.register(SemanticSearchMCPCommand, "custom")
+          logger.info("✅ Registered semantic_search command")
+      except ImportError as e:
+          logger.warning("Failed to import semantic_search command: %s", e)
+      except Exception as e:
+          logger.error("Failed to register semantic_search command: %s", e, exc_info=True)
+
+      try:
+          from .commands.refactor_mcp_commands import (
+              ExtractSuperclassMCPCommand,
+              SplitClassMCPCommand,
+              SplitFileToPackageMCPCommand,
+          )
+
+          reg.register(SplitClassMCPCommand, "custom")
+          reg.register(ExtractSuperclassMCPCommand, "custom")
+          reg.register(SplitFileToPackageMCPCommand, "custom")
+      except ImportError:
+          pass
+
+      from .commands.code_quality_commands import (
+          FormatCodeCommand,
+          LintCodeCommand,
+          TypeCheckCodeCommand,
+      )
+
+      reg.register(FormatCodeCommand, "custom")
+      reg.register(LintCodeCommand, "custom")
+      reg.register(TypeCheckCodeCommand, "custom")
+
+      try:
+          from .commands.analyze_complexity_mcp import AnalyzeComplexityMCPCommand
+
+          reg.register(AnalyzeComplexityMCPCommand, "custom")
+          logger.info("✅ Registered analyze_complexity command")
+      except ImportError as e:
+          logger.warning("Failed to import analyze_complexity command: %s", e)
+      except Exception as e:
+          logger.error(
+              "Failed to register analyze_complexity command: %s", e, exc_info=True
+          )
+
+      try:
+          from .commands.find_duplicates_mcp import FindDuplicatesMCPCommand
+
+          reg.register(FindDuplicatesMCPCommand, "custom")
+          logger.info("✅ Registered find_duplicates command")
+      except ImportError as e:
+          logger.warning("Failed to import find_duplicates command: %s", e)
+      except Exception as e:
+          logger.error("Failed to register find_duplicates command: %s", e, exc_info=True)
+
+      try:
+          from .commands.comprehensive_analysis_mcp import ComprehensiveAnalysisMCPCommand
+
+          reg.register(ComprehensiveAnalysisMCPCommand, "custom")
+          logger.info("✅ Registered comprehensive_analysis command")
+      except ImportError as e:
+          logger.warning("Failed to import comprehensive_analysis command: %s", e)
+      except Exception as e:
+          logger.error(
+              "Failed to register comprehensive_analysis command: %s", e, exc_info=True
+          )
+
+      try:
+          from .commands.search_mcp_commands import (
+              FindClassesMCPCommand,
+              FulltextSearchMCPCommand,
+              ListClassMethodsMCPCommand,
+          )
+
+          reg.register(FulltextSearchMCPCommand, "custom")
+          reg.register(ListClassMethodsMCPCommand, "custom")
+          reg.register(FindClassesMCPCommand, "custom")
+          from .commands.project_cross_search_command import ProjectCrossSearchCommand
+
+          reg.register(ProjectCrossSearchCommand, "custom")
+          from .commands.search_start_command import SearchStartCommand
+
+          reg.register(SearchStartCommand, "custom")
+          # ADD lifecycle command imports and registrations here (SearchGetPageCommand, etc.)
+          logger.info("✅ Registered search commands")
+      except ImportError as e:
+          logger.warning("Failed to import search commands: %s", e)
+      except Exception as e:
+          logger.error("Failed to register search commands: %s", e, exc_info=True)
+
+      try:
+          from .commands.code_mapper_mcp_command import UpdateIndexesMCPCommand
+
+          reg.register(UpdateIndexesMCPCommand, "custom")
+      except ImportError:
+          pass
+
+      try:
+          from .commands.code_mapper_mcp_commands import (
+              ListErrorsByCategoryMCPCommand,
+              ListLongFilesMCPCommand,
+          )
+
+          reg.register(ListLongFilesMCPCommand, "custom")
+          reg.register(ListErrorsByCategoryMCPCommand, "custom")
+          logger.info(
+              "✅ Registered code_mapper commands: list_long_files, list_errors_by_category"
+          )
+      except ImportError as e:
+          logger.warning("Failed to import code_mapper commands: %s", e)
+      except Exception as e:
+          logger.error("Failed to register code_mapper commands: %s", e, exc_info=True)
+  ```
+
+verification:
+  type: import
+  target: ai_editor.hooks_register_part1
+  expected: >
+    All four lifecycle command classes import successfully; help after server restart lists search_get_page,
+    search_get_status, search_cancel, and search_close alongside search_start.
+status: ready_for_review

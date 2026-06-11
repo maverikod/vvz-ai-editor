@@ -1,0 +1,152 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Create session.py with EditSession dataclass and registry
+target_file: ai_editor/commands/universal_file_edit/session.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/session.py
+
+  MRS context:
+  C-001 EditSession: In-memory record tracking one active editing session for one file.
+    Properties:
+    - identified by session_id (UUID)
+    - stores file_path, abs_path, draft_path, lockfile_path, format_group, handler_id, tree_id
+    - format_group is one of sidecar, tree-temp, text
+    - stored in module-level _sessions dict in the server process
+    - not persisted across server restarts
+  C-002 FormatGroup: sidecar | tree-temp | text.
+  C-014 ErrorCodes: SESSION_NOT_FOUND when session_id is unknown.
+
+  The FormatDescriptor type is imported from
+  ai_editor.commands.universal_file_edit.format_group.
+  Its relevant fields: format_group (str), handler_id (str),
+  draft_path (Path), lockfile_path (Path), available_operations (list[str]).
+
+  Task:
+  Create file ai_editor/commands/universal_file_edit/session.py
+  with the following exact content:
+
+  ```python
+  """
+  EditSession entity and module-level session registry.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  import uuid
+  from dataclasses import dataclass
+  from pathlib import Path
+  from typing import Optional
+
+  from ai_editor.commands.universal_file_edit.format_group import FormatDescriptor
+
+  _sessions: dict[str, EditSession] = {}
+
+
+  @dataclass
+  class EditSession:
+      """In-memory record for one active file-editing session.
+
+      Attributes:
+          session_id: UUID string identifying the session.
+          file_path: Project-relative path to the original file.
+          abs_path: Absolute path to the original file.
+          draft_path: Absolute path to the draft file.
+          lockfile_path: Absolute path to the write lockfile.
+          format_group: One of sidecar, tree-temp, or text.
+          handler_id: Handler id from the file handler registry.
+          tree_id: In-memory tree UUID for tree-temp group; None otherwise.
+      """
+
+      session_id: str
+      file_path: str
+      abs_path: Path
+      draft_path: Path
+      lockfile_path: Path
+      format_group: str
+      handler_id: str
+      tree_id: Optional[str]
+
+
+  def create_session(abs_path: Path, descriptor: FormatDescriptor,
+                     file_path: str, tree_id: Optional[str] = None) -> EditSession:
+      """Create and register a new EditSession.
+
+      Args:
+          abs_path: Absolute path to the original file.
+          descriptor: Resolved FormatDescriptor for the file.
+          file_path: Project-relative path to the original file.
+          tree_id: In-memory tree UUID for tree-temp group; None for other groups.
+
+      Returns:
+          Newly created and registered EditSession.
+      """
+      session_id = str(uuid.uuid4())
+      session = EditSession(
+          session_id=session_id,
+          file_path=file_path,
+          abs_path=abs_path,
+          draft_path=descriptor.draft_path,
+          lockfile_path=descriptor.lockfile_path,
+          format_group=descriptor.format_group,
+          handler_id=descriptor.handler_id,
+          tree_id=tree_id,
+      )
+      _sessions[session_id] = session
+      return session
+
+
+  def get_session(session_id: str) -> EditSession:
+      """Return the EditSession for session_id, or raise SESSION_NOT_FOUND.
+
+      Args:
+          session_id: UUID string of the session to look up.
+
+      Returns:
+          The registered EditSession.
+
+      Raises:
+          ValueError: with message SESSION_NOT_FOUND when session_id is unknown.
+      """
+      session = _sessions.get(session_id)
+      if session is None:
+          raise ValueError("SESSION_NOT_FOUND")
+      return session
+
+
+  def release_session(session_id: str) -> None:
+      """Remove a session from the registry; silent if session_id is unknown.
+
+      Args:
+          session_id: UUID string of the session to remove.
+      """
+      _sessions.pop(session_id, None)
+  ```
+
+  Implementation:
+  Write the file with the exact content shown above.
+  Run lint_code and format_code on the file.
+
+  Constraints:
+  - All functions and the dataclass must have complete docstrings.
+  - All parameters and return types must have type hints.
+  - File must be syntactically valid Python.
+  - File line count must not exceed 400.
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.session
+  expected: >
+    Module imports without errors. EditSession dataclass exists with fields
+    session_id, file_path, abs_path, draft_path, lockfile_path, format_group,
+    handler_id, tree_id. create_session, get_session, release_session are callable.
+    Calling get_session with an unknown session_id raises ValueError("SESSION_NOT_FOUND").
+status: draft

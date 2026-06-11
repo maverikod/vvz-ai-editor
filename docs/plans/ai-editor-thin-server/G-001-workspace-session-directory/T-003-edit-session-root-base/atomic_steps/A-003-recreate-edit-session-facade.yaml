@@ -1,0 +1,91 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: Facade edit_session под лимит 400 строк
+target_file: ai_editor/core/edit_session/edit_session.py
+operation: create_file
+priority: 5
+depends_on:
+- A-005
+concepts:
+- C-019
+prompt: |
+  Create facade at `ai_editor/core/edit_session/edit_session.py` (operation: create_file, ≤80 lines).
+
+  ## Parent scope (T-003)
+
+  Thin re-export facade after monolith delete. Implementation lives in
+  `edit_session_impl.py`.
+
+  ## OUT OF SCOPE
+
+  - Workspace open kwargs in `edit_session_impl.py`
+  - draft/lockfile/sidecar/tree-temp paths → T-004/T-006
+
+  ## Exact file content
+
+  ```python
+  """EditSession facade — re-exports implementation (C-019).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  from .edit_session_impl import (
+      CONTENT_NOT_ALLOWED_FOR_VALID_FILE,
+      EditSession,
+      EditSessionError,
+      SESSION_INVALID_TRUTH_INVARIANT,
+      SESSION_VALID_TRUTH_INVARIANT,
+      SessionTreeValidity,
+      _active_sessions,
+  )
+
+  __all__ = [
+      "EditSession",
+      "EditSessionError",
+      "SessionTreeValidity",
+      "get_active_session",
+      "CONTENT_NOT_ALLOWED_FOR_VALID_FILE",
+      "SESSION_VALID_TRUTH_INVARIANT",
+      "SESSION_INVALID_TRUTH_INVARIANT",
+  ]
+
+
+  def get_active_session(session_id: str) -> EditSession:
+      """Resolve live EditSession; KeyError if absent."""
+      try:
+          return _active_sessions[session_id]
+      except KeyError as exc:
+          raise KeyError(f"No active edit session: {session_id}") from exc
+  ```
+
+  ## Also modify `ai_editor/core/edit_session/__init__.py`
+
+  Ensure public imports still resolve (symbols may now come from facade + impl). Match
+  existing `__all__` in `__init__.py`; no path-binding changes.
+
+  ## Forbidden patterns
+
+  - Do NOT put EditSession.open logic in facade
+  - Do NOT exceed 80 lines in edit_session.py
+  - Do NOT add workspace fields here
+
+  ## Validation commands
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/edit_session.py ai_editor/core/edit_session/__init__.py
+  flake8 ai_editor/core/edit_session/edit_session.py
+  python -c "from ai_editor.core.edit_session import EditSession, get_active_session"
+  wc -l ai_editor/core/edit_session/edit_session.py
+  pytest tests/unit/test_edit_session_lifecycle.py -v
+  ```
+
+  Expected: import ok; line count ≤80; lifecycle tests pass.
+  **Mandatory:** all project tests must pass before handoff.
+verification:
+  type: import
+  target: ai_editor.core.edit_session.get_active_session
+  expected: Facade re-exports work; file length under 80 lines.
+status: draft

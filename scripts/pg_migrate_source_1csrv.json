@@ -1,0 +1,16 @@
+{
+  "ai_editor": {
+    "database": {
+      "driver": {
+        "type": "postgres",
+        "config": {
+          "host": "1csrv-postgres-app-1",
+          "port": 5432,
+          "dbname": "ai_editor",
+          "user": "ai_editor",
+          "password_env": "MIGRATE_SOURCE_POSTGRES_PASSWORD"
+        }
+      }
+    }
+  }
+}

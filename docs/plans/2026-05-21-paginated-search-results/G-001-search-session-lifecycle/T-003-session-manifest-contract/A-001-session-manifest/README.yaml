@@ -1,0 +1,88 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: SearchSessionManifest and ServerProcessIdentity
+target_file: ai_editor/core/search_session/manifest.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-003
+- C-008
+prompt: "Operation: create_file\nTarget: ai_editor/core/search_session/manifest.py\n\
+  \nMRS excerpts:\nC-003 SearchSessionManifest: created_at, last_access_at, heartbeat_at,
+  status,\n  request parameters, metrics, block readiness, warnings, errors; stores\n\
+  \  ServerProcessIdentity; safe concurrent updates.\nC-008 ServerProcessIdentity:
+  main_pid, process_start_time, optional host, instance_id;\n  missing PID or start_time
+  mismatch => dead/orphaned.\n\nSearchSessionState excerpt (from ai_editor/core/search_session/session.py
+  — use these\nexact value strings for manifest `status`):\n```python\nclass SearchSessionState(str,
+  Enum):\n    running = \"running\"\n    completed = \"completed\"\n    failed = \"\
+  failed\"\n    cancelled = \"cancelled\"\n    timed_out = \"timed_out\"\n    dead
+  = \"dead\"\n    expired = \"expired\"\n    closed = \"closed\"\n```\n\nRequired
+  imports:\n```python\nfrom __future__ import annotations\n\nimport fcntl\nimport
+  json\nimport os\nimport time\nfrom dataclasses import asdict, dataclass\nfrom pathlib
+  import Path\nfrom typing import Any, Callable, Optional\n\nfrom ai_editor.core.search_session.directory
+  import SearchSessionDirectoryLayout\nfrom ai_editor.core.search_session.session
+  import SearchSessionState\n```\n\nLock mechanism (resolved — no open fork): use
+  **fcntl.flock** exclusively on\n``manifest.json.lock`` beside ``manifest.json``.
+  Do not use portalocker.\n\nTask:\nCreate manifest.py with:\n\n1. Module docstring
+  (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).\n\n2. Module constant:\n\
+  \   ```python\n   INITIAL_MANIFEST_PHASE: str = \"starting\"\n   ```\n\n3. @dataclass
+  ManifestConcurrencyPolicy:\n     Document concurrency rules as frozen dataclass
+  fields (all bool, all True):\n     - single_writer_under_update_lock: concurrent
+  updates serialize on manifest.json.lock\n     - atomic_create_via_tmp_replace: initial
+  write uses tmp + os.replace without lock\n     - readers_may_read_without_lock:
+  read_manifest opens JSON directly\n   Module docstring section MANIFEST_CONCURRENCY_POLICY
+  repeats the three rules in prose.\n   Export module-level singleton:\n   ```python\n\
+  \   MANIFEST_CONCURRENCY_POLICY = ManifestConcurrencyPolicy(\n       single_writer_under_update_lock=True,\n\
+  \       atomic_create_via_tmp_replace=True,\n       readers_may_read_without_lock=True,\n\
+  \   )\n   ```\n   This singleton realizes the manifest concurrency rules output
+  of the parent tactical step.\n\n4. @dataclass ServerProcessIdentity:\n     main_pid:
+  int\n     process_start_time: float\n     host: Optional[str] = None\n     instance_id:
+  Optional[str] = None\n\n5. @dataclass SearchSessionManifest:\n     search_id: str\n\
+  \     created_at: float\n     last_access_at: float\n     heartbeat_at: Optional[float]\n\
+  \     status: str  (must equal SearchSessionState.<member>.value)\n     phase: str\n\
+  \     request: dict[str, Any]\n     metrics: dict[str, int]\n     process: ServerProcessIdentity\n\
+  \     block_ready_count: int = 0\n\n6. Metric key constants (exact names, no aliases):\n\
+  \     METRIC_PRODUCED_RESULTS = \"produced_results\"\n     METRIC_WRITTEN_BLOCKS
+  = \"written_blocks\"\n     METRIC_SCANNED_FILES = \"scanned_files\"\n     METRIC_WARNINGS
+  = \"warnings\"\n     METRIC_ERRORS = \"errors\"\n     DEFAULT_METRICS: dict[str,
+  int] with all five keys initialized to 0.\n   Warnings and errors are tracked via
+  METRIC_WARNINGS / METRIC_ERRORS counters (not separate list fields).\n\n7. def capture_server_process_identity()
+  -> ServerProcessIdentity:\n     Uses os.getpid() and time.time() for process_start_time.\n\
+  \     process_start_time is wall-clock epoch seconds (time.time()), not time.monotonic().\n\
+  \     Docstring must state wall-clock explicitly.\n\n8. def create_initial_manifest(\n\
+  \       *,\n       layout: SearchSessionDirectoryLayout,\n       search_id: str,\n\
+  \       request: dict[str, Any],\n       process: Optional[ServerProcessIdentity]
+  = None,\n   ) -> SearchSessionManifest:\n     - now = time.time()\n     - process
+  defaults to capture_server_process_identity() when omitted\n     - Builds SearchSessionManifest
+  with:\n       search_id=search_id,\n       created_at=now,\n       last_access_at=now,\n\
+  \       heartbeat_at=None,\n       status=SearchSessionState.running.value,\n  \
+  \     phase=INITIAL_MANIFEST_PHASE,\n       request=dict(request),\n       metrics=dict(DEFAULT_METRICS),\n\
+  \       process=process,\n       block_ready_count=0\n     - Calls write_manifest_atomic(layout,
+  manifest)\n     - Returns the manifest\n   This function consumes: layout (session
+  directory), search_id, request context dict,\n   and optional server process identity;
+  produces the initial SearchSessionManifest.\n\n9. def write_manifest_atomic(layout:
+  SearchSessionDirectoryLayout, manifest: SearchSessionManifest) -> None:\n     Writes
+  JSON to manifest_path.tmp then os.replace to manifest_path.\n     UTF-8 via json
+  module; no lock required (atomic replace).\n\n10. def read_manifest(layout: SearchSessionDirectoryLayout)
+  -> SearchSessionManifest:\n      Loads JSON; raises FileNotFoundError if missing.\n\
+  \n11. def update_manifest_atomic(\n       layout: SearchSessionDirectoryLayout,\n\
+  \       mutator: Callable[[SearchSessionManifest], SearchSessionManifest],\n   )
+  -> SearchSessionManifest:\n      Read-modify-write under exclusive fcntl.flock on
+  manifest_path.lock (create lock file alongside manifest).\n      Docstring states
+  lock scope: single session manifest file; lock released before return.\n\n12. Private
+  helpers _manifest_to_dict, _manifest_from_dict, _atomic_write_json, _lock_path as
+  needed.\n\nConstraints:\n- JSON serialization must use standard json module; UTF-8.\n\
+  - All timestamp fields (created_at, last_access_at, heartbeat_at, process_start_time)
+  use wall-clock time.time().\n- Under 350 lines.\n"
+verification:
+  type: import
+  target: ai_editor.core.search_session.manifest
+  expected: "ServerProcessIdentity and SearchSessionManifest import. Metric constants
+    match produced_results, written_blocks, scanned_files, warnings, errors. MANIFEST_CONCURRENCY_POLICY
+    and ManifestConcurrencyPolicy document concurrent access rules. create_initial_manifest
+    writes manifest.json with status running, phase starting, request payload, and
+    process identity. capture_server_process_identity docstring documents wall-clock
+    process_start_time. write_manifest_atomic creates manifest.json. update_manifest_atomic
+    applies mutator under fcntl lock.\n"
+status: ready_for_review

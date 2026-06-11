@@ -1,0 +1,44 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: fs_ggrep pagination schema extension module
+target_file: ai_editor/commands/fs_ggrep_pagination_schema.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-021
+  - C-023
+  - C-024
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/fs_ggrep_pagination_schema.py
+
+  MRS (C-024 OptionalPaginationParameters):
+  - May include fields such as paginated, job_id, include_job_id, block position number.
+  - Must not be required for existing non-paginated callers.
+  - Must be documented in command schemas and metadata when exposed.
+
+  Precondition: ai_editor/commands/search_session_schema.py exports merge_pagination_schema.
+
+  Do not modify fs_ggrep_command.py (monolith over 400 lines).
+
+  Implement:
+  - def get_fs_ggrep_schema_with_pagination() -> dict[str, Any]
+    Import FsGgrepCommand from ai_editor.commands.fs_ggrep_command, call cls.get_schema(),
+    return merge_pagination_schema(base).
+  - def document_fs_ggrep_pagination_metadata() -> dict[str, str]
+    Returns parameter descriptions keyed by paginated, job_id, include_job_id, block_position;
+    states paginated defaults to false and block_position selects a published block by position number.
+
+  Constraints:
+  - Under 80 lines.
+  - Author header.
+  - Schema-only module; execute wiring lives in search_paginated_ggrep.py (separate AS).
+
+verification:
+  type: pytest
+  target: tests/unit/test_fs_ggrep_pagination_schema.py
+  expected: >
+    Returned schema includes optional pagination properties with paginated default false;
+    fs_ggrep base required keys unchanged; document_fs_ggrep_pagination_metadata returns four keys.
+status: ready_for_review

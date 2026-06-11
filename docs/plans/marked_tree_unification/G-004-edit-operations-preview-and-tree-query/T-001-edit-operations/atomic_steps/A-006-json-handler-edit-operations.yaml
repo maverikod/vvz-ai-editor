@@ -1,0 +1,201 @@
+step_id: A-006
+parent_tactical_step: T-001
+name: JsonHandler edit-operations with tree-validity gate
+target_file: ai_editor/tree/handlers/json_handler.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-001
+concepts:
+- C-015
+- C-007
+- C-002
+- C-012
+- C-009
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-015, C-007, C-002, C-012, C-009)
+
+  Modify `ai_editor/tree/handlers/json_handler.py`.
+  Operation: modify_file.
+
+  Add six edit operations with tree-validity gate ({h008}). Integer `"___id___": <int>`
+  JSON wrappers only. Delegate to existing JSON tree-edit engine when available.
+
+  ## Full current file content (a8 — pre-edit baseline inlined)
+
+  COMPLETE expected module BEFORE this edit. Baseline from G-001 create_file spec (114 lines).
+  File may not exist on disk yet; treat this block as the exact pre-edit state.
+
+  ```python
+  """
+  JSON FormatHandler (C-007).
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  from __future__ import annotations
+  
+  import json
+  from pathlib import Path
+  from typing import Any, List, Optional, Tuple
+  
+  from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  from ai_editor.tree.tree_node import TreeNode
+  
+  _ID_KEY = "___id___"
+  _VAL_KEY = "v"
+  
+  
+  def _detect_json_format(text: str) -> Tuple[Optional[int], str]:
+      lines = text.splitlines()
+      if len(lines) <= 1:
+          return None, "compact"
+      for line in lines[1:]:
+          stripped = line.lstrip(" ")
+          if stripped and stripped[0] not in ("}", "]"):
+              indent = len(line) - len(stripped)
+              if indent > 0:
+                  return indent, "indented"
+      return None, "compact"
+  
+  
+  def _wrap(obj: Any, allocator: ShortIdAllocator) -> Any:
+      if isinstance(obj, dict):
+          return {
+              _ID_KEY: allocator.allocate(),
+              _VAL_KEY: {k: _wrap(v, allocator) for k, v in obj.items()},
+          }
+      if isinstance(obj, list):
+          return {
+              _ID_KEY: allocator.allocate(),
+              _VAL_KEY: [_wrap(i, allocator) for i in obj],
+          }
+      return {_ID_KEY: allocator.allocate(), _VAL_KEY: obj}
+  
+  
+  def _unwrap(obj: Any) -> Any:
+      if isinstance(obj, dict) and _ID_KEY in obj and _VAL_KEY in obj:
+          val = obj[_VAL_KEY]
+          if isinstance(val, dict):
+              return {k: _unwrap(v) for k, v in val.items()}
+          if isinstance(val, list):
+              return [_unwrap(i) for i in val]
+          return val
+      return obj
+  
+  
+  def _collect_nodes(wrapped: Any, pointer: str, nodes: List[TreeNode]) -> None:
+      if isinstance(wrapped, dict) and _ID_KEY in wrapped and _VAL_KEY in wrapped:
+          sid = int(wrapped[_ID_KEY])
+          val = wrapped[_VAL_KEY]
+          if isinstance(val, dict):
+              kind = "object"
+              for k, v in val.items():
+                  _collect_nodes(v, f"{pointer}/{k}", nodes)
+          elif isinstance(val, list):
+              kind = "array"
+              for i, v in enumerate(val):
+                  _collect_nodes(v, f"{pointer}[{i}]", nodes)
+          else:
+              kind = "scalar"
+          nodes.append(
+              TreeNode(
+                  short_id=sid,
+                  kind=kind,
+                  content=json.dumps(val, ensure_ascii=False),
+                  attributes={"json_pointer": pointer or "/"},
+              )
+          )
+  
+  
+  class JsonHandler(FormatHandler):
+      def parse_content(self, file_path: Path, content: str) -> List[TreeNode]:
+          obj = json.loads(content)
+          wrapped = _wrap(obj, ShortIdAllocator(1))
+          nodes: List[TreeNode] = []
+          _collect_nodes(wrapped, "", nodes)
+          return nodes
+  
+      def mark(self, content: str) -> str:
+          obj = json.loads(content)
+          indent, _ = _detect_json_format(content)
+          wrapped = _wrap(obj, ShortIdAllocator(1))
+          return json.dumps(
+              wrapped,
+              indent=indent,
+              ensure_ascii=False,
+              sort_keys=False,
+          )
+  
+      def unmark(self, marked_text: str) -> str:
+          obj = json.loads(marked_text)
+          indent, _ = _detect_json_format(marked_text)
+          clean = _unwrap(obj)
+          return json.dumps(
+              clean,
+              indent=indent,
+              ensure_ascii=False,
+              sort_keys=False,
+          )
+  
+      def sidecar_path(self, source_abs: Path) -> Path:
+          return source_abs.parent / (source_abs.name + ".tree")
+  ```
+
+  ## Tree-validity gate
+
+  Instance state and methods (inline — do NOT import from another handler module):
+
+    _tree_is_valid: bool = True
+
+    def set_tree_validity(self, is_valid: bool) -> None:
+        self._tree_is_valid = is_valid
+
+    def _enforce_short_id_edit_gate(self) -> None:
+        if not self._tree_is_valid:
+            raise JsonEditGateError(
+                "tree is invalid (text mode); short_id edit operations forbidden until re-validation"
+            )
+
+  class JsonEditGateError(ValueError):
+      """Raised when short_id edit ops are attempted while tree is invalid."""
+
+  Each op_* first line: self._enforce_short_id_edit_gate()
+
+  ## op_* implementation
+
+  Operate on wrapped JSON tree; locate wrappers by integer ___id___; insert assigns next_free;
+  delete/remove wrapper preserving structure; move/replace preserve short_id; edit-content on scalar leaves.
+
+  Signatures match FormatHandler abstract op_* (NodeId int, next_free on insert).
+
+  ## Forbidden
+
+  - NO UUID strings in JSON ids
+  - NO NODE_ID_PREFIX_WIDTH or preview concerns here
+  - NO G-007, non-standard cross-TS ordering fields, {l*}/{m*}
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/handlers/json_handler.py
+  flake8 ai_editor/tree/handlers/json_handler.py
+  mypy ai_editor/tree/handlers/json_handler.py
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/handlers/json_handler.py
+  expected: >
+    Six op_* methods; int short_id only; gate error when tree invalid; insert uses
+    next_free; estimated ~370 lines (≤400).

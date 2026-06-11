@@ -1,0 +1,98 @@
+step_id: A-005
+parent_tactical_step: T-003
+name: Create session_git_diff MCP command
+target_file: ai_editor/commands/universal_file_edit/session_git_diff_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-014
+- C-013
+- C-012
+status: ready_for_review
+prompt: |
+  Create `ai_editor/commands/universal_file_edit/session_git_diff_command.py`.
+  Operation: create_file.
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-012, C-013, C-014)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-003-session-git-api/README.yaml`
+
+  Define `session_git_diff` (C-014): unified diff in `tree` mode (commit vs commit
+  on three-section tree artefacts) or `source` mode (tree revision rev_a vs the
+  most recent per-mutation unmark-exported in-session source at
+  `session.session_source_path` per {d003}; live external SourceFile is NOT an input).
+
+  Distinct from `session_write` ({d004}/{n7k2}), which diffs in-session artefacts
+  against live external files.
+
+  ## Imports (exact)
+
+  ```python
+  from __future__ import annotations
+
+  import difflib
+  from typing import Any, Dict, List, Optional, Type, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.errors import (
+      INVALID_OPERATION,
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.core.edit_session.edit_session import get_active_session
+  ```
+
+  ## Class SessionGitDiffCommand
+
+  - `name = "session_git_diff"`
+  - Schema: required `project_id`, `session_id`, `mode` enum [`tree`,`source`], `rev_a`;
+    optional `rev_b`; `additionalProperties: false`.
+
+  ## execute algorithm
+
+  1. Resolve session via `get_active_session`; KeyError → SESSION_NOT_FOUND.
+  2. `repo = session.session_repo`.
+  3. If `mode == "tree"`:
+     - If `rev_b is None` → INVALID_OPERATION "tree mode requires rev_b".
+     - `left_text = repo.show_tree(rev=rev_a).decode("utf-8", errors="replace")`.
+     - `right_text = repo.show_tree(rev=rev_b).decode("utf-8", errors="replace")`.
+     - Labels: `tree@{rev_a}`, `tree@{rev_b}`.
+  4. Elif `mode == "source"`:
+     - `left_text = repo.show_tree(rev=rev_a).decode("utf-8", errors="replace")`.
+     - `right_text = session.session_source_path.read_text(encoding="utf-8")`.
+     - Labels: `tree@{rev_a}`, `in-session-source`.
+  5. Else → INVALID_OPERATION f"Unknown diff mode: {mode}".
+  6. `diff = "".join(difflib.unified_diff(left.splitlines(keepends=True), right.splitlines(keepends=True), fromfile=..., tofile=...))`.
+  7. Return SuccessResult `{"success": True, "mode": mode, "diff": diff}`.
+
+  ## Forbidden
+
+  - No dulwich imports in this command file.
+  - Do NOT read live external source or tree paths.
+  - Do NOT implement session_write preview/confirm logic.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/session_git_diff_command.py
+  flake8 ai_editor/commands/universal_file_edit/session_git_diff_command.py
+  mypy ai_editor/commands/universal_file_edit/session_git_diff_command.py
+  pytest -q
+  ```
+
+  All tests must pass. Estimated lines ~200 (≤400).
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/session_git_diff_command.py
+  expected: |
+    SessionGitDiffCommand with schema mode enum tree/source; tree mode requires rev_b;
+    source mode diffs show_tree(rev_a) vs session.session_source_path; uses
+    difflib.unified_diff; SESSION_NOT_FOUND on missing session; no dulwich import.
+    All tests pass.

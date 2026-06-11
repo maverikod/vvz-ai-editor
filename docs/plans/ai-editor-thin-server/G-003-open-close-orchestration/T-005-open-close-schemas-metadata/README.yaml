@@ -1,0 +1,20 @@
+step_id: T-005
+parent_global_step: G-003
+name: Схемы и metadata open/close
+description: 'Обновить MCP schema и metadata команд open и close (C-016): обязательный session_id как CA session; поля ответа с путями внутри workspace; error cases для lock conflict, session invalid, file already open. Соответствие Command Metadata Standard.
+
+  '
+concepts:
+- C-016
+inputs:
+- name: command_classes
+  type: object
+  description: Команды universal_file_open и universal_file_close.
+outputs:
+- name: updated_schemas
+  type: object
+  description: get_schema и metadata для open/close.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

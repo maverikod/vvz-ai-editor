@@ -1,0 +1,61 @@
+#!/bin/bash
+# prerm runs before package files are removed; may still use /usr/lib/ai-editor helpers.
+set -u
+
+# shellcheck source=/dev/null
+[ -f /etc/default/ai-editor ] && . /etc/default/ai-editor
+AI_EDITOR_CONTAINER="${AI_EDITOR_CONTAINER:-ai-editor}"
+AI_EDITOR_STATE_DIR="/var/lib/ai-editor"
+AI_EDITOR_IMAGE_REF_FILE="${AI_EDITOR_STATE_DIR}/uninstall-image-ref"
+AI_EDITOR_IMAGE_SPEC="/usr/lib/ai-editor/image-spec"
+
+ai_editor_cleanup_stop_service() {
+  systemctl stop ai-editor-docker.service 2>/dev/null || true
+  systemctl disable ai-editor-docker.service 2>/dev/null || true
+  systemctl stop ai-editor-docker-recreate.service 2>/dev/null || true
+  systemctl disable ai-editor-docker-recreate.service 2>/dev/null || true
+  systemctl reset-failed ai-editor-docker.service 2>/dev/null || true
+}
+
+ai_editor_cleanup_remove_container() {
+  if [ -x /usr/lib/ai-editor/docker-run.sh ]; then
+    /usr/lib/ai-editor/docker-run.sh stop 2>/dev/null || true
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    docker rm -f "${AI_EDITOR_CONTAINER}" 2>/dev/null || true
+  fi
+}
+
+ai_editor_cleanup_save_image_ref() {
+  if [ ! -f "$AI_EDITOR_IMAGE_SPEC" ]; then
+    return 0
+  fi
+  # shellcheck source=/dev/null
+  . "$AI_EDITOR_IMAGE_SPEC"
+  if [ -z "${DOCKERHUB_REPO:-}" ] || [ -z "${IMAGE_TAG:-}" ]; then
+    return 0
+  fi
+  mkdir -p "$AI_EDITOR_STATE_DIR"
+  printf '%s:%s\n' "$DOCKERHUB_REPO" "$IMAGE_TAG" >"$AI_EDITOR_IMAGE_REF_FILE"
+}
+
+case "${1:-}" in
+  remove)
+    ai_editor_cleanup_stop_service
+    ai_editor_cleanup_remove_container
+    ai_editor_cleanup_save_image_ref
+    ;;
+  upgrade|deconfigure)
+    ai_editor_cleanup_stop_service
+    ai_editor_cleanup_remove_container
+    ai_editor_cleanup_save_image_ref
+    ;;
+  failed-upgrade)
+    ;;
+  *)
+    echo "prerm called with unknown argument: ${1:-}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

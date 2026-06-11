@@ -1,0 +1,30 @@
+step_id: G-008
+name: Единый клиентский фасад
+description: 'Свести клиентскую библиотеку к одному публичному фасаду, реализующему File Workflow (C-009) поверх MCP Workflow Surface (C-016): обязательный контекст CA Session (C-004) — session_id, project_id и file_path на стадиях open, write и close — в согласовании с моделью агента (C-003). Параллельные и дублирующие клиентские фасады пометить deprecated или убрать из публичного API в объёме Legacy Removal Scope (C-020), критерий {4z1r}. Согласовать регистрацию команд, примеры и проверки соответствия со суженной MCP-поверхностью (C-016); итог — по Product Acceptance Criteria (C-022).
+
+  '
+concepts:
+- C-003
+- C-004
+- C-009
+- C-016
+- C-020
+- C-022
+relations:
+- from_concept: C-016
+  to_concept: C-009
+  type: implements
+source_ranges:
+- start: 7
+  end: 7
+- start: 17
+  end: 17
+- start: 87
+  end: 87
+depends_on:
+- G-006
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: ready_for_review

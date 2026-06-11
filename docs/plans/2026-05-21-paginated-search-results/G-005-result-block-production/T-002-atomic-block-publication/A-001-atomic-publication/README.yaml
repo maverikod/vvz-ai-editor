@@ -1,0 +1,51 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: AtomicBlockPublication
+target_file: ai_editor/core/search_session/atomic_publication.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-026
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/atomic_publication.py
+
+  MRS excerpt (C-026 AtomicBlockPublication):
+  - Publication protocol preventing clients from observing partially written content ({4cv1}, {g9xv}).
+  - Writes block and index content through a temporary intermediate path.
+  - Publishes only after content is complete via atomic rename.
+  - Makes finalized immutable result blocks visible to HTTP readers.
+  - Updates directory index atomically so readers never see a partially appended index.
+
+  Required imports:
+  - from __future__ import annotations
+  - import json, os
+  - from pathlib import Path
+  - from typing import Any
+
+  Implement:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. def _staging_path(target: Path) -> Path
+     Docstring: return target.with_suffix(target.suffix + ".tmp") in same directory.
+
+  3. def atomic_write_bytes(target: Path, data: bytes) -> None
+     Docstring: mkdir parents; write staging file with flush+fsync; atomic_publish_rename.
+
+  4. def atomic_write_json(target: Path, obj: Any) -> None
+     Docstring: json.dumps with ensure_ascii=False, indent=2; delegate to atomic_write_bytes.
+
+  5. def atomic_publish_rename(staging_path: Path, final_path: Path) -> None
+     Docstring: mkdir final parent; os.replace(staging_path, final_path).
+
+  __all__: atomic_write_bytes, atomic_write_json, atomic_publish_rename
+
+  Under 80 lines. All public functions documented.
+
+verification:
+  type: pytest
+  target: tests/unit/test_atomic_publication.py
+  expected: Readers never see partial file; final_path appears only after os.replace completes.
+status: frozen

@@ -1,0 +1,55 @@
+step_id: A-001
+parent_tactical_step: T-105
+name: Create block_handlers module — five rendering rules
+target_file: ai_editor/commands/universal_file_preview/block_handlers.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-005
+- C-008
+- C-013
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/block_handlers.py\n\nFile-level\
+  \ docstring (required):\n  \"\"\"\n  BlockHandler (C-008) — five rendering rules,\
+  \ one per NodeKind (C-004).\n\n  Chosen by the block's own NodeKind, not the parent's\
+  \ kind.\n  A BlockHandler never includes the block's own children's content.\n \
+  \ Set is closed under this plan: five rules only.\n\n  Author: Vasiliy Zdanovskiy\n\
+  \  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from __future__ import annotations\n\
+  \  from typing import Any\n  from .models import Node, NodeKind\n\nPublic function:\
+  \ render_block(node: Node, value_preview_len: int) -> dict[str, Any]\nDocstring:\n\
+  \  \"\"\"\n  Render a Node using the BlockHandler rule for its own NodeKind (C-008).\n\
+  \n  Args:\n      node: The block node to render.\n      value_preview_len: Max length\
+  \ for any inline scalar value or name\n                         (from PreviewBudget\
+  \ C-013).\n\n  Returns:\n      Compact summary dict. Keys depend on NodeKind:\n\
+  \        scalar    -> {value: str (truncated)}\n        lines     -> {line_count:\
+  \ int, first_line: str (truncated)}\n        sequence  -> {element_count: int, element_kinds:\
+  \ list[str]}\n        mapping   -> {key_count: int, key_names: list[str] (each truncated)}\n\
+  \        tree_node -> {type: str, name: str|None, attributes: dict,\n          \
+  \            child_count: int}\n  \"\"\"\nBody: dispatch to private helpers by node.node_kind:\n\
+  \nPrivate function: _render_scalar(node: Node, vpl: int) -> dict[str, Any]\nDocstring:\
+  \ \"Rule 1: truncated value. No children content.\"\nBody: value = (node.attributes.get('value')\
+  \ or node.name or '')\n      return {'value': value[:vpl]}\n\nPrivate function:\
+  \ _render_lines(node: Node, vpl: int) -> dict[str, Any]\nDocstring: \"Rule 2: total\
+  \ line count and first line truncated.\"\nBody: children = node.children\n     \
+  \ first = children[0].attributes.get('value', '') if children else ''\n      return\
+  \ {'line_count': len(children), 'first_line': first[:vpl]}\n\nPrivate function:\
+  \ _render_sequence(node: Node, vpl: int) -> dict[str, Any]\nDocstring: \"Rule 3:\
+  \ element count and coarse element-kind summary.\"\nBody: children = node.children\n\
+  \      kinds = sorted({c.node_kind.value for c in children})\n      return {'element_count':\
+  \ len(children), 'element_kinds': kinds}\n\nPrivate function: _render_mapping(node:\
+  \ Node, vpl: int) -> dict[str, Any]\nDocstring: \"Rule 4: key count and key name\
+  \ list, each truncated. No values.\"\nBody: children = node.children\n      keys\
+  \ = [c.name[:vpl] if c.name else '' for c in children]\n      return {'key_count':\
+  \ len(children), 'key_names': keys}\n\nPrivate function: _render_tree_node(node:\
+  \ Node, vpl: int) -> dict[str, Any]\nDocstring: \"Rule 5: type, optional name, attributes,\
+  \ child count.\"\nBody: return {\n        'type': (node.type_label or '')[:vpl],\n\
+  \        'name': node.name[:vpl] if node.name else None,\n        'attributes':\
+  \ node.attributes,\n        'child_count': len(node.children),\n      }\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.block_handlers
+  expected: Module imports without error; render_block is callable and returns a dict
+    for each of the five NodeKind values.

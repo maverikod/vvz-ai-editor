@@ -1,0 +1,12 @@
+global_step: G-002
+tactical_step: T-004
+waves:
+  - wave: 1
+    steps:
+      - A-001
+    cross_ts_depends_on:
+      - T-003/A-001
+  - wave: 2
+    steps:
+      - A-002
+    depends_on_wave: 1

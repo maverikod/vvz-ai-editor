@@ -1,0 +1,34 @@
+step_id: T-003
+parent_global_step: G-004
+name: Apply operations to tree-temp and text group drafts
+description: Apply a batch of EditOperations (C-007) to tree-temp or text group
+  DraftFiles (C-003) using ExistingInfrastructure (C-012).
+  Tree-temp group (JSON/YAML): apply operations sequentially to the in-memory tree
+  using JSON pointer addressing; serialise the updated tree to the DraftFile after
+  each operation. Tree addresses do not shift so no sorting is required.
+  Text group: sort operations by start line descending using the existing text-sort
+  utility (C-012); apply each operation to an in-memory line buffer loaded from the
+  DraftFile; write the entire buffer to the DraftFile once after all operations.
+  The original file is never touched in either case.
+concepts:
+- C-001
+- C-002
+- C-003
+- C-006
+- C-007
+- C-012
+inputs:
+- name: session
+  type: EditSession
+  description: Active tree-temp or text group session.
+- name: operations
+  type: list of EditOperation (C-007)
+  description: Batch submitted by the caller.
+outputs:
+- name: updated_state
+  type: node list or line count
+  description: 'Tree-temp: updated top-level node list. Text: line count of draft
+    after operations.'
+atomic_steps:
+- A-001
+status: draft

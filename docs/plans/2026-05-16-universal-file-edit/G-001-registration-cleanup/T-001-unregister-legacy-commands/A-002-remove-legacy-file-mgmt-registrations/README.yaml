@@ -1,0 +1,137 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Remove legacy file-management command registrations from commands/registration.py
+target_file: ai_editor/commands/registration.py
+operation: modify_file
+priority: 2
+depends_on: []
+concepts:
+- C-013
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/registration.py
+
+  MRS context:
+  C-013 RegistrationCleanup: Removal of legacy editing commands from registration.
+  Code files not deleted; only registration entries removed.
+  Commands to unregister from this file:
+    universal_file_save, universal_file_replace, universal_file_read,
+    universal_file_delete, read_project_text_file, write_project_text_lines.
+  Must remain: ProjectFileTransferDownloadBeginCommand, ProjectFileTransferUploadSaveCommand,
+    ProjectFileAdvisoryLockBatchCommand, ProjectFileLockStatusCommand.
+
+  Current full file content (72 lines):
+  """
+  Central MCP registration for ``file_management`` universal and legacy commands.
+  
+  Registers :mod:`ai_editor.commands.universal_file_*` first-class commands and legacy
+  compat wrappers (**``read_project_text_file``**, **``write_project_text_lines``**).
+  
+  Handlers and documentation-oriented schema fragments live in
+  ``ai_editor.core.file_handlers.registry``: **``get_handler_schema(handler_id, operation)``**,
+  ``list_handler_mappings()``, ``HANDLER_IDS``.
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  from __future__ import annotations
+  
+  from typing import Any
+  
+  
+  # Appended to MCP descr / schemas so models steer to handler routing vs plain-text pitfalls.
+  MCP_FILE_MANAGEMENT_REGISTRY_HELP = (
+      "Use ``ai_editor.core.file_handlers.registry.get_handler_schema(handler_id, operation)`` "
+      "for per-handler request hints and ``list_handler_mappings()`` for suffix→handler rows "
+      "(handler ids: text, json, yaml, python). "
+      "Legacy **read_project_text_file** / **write_project_text_lines** are compatibility "
+      "wrappers — they **must not** be treated as alternate editors for source code "
+      "(``.py``, ``.pyi``, …), ``.json``, ``.yaml``, or other structured formats; route those "
+      "through universal_file_read, universal_file_save, universal_file_replace, "
+      "universal_file_delete, and JSON/YAML/Python/CST tooling as documented."
+  )
+  
+  # Compact line for embedding in JSON-schema ``description`` fields (helps MCP help payloads).
+  REGISTRY_SCHEMA_DISCOVERY_SHORT = (
+      "Discovery: ai_editor.core.file_handlers.registry.get_handler_schema(handler_id, operation) "
+      "and list_handler_mappings(); handler ids text, json, yaml, python."
+  )
+  
+  
+  def register_file_management_commands(reg: Any) -> None:
+      """Register universal file commands and legacy text compat commands.
+  
+      Commands use ``category = 'file_management'`` on classes; MCP help groups by category.
+  
+      Args:
+          reg: ``mcp_proxy_adapter.commands.command_registry.registry`` implementation.
+      """
+      from .project_file_transfer_by_id_commands import (
+          ProjectFileTransferDownloadBeginCommand,
+          ProjectFileTransferUploadSaveCommand,
+      )
+      from .project_file_advisory_lock_batch_command import (
+          ProjectFileAdvisoryLockBatchCommand,
+      )
+      from .project_file_lock_status_command import ProjectFileLockStatusCommand
+      from .read_project_text_file_command import ReadProjectTextFileCommand
+      from .universal_file_delete_command import UniversalFileDeleteCommand
+      from .universal_file_read_command import UniversalFileReadCommand
+      from .universal_file_replace_command import UniversalFileReplaceCommand
+      from .universal_file_save_command import UniversalFileSaveCommand
+      from .write_project_text_lines_command import WriteProjectTextLinesCommand
+  
+      reg.register(ReadProjectTextFileCommand, "custom")
+      reg.register(UniversalFileReadCommand, "custom")
+      reg.register(UniversalFileSaveCommand, "custom")
+      reg.register(UniversalFileReplaceCommand, "custom")
+      reg.register(UniversalFileDeleteCommand, "custom")
+      reg.register(WriteProjectTextLinesCommand, "custom")
+      reg.register(ProjectFileAdvisoryLockBatchCommand, "custom")
+      reg.register(ProjectFileLockStatusCommand, "custom")
+      reg.register(ProjectFileTransferDownloadBeginCommand, "custom")
+      reg.register(ProjectFileTransferUploadSaveCommand, "custom")
+  
+
+  Task:
+  From register_file_management_commands, remove:
+  - import of ReadProjectTextFileCommand + reg.register(ReadProjectTextFileCommand, "custom")
+  - import of UniversalFileReadCommand + reg.register(UniversalFileReadCommand, "custom")
+  - import of UniversalFileSaveCommand + reg.register(UniversalFileSaveCommand, "custom")
+  - import of UniversalFileReplaceCommand + reg.register(UniversalFileReplaceCommand, "custom")
+  - import of UniversalFileDeleteCommand + reg.register(UniversalFileDeleteCommand, "custom")
+  - import of WriteProjectTextLinesCommand + reg.register(WriteProjectTextLinesCommand, "custom")
+
+  The following must remain:
+  - ProjectFileTransferDownloadBeginCommand and ProjectFileTransferUploadSaveCommand (import + register)
+  - ProjectFileAdvisoryLockBatchCommand (import + register)
+  - ProjectFileLockStatusCommand (import + register)
+  - Module docstring, constants MCP_FILE_MANAGEMENT_REGISTRY_HELP,
+    REGISTRY_SCHEMA_DISCOVERY_SHORT, function docstring, from __future__ imports.
+
+  Implementation:
+  1. cst_load_file(project_id='8772a086-688d-4198-a0c4-f03817cc0e6c',
+     file_path='ai_editor/commands/registration.py')
+  2. Locate import statements and reg.register() calls to remove.
+  3. cst_modify_tree with action=delete for each located node.
+  4. cst_save_tree(validate=true, backup=true).
+  5. lint_code then format_code.
+
+  Constraints:
+  - Remaining four commands stay registered.
+  - Module-level constants and docstrings unchanged.
+  - Resulting file must be syntactically valid Python.
+  - File line count must not exceed 400.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/registration.py
+  expected: >
+    flake8 reports no errors. The following names do not appear in any
+    reg.register() call or import: ReadProjectTextFileCommand,
+    UniversalFileReadCommand, UniversalFileSaveCommand, UniversalFileReplaceCommand,
+    UniversalFileDeleteCommand, WriteProjectTextLinesCommand.
+    ProjectFileAdvisoryLockBatchCommand, ProjectFileLockStatusCommand,
+    ProjectFileTransferDownloadBeginCommand, ProjectFileTransferUploadSaveCommand
+    remain in reg.register() calls.
+status: draft

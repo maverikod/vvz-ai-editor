@@ -1,0 +1,96 @@
+step_id: A-004
+parent_tactical_step: T-001
+name: Add register_auto_import_module for universal_file_preview_command in hooks
+target_file: ai_editor/hooks.py
+operation: modify_file
+priority: 4
+depends_on:
+- A-003
+concepts:
+- C-001
+status: done
+prompt: "Modify an existing Python file.\n\nTarget file (modify_file):\n  ai_editor/hooks.py\n\
+  \nCurrent content of the file (full, 101 lines):\n  \"\"\"\n  Command registration\
+  \ hooks for ai-editor-server.\n\n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n\
+  \  \"\"\"\n\n  # Import patch for CommandExecutionJob to support progress tracking\n\
+  \  # This must be imported before CommandExecutionJob is used\n  from .core.command_execution_job_patch\
+  \ import patch_command_execution_job  # noqa: F401\n\n  from mcp_proxy_adapter.commands.hooks\
+  \ import register_custom_commands_hook\n  from mcp_proxy_adapter.commands.command_registry\
+  \ import registry\n  from mcp_proxy_adapter.commands.hooks import register_auto_import_module\n\
+  \n  from .hooks_register_part1 import register_commands_part1\n  from .hooks_register_part2\
+  \ import register_commands_part2\n\n\n  def register_ai_editor_commands(reg:\
+  \ registry) -> None:\n      \"\"\"Register all code analysis commands.\n\n     \
+  \ Args:\n          reg: MCP command registry instance.\n\n      Returns:\n     \
+  \     None\n      \"\"\"\n      register_commands_part1(reg)\n      register_commands_part2(reg)\n\
+  \n\n  # Register hook\n  register_custom_commands_hook(register_ai_editor_commands)\n\
+  \n  # Register modules for auto-import in child processes (spawn mode).\n  # Patch\
+  \ must be imported in the worker so CommandExecutionJob.run is patched and\n  #\
+  \ context[\"progress_tracker\"] is set; otherwise progress/description never update.\n\
+  \  register_auto_import_module(\"ai_editor.core.command_execution_job_patch\"\
+  )\n  register_auto_import_module(\"ai_editor.core.shared_database_spawn_init\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.check_vectors_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.list_cst_blocks_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.query_cst_command\")\n\
+  \  register_auto_import_module(\"ai_editor.commands.cst_load_file_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_modify_tree_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_save_tree_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_reload_tree_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_find_node_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_get_node_info_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_get_node_by_range_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_create_file_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_convert_and_save_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_unload_tree_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.cst_list_trees_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.ast_mcp_commands\")\n\
+  \  register_auto_import_module(\"ai_editor.commands.fs_grep_command\")\n  register_auto_import_module(\"\
+  ai_editor.commands.fs_copy_move_remove_commands\")\n  register_auto_import_module(\"\
+  ai_editor.commands.project_fs_enumerate\")\n  register_auto_import_module(\"\
+  ai_editor.commands.vector_commands\")\n  register_auto_import_module(\"ai_editor.commands.semantic_search_mcp\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.refactor_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.code_quality_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.analyze_complexity_mcp\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.find_duplicates_mcp\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.comprehensive_analysis_mcp\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.search_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.code_mapper_mcp_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.backup_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.file_management_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.log_viewer_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.worker_status_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.repair_worker_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.worker_management_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.database_integrity_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.database_restore_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.project_management_mcp_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.run_project_script_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.run_project_module_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.project_pip_commands\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.read_project_text_file_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.universal_file_read_command\"\
+  )\n  register_auto_import_module(\n      \"ai_editor.commands.project_file_transfer_by_id_commands\"\
+  \n  )\n  register_auto_import_module(\n      \"ai_editor.commands.project_file_advisory_lock_batch_command\"\
+  \n  )\n  register_auto_import_module(\"ai_editor.commands.project_file_lock_status_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.universal_file_save_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.universal_file_replace_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.universal_file_delete_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.write_project_text_lines_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.json_load_file_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.json_modify_tree_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.json_save_tree_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.json_reload_tree_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.json_find_node_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.json_get_node_info_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.list_json_blocks_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.qa_sleep_command\")\n\
+  \  register_auto_import_module(\"ai_editor.core.transfer_lock_registry\")\n\n\
+  Change to make:\n  Append one new line at the end of the file (after line 101):\n\
+  \n    register_auto_import_module(\"ai_editor.commands.universal_file_preview_command\"\
+  )\n\nNo other changes to the file.\nNo new imports needed; register_auto_import_module\
+  \ is already imported at\nthe top of the file via:\n  from mcp_proxy_adapter.commands.hooks\
+  \ import register_auto_import_module\n"
+verification:
+  type: static_analysis
+  target: ai_editor/hooks.py
+  expected: The last line of hooks.py is register_auto_import_module("ai_editor.commands.universal_file_preview_command");
+    all existing lines are unchanged; file imports without error.

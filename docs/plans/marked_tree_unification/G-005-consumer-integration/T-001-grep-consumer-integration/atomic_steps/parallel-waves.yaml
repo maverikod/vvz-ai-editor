@@ -1,0 +1,36 @@
+global_step: G-005
+tactical_step: T-001
+name: GrepConsumer TreeLifecycle Integration
+waves:
+  - wave: 1
+    parallel: true
+    steps:
+      - A-001
+      - A-002
+    note: grep_block_resolver.py and finding.py — no shared file.
+  - wave: 2
+    parallel: true
+    steps:
+      - A-003
+      - A-004
+      - A-005
+      - A-008
+    requires:
+      - A-002
+    note: Finding producers and block-assembler sort key after mtime field removed.
+  - wave: 3
+    steps:
+      - A-006
+    requires:
+      - A-002
+      - A-003
+      - A-004
+      - A-005
+      - A-008
+    note: Verify-first C-020 spec alignment after code changes land.
+  - wave: 4
+    steps:
+      - A-007
+    requires:
+      - A-006
+    note: Verify-first HRS {g004} alignment after spec check.

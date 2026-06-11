@@ -1,0 +1,24 @@
+step_id: T-003
+parent_global_step: G-007
+name: Write и close при broken session
+description: 'При broken session Session Guard (C-024) разрешает terminating write и close по политике Broken Session (C-015). Write Stage (C-012): попытка upload через Upstream Client (C-017); при ошибке СА — локальный draft сохраняется. Close Stage (C-013): best-effort unlock на СА через Upstream Client (C-017) и локальная очистка поддерева файла. Open/edit/preview остаются запрещены.
+
+  '
+concepts:
+- C-012
+- C-013
+- C-015
+- C-017
+- C-024
+inputs:
+- name: guard_allow_terminating
+  type: boolean
+  description: guard_decision=allow_terminating.
+outputs:
+- name: terminating_op_result
+  type: object
+  description: Результат write/close с учётом политики.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

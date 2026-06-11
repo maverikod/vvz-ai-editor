@@ -1,0 +1,33 @@
+step_id: T-002
+parent_global_step: G-005
+name: Watcher TreeLifecycle Integration and Checksum Persistence
+description: 'Define the Watcher entity (C-021) as the file watcher that ensures a
+  valid tree and persists the source checksum before inserting or updating a database
+  file row. Establish the two-action contract. Action 1: Watcher calls the TreeLifecycle
+  path-based wrapper before any file-row insert or update; tree validity is a precondition
+  for writing to the database. Action 2: Watcher persists the computed source checksum
+  into the database alongside the file row. Establish the schema extension rule: the
+  checksum column is added via an idempotent schema extension that requires no migration
+  script; the idempotency ensures the extension can be applied multiple times safely.
+  Establish that the Watcher does not perform any tree-validity check independently
+  of TreeLifecycle.'
+concepts:
+- C-021
+- C-010
+inputs:
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: The path-based wrapper provided by TreeLifecycle that Watcher 
+    calls before each database file-row write.
+outputs:
+- name: Watcher entity definition
+  type: domain entity definition
+  description: File watcher that calls TreeLifecycle before each file-row insert
+    or update and persists the source checksum in the database alongside the 
+    file row; no independent tree-validity checks.
+- name: Idempotent schema extension
+  type: domain constraint definition
+  description: The checksum column is added via an idempotent schema extension 
+    that requires no migration script and is safe to apply multiple times.
+atomic_steps: []
+status: draft

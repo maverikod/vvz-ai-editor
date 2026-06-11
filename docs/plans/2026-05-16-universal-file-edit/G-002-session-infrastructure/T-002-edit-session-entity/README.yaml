@@ -1,0 +1,28 @@
+step_id: T-002
+parent_global_step: G-002
+name: Define EditSession entity and registry
+description: Create the EditSession entity (C-001) as a dataclass holding session_id,
+  file paths, format_group, handler_id, and optional tree reference. Create a
+  module-level session registry backed by a dict with operations to create,
+  look up, and release sessions. Look-up raises SESSION_NOT_FOUND (C-014) on
+  unknown session_id. Sessions are never persisted to disk.
+concepts:
+- C-001
+- C-002
+- C-014
+inputs:
+- name: format_descriptor
+  type: FormatDescriptor
+  description: Resolved format group descriptor providing format_group, handler_id,
+    draft path (C-003), and lockfile path (C-004).
+- name: abs_path
+  type: Path
+  description: Absolute path to the original file.
+outputs:
+- name: session_entity
+  type: EditSession dataclass and registry module
+  description: EditSession (C-001) entity with module-level registry supporting
+    create, look up, and release operations. Sessions are not persisted across restarts.
+atomic_steps:
+- A-001
+status: draft

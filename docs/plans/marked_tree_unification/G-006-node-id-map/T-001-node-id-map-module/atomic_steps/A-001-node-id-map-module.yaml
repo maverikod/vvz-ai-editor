@@ -1,0 +1,429 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: NodeIdMap build validate_and_repair resolve module
+target_file: ai_editor/core/tree_lifecycle/node_id_map.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-025
+- C-024
+prompt: |
+  Create the file `ai_editor/core/tree_lifecycle/node_id_map.py`.
+  Operation: create_file (the file does not exist yet).
+
+  Parent global step: `docs/plans/marked_tree_unification/G-006-node-id-map/README.yaml`
+  Parent tactical step: `docs/plans/marked_tree_unification/G-006-node-id-map/T-001-node-id-map-module/README.yaml`
+  Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (concepts C-025, C-024, C-002, C-003)
+
+  This module implements NodeIdMap (C-025): the sole owner of short_id↔TreeNodeUuid
+  (C-024) map mutation within one tree file context. It replaces the retired
+  generate/validate pair; no other public entry points perform map mutation.
+
+  ## Locked identity model (mandatory)
+
+  - `short_id` = per-file monotonic INTEGER marker embedded in the TREE section only.
+  - TreeNodeUuid (C-024) = UUID4 string stored ONLY in the MAP section; never in TREE.
+  - Tree file layout (C-003): three ordered sections — CHECKSUMS → MAP → TREE.
+  - External API uses `(file path, short_id)` only; UUID never crosses API boundary.
+  - MAP holds `next_free` (lowest unissued short_id), per-node UUID4 entries, and
+    short_id↔UUID associations.
+  - Allocation ({a007}): new node gets `short_id = next_free` then `next_free += 1`;
+    deleted short_ids are NEVER reused; on rebuild copy `next_free` from prior MAP;
+    first-time creation starts `next_free = 1`.
+  - `validate_and_repair` preserves UUID4 when `content_fingerprint` is unchanged.
+
+  ## MRS excerpt
+
+  C-025 NodeIdMap — exactly three public map-mutation operations:
+    - build — scan TREE and MAP inputs to generate or refresh short_id↔UUID map
+    - validate_and_repair — fix marker/map/UUID/next_free inconsistencies; preserve
+      UUID4 for unchanged content identity per {a007}
+    - resolve — bidirectional short_id↔UUID lookup within one loaded map
+
+  C-024 TreeNodeUuid — canonical UUID4 per addressable node in MAP only; assigned at
+  node creation; preserved across validate_and_repair when content identity unchanged;
+  never embedded in TREE markers or external API ({n001}, {n003}).
+
+  C-002 NodeId — integer short_id handle (file-scoped); unrecognised short_id is an
+  input error ({n003}).
+
+  C-003 TreeFile — CHECKSUMS first, MAP second, TREE third on disk.
+
+  ## On-disk tree file wire format (define in this module)
+
+  Sections are delimited by exact line markers (no trailing spaces):
+
+  ```
+  ---CHECKSUMS---
+  source_sha256: <64-char lowercase hex>
+  ---MAP---
+  next_free: <positive int>
+  entries:
+    - short_id: <int>
+      uuid: <uuid4 lowercase hex with hyphens>
+      content_fingerprint: <64-char lowercase hex>
+      kind: <str>
+      attributes: {}   # optional mapping; default empty dict when absent
+  ---TREE---
+  <marked content bytes as UTF-8 text; integer short_id markers only>
+  ```
+
+  Constants (module level, exact values):
+  - `SECTION_CHECKSUMS_START = "---CHECKSUMS---"`
+  - `SECTION_MAP_START = "---MAP---"`
+  - `SECTION_TREE_START = "---TREE---"`
+  - `DEFAULT_NEXT_FREE = 1`
+
+  MAP body between `SECTION_MAP_START` and `SECTION_TREE_START` is YAML parsed with
+  `yaml.safe_load`. CHECKSUMS body between `SECTION_CHECKSUMS_START` and
+  `SECTION_MAP_START` is YAML parsed with `yaml.safe_load`.
+
+  ## File header (exact module docstring)
+
+  ```python
+  """
+  NodeIdMap (C-025): short_id↔TreeNodeUuid map owner for one tree file.
+
+  Canonical UUID4 (C-024) lives only in the MAP section; TREE carries integer
+  short_id markers. Exposes exactly three public map-mutation operations:
+  build, validate_and_repair, resolve.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (exact list)
+
+  ```python
+  from __future__ import annotations
+
+  import hashlib
+  import uuid
+  from dataclasses import dataclass, field
+  from typing import Any, Dict, List, Optional, TypedDict
+
+  import yaml
+  ```
+
+  ## TypedDict and dataclass shapes
+
+  ```python
+  class ChecksumsSection(TypedDict):
+      source_sha256: str
+
+  @dataclass
+  class MapEntry:
+      short_id: int
+      uuid: str
+      content_fingerprint: str
+      kind: str
+      attributes: Dict[str, Any] = field(default_factory=dict)
+
+  @dataclass
+  class MapSection:
+      next_free: int
+      entries: List[MapEntry]
+
+  @dataclass
+  class TreeSections:
+      checksums: ChecksumsSection
+      map: MapSection
+      tree: str
+
+  @dataclass(frozen=True)
+  class DiscoveredNode:
+      """Caller-supplied node discovered from marked TREE + unmarked content."""
+      content_fingerprint: str
+      kind: str
+      marker_short_id: int
+      attributes: Dict[str, Any] = field(default_factory=dict)
+
+  @dataclass(frozen=True)
+  class ResolveResult:
+      short_id: int
+      uuid: str
+  ```
+
+  ## Exception classes
+
+  ```python
+  class NodeIdMapError(ValueError):
+      """Base error for NodeIdMap validation failures."""
+
+  class UnknownShortIdError(NodeIdMapError):
+      def __init__(self, short_id: int) -> None:
+          super().__init__(f"Unknown short_id: {short_id}")
+          self.short_id = short_id
+
+  class UnknownTreeNodeUuidError(NodeIdMapError):
+      def __init__(self, node_uuid: str) -> None:
+          super().__init__(f"Unknown TreeNodeUuid: {node_uuid}")
+          self.node_uuid = node_uuid
+  ```
+
+  ## Private helpers (module level — NOT public map-mutation entry points)
+
+  ```python
+  def compute_content_fingerprint(content: str) -> str:
+      """Return SHA-256 hex digest of UTF-8 encoded content."""
+
+  def parse_tree_file(text: str) -> TreeSections:
+      """Parse on-disk three-section tree file text into TreeSections."""
+
+  def serialize_tree_file(sections: TreeSections) -> str:
+      """Serialize TreeSections to on-disk three-section tree file text."""
+
+  def _validate_uuid4_string(value: str) -> None:
+      """Raise NodeIdMapError if value is not a valid UUID4 string."""
+
+  def _validate_sha256_hex(value: str, field_name: str) -> None:
+      """Raise NodeIdMapError if value is not 64 lowercase hex chars."""
+
+  def _rebuild_indexes(entries: List[MapEntry]) -> tuple[Dict[int, MapEntry], Dict[str, int]]:
+      """Return (short_id→entry, uuid→short_id) dicts; raise on duplicate keys."""
+  ```
+
+  ### Algorithm: `compute_content_fingerprint(content: str) -> str`
+  1. Encode `content` as UTF-8 bytes.
+  2. Return `hashlib.sha256(bytes).hexdigest()` (lowercase hex, 64 chars).
+
+  Edge cases:
+  - Empty string → valid fingerprint (hash of empty bytes).
+
+  ### Algorithm: `parse_tree_file(text: str) -> TreeSections`
+  1. If `SECTION_CHECKSUMS_START` not in text: raise `NodeIdMapError("missing CHECKSUMS section")`.
+  2. Split at first `SECTION_MAP_START`; before = checksums block, after = rest.
+  3. If `SECTION_TREE_START` not in rest: raise `NodeIdMapError("missing TREE section")`.
+  4. Split rest at first `SECTION_TREE_START`; map_yaml = before, tree = after (strip leading newline only from tree body; preserve other content exactly).
+  5. Parse checksums YAML between checksums block start line and map marker (exclude marker lines).
+  6. Require key `source_sha256`; call `_validate_sha256_hex`.
+  7. Parse map YAML; require `next_free` int >= 1 and `entries` list.
+  8. For each entry dict: build `MapEntry`; validate `short_id` int >= 1; `_validate_uuid4_string`; `_validate_sha256_hex` on fingerprint; `kind` non-empty str; `attributes` default `{}`.
+  9. Call `_rebuild_indexes` to ensure no duplicate short_id or uuid.
+  10. Return `TreeSections(checksums=..., map=..., tree=...)`.
+
+  ### Algorithm: `serialize_tree_file(sections: TreeSections) -> str`
+  1. Build checksums YAML: `{"source_sha256": sections.checksums["source_sha256"]}`.
+  2. Build map YAML list of dicts from entries (include attributes only when non-empty).
+  3. Concatenate with exact delimiter lines and single newline separators:
+     `SECTION_CHECKSUMS_START + "\n" + yaml.dump(checksums) + SECTION_MAP_START + "\n" + yaml.dump(map) + SECTION_TREE_START + "\n" + sections.tree`
+  4. Use `yaml.safe_dump(..., default_flow_style=False, sort_keys=False)`.
+  5. Return combined string.
+
+  ### Algorithm: `_validate_uuid4_string(value: str) -> None`
+  1. Try `uuid.UUID(value, version=4)`.
+  2. On `ValueError`: raise `NodeIdMapError(f"invalid UUID4: {value!r}")`.
+  3. Require `str(parsed) == value.lower()` (canonical lowercase form).
+
+  ### Algorithm: `_rebuild_indexes(entries) -> tuple`
+  1. Initialize empty dicts.
+  2. For each entry: if duplicate short_id or uuid: raise `NodeIdMapError("duplicate map key")`.
+  3. Return both dicts.
+
+  ## Class NodeIdMap
+
+  ```python
+  class NodeIdMap:
+      """In-memory owner of MAP section state (C-025)."""
+
+      def __init__(self, map_section: MapSection) -> None:
+          self._map = map_section
+          self._by_short, self._by_uuid = _rebuild_indexes(map_section.entries)
+
+      @property
+      def map_section(self) -> MapSection:
+          """Return current MAP section snapshot (shallow copy of entries list)."""
+          return MapSection(
+              next_free=self._map.next_free,
+              entries=list(self._map.entries),
+          )
+
+      @staticmethod
+      def build(
+          *,
+          tree_marked_text: str,
+          discovered_nodes: List[DiscoveredNode],
+          source_sha256: str,
+          prior_map: Optional[MapSection] = None,
+      ) -> tuple[TreeSections, "NodeIdMap"]:
+          """Build or refresh MAP from TREE markers and discovered nodes."""
+
+      def validate_and_repair(
+          self,
+          *,
+          tree_marked_text: str,
+          discovered_nodes: List[DiscoveredNode],
+          checksums: ChecksumsSection,
+      ) -> TreeSections:
+          """Repair MAP/TREE/next_free inconsistencies; preserve UUIDs by fingerprint."""
+
+      def resolve(
+          self,
+          *,
+          short_id: Optional[int] = None,
+          uuid: Optional[str] = None,
+      ) -> ResolveResult:
+          """Bidirectional lookup; exactly one argument must be provided."""
+  ```
+
+  ### Algorithm: `NodeIdMap.build(...)`
+  1. Validate `source_sha256` via `_validate_sha256_hex`.
+  2. If `discovered_nodes` empty: raise `NodeIdMapError("discovered_nodes must not be empty")`.
+  3. Set `next_free = prior_map.next_free if prior_map is not None else DEFAULT_NEXT_FREE`.
+  4. Build `fingerprint_to_uuid: Dict[str, str]` from `prior_map.entries` when prior exists.
+  5. Initialize `new_entries: List[MapEntry] = []`.
+  6. Track `seen_short_ids: set[int] = set()`.
+  7. For each `node` in `discovered_nodes` (preserve caller order):
+     a. If `node.marker_short_id < 1`: raise `NodeIdMapError("marker_short_id must be >= 1")`.
+     b. If `node.marker_short_id in seen_short_ids`: raise `NodeIdMapError("duplicate marker_short_id in discovered_nodes")`.
+     c. Add to `seen_short_ids`.
+     d. If `node.content_fingerprint` in `fingerprint_to_uuid`:
+        - `node_uuid = fingerprint_to_uuid[node.content_fingerprint]` (preserve UUID per {a007}).
+     e. Else (new content identity):
+        - `node_uuid = str(uuid.uuid4())`.
+        - If `node.marker_short_id >= next_free`: set `next_free = node.marker_short_id + 1`.
+     f. Append `MapEntry(short_id=node.marker_short_id, uuid=node_uuid, content_fingerprint=node.content_fingerprint, kind=node.kind, attributes=node.attributes)`.
+  8. After loop: set `next_free = max(next_free, max(e.short_id for e in new_entries) + 1)`.
+  9. Build `MapSection(next_free=next_free, entries=new_entries)`.
+  10. Build `TreeSections(checksums={"source_sha256": source_sha256}, map=map_section, tree=tree_marked_text)`.
+  11. Return `(sections, NodeIdMap(map_section))`.
+
+  Edge cases for `build`:
+  - First creation (`prior_map is None`): starts `next_free = 1`; new UUID per node.
+  - Rebuild with prior map: UUID reused when fingerprint matches; `next_free` copied then bumped for new fingerprints.
+  - Retired short_ids from prior map not present in discovered_nodes are omitted (never reused).
+
+  Concrete I/O example (first-time build):
+  - Input: `tree_marked_text = "[1] alpha\n[2] beta"`, two discovered nodes with
+    marker_short_id 1 and 2, distinct fingerprints, `source_sha256` = 64-char hex.
+  - Output MAP: entries for short_id 1 and 2 with distinct UUID4 strings, `next_free = 3`.
+
+  Concrete I/O example (rebuild preserving UUID):
+  - Prior entry: short_id=1, uuid=U1, fingerprint=F1.
+  - Rebuild discovered node: marker_short_id=1, fingerprint=F1 → same uuid U1.
+  - New node fingerprint F2 at marker_short_id=2 → new uuid U2.
+
+  ### Algorithm: `NodeIdMap.validate_and_repair(...)`
+  1. Validate `checksums["source_sha256"]` via `_validate_sha256_hex`.
+  2. If `discovered_nodes` empty: raise `NodeIdMapError("discovered_nodes must not be empty")`.
+  3. Set `prior = MapSection(next_free=self._map.next_free, entries=list(self._map.entries))`.
+  4. Build `fingerprint_to_uuid` from `prior.entries`.
+  5. Run entry construction loop (same as `build` steps 6–8) with `prior_map=prior` → `new_entries`.
+  6. For each entry in `new_entries` whose `content_fingerprint` is in `fingerprint_to_uuid`:
+     if entry.uuid differs from prior uuid, replace entry.uuid with prior uuid.
+  7. Set `next_free = max(prior.next_free, max(e.short_id for e in new_entries) + 1)`.
+  8. Replace `self._map` with `MapSection(next_free=next_free, entries=new_entries)`; refresh indexes.
+  9. Return `TreeSections(checksums=checksums, map=self._map, tree=tree_marked_text)`.
+
+  Edge cases:
+  - Marker in TREE without discovered node → omitted from map (orphan marker removed from map).
+  - Map entry without marker → dropped (retired short_id not reused).
+  - `next_free` less than max(short_id)+1 → raised to max+1.
+
+  ### Algorithm: `NodeIdMap.resolve(...)`
+  1. If `(short_id is None) == (uuid is None)`: raise `NodeIdMapError("provide exactly one of short_id or uuid")`.
+  2. If `short_id is not None`:
+     - If not in `self._by_short`: raise `UnknownShortIdError(short_id)`.
+     - Return `ResolveResult(short_id=short_id, uuid=entry.uuid)`.
+  3. If `uuid is not None`:
+     - Normalize to lowercase string; `_validate_uuid4_string`.
+     - If not in `self._by_uuid`: raise `UnknownTreeNodeUuidError(uuid)`.
+     - Return `ResolveResult(short_id=self._by_uuid[uuid], uuid=uuid)`.
+
+  ## Module `__all__` (exact)
+
+  ```python
+  __all__ = [
+      "ChecksumsSection",
+      "DiscoveredNode",
+      "MapEntry",
+      "MapSection",
+      "NodeIdMap",
+      "NodeIdMapError",
+      "ResolveResult",
+      "TreeSections",
+      "UnknownShortIdError",
+      "UnknownTreeNodeUuidError",
+      "compute_content_fingerprint",
+      "parse_tree_file",
+      "serialize_tree_file",
+  ]
+  ```
+
+  Public map-mutation entry points are ONLY `NodeIdMap.build`, `NodeIdMap.validate_and_repair`,
+  and `NodeIdMap.resolve`. `parse_tree_file` / `serialize_tree_file` / `compute_content_fingerprint`
+  are I/O helpers and do not mutate map state except through build/validate_and_repair.
+
+  ## Forbidden patterns
+
+  - Do NOT import format handlers or `HandlerRegistry`.
+  - Do NOT embed UUID strings into `tree_marked_text` or TREE serialization output.
+  - Do NOT expose UUID on any MCP-facing return shape (this module is internal).
+  - Do NOT add public functions beyond those listed in `__all__`.
+  - Do NOT use retired `{l001}`–`{l003}`, `{m001}`, `{m002}` allocation rules.
+  - Do NOT reference G-007 or identity-remap scope.
+  - Do NOT use `P:` / `L:` marker prefixes or 36-char UUID regex scanning inside TREE text.
+  - Do NOT use `Any` except in `Dict[str, Any]` for attributes.
+  - Do NOT use bare `except:`.
+  - Do NOT use `print()`; no logging in this module.
+  - Do NOT modify any file other than `node_id_map.py`.
+  - Estimated post-implementation line count: ~280 lines (must stay ≤ 400).
+
+  ## Validation commands (project root, `.venv` active)
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/tree_lifecycle/node_id_map.py
+  flake8 ai_editor/core/tree_lifecycle/node_id_map.py
+  mypy ai_editor/core/tree_lifecycle/node_id_map.py
+  python -c "
+  from ai_editor.core.tree_lifecycle.node_id_map import (
+      NodeIdMap, DiscoveredNode, compute_content_fingerprint, parse_tree_file, serialize_tree_file,
+  )
+  fp1 = compute_content_fingerprint('alpha')
+  fp2 = compute_content_fingerprint('beta')
+  nodes = [
+      DiscoveredNode(content_fingerprint=fp1, kind='line', marker_short_id=1),
+      DiscoveredNode(content_fingerprint=fp2, kind='line', marker_short_id=2),
+  ]
+  sections, nm = NodeIdMap.build(
+      tree_marked_text='[1] alpha\n[2] beta',
+      discovered_nodes=nodes,
+      source_sha256='a'*64,
+  )
+  assert sections.map.next_free == 3
+  r = nm.resolve(short_id=1)
+  assert r.short_id == 1
+  r2 = nm.resolve(uuid=r.uuid)
+  assert r2.short_id == 1
+  text = serialize_tree_file(sections)
+  roundtrip = parse_tree_file(text)
+  assert roundtrip.map.next_free == sections.map.next_free
+  "
+  pytest -q
+  ```
+
+  Expected success patterns:
+  - black: "reformatted" or "would leave unchanged" / exit 0
+  - flake8: no output, exit 0
+  - mypy: "Success: no issues found"
+  - python -c: exit 0, no output
+  - pytest -q: all tests pass (no failures)
+
+  ## Mandatory completion
+
+  All tests must pass before marking this step done.
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_lifecycle/node_id_map.py
+  expected: >
+    black, flake8, and mypy exit 0 on node_id_map.py; import smoke test constructs
+    NodeIdMap via build with two discovered nodes, resolve works bidirectionally,
+    serialize_tree_file/parse_tree_file round-trip preserves next_free; module exposes
+    exactly three public map-mutation methods on NodeIdMap — build, validate_and_repair,
+    resolve; build copies next_free from prior_map on rebuild and initializes to 1 on
+    first creation; validate_and_repair preserves UUID4 when content_fingerprint
+    unchanged; no UUID appears in TREE text helpers; pytest -q reports all tests passed.
+status: ready_for_review

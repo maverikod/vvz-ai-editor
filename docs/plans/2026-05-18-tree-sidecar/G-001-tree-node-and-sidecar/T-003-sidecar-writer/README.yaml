@@ -1,0 +1,28 @@
+step_id: T-003
+parent_global_step: G-001
+name: Sidecar writer
+description: |
+  Define the write operation for Sidecar (C-002): take the ordered root TreeNode list
+  (C-001) and the hex SHA-256 of the source file at this write; produce a Sidecar
+  document whose top-level fields are source_sha256 and root, where root serializes
+  the full TreeNode tree; guarantee the output is valid JSON regardless of whether
+  the source format is JSON or YAML, matching the Sidecar contract that the persisted
+  artifact is always valid JSON.
+concepts:
+- C-001
+- C-002
+inputs:
+- name: root_tree_nodes
+  type: ordered TreeNode list (C-001)
+  description: The full tree rooted at top-level entries to persist under Sidecar root.
+- name: source_sha256_at_write
+  type: hex digest string
+  description: Digest of the source data file to record as source_sha256 on this write (C-002).
+outputs:
+- name: sidecar_serial_payload
+  type: Sidecar serial payload (C-002)
+  description: Valid JSON object with source_sha256 and root array ready for storage as
+    one Sidecar artifact.
+atomic_steps:
+- A-001
+status: done

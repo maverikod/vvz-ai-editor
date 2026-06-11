@@ -1,0 +1,110 @@
+step_id: A-001
+parent_tactical_step: T-006
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: EditSession filesystem lifecycle pytest module
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_edit_session_lifecycle.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-006-edit-session-lifecycle/README.yaml
+concepts:
+- C-007
+- C-001
+- C-002
+- C-005
+- C-006
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_edit_session_lifecycle.py
+  expected: Pytest exits 0 with module isolation under .venv
+
+prompt: |-
+  EXECUTOR coder_auto CREATE FILE tests/test_tree_temp_edit_session_lifecycle.py capped 400 LOC. Docstring cites Author Vasiliy Zdanovskiy email vasilyvz@gmail.com and scope EditSession + Sidecar disk lifecycle.
+
+  STANDARD IMPORT CLUSTER:
+    from __future__ import annotations
+
+    import asyncio
+    import hashlib
+    import json
+    from pathlib import Path
+    from unittest.mock import MagicMock, patch
+
+    import pytest
+
+    from mcp_proxy_adapter.commands.result import SuccessResult
+
+    from ai_editor.commands.base_mcp_command import BaseMCPCommand
+    from ai_editor.commands.universal_file_edit.close_command import UniversalFileCloseCommand
+    from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
+    from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+    from ai_editor.commands.universal_file_edit.write_command import UniversalFileWriteCommand
+
+  MOCK DATABASE FIXTURE FACTORY `_mock_db_bundle(tmp: Path)` returns MagicMock where calling `.get_project(str)` returns MagicMock(root_path=str(tmp)).
+
+  CONST `_PROJECT_UUID = "baadf00d-baad-4bad-b00d-baaaaaaaaaaa"`.
+
+  PATH LAYOUT RULE from plan `.trees/` mirroring extension append `.tree` after full relative posix path beneath project root excluding leading separator: Relative file `nested/x.json` => sidecar `tmp/"nested/x.json.tree"` note dot trees directory parent ensures nested directories mirrored.
+
+  HELPER `_sha_hex(data:bytes)->str` uses hashlib.sha256.
+
+  SEQUENCE PRIMITIVES: use `async def` test functions decorated with `@pytest.mark.asyncio` for readability; each must `await` commands.
+
+  universal_file_open parameters minimal set `{project_id, file_path}`: file_path posix relative `'nested/demo.json'`; create physical file beforehand at `tmp/'nested/demo.json'` UTF-8 source `{"counter":7}` plus trailing newline without comments to keep deterministic.
+
+  Success path: assert `isinstance(result, SuccessResult)` and `'session_id'` key present inside `result.data` dict accessor pattern `payload = getattr(result, 'data', {})`.
+
+  universal_file_edit `operations:list[dict]` uses tree-temp shapes from command metadata excerpt: replace uses `{ "type":"replace","json_pointer":"/counter","value":88}`; insert keyed member uses keys `type`, `parent_json_pointer` (empty string for root object), `key`, `value`, optional `after_key`; delete uses `{ "type":"delete","json_pointer":"/field" }`. Always reference live `edit_command.py` validation if field names differ.
+
+  universal_file_write PHASE MECHANISM (authoritative reading of write_command.py for this plan):
+    - First call path occurs when lockfile PID differs from `os.getpid()` (missing lock counts as mismatch).
+    - `_first_call` returns Success data including `phase` value `preview` and writes lockfile with current PID.
+    - Second call with same PID runs `_second_call`, commits bytes, deletes lock, returns `phase` `committed`.
+    - Tests MUST wrap BOTH write attempts inside `with patch('ai_editor.commands.universal_file_edit.write_command.os.getpid', return_value=9001):`.
+    - First awaited write (`res1`) expects Success and `res1.data['phase'] == 'preview'`.
+    - Second awaited write (`res2`) expects Success and `res2.data['phase'] == 'committed'`.
+    - If response shape changes halt and escalate.
+
+  universal_file_close after scenario.
+
+  Release sessions using `release_session` when needed.
+
+  Before each test touching tree-temp clear registries: `from ai_editor.core.json_tree import tree_builder as jtb; jtb._trees.clear()` and same for `ai_editor.core.yaml_tree.tree_builder` if YAML scenario.
+
+   TEST CASES NAMES + ALGORITHMIC STEPS:
+
+   test_roundtrip_commit_refreshes_sidecar_digest_matches_source
+      1. tmp nested file initial body `{\"counter\":7}\n` record initial_bytes_sha `_sha_hex(initial)`
+      2. mock db patch `_open_database_from_config` yielding `_mock_db_bundle(tmp)`
+      3. asyncio open success obtain session_sid
+      4. asyncio edit replace pointer `/counter` value 88 success
+      5. Inside pid patch 9001, first universal_file_write → Success phase preview with non-empty diff string.
+      6. Second universal_file_write same patch context → Success phase committed; source file text includes 88.
+      7. asyncio close success
+      8. final_sha `_sha_hex(Path.read_bytes)`
+      9. Load sidecar json parse `payload['source_sha256'] == final_sha` hex lowercase
+      10. Stable id array root comment not required skip
+
+   test_close_without_write_after_edit_restores_original_hash
+       Perform open edit replace altering draft but SKIP write commits; closing should reload original untouched equality `read_bytes()==initial snapshot`.
+
+   test_insert_into_object_using_after_key_maintains_order
+       Starting doc `{\"alpha\":true,\"omega\":false}\n`; operation insert `{type:'insert', 'parent_json_pointer':'', key:'between', value: 2, after_key:'alpha'}` (verify actual field names aligning with `_modified` tree temp validation by reading `_op_insert` expected keys AFTER reading json_tree `_validate_insert...` verifying EXACT naming `after_key`; if discrepancy adjust test dict accordingly during coding anchored to `_op_insert`).
+       After commit reorder keys list extraction must read ['alpha','between','omega'].
+
+   BATCH VALIDATION FAILURE: test_invalid_batch_returns_error_without_partial_mutation
+       Provide operations list first delete pointer invalid second valid replace expecting ErrorResult classify first failure no mutation verifying source bytes unchanged comparing hash pre post.
+
+    ERROR TYPE imports `from mcp_proxy_adapter.commands.result import ErrorResult`.
+
+  FILE LENGTH stay ≤400 excluding docstring fluff.
+
+  QUALITY GATE black flake8 pytest mypy.

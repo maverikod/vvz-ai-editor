@@ -1,0 +1,45 @@
+step_id: T-004
+parent_global_step: G-008
+name: IncrementalCompatibilityLayer
+description: "Creates IncrementalCompatibilityLayer and the search_start bridge command.\n\
+  Routes opt-in paginated execution through SearchSession using paginated backend\n\
+  adapters, runs the full first-block pipeline (legacy execute, finding buffer, block\n\
+  assembly, index update) before returning job_id handoff, and preserves legacy inline\n\
+  behavior when paginated is false. Exposes search_start per plan README new_commands\n\
+  using job_id, block_position, and index_url (not README opaque cursor). tree_query
+  is\nsupported only with paginated=true (no legacy inline fork). search_start registration\n\
+  is a separate AS (A-003) to keep A-002 under one-file rule without mixing command\n\
+  module and hooks file.\n"
+concepts:
+- C-022
+- C-001
+inputs:
+- name: existing_search_command
+  type: ExistingSearchCommand
+  description: Working command implementation whose default behavior must remain
+    unchanged.
+- name: optional_pagination_parameters
+  type: OptionalPaginationParameters
+  description: Optional caller fields that select paginated session-backed 
+    execution.
+- name: paginated_backend_adapters
+  type: PaginatedBackendAdapterSet
+  description: Extension modules that wire legacy commands to first-block 
+    publication.
+- name: search_session
+  type: SearchSession
+  description: Session context used when paginated routing is selected.
+outputs:
+- name: incremental_compatibility_layer
+  type: IncrementalCompatibilityLayer
+  description: Adapter binding legacy command execution to optional 
+    session-backed paging.
+- name: search_start_bridge_command
+  type: SearchStartBridgeCommand
+  description: MCP bridge command dispatching all five backends with paginated 
+    first-block delivery.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: ready_for_review

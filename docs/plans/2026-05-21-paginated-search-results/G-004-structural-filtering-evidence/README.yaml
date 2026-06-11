@@ -1,0 +1,41 @@
+step_id: G-004
+name: Structural filtering and evidence
+description: "Defines XPath-like structural filtering over the validated tree representation
+  and the rules that make a result count as structural evidence. The filter is a single
+  universal engine applied uniformly across indexed, in-memory, dynamic, and draft
+  sources, sharing structure model, node identifiers, and selector semantics with
+  the indexer, and excludes vectorization from the tree path. fs_grep exposes a classic
+  line mode and a preview-compatible structural mode; only validated, preview-compatible
+  structural results count as cross-search evidence. This step defines filtering and
+  evidence qualification only; it does not define the tree representation itself,
+  result paging, or status reporting.\n"
+concepts:
+- C-016
+- C-018
+- C-019
+relations:
+- from_concept: C-019
+  to_concept: C-018
+  type: produces
+- from_concept: C-018
+  to_concept: C-016
+  type: depends_on
+- from_concept: C-016
+  to_concept: C-015
+  type: uses
+  description: XPathLikeFilter operates on the validated TreeRepresentation.
+source_labels:
+- '{41c7}'
+- '{om7b}'
+- '{g9of}'
+- '{wgzg}'
+- '{yr60}'
+- '{olx9}'
+- '{6fcd}'
+depends_on:
+- G-003
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: ready_for_review

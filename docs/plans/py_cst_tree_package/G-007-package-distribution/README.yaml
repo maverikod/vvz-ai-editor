@@ -1,0 +1,40 @@
+# Global Step G-007 — Package Distribution
+
+# Level 3 artifact. Conceptual block. Domain objects and operations only.
+step_id: G-007
+name: Package Distribution
+description: 'Establish the package as a standalone, independently publishable distribution
+  with a clean dependency boundary. The distribution lives in its own subdirectory
+  inside the repository, carries its own packaging metadata, and declares the underlying
+  syntax library as its only runtime dependency. The boundary is strict: the distribution
+  does not depend on the surrounding code analysis server, on its database, or on
+  any of its internal modules, so that it can be extracted and released on its own
+  without carrying server code with it. The underlying syntax library is wrapped and
+  used only to parse source text into a tree and to render a tree back to text. The
+  public surface of the distribution is the means by which callers obtain tree objects
+  to work with and the query surface over them. This step defines the distribution
+  boundary, the single-runtime-dependency rule, the prohibition on depending on the
+  surrounding server, and that the public surface yields the tree object and its query
+  surface. It does not define the internals of the tree object, identity, conversion,
+  persistence, mutation, or query — it only frames how those internals are packaged
+  and bounded for release.'
+concepts:
+- C-016  # PackageDistribution
+relations:
+- C-016 produces C-004
+- C-016 produces C-008
+source_labels:
+- '{74yi}'
+- '{aokx}'
+- '{71mf}'
+- '{0268}'
+depends_on:
+- G-001
+- G-002
+- G-003
+- G-004
+- G-005
+- G-006
+tactical_steps:
+- T-001
+status: draft

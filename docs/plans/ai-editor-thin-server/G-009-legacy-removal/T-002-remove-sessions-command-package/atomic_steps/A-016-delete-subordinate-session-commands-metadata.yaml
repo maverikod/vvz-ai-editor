@@ -1,0 +1,18 @@
+step_id: A-016
+parent_tactical_step: T-002
+name: Удалить subordinate_session_commands_metadata.py
+target_file: ai_editor/commands/sessions/subordinate_session_commands_metadata.py
+operation: delete_file
+priority: 16
+depends_on:
+- A-015
+concepts:
+- C-020
+prompt: 'Delete file `ai_editor/commands/sessions/subordinate_session_commands_metadata.py` only. Do not modify other files in this step.
+
+  '
+verification:
+  type: static_analysis
+  target: ai_editor/commands/sessions/subordinate_session_commands_metadata.py
+  expected: File ai_editor/commands/sessions/subordinate_session_commands_metadata.py absent from repository.
+status: draft

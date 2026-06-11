@@ -1,0 +1,30 @@
+concepts:
+- C-005
+depends_on:
+- A-001
+- A-002
+- A-003
+name: Register file lock commands in hooks_register_part2.py
+operation: modify_file
+parent_tactical_step: T-002
+priority: 4
+prompt: "Modify the existing file at the exact path:\n  ai_editor/hooks_register_part2.py\n\
+  \nOperation: modify_file. The file already contains a try/except block added by\n\
+  T-001 that registers SessionCreateCommand, SessionDeleteCommand, SessionListCommand.\n\
+  \nRequired change: append one more try/except block at the END of\nregister_commands_part2
+  function body, AFTER the existing session lifecycle block:\n\n    try:\n       \
+  \ from .commands.sessions.session_open_file_command import SessionOpenFileCommand\n\
+  \        from .commands.sessions.session_close_file_command import SessionCloseFileCommand\n\
+  \        from .commands.sessions.session_list_file_locks_command import SessionListFileLocksCommand\n\
+  \n        reg.register(SessionOpenFileCommand, 'session_management')\n        reg.register(SessionCloseFileCommand,
+  'session_management')\n        reg.register(SessionListFileLocksCommand, 'session_management')\n\
+  \    except ImportError:\n        pass\n\nDo not modify any other part of the file.
+  Do not reformat existing code."
+status: done
+step_id: A-004
+target_file: ai_editor/hooks_register_part2.py
+verification:
+  expected: The file contains registration blocks for all six session commands. 
+    Existing registrations are unchanged.
+  target: ai_editor/hooks_register_part2.py
+  type: static_analysis

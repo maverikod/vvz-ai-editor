@@ -1,0 +1,47 @@
+step_id: G-006
+name: Close command
+description: Implement CloseCommand that ends the session with format-group-specific
+  cleanup. For sidecar: verify sidecar checksum; rebuild sidecar from source
+  on mismatch; sidecar not deleted. For tree-temp: compare sha256 of draft vs
+  original; delete draft on match; rebuild draft on mismatch; free in-memory
+  tree. For text: delete draft unconditionally. In all cases delete the
+  WriteLockfile if present and release the EditSession.
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-010
+- C-012
+- C-014
+relations:
+- from_concept: C-010
+  to_concept: C-001
+  type: consumes
+- from_concept: C-010
+  to_concept: C-002
+  type: consumes
+- from_concept: C-010
+  to_concept: C-003
+  type: uses
+- from_concept: C-010
+  to_concept: C-004
+  type: uses
+- from_concept: C-010
+  to_concept: C-012
+  type: uses
+- from_concept: C-010
+  to_concept: C-014
+  type: produces
+source_ranges:
+- start: 215
+  end: 244
+- start: 265
+  end: 275
+depends_on:
+- G-002
+- G-007
+tactical_steps:
+- T-001
+- T-002
+status: draft

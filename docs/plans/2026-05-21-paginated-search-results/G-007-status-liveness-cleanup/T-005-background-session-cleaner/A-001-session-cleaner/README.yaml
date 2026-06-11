@@ -1,0 +1,88 @@
+step_id: A-001
+parent_tactical_step: T-005
+name: BackgroundSessionCleaner
+target_file: ai_editor/core/search_session/cleaner.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-011
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/cleaner.py
+
+  MRS (C-011 BackgroundSessionCleaner): periodic cleanup; TTL + status + dead detection;
+  never delete live valid sessions; register periodic loop on app startup.
+
+  Imports:
+  - from __future__ import annotations
+  - import asyncio
+  - import logging
+  - import shutil
+  - import time
+  - from pathlib import Path
+  - from typing import Any, Iterable
+  - from ai_editor.core.search_session.dead_detection import (
+        DeadSessionVerdict,
+        evaluate_session_liveness,
+    )
+  - from ai_editor.core.search_session.directory import (
+        SearchSessionDirectoryLayout,
+        resolve_search_sessions_root,
+    )
+  - from ai_editor.core.search_session.manifest import read_manifest
+  - from ai_editor.core.search_session.policy import (
+        SessionTTLPolicy,
+        load_session_ttl_policy,
+    )
+  - from ai_editor.core.search_session.service_metadata import read_service_metadata
+  - from ai_editor.core.search_session.session import SearchSessionState
+  - from ai_editor.core.search_timeouts import SEARCH_HARD_TIMEOUT_SECONDS
+
+  Implement:
+  - _CLEANUP_INTERVAL_MIN_SECONDS = 60.0
+  - _CLEANUP_INTERVAL_MAX_SECONDS = 300.0
+  - _TERMINAL_STATUSES frozenset of SearchSessionState terminal string values
+  - def iter_session_directories(sessions_root: Path) -> Iterable[Path]
+  - def layout_from_directory(session_dir: Path) -> SearchSessionDirectoryLayout
+  - def should_delete_session(
+        layout: SearchSessionDirectoryLayout,
+        *,
+        policy: SessionTTLPolicy,
+        now: float,
+        hard_timeout_seconds: float = SEARCH_HARD_TIMEOUT_SECONDS,
+    ) -> tuple[bool, str]
+    Uses read_manifest, read_service_metadata, evaluate_session_liveness, manifest terminal statuses.
+    Delete when verdict is dead, orphaned, or timed_out, or terminal status idle beyond policy.ttl_seconds
+    since last_access_at. Retain live running sessions with fresh heartbeat.
+  - def cleanup_interval_seconds(policy: SessionTTLPolicy) -> float
+    clamp(policy.ttl_seconds / 4, min=_CLEANUP_INTERVAL_MIN_SECONDS, max=_CLEANUP_INTERVAL_MAX_SECONDS)
+  - def cleanup_expired_sessions(*, config_dir: Path, now: float) -> list[str]
+    Returns deleted job_ids; shutil.rmtree on approved sessions only.
+  - async def _search_session_cleanup_loop(*, config_dir: Path, interval_seconds: float) -> None
+    Infinite loop: cleanup_expired_sessions then asyncio.sleep(interval_seconds); log deletions.
+  - def register_search_session_cleanup(
+        app: Any,
+        *,
+        config_dir: Path,
+        app_config: dict[str, Any],
+    ) -> None
+    Load policy via load_session_ttl_policy(app_config); derive interval via cleanup_interval_seconds.
+    Register @app.on_event("startup") handler that asyncio.create_task(_search_session_cleanup_loop(...)).
+
+  Periodic registration contract: register_search_session_cleanup is the sole startup hook for the
+  cleanup loop. App factory wiring that calls this function belongs in a separate modify_file step
+  targeting main_app_factory.py.
+
+  Under 250 lines. Author header.
+
+verification:
+  type: pytest
+  target: tests/unit/test_session_cleaner.py
+  expected: >
+    Expired idle terminal session deleted after TTL.
+    Live running session with fresh heartbeat retained.
+    should_delete_session returns True with reason dead, orphaned, or timed_out for matching verdicts.
+    cleanup_interval_seconds stays within 60–300 seconds.
+    register_search_session_cleanup attaches startup task without raising when app supports on_event.
+status: frozen

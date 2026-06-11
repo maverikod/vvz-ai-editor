@@ -1,0 +1,153 @@
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-009
+depends_on: []
+name: Create session_open_file_command.py
+operation: create_file
+parent_tactical_step: T-002
+priority: 1
+prompt: "Create a new Python file at the exact path:
+  ai_editor/commands/sessions/session_open_file_command.py
+
+This file is new with no pre-existing content.
+
+MRS context:
+- C-002 SessionFileLock: open via open_session_file (INSERT OR IGNORE).
+- C-003 SessionTouchRule: touch_or_error first; SESSION_NOT_FOUND if absent.
+- C-005 SessionMCPCommands: session_open_file; touch then policy check then acquire.
+- C-009 SecurityPolicy: enforce_security_policy called after touch_or_error
+  and before open_session_file.
+
+Execution order:
+  1. touch_or_error(database, session_id) -> SESSION_NOT_FOUND on failure.
+  2. enforce_security_policy(...) -> COMMAND_FORBIDDEN on failure.
+  3. open_session_file(...).
+
+File-level docstring:
+\"\"\"\nsession_open_file MCP command: acquire a file lock for a session.\n\nAuthor:
+  Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"
+
+Imports (exact):
+  from __future__ import annotations
+  from typing import Any, Dict
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.core.client_sessions import (
+      open_session_file,
+      touch_or_error,
+      SessionNotFoundError,
+  )
+  from ai_editor.core.security_policy_guard import (
+      enforce_security_policy,
+      CommandForbiddenError,
+  )
+
+Class:
+
+class SessionOpenFileCommand(BaseMCPCommand):
+    \"\"\"MCP command: acquire a file lock for a session.\"\"\"
+
+    name = 'session_open_file'
+    version = '1.0.0'
+    descr = 'Acquire a file lock for a session (idempotent).'
+    category = 'session_management'
+    author = 'Vasiliy Zdanovskiy'
+    email = 'vasilyvz@gmail.com'
+    use_queue = False
+
+    @staticmethod
+    def get_name() -> str:
+        \"\"\"Return the MCP command name.
+
+        Returns:
+            MCP command name string.
+        \"\"\"
+        return 'session_open_file'
+
+    @classmethod
+    def get_schema(cls) -> Dict[str, Any]:
+        \"\"\"Return the JSON schema for command parameters.
+
+        Returns:
+            JSON schema dict.
+        \"\"\"
+        return {
+            'type': 'object',
+            'properties': {
+                'session_id': {'type': 'string', 'description': 'UUID4 of the active session.'},
+                'project_id': {'type': 'string', 'description': 'UUID of the registered project.'},
+                'file_id': {'type': 'string', 'description': 'UUID of the file record.'},
+            },
+            'required': ['session_id', 'project_id', 'file_id'],
+            'additionalProperties': False,
+        }
+
+    async def execute(  # type: ignore[override]
+        self,
+        session_id: str,
+        project_id: str,
+        file_id: str,
+        **kwargs: Any,
+    ) -> SuccessResult | ErrorResult:
+        \"\"\"Execute session_open_file.
+
+        Execution order: SessionTouchRule -> SecurityPolicy check -> acquire lock.
+
+        Args:
+            session_id: UUID4 of the active session.
+            project_id: UUID of the registered project.
+            file_id: UUID of the file record.
+            **kwargs: Adapter context (ignored).
+
+        Returns:
+            SuccessResult with acquired, session_id, project_id, file_id.
+            ErrorResult SESSION_NOT_FOUND if session is absent.
+            ErrorResult COMMAND_FORBIDDEN if SecurityPolicy denies the command.
+        \"\"\"
+        _ = kwargs
+        database = self._open_database_from_config()
+        raw_config = self._get_raw_config()
+        server_uuid: str = raw_config.get('registration', {}).get('instance_uuid', '')
+        policy_mode: str = (raw_config.get('security') or {}).get('policy', 'disabled')
+
+        try:
+            touch_or_error(database, session_id)
+        except SessionNotFoundError:
+            return ErrorResult(
+                code='SESSION_NOT_FOUND',
+                message=f'Session {session_id!r} not found.',
+            )
+        try:
+            enforce_security_policy(
+                database=database,
+                session_id=session_id,
+                command_name='session_open_file',
+                server_uuid=server_uuid,
+                policy_mode=policy_mode,
+            )
+        except CommandForbiddenError as e:
+            return ErrorResult(code='COMMAND_FORBIDDEN', message=str(e))
+
+        result = open_session_file(
+            database, session_id=session_id, project_id=project_id, file_id=file_id
+        )
+        return SuccessResult(data=result)
+
+Constraints:
+- File must not exceed 110 lines.
+- All type annotations required.
+- Google-style docstrings."
+status: done
+step_id: A-001
+target_file: ai_editor/commands/sessions/session_open_file_command.py
+verification:
+  expected: SessionOpenFileCommand is importable. get_name() returns
+    'session_open_file'. get_schema() has required=['session_id', 'project_id',
+    'file_id']. enforce_security_policy is called between touch_or_error and
+    open_session_file.
+  target: ai_editor/commands/sessions/session_open_file_command.py
+  type: import

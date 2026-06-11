@@ -1,0 +1,39 @@
+step_id: T-002
+parent_global_step: G-006
+name: HTTPResultAccess retrieval
+description: >
+  Creates HTTPResultAccess as the non-streaming retrieval mechanism for search
+  job results. Allows clients to read the SearchResultIndex and fetch any
+  SearchResultBlock directly by position number using the job identifier.
+  Supports polling the index while search still running, random access to any
+  already-listed block without sequential traversal, and block-not-ready
+  responses when a requested block has not yet been published. Refreshes
+  LastAccessTimestamp in session service metadata on every successful index,
+  block, or status read.
+concepts:
+  - C-005
+inputs:
+  - name: job_identifier
+    type: SearchIdentifier
+    description: job_id supplied by the client to locate the session directory.
+  - name: requested_block_position
+    type: BlockPositionNumber
+    description: Optional position number when the client requests a specific result block.
+  - name: search_result_index
+    type: SearchResultIndex
+    description: Current index listing available blocks and completeness marker.
+outputs:
+  - name: index_response
+    type: IndexResponse
+    description: Single-read response exposing all available blocks and completeness state.
+  - name: block_response
+    type: BlockResponse
+    description: Retrieved immutable block payload or block-not-ready indication.
+  - name: refreshed_last_access_timestamp
+    type: LastAccessTimestamp
+    description: Updated inactivity timestamp after a successful HTTP read.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: ready_for_review

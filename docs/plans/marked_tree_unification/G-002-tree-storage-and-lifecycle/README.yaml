@@ -1,0 +1,89 @@
+step_id: G-002
+name: Tree Storage and Lifecycle
+description: 'Establishes the co-located sibling storage convention: a TreeFile is
+  placed as a direct sibling of the SourceFile it describes. Defines the ChecksumSyncPolicy
+  as the single decision mechanism governing four states of tree-to-source alignment:
+  no tree present, checksum match, checksum mismatch outside a session, and checksum
+  mismatch inside an active session. An existing implementation of this policy already
+  exists in the codebase; this step extends and integrates it rather than replacing
+  it. Establishes TreeLifecycle as the single owner of tree validity and tree creation
+  — every consumer routes through it, no ad-hoc per-call-site validation exists. Establishes
+  TreeBuilder as the component that resolves FormatHandler via HandlerRegistry and
+  writes a new TreeFile from source content using FormatHandler.mark — the canonical
+  unified build path per {c005}: TreeBuilder writes marked content to the sibling
+  sidecar path and records content_checksum in the tree file AND the returned tree
+  reference. TreeBuilder writes the MAP section via NodeIdMap build with next_free
+  and UUID4 TreeNodeUuid entries. On rebuild, NodeIdMap validate_and_repair restores
+  MAP consistency ({a007}, {n002}). The legacy recreate_tree_from_content plus TreeFormatKind
+  dispatch remains untouched as a parity oracle (strategy: new alongside old); physical
+  legacy removal stays deferred to G-000 (SidecarLayoutMigration, C-023). G-002 defines
+  the canonical sibling convention, lifecycle entities, and unified-pipeline integration
+  only.'
+concepts:
+- C-003
+- C-004
+- C-006
+- C-007
+- C-008
+- C-009
+- C-010
+- C-011
+- C-024
+- C-025
+depends_on:
+- G-001
+- G-006
+relations:
+- from_concept: C-006
+  to_concept: C-003
+  type: uses
+- from_concept: C-006
+  to_concept: C-004
+  type: uses
+- from_concept: C-003
+  to_concept: C-024
+  type: owns
+- from_concept: C-003
+  to_concept: C-025
+  type: owns
+- from_concept: C-010
+  to_concept: C-006
+  type: owns
+- from_concept: C-010
+  to_concept: C-011
+  type: owns
+- from_concept: C-010
+  to_concept: C-008
+  type: uses
+- from_concept: C-010
+  to_concept: C-025
+  type: uses
+- from_concept: C-011
+  to_concept: C-007
+  type: uses
+- from_concept: C-011
+  to_concept: C-008
+  type: uses
+- from_concept: C-011
+  to_concept: C-003
+  type: produces
+- from_concept: C-011
+  to_concept: C-025
+  type: uses
+source_labels:
+- '{a005}'
+- '{a006}'
+- '{a007}'
+- '{c001}'
+- '{c002}'
+- '{c003}'
+- '{c004}'
+- '{c005}'
+- '{c006}'
+- '{n002}'
+status: ready_for_review
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004

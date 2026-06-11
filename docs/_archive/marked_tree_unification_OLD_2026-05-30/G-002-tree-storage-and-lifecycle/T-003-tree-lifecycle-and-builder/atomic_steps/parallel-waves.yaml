@@ -1,0 +1,34 @@
+global_step: G-002
+tactical_steps:
+  T-003:
+    waves:
+      - wave: 1
+        parallel: true
+        steps:
+          - A-001
+          - A-002
+        cross_ts_depends_on:
+          - G-001/T-003/A-003 default_registry
+          - G-001/T-002/A-007 PythonHandler
+        note: Entity modules; unified HandlerRegistry dispatch in A-001.
+      - wave: 2
+        parallel: false
+        steps:
+          - A-003
+        depends_on_wave: 1
+        note: Package __init__ re-exports after builder and lifecycle exist.
+  T-004:
+    waves:
+      - wave: 1
+        parallel: false
+        steps:
+          - A-001
+        cross_ts_depends_on:
+          - T-003/A-001 TreeBuilder.build
+        note: Wire validate path to unified build.
+      - wave: 2
+        parallel: false
+        steps:
+          - A-002
+        depends_on_wave: 1
+        note: Parity tests vs legacy recreate_tree_from_content.

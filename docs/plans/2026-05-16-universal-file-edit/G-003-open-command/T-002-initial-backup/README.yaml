@@ -1,0 +1,21 @@
+step_id: T-002
+parent_global_step: G-003
+name: Create initial backup when file has no history
+description: Check whether the file has any backup history using ExistingInfrastructure
+  (C-012). If no history exists, create an initial BackupPair (C-011) for the file.
+  If history already exists, skip backup creation. This step does not affect the
+  DraftFile or WriteLockfile.
+concepts:
+- C-011
+- C-012
+inputs:
+- name: abs_path
+  type: Path
+  description: Absolute path to the file being opened.
+outputs:
+- name: initial_backup_created
+  type: bool
+  description: True when an initial backup was created; False when history already existed.
+atomic_steps:
+- A-001
+status: draft

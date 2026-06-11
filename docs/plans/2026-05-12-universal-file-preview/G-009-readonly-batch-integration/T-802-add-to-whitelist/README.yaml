@@ -1,0 +1,31 @@
+step_id: T-802
+parent_global_step: G-009
+name: Add command name to read-only batch whitelist
+status: done
+concepts:
+- C-001
+- C-015
+description: "Define the whitelist edit that constitutes ReadOnlyBatchIntegration\n\
+  (C-015). This edit adds the PreviewCommand (C-001) name to the\nREAD_ONLY_BATCH_WHITELIST\
+  \ constant so the command becomes callable\ninside read_only_batch invocations.\n\
+  \nWhitelist location:\n- File: ai_editor/commands/read_only_batch_whitelist.py\n\
+  - Constant: READ_ONLY_BATCH_WHITELIST (a frozenset of command name\n  strings).\n\
+  \nEdit:\nAdd the string 'universal_file_preview' to READ_ONLY_BATCH_WHITELIST.\n\
+  No other changes to this file are made in this step.\n\nEffect:\nAfter this edit,\
+  \ read_only_batch accepts 'universal_file_preview'\nas a valid command name in its\
+  \ invocations list. The command runs\nwith the same read-only guarantees as the\
+  \ other whitelisted commands.\n\nPrecondition:\nThe stability verification must\
+  \ have confirmed that PreviewCommand\nand all file handlers are stable and tests\
+  \ are passing before this\nwhitelist edit is applied.\n"
+inputs:
+- name: stability_confirmed
+  type: boolean
+  description: Must be True. Confirms that PreviewCommand and all file handlers are
+    stable and tests are passing before the whitelist is modified.
+outputs:
+- name: updated_whitelist
+  type: modified READ_ONLY_BATCH_WHITELIST constant
+  description: The READ_ONLY_BATCH_WHITELIST frozenset with 'universal_file_preview'
+    added. The constant is updated in ai_editor/commands/read_only_batch_whitelist.py.
+atomic_steps:
+- A-001

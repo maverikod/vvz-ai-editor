@@ -1,0 +1,118 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Redirect tree_temp_write_commit.py sidecar path onto sibling_tree_path
+target_file: 
+  ai_editor/commands/universal_file_edit/tree_temp_write_commit.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/commands/universal_file_edit/tree_temp_write_commit.py\n\
+  \n## Goal\nRedirect the tree-temp commit path off the removed .trees/ resolver onto
+  the\nsibling convention (C-003). The JSON/YAML sidecar written on commit must land
+  at\nthe sibling path <source>.tree next to the source file, not under a central\n\
+  .trees/ mirror.\n\n## Dependency (already exists from G-002)\nai_editor/tree/sibling_convention.py
+  provides:\n    def sibling_tree_path(source_abs: Path) -> Path\nmapping <dir>/<name>
+  -> <dir>/<name>.tree in the same directory.\n\n## Required edits\n1. Imports: remove\n\
+  \       from ai_editor.core.tree_temp.sidecar_paths import resolve_trees_sidecar_path\n\
+  \   and add\n       from ai_editor.tree.sibling_convention import sibling_tree_path\n\
+  \n2. In commit_tree_temp_to_disk, inside the `if session.tree_temp_roots is not
+  None:`\n   block, replace the sidecar-path resolution. Currently it is:\n      \
+  \ project_root = Path(BaseMCPCommand._resolve_project_root(project_id)).resolve()\n\
+  \       sidecar_path = resolve_trees_sidecar_path(\n           project_root,\n \
+  \          Path(session.file_path),\n       )\n   Replace those statements with
+  a single sibling resolution:\n       sidecar_path = sibling_tree_path(session.abs_path.resolve())\n\
+  \   Keep everything else in the block unchanged (mkdir of sidecar_path.parent, the\n\
+  \   payload serialization, the atomic tempfile write with suffix \".tree\", os.replace,\n\
+  \   the backup-on-exists, and the OSError/Exception handlers).\n\n3. The function
+  keeps its signature unchanged: parameters session, project_id, bm,\n   rel_str all
+  remain. After the edit, project_id is no longer referenced in the\n   body; that
+  is acceptable — do NOT change the signature or callers (flake8 does\n   not flag
+  unused function parameters). Do not delete the BaseMCPCommand import if\n   it is
+  still used elsewhere in the file; if BaseMCPCommand becomes unused after\n   this
+  edit, remove its import to satisfy flake8 F401. (Check: BaseMCPCommand is\n   referenced
+  only at the line being replaced; if so, remove its import.)\n\n## Forbidden\n- No
+  .trees/ path, no central mirror directory.\n- Do not change the sidecar JSON payload
+  format or the \".tree\" temp suffix.\n- Do not touch other files.\n\n## Full current
+  file content (verbatim, 178 lines)\n```python\n\"\"\"\nPreview diff and commit persistence
+  for tree-temp TreeNode edit sessions.\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\
+  \"\"\"\n\nfrom __future__ import annotations\n\nimport hashlib\nimport json\nimport
+  os\nimport tempfile\nfrom pathlib import Path\nfrom typing import TYPE_CHECKING,
+  Tuple, cast\n\nimport yaml\n\nif TYPE_CHECKING:\n    from ai_editor.commands.universal_file_edit.session
+  import EditSession\n\nfrom ai_editor.commands.base_mcp_command import BaseMCPCommand\n\
+  from ai_editor.commands.universal_file_edit.format_group import FORMAT_TREE_TEMP\n\
+  from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (\n\
+  \    serialize_tree_temp_roots,\n)\nfrom ai_editor.core.backup_manager import
+  BackupManager\nfrom ai_editor.core.file_handlers.diff_support import unified_diff_text\n\
+  from ai_editor.core.tree_temp.sidecar_payload import serialize_sidecar_to_json_text\n\
+  from ai_editor.core.tree_temp.sidecar_paths import resolve_trees_sidecar_path\n\
+  \n\ndef serialize_tree_temp_session_source(session: \"EditSession\") -> str:\n \
+  \   \"\"\"Return canonical serialized source text for a tree-temp session (handlers
+  json/yaml).\"\"\"\n    if session.format_group != FORMAT_TREE_TEMP:\n        raise
+  ValueError(\n            \"serialize_tree_temp_session_source requires tree-temp
+  format_group\",\n        )\n    if session.tree_temp_roots is not None:\n      \
+  \  return cast(\n            str,\n            serialize_tree_temp_roots(\n    \
+  \            session.handler_id,\n                session.tree_temp_roots,\n   \
+  \         ),\n        )\n    if session.handler_id == \"json\":\n        from ai_editor.core.json_tree.tree_builder
+  import (\n            get_tree as get_json_tree,\n        )\n\n        jtree = get_json_tree(session.tree_id)
+  if session.tree_id else None\n        if jtree is None:\n            return str(session.draft_path.read_text(encoding=\"\
+  utf-8\"))\n        return str(\n            json.dumps(jtree.root_data, indent=2,
+  ensure_ascii=False) + \"\\n\",\n        )\n    from ai_editor.core.yaml_tree.tree_builder
+  import (\n        get_tree as get_yaml_tree,\n    )\n\n    ytree = get_yaml_tree(session.tree_id)
+  if session.tree_id else None\n    if ytree is None:\n        return str(session.draft_path.read_text(encoding=\"\
+  utf-8\"))\n    return str(\n        yaml.safe_dump(\n            ytree.root_data,\n\
+  \            sort_keys=False,\n            allow_unicode=True,\n        )\n    )\n\
+  \n\ndef build_tree_temp_preview_text(*, abs_path: Path, session: \"EditSession\"\
+  ) -> str:\n    \"\"\"Return canonical source text for current session tree via SourceSerializer.\"\
+  \"\"\n    if session.abs_path.resolve() != abs_path.resolve():\n        raise ValueError(\"\
+  abs_path does not match session.abs_path\")\n    return serialize_tree_temp_session_source(session)\n\
+  \n\ndef commit_tree_temp_to_disk(\n    *,\n    session: \"EditSession\",\n    project_id:
+  str,\n    bm: BackupManager,\n    rel_str: str,\n) -> Tuple[str, str]:\n    \"\"\
+  \"Write tree-temp source and optional sidecar; update session checksum and flags.\n\
+  \n    Returns:\n        Tuple of ``(new_source_sha256_hex, unified_diff_str)``.\n\
+  \    Raises:\n        ValueError if serialization fails.\n        OSError on I/O
+  failures (caller may restore from backup ``rel_str``).\n    \"\"\"\n    original_content
+  = session.abs_path.read_text(encoding=\"utf-8\")\n    try:\n        code = serialize_tree_temp_session_source(session)\n\
+  \    except ValueError:\n        raise\n    except Exception as exc:\n        raise
+  ValueError(f\"Tree-temp source serialization failed: {exc}\") from exc\n\n    tmp_path:
+  str | None = None\n    try:\n        with tempfile.NamedTemporaryFile(\n       \
+  \     mode=\"w\",\n            suffix=session.abs_path.suffix,\n            dir=str(session.abs_path.parent),\n\
+  \            delete=False,\n            encoding=\"utf-8\",\n        ) as tmp:\n\
+  \            tmp.write(code)\n            tmp_path = tmp.name\n        os.replace(tmp_path,
+  str(session.abs_path))\n        tmp_path = None\n    except OSError:\n        if
+  tmp_path:\n            Path(tmp_path).unlink(missing_ok=True)\n        bm.restore_file(rel_str)\n\
+  \        raise\n\n    final_bytes = session.abs_path.read_bytes()\n    sha256_hex
+  = hashlib.sha256(final_bytes).hexdigest()\n    session.source_sha256_at_open = sha256_hex\n\
+  \    session.dirty = False\n\n    if session.tree_temp_roots is not None:\n    \
+  \    project_root = Path(BaseMCPCommand._resolve_project_root(project_id)).resolve()\n\
+  \        sidecar_path = resolve_trees_sidecar_path(\n            project_root,\n\
+  \            Path(session.file_path),\n        )\n        sidecar_path.parent.mkdir(parents=True,
+  exist_ok=True)\n        payload_txt = serialize_sidecar_to_json_text(\n        \
+  \    sha256_hex,\n            session.tree_temp_roots,\n        )\n        sc_tmp_path:
+  str | None = None\n        try:\n            if sidecar_path.exists():\n       \
+  \         bm.create_backup(\n                    sidecar_path,\n               \
+  \     command=\"universal_file_write\",\n                )\n            with tempfile.NamedTemporaryFile(\n\
+  \                mode=\"w\",\n                suffix=\".tree\",\n              \
+  \  dir=str(sidecar_path.parent),\n                delete=False,\n              \
+  \  encoding=\"utf-8\",\n            ) as sctmp:\n                sctmp.write(payload_txt)\n\
+  \                sc_tmp_path = sctmp.name\n            os.replace(sc_tmp_path, str(sidecar_path))\n\
+  \            sc_tmp_path = None\n        except OSError:\n            if sc_tmp_path:\n\
+  \                Path(sc_tmp_path).unlink(missing_ok=True)\n            bm.restore_file(rel_str)\n\
+  \            raise\n        except Exception as exc:\n            if sc_tmp_path:\n\
+  \                Path(sc_tmp_path).unlink(missing_ok=True)\n            bm.restore_file(rel_str)\n\
+  \            raise ValueError(\n                f\"Tree-temp sidecar serialization
+  failed: {exc}\",\n            ) from exc\n\n    session.sidecar_write_intent = \"\
+  none\"\n\n    diff = unified_diff_text(\n        original_content,\n        code,\n\
+  \        before_label=str(session.abs_path),\n        after_label=str(session.abs_path),\n\
+  \    )\n    return sha256_hex, diff\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/tree_temp_write_commit.py
+  expected: black, flake8, mypy exit 0; the module imports sibling_tree_path and
+    no longer imports resolve_trees_sidecar_path; commit_tree_temp_to_disk 
+    resolves the sidecar via sibling_tree_path(session.abs_path.resolve()); grep
+    for '.trees' and 'resolve_trees_sidecar_path' in this file returns nothing.

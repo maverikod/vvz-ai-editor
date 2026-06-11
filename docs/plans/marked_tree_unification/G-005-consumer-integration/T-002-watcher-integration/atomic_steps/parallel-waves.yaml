@@ -1,0 +1,24 @@
+global_step: G-005
+tactical_step: T-002
+name: Watcher TreeLifecycle Integration and Checksum Persistence
+waves:
+  - wave: 1
+    steps:
+      - A-002
+    note: Declarative tree_checksum column on files table.
+  - wave: 2
+    parallel: true
+    steps:
+      - A-003
+      - A-004
+    requires:
+      - A-002
+    note: Schema version bump and file-row persist helper — different files.
+  - wave: 3
+    steps:
+      - A-001
+    requires:
+      - A-002
+      - A-003
+      - A-004
+    note: Watcher queue calls TreeLifecycle and forwards tree_checksum to ensure_file_row.

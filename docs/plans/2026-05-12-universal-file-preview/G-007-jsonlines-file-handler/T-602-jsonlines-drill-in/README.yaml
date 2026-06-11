@@ -1,0 +1,43 @@
+step_id: T-602
+parent_global_step: G-007
+name: JSON Lines file handler — drill-in parses line as JSON
+status: done
+concepts:
+- C-004
+- C-014
+- C-019
+description: "Define the drill-in behaviour of JsonLinesFileHandler (C-019) when the\
+  \ caller supplies a node_ref to focus on a specific line. At this point the line\
+  \ is parsed as an independent JSON document, and its structure is exposed as a JSON\
+  \ node tree.\nDrill-in addressing: - The node_ref for a JSONL line is a zero-based\
+  \ integer index,\n  identical to the TextFileHandler addressing scheme.\n- If the\
+  \ index is out of range [0, total_line_count), JsonLinesFileHandler\n  signals an\
+  \ UNKNOWN_NODE_REF condition surfaced as an\n  ErrorClassification (C-014) input\
+  \ error.\n\nPer-line JSON parsing: - When the caller drills into line N, JsonLinesFileHandler\
+  \ reads that\n  single line and parses it as a self-contained JSON document.\n-\
+  \ The parsed value becomes the focus Node for the follow-up\n  NavigationProcedure\
+  \ request. Its NodeKind (C-004) is determined by\n  the JSON value type of that\
+  \ line: mapping for a JSON object,\n  sequence for a JSON array, scalar for a primitive.\n\
+  - If the line is not valid JSON, JsonLinesFileHandler returns a\n  FILE_STRUCTURE_ERROR\
+  \ of class ErrorClassification (C-014) carrying\n  the parser name ('json') and\
+  \ the line number.\n\nNo duplication of JSON parsing logic: JsonLinesFileHandler\
+  \ delegates per-line JSON parsing to the same JSON parsing logic used by JsonFileHandler.\
+  \ It does not implement a separate JSON parser. The resulting per-line node tree\
+  \ has the same NodeKind structure as a standalone .json file of the same JSON value\
+  \ type.\n"
+inputs:
+- name: node_ref_value
+  type: integer
+  description: A zero-based line index supplied by the caller as node_ref. Must be
+    in the range [0, total_line_count).
+outputs:
+- name: line_root_node
+  type: Node with NodeKind mapping | sequence | scalar (C-004)
+  description: The focus Node produced by parsing the addressed line as JSON. Its
+    NodeKind is determined by the JSON value on that line.
+- name: line_error
+  type: ErrorClassification (C-014) input error or FILE_STRUCTURE_ERROR
+  description: UNKNOWN_NODE_REF input error when the index is out of range. FILE_STRUCTURE_ERROR
+    when the line is not valid JSON, carrying parser name 'json' and the line number.
+atomic_steps:
+- A-001

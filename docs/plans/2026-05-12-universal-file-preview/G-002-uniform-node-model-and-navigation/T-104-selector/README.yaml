@@ -1,0 +1,55 @@
+step_id: T-104
+parent_global_step: G-002
+name: Selector — three forms and rejection rules
+status: frozen
+concepts:
+- C-005
+- C-007
+- C-013
+- C-014
+description: "Define the Selector (C-007) as the single optional parameter that picks\
+  \ a subset of the focus node's block set. The Selector has exactly three forms,\
+  \ dispatched by the value's runtime type and shape, not by a separate parameter.\n\
+  Form A — slice string:\n  The value is a string containing ':' or starting with\
+  \ '-'.\n  Semantics: Python-style slice, zero-based, half-open.\n  Examples: '0:5'\
+  \ (first five blocks), ':3' (first three),\n  '-5:' (last five), ':' (all, capped\
+  \ by PreviewBudget).\n  The response returns the addressed blocks in natural file\
+  \ order.\n\nForm B — integer list:\n  The value is a JSON array where every element\
+  \ is an integer.\n  Semantics: explicit list of zero-based block indices.\n  The\
+  \ response returns the addressed blocks in the order given by\n  the caller (caller-given\
+  \ order, not natural order).\n\nForm C — string list:\n  The value is a JSON array\
+  \ where every element is a string.\n  Semantics: explicit list of block node identifiers\
+  \ (StableIdentifiers\n  in the file handler's native format).\n  The response returns\
+  \ the addressed blocks in the order given by\n  the caller.\n\nDispatch rule: the\
+  \ form is decided by runtime type inspection of the selector value. A string value\
+  \ is Form A if it contains ':' or starts with '-'; any other string is an input\
+  \ error (INVALID_SELECTOR_FORM). An array value is Form B if all elements are integers,\
+  \ Form C if all elements are strings.\nRejection rules (all produce ErrorClassification\
+  \ (C-014) input errors): - INVALID_SELECTOR_FORM: string selector does not contain\
+  \ ':' and does\n  not start with '-'.\n- MIXED_SELECTOR_LIST: array contains both\
+  \ integer and string elements. - DUPLICATE_SELECTOR_ENTRY: array contains a repeated\
+  \ index or identifier. - OUT_OF_RANGE_INDEX: integer index is outside [0, total_blocks).\
+  \ - UNKNOWN_IDENTIFIER: string identifier is not found in the focus\n  node's block\
+  \ set.\n- SELECTOR_ON_EMPTY: any selector provided when focus node block set\n \
+  \ is empty.\n\nWhen selector is omitted: the NavigationProcedure returns the first\
+  \ preview_lines blocks in natural order (governed by PreviewBudget C-013).\n"
+inputs:
+- name: raw_selector_value
+  type: string | list[int] | list[string] | null
+  description: The selector parameter value from the validated input, or null when
+    the caller omitted it.
+- name: focus_block_set
+  type: ordered list of Blocks (C-005)
+  description: The complete ordered block set of the focus node produced by NavigationProcedure
+    phase 1.
+outputs:
+- name: selected_blocks
+  type: ordered list of Blocks (C-005)
+  description: The subset of focus_block_set addressed by the selector, in the order
+    determined by the selector form (natural order for Form A and omitted; caller-given
+    order for Forms B and C).
+- name: selector_error
+  type: ErrorClassification (C-014) input error
+  description: Returned instead of selected_blocks when any rejection rule fires.
+atomic_steps:
+- A-001

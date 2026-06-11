@@ -1,0 +1,56 @@
+step_id: T-002
+parent_global_step: G-001
+name: FormatHandler Per-Format Definitions
+description: "Define the FormatHandler entity (C-007) as a per-format component implementing
+  the four-operation handler contract and producing TreeNodes (C-009) from SourceFiles
+  (C-004) of its format. The four handler-contract operations are: parse_content (builds
+  the node tree from source content), mark (embeds node-id markers natively into content),
+  unmark (strips markers and reproduces original source bytes exactly), and sidecar_path
+  (returns the sibling tree-file path for a source file). Specify the five FormatHandler
+  instances and their format-native marker syntax: text handler uses line-index comments,
+  markdown handler uses HTML comment blocks between paragraphs, YAML handler uses
+  a top-level node-id comment key, JSON handler uses a reserved ___id___ wrapper key
+  (HRS {b004}), Python handler uses a hybrid scheme (metadata dict under reserved key
+  ___id___ for CST nodes that carry a metadata dict; trailing comment # ___id___:<uuid>
+  for all other CST node types per HRS {b005}). Establish that each handler uses only
+  its own format marker syntax and enforces the unmark invertibility invariant (unmark
+  reproduces original source bytes exactly, verified by SHA-256 checksum). Establish
+  that handlers are the only component that reads or writes format-specific marker
+  syntax.\n"
+concepts:
+- C-007
+- C-001
+- C-003
+- C-004
+- C-005
+- C-009
+inputs:
+- name: MarkerContract specification
+  type: MRS concept definition (C-001)
+  description: The three-operation contract (mark, parse, unmark) defined in MRS
+    as C-001 that each FormatHandler must implement.
+- name: AddressableBlock specification
+  type: MRS concept definition (C-005)
+  description: Per-format minimal addressable unit defined in MRS as C-005; 
+    constrains marker placement to block boundaries only.
+outputs:
+- name: FormatHandler entity definition
+  type: domain entity definition
+  description: "The per-format component contract with the four handler-contract operations
+    (parse_content, mark, unmark, sidecar_path) and the constraint that it uses only
+    its own format marker syntax.\n"
+- name: Five handler instance definitions
+  type: domain entity definition
+  description: Text, markdown, YAML, JSON, and Python handler instances with 
+    their format-native marker syntax specified; Python hybrid scheme 
+    documented.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+- A-008
+status: needs_review

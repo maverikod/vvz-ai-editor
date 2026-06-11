@@ -1,0 +1,29 @@
+step_id: T-003
+parent_global_step: G-002
+name: JSON serializer with comment restoration
+description: 'Create the JSON-facing SourceSerializer (C-006): consume an in-memory
+  ordered list of root TreeNode entries (C-001) and emit JSON source text, reinserting
+  commentary using only values stored in comment_inline and comment_before so placements
+  obey CommentOwnershipRule (C-004). Inline strings attach on the same logical line as
+  their node; before strings precede the corresponding node in the serialized layout; use
+  `//` and `/* */` forms consistent with C-006 JSON serializer properties. Operational
+  scope is tree-to-text serialization only: no sidecar file reads or writes, no EditSession
+  registration or mutation, and no coupling to universal file open, preview, or write
+  lifecycle hooks.'
+concepts:
+- C-006
+- C-001
+- C-004
+inputs:
+- name: tree_root_nodes
+  type: ordered list of TreeNode (C-001)
+  description: Fully populated tree whose scalars and structure carry comment_inline and
+    comment_before per C-004.
+outputs:
+- name: serialized_source_text
+  type: string
+  description: UTF-8 JSON text with line and block comments restored at positions implied
+    by the TreeNode comment fields, consistent with C-006 JSON serializer properties.
+atomic_steps:
+- A-001
+status: done

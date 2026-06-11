@@ -1,0 +1,39 @@
+step_id: T-001
+parent_global_step: G-005
+name: GrepConsumer TreeLifecycle Integration
+description: 'Define the GrepConsumer entity (C-020) as the grep subsystem integration
+  that binds disk-scan matches to NodeIds through TreeLifecycle. Establish the three-action
+  contract. Action 1: GrepConsumer routes all tree-validity checks through TreeLifecycle
+  (C-010), never performing ad-hoc validation directly. Action 2: on checksum mismatch,
+  GrepConsumer triggers a tree rebuild via TreeLifecycle before attempting to bind
+  a disk-scan match to a NodeId. Action 3: if the rebuild fails, the match is yielded
+  as an ineligible lower-relevance search result rather than as a structural error;
+  the search result is degraded, not aborted. Establish that the mtime of a search
+  result produced by GrepConsumer is the mtime of the source code file the matched
+  node lives in, not the mtime of any intermediate search buffer; the cross-finding
+  normalisation component supplies this value by stat-ing the source file under the
+  project root.'
+concepts:
+- C-020
+- C-010
+inputs:
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: The single entry point for all tree-validity checks and tree 
+    rebuilds that GrepConsumer must route through.
+outputs:
+- name: GrepConsumer entity definition
+  type: domain entity definition
+  description: Grep integration that routes all validity checks through 
+    TreeLifecycle; rebuilds tree on mismatch before binding; on rebuild failure 
+    yields an ineligible lower-relevance search result, never a structural 
+    error; search result mtime is the source-file mtime, not the search-buffer 
+    mtime.
+- name: GrepConsumer mtime invariant
+  type: domain constraint definition
+  description: The mtime of every search result produced by GrepConsumer is the 
+    mtime of the source code file the matched node lives in; supplied by the 
+    cross-finding normalisation component via stat of the source file under the 
+    project root.
+atomic_steps: []
+status: draft

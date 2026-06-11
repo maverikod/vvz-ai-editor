@@ -1,0 +1,287 @@
+step_id: A-001
+parent_tactical_step: T-1002
+name: Rewrite _metadata_children_to_nodes in python_handler.py
+target_file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-016
+- C-022
+status: obsolete
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.handlers.python_handler
+  expected: >
+    Module imports without error. _metadata_children_to_nodes filters
+    metadata_map by depth == parent_depth + 1 and non-empty kind.
+    PythonFileHandler.open_root and resolve_node_ref are unchanged.
+prompt: |
+  ## Task
+
+  Modify an existing file by rewriting one function body.
+
+  Target file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+  Operation: modify_file
+
+  ## Current file content (after T-1001/A-001 — four dead functions removed)
+
+  The file has this structure after T-1001/A-001:
+
+  """
+  PythonFileHandler — FileHandler for .py, .pyi, .pyw files (C-016).
+
+  Opens Python source via the project's cst_load_file infrastructure.
+  Root NodeKind is tree_node with type label 'Module'.
+  Identifier format: stable_id UUID from cst_load_file outline_nodes.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import logging
+  from typing import Any
+
+  from ..base_handler import FileHandler
+  from ..errors import (
+      PreviewError,
+      file_structure_error,
+      input_error,
+      INPUT_ERROR_UNKNOWN_NODE_REF,
+  )
+  from ..models import Node, NodeKind
+  from ..python_visualizer import render_module, render_node
+  from ..budget import PreviewBudget
+
+  logger = logging.getLogger(__name__)
+
+
+  class PythonFileHandler(FileHandler):
+      """
+      FileHandler for Python files (.py, .pyi, .pyw) (C-016).
+
+      Root NodeKind: tree_node (Module).
+      Interior nodes: tree_node for ClassDef and FunctionDef;
+      tree_node or scalar for other statements; scalar for leaf values.
+      Identifier source: cst_load_file outline_nodes stable_id UUID.
+      Lazy materialisation: only root and requested children are loaded.
+
+      Attributes:
+          supported_extensions: Frozenset of .py, .pyi, .pyw.
+      """
+
+      @property
+      def supported_extensions(self) -> frozenset[str]:
+          """Frozenset of lowercase extensions this handler supports."""
+          return frozenset({".py", ".pyi", ".pyw"})
+
+      def open_root(
+          self,
+          file_path: str,
+          session: Any | None,
+          budget: PreviewBudget | None = None,
+      ) -> Node | PreviewError:
+          """Parse the Python file, render module overview via PythonNodeRenderer (C-022),
+          and return a tree_node Module root Node carrying the rendered text in attributes.
+
+          Args:
+              file_path: Absolute path to the .py/.pyi/.pyw file.
+              session: Existing CSTTree session or None.
+              budget: PreviewBudget for render_module; defaults to (20, 120) when None.
+
+          Returns:
+              Module root Node (NodeKind.TREE_NODE) or PreviewError.
+          """
+          try:
+              from ai_editor.core.cst_tree.tree_builder import load_file_to_tree
+              tree = session if session is not None else load_file_to_tree(file_path)
+              self._last_file_path = file_path
+              self._last_session = tree
+              self._last_tree_id = getattr(tree, "tree_id", None)
+              _budget = budget if budget is not None else PreviewBudget(
+                  preview_lines=20, value_preview_len=120
+              )
+              text = render_module(tree, _budget)
+              root_stable_id = (
+                  tree.metadata_map[tree.root_node_id].stable_id
+                  if tree.root_node_id and tree.root_node_id in tree.metadata_map
+                  else ""
+              )
+              return Node(
+                  node_kind=NodeKind.TREE_NODE,
+                  node_ref=root_stable_id,
+                  type_label="Module",
+                  name=None,
+                  attributes={"text": text},
+                  _children_loader=lambda: _metadata_children_to_nodes(
+                      tree, tree.root_node_id
+                  ),
+              )
+          except Exception as exc:
+              return file_structure_error(parser="libcst", message=str(exc))
+
+      def resolve_node_ref(
+          self, node_ref: str, session: Any | None
+      ) -> Node | PreviewError:
+          """Resolve a stable_id UUID to a Node rendered by PythonNodeRenderer (C-009, C-022).
+
+          Args:
+              node_ref: stable_id UUID string from cst_load_file outline_nodes.
+              session: CSTTree session or None (reopens file if None).
+
+          Returns:
+              Resolved Node with rendered text in attributes, or PreviewError.
+          """
+          if session is None:
+              fp = getattr(self, "_last_file_path", None)
+              if fp is None:
+                  return input_error(
+                      INPUT_ERROR_UNKNOWN_NODE_REF,
+                      "No active CST session and no cached file_path to scan.",
+                      details={"node_ref": node_ref},
+                  )
+              open_result = self.open_root(fp, None)
+              if isinstance(open_result, PreviewError):
+                  return open_result
+              session = getattr(self, "_last_session", None)
+              if session is None:
+                  return input_error(
+                      INPUT_ERROR_UNKNOWN_NODE_REF,
+                      "Could not open CST session for stable_id scan.",
+                      details={"node_ref": node_ref},
+                  )
+          meta = (
+              next(
+                  (m for m in session.metadata_map.values() if m.stable_id == node_ref),
+                  None,
+              )
+              if hasattr(session, "metadata_map")
+              else None
+          )
+          if meta is None:
+              return input_error(
+                  INPUT_ERROR_UNKNOWN_NODE_REF,
+                  f"stable_id {node_ref!r} not found in current CST.",
+                  details={"node_ref": node_ref},
+              )
+          text = render_node(session, node_ref)
+          return Node(
+              node_kind=NodeKind.TREE_NODE,
+              node_ref=node_ref,
+              type_label=meta.type,
+              name=meta.name,
+              attributes={"text": text},
+          )
+
+
+  def _metadata_children_to_nodes(tree: Any, parent_node_id: str | None) -> list[Node]:
+      """Build preview Nodes from CSTTree metadata for direct children of parent_node_id."""
+      if parent_node_id is None:
+          return []
+      _MEANINGFUL_KINDS = frozenset({"import", "class", "function", "method", "smallstmt"})
+      _TREE_NODE_KINDS = frozenset({"class", "function", "method"})
+      nodes_by_line: list[tuple[int, Any]] = []
+      for nid, meta in tree.metadata_map.items():
+          if meta.parent_id != parent_node_id:
+              continue
+          kind = getattr(meta, "kind", "") or ""
+          if kind not in _MEANINGFUL_KINDS:
+              continue
+          nodes_by_line.append((meta.start_line or 0, meta))
+      nodes_by_line.sort(key=lambda x: x[0])
+      nodes = []
+      for _, meta in nodes_by_line:
+          node_type = meta.type
+          kind_str = getattr(meta, "kind", "") or ""
+          preview_kind = NodeKind.TREE_NODE if kind_str in _TREE_NODE_KINDS else NodeKind.SCALAR
+          def _make_loader(nid: str) -> Any:
+              def _load() -> list[Node]:
+                  return _metadata_children_to_nodes(tree, nid)
+              return _load
+          has_children = preview_kind == NodeKind.TREE_NODE
+          nodes.append(
+              Node(
+                  node_kind=preview_kind,
+                  node_ref=meta.stable_id,
+                  type_label=node_type,
+                  name=meta.name,
+                  attributes={},
+                  _children_loader=_make_loader(meta.node_id) if has_children else None,
+              )
+          )
+      return nodes
+
+  ## What to change
+
+  ### Rewrite _metadata_children_to_nodes body
+
+  Keep the function signature and existing docstring exactly.
+  Replace the entire body with:
+
+      if parent_node_id is None:
+          return []
+      parent_meta = tree.metadata_map.get(parent_node_id)
+      child_depth = (
+          parent_meta.depth + 1
+          if parent_meta and parent_meta.depth is not None
+          else 1
+      )
+      selected: list[tuple[int, str, Any]] = []
+      for nid, meta in tree.metadata_map.items():
+          if meta.parent_id != parent_node_id:
+              continue
+          if meta.depth != child_depth:
+              continue
+          kind = meta.kind or ""
+          if not kind:
+              continue
+          selected.append((meta.start_line or 0, nid, meta))
+      selected.sort(key=lambda x: x[0])
+      nodes: list[Node] = []
+      for _, nid, meta in selected:
+          kind_str = meta.kind or ""
+          preview_kind = (
+              NodeKind.TREE_NODE
+              if kind_str in ("class", "function", "method")
+              else NodeKind.SCALAR
+          )
+          nodes.append(
+              Node(
+                  node_kind=preview_kind,
+                  node_ref=meta.stable_id,
+                  type_label=meta.type,
+                  name=meta.name,
+                  attributes={},
+                  _children_loader=(
+                      (lambda nid=nid: _metadata_children_to_nodes(tree, nid))
+                      if preview_kind == NodeKind.TREE_NODE
+                      else None
+                  ),
+              )
+          )
+      return nodes
+
+  Update the _metadata_children_to_nodes docstring to:
+      """Build preview Nodes from CSTTree metadata for direct children of parent_node_id.
+
+      Filters by depth == parent_depth + 1 and non-empty kind to skip
+      whitespace and structural nodes.
+
+      Args:
+          tree: CSTTree with metadata_map.
+          parent_node_id: node_id of the parent node, or None.
+
+      Returns:
+          List of Nodes sorted by start_line.
+      """
+
+  ### Keep open_root and resolve_node_ref exactly as in current file above
+
+  Do not change them.
+
+  ## Constraints
+
+  Produce the full new file content.
+  File must not exceed 180 lines after the change.

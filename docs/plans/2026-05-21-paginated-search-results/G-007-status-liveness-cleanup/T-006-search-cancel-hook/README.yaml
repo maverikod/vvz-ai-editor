@@ -1,0 +1,26 @@
+step_id: T-006
+parent_global_step: G-007
+name: search queue cancel hook
+description: >
+  Creates a queue-cancel hook that stops underlying queued search work when a
+  session is cancelled. Exposes cancel_queued_search_job for use by lifecycle
+  commands; does not define MCP command modules or registration. MCP surface
+  search_cancel (manifest transition, client contract, hooks registration) is
+  owned by the search session page lifecycle commands global step, which calls this hook
+  after apply_cancellation when the manifest carries a queue job reference.
+concepts:
+  - C-020
+inputs:
+  - name: queue_job_identifier
+    type: QueueJobIdentifier
+    description: Queue manager job id stored on the session manifest when search_start queued work.
+  - name: queue_manager
+    type: QueueManager
+    description: Global queue manager used to request job cancellation.
+outputs:
+  - name: queue_cancel_hook
+    type: QueueCancelHook
+    description: Best-effort async hook returning whether cancellation was requested.
+atomic_steps:
+- A-001
+status: frozen

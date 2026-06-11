@@ -1,0 +1,17 @@
+step_id: T-1005
+parent_global_step: G-012
+name: pytest list_yaml_blocks coverage
+status: done
+concepts:
+- C-009
+- C-020
+description: |
+  Pytest module `tests/test_list_yaml_blocks_command.py` exercises `ListYamlBlocksCommand`
+  with mocked project database and tmp_path fixtures: success path enumerates YAML blocks
+  with stable ids and pointer metadata; error paths validate extension gating.
+
+  Complements smoke registration assertions in `tests/test_universal_file_preview_smoke.py`.
+atomic_steps:
+- A-001
+implementation_note: >
+  Keeps MCP list contract aligned with yaml_tree indexing without requiring a live server.

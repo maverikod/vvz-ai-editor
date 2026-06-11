@@ -1,0 +1,5 @@
+include README.md
+include LICENSE
+include requirements.txt
+include .flake8
+recursive-include ai_editor *.py

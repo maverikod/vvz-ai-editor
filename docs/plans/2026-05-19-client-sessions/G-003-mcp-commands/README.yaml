@@ -1,0 +1,41 @@
+concepts:
+- C-005
+- C-003
+- C-006
+- C-009
+- C-001
+- C-002
+depends_on:
+- G-001
+- G-002
+description: 'Expose the session lifecycle and file-lock operations as MCP commands.
+  Six commands: session_create, session_delete, session_list, session_open_file, session_close_file,
+  session_list_file_locks. All commands implement SessionTouchRule where required.
+  SecurityPolicy is enforced at the command boundary — every command checks the policy
+  before executing. SessionListVisibilityPolicy governs session_id visibility in session_list
+  output and determines whether session_id is required or optional.'
+name: Session MCP Commands
+relations:
+- from_concept: C-005
+  to_concept: C-004
+  type: uses
+- from_concept: C-005
+  to_concept: C-003
+  type: implements
+- from_concept: C-005
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-006
+  to_concept: C-005
+  type: extends
+source_ranges:
+- end: 130
+  start: 100
+- end: 153
+  start: 144
+status: done
+step_id: G-003
+tactical_steps:
+- T-001
+- T-002
+- T-003

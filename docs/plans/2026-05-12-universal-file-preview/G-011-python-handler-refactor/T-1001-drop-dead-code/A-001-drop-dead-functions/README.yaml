@@ -1,0 +1,318 @@
+step_id: A-001
+parent_tactical_step: T-1001
+name: Remove dead functions from python_handler.py
+target_file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-016
+status: done
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.handlers.python_handler
+  expected: >
+    Module imports without error. Functions _cst_statements_to_nodes,
+    _classify_cst_node, _cst_node_to_node, _find_by_stable_id are absent.
+    PythonFileHandler, _metadata_children_to_nodes, render_module and render_node
+    imports are present and callable.
+prompt: |
+  ## Task
+
+  Modify an existing file by removing four functions that are no longer needed.
+
+  Target file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+  Operation: modify_file
+
+  ## Current file content (after G-010/T-904/A-002)
+
+  ---
+  """
+  PythonFileHandler — FileHandler for .py, .pyi, .pyw files (C-016).
+
+  Opens Python source via the project's cst_load_file infrastructure.
+  Root NodeKind is tree_node with type label 'Module'.
+  Identifier format: stable_id UUID from cst_load_file outline_nodes.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import logging
+  from typing import Any
+
+  from ..base_handler import FileHandler
+  from ..errors import (
+      PreviewError,
+      file_structure_error,
+      input_error,
+      INPUT_ERROR_UNKNOWN_NODE_REF,
+  )
+  from ..models import Node, NodeKind
+  from ..python_visualizer import render_module, render_node
+  from ..budget import PreviewBudget
+
+  logger = logging.getLogger(__name__)
+
+
+  class PythonFileHandler(FileHandler):
+      """
+      FileHandler for Python files (.py, .pyi, .pyw) (C-016).
+
+      Root NodeKind: tree_node (Module).
+      Interior nodes: tree_node for ClassDef and FunctionDef;
+      tree_node or scalar for other statements; scalar for leaf values.
+      Identifier source: cst_load_file outline_nodes stable_id UUID.
+      Lazy materialisation: only root and requested children are loaded.
+
+      Attributes:
+          supported_extensions: Frozenset of .py, .pyi, .pyw.
+      """
+
+      @property
+      def supported_extensions(self) -> frozenset[str]:
+          """Frozenset of lowercase extensions this handler supports."""
+          return frozenset({".py", ".pyi", ".pyw"})
+
+      def open_root(
+          self,
+          file_path: str,
+          session: Any | None,
+          budget: PreviewBudget | None = None,
+      ) -> Node | PreviewError:
+          """Parse the Python file, render module overview via PythonNodeRenderer (C-022),
+          and return a tree_node Module root Node carrying the rendered text in attributes.
+
+          Args:
+              file_path: Absolute path to the .py/.pyi/.pyw file.
+              session: Existing CSTTree session or None.
+              budget: PreviewBudget for render_module; defaults to (20, 120) when None.
+
+          Returns:
+              Module root Node (NodeKind.TREE_NODE) or PreviewError.
+          """
+          try:
+              from ai_editor.core.cst_tree.tree_builder import load_file_to_tree
+              tree = session if session is not None else load_file_to_tree(file_path)
+              self._last_file_path = file_path
+              self._last_session = tree
+              self._last_tree_id = getattr(tree, "tree_id", None)
+              _budget = budget if budget is not None else PreviewBudget(
+                  preview_lines=20, value_preview_len=120
+              )
+              text = render_module(tree, _budget)
+              root_stable_id = (
+                  tree.metadata_map[tree.root_node_id].stable_id
+                  if tree.root_node_id and tree.root_node_id in tree.metadata_map
+                  else ""
+              )
+              return Node(
+                  node_kind=NodeKind.TREE_NODE,
+                  node_ref=root_stable_id,
+                  type_label="Module",
+                  name=None,
+                  attributes={"text": text},
+                  _children_loader=lambda: _metadata_children_to_nodes(
+                      tree, tree.root_node_id
+                  ),
+              )
+          except Exception as exc:
+              return file_structure_error(parser="libcst", message=str(exc))
+
+      def resolve_node_ref(
+          self, node_ref: str, session: Any | None
+      ) -> Node | PreviewError:
+          """Resolve a stable_id UUID to a Node rendered by PythonNodeRenderer (C-009, C-022).
+
+          Args:
+              node_ref: stable_id UUID string from cst_load_file outline_nodes.
+              session: CSTTree session or None (reopens file if None).
+
+          Returns:
+              Resolved Node with rendered text in attributes, or PreviewError.
+          """
+          if session is None:
+              fp = getattr(self, "_last_file_path", None)
+              if fp is None:
+                  return input_error(
+                      INPUT_ERROR_UNKNOWN_NODE_REF,
+                      "No active CST session and no cached file_path to scan.",
+                      details={"node_ref": node_ref},
+                  )
+              open_result = self.open_root(fp, None)
+              if isinstance(open_result, PreviewError):
+                  return open_result
+              session = getattr(self, "_last_session", None)
+              if session is None:
+                  return input_error(
+                      INPUT_ERROR_UNKNOWN_NODE_REF,
+                      "Could not open CST session for stable_id scan.",
+                      details={"node_ref": node_ref},
+                  )
+          meta = (
+              next(
+                  (m for m in session.metadata_map.values() if m.stable_id == node_ref),
+                  None,
+              )
+              if hasattr(session, "metadata_map")
+              else None
+          )
+          if meta is None:
+              return input_error(
+                  INPUT_ERROR_UNKNOWN_NODE_REF,
+                  f"stable_id {node_ref!r} not found in current CST.",
+                  details={"node_ref": node_ref},
+              )
+          text = render_node(session, node_ref)
+          return Node(
+              node_kind=NodeKind.TREE_NODE,
+              node_ref=node_ref,
+              type_label=meta.type,
+              name=meta.name,
+              attributes={"text": text},
+          )
+
+
+  def _metadata_children_to_nodes(tree: Any, parent_node_id: str | None) -> list[Node]:
+      """Build preview Nodes from CSTTree metadata for direct children of parent_node_id."""
+      if parent_node_id is None:
+          return []
+      _MEANINGFUL_KINDS = frozenset({"import", "class", "function", "method", "smallstmt"})
+      _TREE_NODE_KINDS = frozenset({"class", "function", "method"})
+      nodes_by_line: list[tuple[int, Any]] = []
+      for nid, meta in tree.metadata_map.items():
+          if meta.parent_id != parent_node_id:
+              continue
+          kind = getattr(meta, "kind", "") or ""
+          if kind not in _MEANINGFUL_KINDS:
+              continue
+          nodes_by_line.append((meta.start_line or 0, meta))
+      nodes_by_line.sort(key=lambda x: x[0])
+      nodes = []
+      for _, meta in nodes_by_line:
+          node_type = meta.type
+          kind_str = getattr(meta, "kind", "") or ""
+          preview_kind = NodeKind.TREE_NODE if kind_str in _TREE_NODE_KINDS else NodeKind.SCALAR
+          def _make_loader(nid: str) -> Any:
+              def _load() -> list[Node]:
+                  return _metadata_children_to_nodes(tree, nid)
+              return _load
+          has_children = preview_kind == NodeKind.TREE_NODE
+          nodes.append(
+              Node(
+                  node_kind=preview_kind,
+                  node_ref=meta.stable_id,
+                  type_label=node_type,
+                  name=meta.name,
+                  attributes={},
+                  _children_loader=_make_loader(meta.node_id) if has_children else None,
+              )
+          )
+      return nodes
+
+
+  def _cst_statements_to_nodes(stmts: Any) -> list[Node]:
+      """Convert a sequence of top-level CST statements to preview Nodes lazily."""
+      nodes = []
+      for stmt in stmts:
+          try:
+              import libcst as cst
+              if isinstance(stmt, cst.SimpleStatementLine) and stmt.body:
+                  effective_type = type(stmt.body[0]).__name__
+                  stmt_has_body = False
+              else:
+                  effective_type = type(stmt).__name__
+                  stmt_has_body = hasattr(stmt, "body")
+          except ImportError:
+              effective_type = type(stmt).__name__
+              stmt_has_body = hasattr(stmt, "body")
+          kind = _classify_cst_node(stmt)
+          name_attr = getattr(stmt, "name", None)
+          name = getattr(name_attr, "value", None)
+          def _make_loader(s: Any) -> Any:
+              def _load() -> list[Node]:
+                  body = s.body
+                  inner = getattr(body, "body", body)
+                  return _cst_statements_to_nodes(inner)
+              return _load
+          nodes.append(
+              Node(
+                  node_kind=kind,
+                  node_ref=getattr(stmt, "_stable_id", "") or "",
+                  type_label=effective_type,
+                  name=name,
+                  attributes={},
+                  _children_loader=_make_loader(stmt) if stmt_has_body else None,
+              )
+          )
+      return nodes
+
+
+  def _classify_cst_node(node: Any) -> NodeKind:
+      """Return NodeKind for a libcst CST node."""
+      try:
+          import libcst as cst
+          if isinstance(node, (cst.ClassDef, cst.FunctionDef, cst.Module)):
+              return NodeKind.TREE_NODE
+      except ImportError:
+          pass
+      return NodeKind.SCALAR
+
+
+  def _cst_node_to_node(cst_node: Any, node_ref: str) -> Node:
+      """Convert a single libcst CST node to a preview Node."""
+      return Node(
+          node_kind=_classify_cst_node(cst_node),
+          node_ref=node_ref,
+          type_label=type(cst_node).__name__,
+          name=getattr(getattr(cst_node, "name", None), "value", None),
+          attributes={},
+      )
+
+
+  def _find_by_stable_id(tree: Any, stable_id: str) -> Any | None:
+      """Linear scan of a CST tree for a node with _stable_id == stable_id."""
+      import libcst as cst
+
+      class _Finder(cst.CSTVisitor):
+          found: Any = None
+
+          def on_visit(self, node: cst.CSTNode) -> bool:
+              if getattr(node, "_stable_id", None) == stable_id:
+                  type(self).found = node
+                  return False
+              return True
+
+      _Finder.found = None
+      visitor = _Finder()
+      if hasattr(tree, "visit"):
+          tree.visit(visitor)
+          return visitor.found
+      return None
+  ---
+
+  ## What to change
+
+  Remove the following four module-level functions entirely,
+  including their docstrings and all body lines:
+    - _cst_statements_to_nodes  (contains 'import libcst as cst' inside body)
+    - _classify_cst_node        (contains 'import libcst as cst' inside body)
+    - _cst_node_to_node         (calls _classify_cst_node)
+    - _find_by_stable_id        (contains 'import libcst as cst' inside body,
+                                 defines inner class _Finder)
+
+  These functions have no callers anywhere in the codebase after G-010.
+  The 'import libcst as cst' statements inside their bodies disappear
+  with the functions. Do not add or remove any top-level import.
+
+  Do not change PythonFileHandler, _metadata_children_to_nodes, or any
+  other code.
+
+  Produce the full new file content.
+
+  ## Constraints
+
+  All remaining functions and methods must keep their existing docstrings.
+  File must not exceed 180 lines after the change.

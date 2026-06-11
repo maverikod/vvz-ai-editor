@@ -1,0 +1,134 @@
+#!/bin/bash
+# debian/postinst - post-installation script
+
+set -e
+
+SERVICE_NAME="code-analysis-server"
+SERVICE_USER="code-analysis"
+SERVICE_GROUP="code-analysis"
+INSTALL_DIR="/usr/lib/code-analysis-server"
+CONFIG_DIR="/etc/code-analysis-server"
+DATA_DIR="/var/lib/code-analysis-server"
+LOG_DIR="/var/log/code-analysis-server"
+RUN_DIR="/var/run/code-analysis-server"
+VENV_DIR="${INSTALL_DIR}/.venv"
+
+# Create system user if it doesn't exist
+if ! id "$SERVICE_USER" &>/dev/null; then
+    echo "Creating system user $SERVICE_USER..."
+    useradd --system --no-create-home --shell /bin/false \
+        --group "$SERVICE_GROUP" "$SERVICE_USER" 2>/dev/null || \
+    useradd --system --no-create-home --shell /bin/false "$SERVICE_USER" 2>/dev/null || true
+fi
+
+# Create directories
+echo "Creating directories..."
+mkdir -p "$DATA_DIR"
+mkdir -p "$LOG_DIR"
+mkdir -p "$RUN_DIR"
+
+# Set ownership
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$LOG_DIR" "$RUN_DIR"
+chmod 750 "$DATA_DIR" "$LOG_DIR" "$RUN_DIR"
+
+# Create virtual environment if it doesn't exist
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating Python virtual environment..."
+    python3 -m venv "$VENV_DIR"
+    "$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel
+    
+    # Install package
+    echo "Installing code-analysis-server package..."
+    "$VENV_DIR/bin/pip" install "$INSTALL_DIR"
+    
+    # Install additional dependencies
+    if [ -f "$INSTALL_DIR/requirements.txt" ]; then
+        "$VENV_DIR/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
+    fi
+    
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$VENV_DIR"
+fi
+
+# Update configuration paths if config exists
+if [ -f "$CONFIG_DIR/config.json" ]; then
+    echo "Updating configuration paths..."
+    python3 <<EOF
+import json
+import os
+
+config_path = "$CONFIG_DIR/config.json"
+try:
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    updated = False
+    
+    # Update database path
+    if 'code_analysis' in config:
+        if config['code_analysis'].get('db_path') != "$DATA_DIR/code_analysis.db":
+            config['code_analysis']['db_path'] = "$DATA_DIR/code_analysis.db"
+            updated = True
+        if 'faiss_index_path' in config['code_analysis']:
+            if config['code_analysis']['faiss_index_path'] != "$DATA_DIR/faiss_index.bin":
+                config['code_analysis']['faiss_index_path'] = "$DATA_DIR/faiss_index.bin"
+                updated = True
+        
+        # Update log paths
+        if 'log' in config['code_analysis']:
+            if config['code_analysis']['log'] != "$LOG_DIR/code_analysis.log":
+                config['code_analysis']['log'] = "$LOG_DIR/code_analysis.log"
+                updated = True
+        
+        # Update server log_dir
+        if 'server' in config:
+            if config['server'].get('log_dir') != "$LOG_DIR":
+                config['server']['log_dir'] = "$LOG_DIR"
+                updated = True
+        
+        # Update worker log paths
+        if 'worker' in config['code_analysis']:
+            if 'log_path' in config['code_analysis']['worker']:
+                if config['code_analysis']['worker']['log_path'] != "$LOG_DIR/vectorization_worker.log":
+                    config['code_analysis']['worker']['log_path'] = "$LOG_DIR/vectorization_worker.log"
+                    updated = True
+        
+        if 'file_watcher' in config['code_analysis']:
+            if 'log_path' in config['code_analysis']['file_watcher']:
+                if config['code_analysis']['file_watcher']['log_path'] != "$LOG_DIR/file_watcher.log":
+                    config['code_analysis']['file_watcher']['log_path'] = "$LOG_DIR/file_watcher.log"
+                    updated = True
+            if 'version_dir' in config['code_analysis']['file_watcher']:
+                if config['code_analysis']['file_watcher']['version_dir'] != "$DATA_DIR/versions":
+                    config['code_analysis']['file_watcher']['version_dir'] = "$DATA_DIR/versions"
+                    updated = True
+        
+        if updated:
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+            print("Configuration updated")
+except Exception as e:
+    print(f"Warning: Could not update configuration: {e}")
+EOF
+fi
+
+# Reload systemd and enable service
+systemctl daemon-reload
+
+# Enable service (but don't start it automatically)
+if [ "$1" = "configure" ]; then
+    echo ""
+    echo "=========================================="
+    echo "code-analysis-server installed successfully!"
+    echo "=========================================="
+    echo ""
+    echo "Next steps:"
+    echo "1. Review configuration: $CONFIG_DIR/config.json"
+    echo "2. Configure watch directories in the config file"
+    echo "3. Copy SSL certificates if using mTLS: $CONFIG_DIR/mtls_certificates/"
+    echo "4. Start service: systemctl start $SERVICE_NAME"
+    echo "5. Enable auto-start: systemctl enable $SERVICE_NAME"
+    echo ""
+fi
+
+exit 0
+

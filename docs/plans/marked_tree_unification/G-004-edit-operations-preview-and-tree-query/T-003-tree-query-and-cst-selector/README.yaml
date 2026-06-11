@@ -1,0 +1,57 @@
+step_id: T-003
+parent_global_step: G-004
+name: TreeQuery and CstQuerySelector
+description: 'Define the TreeQuery entity (C-018) as structural search over the marked
+  tree of a file, operating on tree structure rather than full-text or database, and
+  returning short_id integers of matching nodes directly usable in preview navigation
+  and edit operations ({j001}, {n003}). NodeIdMap (C-025) supplies short_id↔internal
+  identity resolution inside the server; API results expose short_id integers only.
+  Define two query modes. Simple mode: filters nodes by type label, name, qualified
+  name, or line range (Python only). XPath mode: uses a CstQuerySelector (C-019) string
+  with double-slash recursive descendant traversal, at-attribute access in filter predicates,
+  numeric operators (ge, le, gt, lt) on start_line, end_line, and children_count,
+  and a not pseudo-class for negation. Establish the require_one modifier: demands
+  a unique match or returns NoMatch or NonUniqueMatch with candidates. Establish include_code:
+  returns the source text of the matched node (Python only). Establish that in-session
+  query runs against the in-memory draft tree; out-of-session query runs against the
+  validated on-disk tree via TreeLifecycle.'
+concepts:
+- C-018
+- C-019
+- C-002
+- C-010
+- C-025
+source_labels:
+- '{j001}'
+- '{j002}'
+- '{j003}'
+- '{j004}'
+- '{j005}'
+- '{j006}'
+- '{n003}'
+inputs:
+- name: short_id result contract
+  type: domain entity definition (C-002, {n003})
+  description: TreeQuery returns short_id integers; callers use them as node_ref and
+    edit targets without internal UUID at the API boundary.
+- name: NodeIdMap entity definition
+  type: domain entity definition (C-025)
+  description: Internal resolution layer for query execution over loaded tree files.
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: Used by out-of-session query to ensure a valid tree before structural
+    search begins.
+outputs:
+- name: TreeQuery entity definition
+  type: domain entity definition
+  description: Structural search returning short_id integers; simple and XPath modes;
+    require_one and include_code modifiers; in-session draft versus out-of-session
+    validated tree via TreeLifecycle.
+- name: CstQuerySelector entity definition
+  type: domain entity definition
+  description: XPath-compatible selector string with double-slash recursion, at-attribute
+    predicates, numeric operators on line and child counts, and not pseudo-class negation.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

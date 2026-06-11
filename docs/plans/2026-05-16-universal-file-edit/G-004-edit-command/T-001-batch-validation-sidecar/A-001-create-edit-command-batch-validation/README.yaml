@@ -1,0 +1,239 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create edit_command.py with BatchValidation for sidecar group
+target_file: ai_editor/commands/universal_file_edit/edit_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-007
+- C-008
+- C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/edit_command.py
+
+  MRS context:
+  C-008 BatchValidation: Pre-application check for sidecar group only.
+    Forbids ancestor-descendant node pairs in one batch.
+    Rejects batch atomically on violation. Error code: NESTED_BATCH_FORBIDDEN.
+  C-007 EditOperation: type (insert|delete|replace), address, content.
+    sidecar address: parent_node_id (StableIdentifier UUID) + position (int)
+    tree-temp address: parent_node_id (JSON pointer) + position (int)
+    text address: start_line + end_line (1-based inclusive)
+    content required for insert and replace; absent for delete.
+  C-014 ErrorCodes: NESTED_BATCH_FORBIDDEN, SESSION_NOT_FOUND.
+
+  Ancestor check uses the CST tree: for sidecar group, each operation has a
+  parent_node_id (UUID). Two nodes are ancestor-descendant if one node is a
+  parent/ancestor of the other in the CST tree (use cst tree get_tree and
+  check parent chain from ai_editor.core.cst_tree.tree_builder).
+
+  Imports needed:
+    from mcp_proxy_adapter.commands.base_command import BaseCommand
+    from ai_editor.commands.universal_file_edit.errors import (
+        NESTED_BATCH_FORBIDDEN, SESSION_NOT_FOUND, make_error)
+    from ai_editor.commands.universal_file_edit.session import get_session
+
+  Task: Create the file with UniversalFileEditCommand class skeleton
+  and _validate_sidecar_batch method. Apply and draft methods are added
+  in subsequent T-steps.
+
+  Write the following exact content:
+  ```python
+  """
+  UniversalFileEditCommand: applies a batch of mutations to the draft.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  from typing import Any, Dict, List, Optional
+
+  from mcp_proxy_adapter.commands.base_command import BaseCommand
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      NESTED_BATCH_FORBIDDEN,
+      SESSION_NOT_FOUND,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.session import get_session
+
+
+  class UniversalFileEditCommand(BaseCommand):
+      """MCP command that applies a batch of mutation operations to the draft.
+
+      The original file is never touched. For sidecar group, ancestor-descendant
+      pairs in the batch are rejected atomically with NESTED_BATCH_FORBIDDEN.
+      """
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_edit"
+
+      @staticmethod
+      def get_schema() -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id, session_id, operations.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "session_id": {"type": "string"},
+                  "operations": {"type": "array"},
+              },
+              "required": ["project_id", "session_id", "operations"],
+              "additionalProperties": False,
+          }
+
+      def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          """Execute the edit command.
+
+          Args:
+              params: Dict with project_id, session_id, operations.
+
+          Returns:
+              Dict with success flag and updated state, or error dict.
+          """
+          session_id: str = params["session_id"]
+          operations: List[Dict[str, Any]] = params["operations"]
+          try:
+              session = get_session(session_id)
+          except ValueError:
+              return make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+
+          fg = session.format_group
+          if fg == "sidecar":
+              validation = self._validate_sidecar_batch(operations, session.tree_id)
+              if validation is not None:
+                  return validation
+              return self._apply_sidecar(session, operations)
+          if fg == "tree-temp":
+              return self._apply_tree_temp(session, operations)
+          # text group
+          return self._apply_text(session, operations)
+
+      def _validate_sidecar_batch(
+          self,
+          operations: List[Dict[str, Any]],
+          tree_id: Optional[str],
+      ) -> Optional[Dict[str, Any]]:
+          """Validate that no ancestor-descendant pairs exist in the batch.
+
+          For sidecar group only. Checks every pair of node_ids in the batch.
+          If any node is an ancestor of another, rejects the entire batch.
+
+          Args:
+              operations: List of edit operation dicts with parent_node_id.
+              tree_id: In-memory CST tree UUID for ancestor resolution.
+
+          Returns:
+              None when batch is valid;
+              error dict with NESTED_BATCH_FORBIDDEN when invalid.
+          """
+          node_ids = [op.get("parent_node_id") for op in operations
+                      if op.get("parent_node_id")]
+          if len(node_ids) < 2 or tree_id is None:
+              return None
+          from ai_editor.core.cst_tree.tree_builder import get_tree
+          tree = get_tree(tree_id)
+          if tree is None:
+              return None
+          for i, nid_a in enumerate(node_ids):
+              for nid_b in node_ids[i + 1:]:
+                  if _is_ancestor(tree, nid_a, nid_b) or _is_ancestor(tree, nid_b, nid_a):
+                      return make_error(
+                          NESTED_BATCH_FORBIDDEN,
+                          "Ancestor-descendant pair in batch",
+                      )
+          return None
+
+      def _apply_sidecar(
+          self, session: Any, operations: List[Dict[str, Any]]
+      ) -> Dict[str, Any]:
+          """Apply sidecar group operations (stub; filled in T-002).
+
+          Args:
+              session: Active EditSession.
+              operations: List of validated edit operation dicts.
+
+          Returns:
+              Result dict (filled in T-002).
+          """
+          raise NotImplementedError
+
+      def _apply_tree_temp(
+          self, session: Any, operations: List[Dict[str, Any]]
+      ) -> Dict[str, Any]:
+          """Apply tree-temp group operations (stub; filled in T-003).
+
+          Args:
+              session: Active EditSession.
+              operations: List of edit operation dicts.
+
+          Returns:
+              Result dict (filled in T-003).
+          """
+          raise NotImplementedError
+
+      def _apply_text(
+          self, session: Any, operations: List[Dict[str, Any]]
+      ) -> Dict[str, Any]:
+          """Apply text group operations (stub; filled in T-003).
+
+          Args:
+              session: Active EditSession.
+              operations: List of edit operation dicts.
+
+          Returns:
+              Result dict (filled in T-003).
+          """
+          raise NotImplementedError
+
+
+  def _is_ancestor(tree: Any, ancestor_id: str, node_id: str) -> bool:
+      """Return True if ancestor_id is an ancestor of node_id in tree.
+
+      Args:
+          tree: In-memory CST tree object.
+          ancestor_id: Stable ID of the potential ancestor node.
+          node_id: Stable ID of the potential descendant node.
+
+      Returns:
+          True if ancestor_id is found in the parent chain of node_id.
+      """
+      current = tree.get_node(node_id)
+      while current is not None:
+          parent = tree.get_parent(current.stable_id)
+          if parent is None:
+              return False
+          if parent.stable_id == ancestor_id:
+              return True
+          current = parent
+      return False
+  ```
+
+  Implementation: Write the file with the exact content shown above.
+  Run lint_code and format_code on the file.
+
+  Constraints:
+  - All methods must have complete docstrings.
+  - All parameters and return types must have type hints.
+  - File must be syntactically valid Python.
+  - File line count must not exceed 400.
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.edit_command
+  expected: >
+    Module imports without errors. UniversalFileEditCommand exists.
+    get_name() returns "universal_file_edit". _validate_sidecar_batch is callable.
+status: draft

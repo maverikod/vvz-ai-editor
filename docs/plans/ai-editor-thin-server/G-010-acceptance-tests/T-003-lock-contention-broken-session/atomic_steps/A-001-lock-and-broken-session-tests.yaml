@@ -1,0 +1,17 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Lock contention и broken session
+target_file: tests/integration/test_session_policy.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-015
+- C-022
+prompt: "Create `tests/integration/test_session_policy.py` (operation: create_file).\n\n```py\n\"\"\"Session policy integration tests (C-015, C-022).\"\"\"\n\nfrom __future__ import annotations\n\nfrom pathlib import Path\nfrom unittest.mock import MagicMock\n\nimport pytest\n\nfrom ai_editor.core.upstream.session_guard import (\n    GuardDecision,\n    OperationKind,\n    SessionGuard,\n)\n\ndef test_lock_contention_raises() -> None:\n    client = MagicMock()\n    client.lock_file_and_download.side_effect = RuntimeError(\"FILE_LOCKED\")\n    with pytest.raises(RuntimeError):\n        client.lock_file_and_download(\"other\", \"p1\", \"f.py\")\n\ndef test_guard_rejects_broken_open() -> None:\n    from ai_editor.core.upstream.code_analysis_client import CaSessionStatus\n\n    client = MagicMock()\n    client.validate_ca_session.return_value = CaSessionStatus.NOT_FOUND\n    guard = SessionGuard(client)\n    assert guard.check(OperationKind.OPEN, \"broken\") == GuardDecision.REJECT\n\ndef test_zombie_cleanup(tmp_path:\
+  \ Path) -> None:\n    from ai_editor.core.workspace_session_cleanup import cleanup_zombie_ca_session\n\n    root = tmp_path / \"workspace\"\n    sid = \"zombie-1\"\n    (root / sid).mkdir(parents=True)\n    assert cleanup_zombie_ca_session(sid, workspace_root=root) is True\n    assert not (root / sid).exists()\n```\n"
+verification:
+  type: pytest
+  target: tests/integration/test_session_policy.py
+  expected: Policy tests pass.
+status: draft

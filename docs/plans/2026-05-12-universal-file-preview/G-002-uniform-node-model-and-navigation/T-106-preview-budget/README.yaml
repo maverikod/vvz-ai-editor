@@ -1,0 +1,35 @@
+step_id: T-106
+parent_global_step: G-002
+name: Preview budget — response size caps
+status: frozen
+concepts:
+- C-013
+description: "Define the PreviewBudget (C-013) as the two numeric caps that bound\
+  \ the size of one response, independently of the Selector.\nCap 1 — preview_lines:\n\
+  \  Applies only when the Selector is omitted.\n  The NavigationProcedure returns\
+  \ at most preview_lines blocks from\n  the focus node's block set, in natural file\
+  \ order.\n  When the Selector is supplied, preview_lines has no effect; the\n  Selector\
+  \ governs which blocks are returned.\n\nCap 2 — value_preview_len:\n  Applies to\
+  \ every BlockHandler rendering on every request, regardless\n  of Selector.\n  Any\
+  \ scalar value, key name, or type label shown inline in a block\n  summary is truncated\
+  \ to value_preview_len characters.\n\nOverflow delegation:\n  When the response,\
+  \ after applying both caps and the Selector, still\n  exceeds the read-only batch\
+  \ size threshold, the overflow-to-file\n  mechanism of the read-only batch infrastructure\
+  \ handles it. The\n  PreviewBudget entity does not implement file overflow itself;\
+  \ it\n  only provides the two cap values to the NavigationProcedure and\n  BlockHandler.\n"
+inputs:
+- name: preview_lines_param
+  type: integer or implementation default
+  description: The preview_lines value from the validated caller input, or the implementation-defined
+    default when the caller omitted it.
+- name: value_preview_len_param
+  type: integer or implementation default
+  description: The value_preview_len value from the validated caller input, or the
+    implementation-defined default when the caller omitted it.
+outputs:
+- name: preview_budget
+  type: PreviewBudget (C-013)
+  description: A resolved pair of (preview_lines, value_preview_len) integers ready
+    for consumption by the NavigationProcedure and BlockHandler.
+atomic_steps:
+- A-001

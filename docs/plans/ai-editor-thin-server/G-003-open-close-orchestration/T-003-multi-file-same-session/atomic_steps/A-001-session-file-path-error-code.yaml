@@ -1,0 +1,118 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Код ошибки SESSION_FILE_PATH_REQUIRED
+target_file: ai_editor/commands/universal_file_edit/errors.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-009
+- C-016
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/commands/universal_file_edit/errors.py`):
+  ```py
+  """
+  ErrorCodes constants and error-construction helper for universal_file_edit commands.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from typing import Any, Dict, Optional, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult
+
+  SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
+  DRAFT_NOT_FOUND = "DRAFT_NOT_FOUND"
+  NESTED_BATCH_FORBIDDEN = "NESTED_BATCH_FORBIDDEN"
+  WRITE_FAILED = "WRITE_FAILED"
+  UNKNOWN_FORMAT = "UNKNOWN_FORMAT"
+  PARSE_ERROR = "PARSE_ERROR"
+  FORMAT_INVALID_ON_OPEN = "FORMAT_INVALID_ON_OPEN"
+  ANCHOR_MISMATCH = "ANCHOR_MISMATCH"
+  LINE_OUT_OF_RANGE = "LINE_OUT_OF_RANGE"
+  UNKNOWN_NODE_REF = "UNKNOWN_NODE_REF"
+  INVALID_OPERATION = "INVALID_OPERATION"
+  NOTHING_TO_UNDO = "NOTHING_TO_UNDO"
+  NOTHING_TO_REDO = "NOTHING_TO_REDO"
+
+
+  def make_error(
+      code: str,
+      message: str,
+      details: Optional[Dict[str, Any]] = None,
+  ) -> Dict[str, Any]:
+      """Build a structured error dict for MCP command responses."""
+      result: Dict[str, Any] = {"success": False, "code": code, "message": message}
+      if details:
+          result["details"] = details
+      return result
+
+
+  def error_result_for_edit(
+      message: str,
+      code: str,
+      details: Optional[Dict[str, Any]] = None,
+  ) -> ErrorResult:
+      """Build ``ErrorResult`` with a string application error code."""
+      return ErrorResult(message=message, code=cast(Any, code), details=details)
+
+
+  def error_result_from_make_error(err: Dict[str, Any]) -> ErrorResult:
+      """Convert a ``make_error()`` dict into an ``ErrorResult``."""
+      return ErrorResult(
+          message=str(err["message"]),
+          code=cast(Any, err["code"]),
+          details=err.get("details"),
+      )
+  ```
+
+  Modify `ai_editor/commands/universal_file_edit/errors.py` (operation: modify_file).
+
+  ## Goal (C-004, C-009, C-016)
+
+  Introduce a dedicated application error code for multi-file CA Session disambiguation
+  when `universal_file_edit`, `universal_file_write`, or `universal_file_close` omit
+  `file_path` while the bundle holds N>1 open files ({8b1h}).
+
+  ## Required changes
+
+  1. After `SESSION_NOT_FOUND = "SESSION_NOT_FOUND"` add:
+     `SESSION_FILE_PATH_REQUIRED = "SESSION_FILE_PATH_REQUIRED"`.
+
+  2. Do **not** change any function bodies.
+
+  3. Do **not** add or remove other constants.
+
+  ## MRS excerpt
+
+  - **C-004 CA Session**: one `session_id` may hold multiple open files; commands must
+    disambiguate by `file_path` when N>1.
+  - **C-009 File Workflow**: edit/write/close operate on one File Subtree (C-006) per call.
+  - **C-016 MCP Workflow Surface**: public commands surface the disambiguation error.
+
+  ## Forbidden
+
+  - Do NOT modify files other than the target file.
+  - Do NOT rename existing constants.
+  - Do NOT add helper functions in this step.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/errors.py
+  flake8 ai_editor/commands/universal_file_edit/errors.py
+  mypy ai_editor/commands/universal_file_edit/errors.py
+  pytest tests/ -q --tb=no -x
+  ```
+
+  Expected: formatter clean; flake8/mypy exit 0; all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/errors.py
+  expected: SESSION_FILE_PATH_REQUIRED constant defined; existing helpers unchanged.
+status: draft

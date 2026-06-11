@@ -1,0 +1,105 @@
+step_id: T-001
+parent_global_step: G-003
+name: EditSession Lifecycle
+description: 'Define the EditSession entity (C-012) as a bounded editing context represented
+  by a session directory placed next to the SourceFile, with a unique name derived
+  from the source file name. Establish the four-phase lifecycle and the active-session
+  registry keyed by session_id. Phase open — content-supply rule (FINAL-2): caller-supplied
+  content is accepted ONLY when the target SourceFile is non-existent or its source/tree
+  is broken or corrupted; supplying content when a valid file exists is an ERROR; when
+  accepted, write provided source into the in-session source artefact FIRST, then
+  follow the ordered open protocol: build TreeFile via TreeLifecycle (C-010), record
+  checksums, create SessionRepo initial commit, and register the open EditSession in
+  the active-session registry; session tracks tree-validity state (valid/invalid) per
+  {d002}/{h008} (C-012). Phase edit — when tree-validity state is valid: before each
+  mutation, hide short_id markers in the TREE section into format-native comments (or
+  equivalent inline marker form), apply the mutation on the temporarily denuded
+  representation, then restore short_id markers to canonical positions (metadata slot
+  where available, format-native comment at END of block otherwise); CHECKSUMS and MAP
+  sections are preserved across mutations; UUID4 values in MAP are not altered by
+  hide/unhide; full per-mutation post-steps per {d003}: write updated tree to disk
+  inside the session directory, export in-session source copy by stripping markers via
+  unmark into session TEMP artefacts, record SHA-256 checksums for both tree file and
+  exported source, and create one SessionRepo commit capturing both artefacts (one
+  mutation equals one commit). When tree-validity state is invalid: apply plain-text
+  mutations on the in-session source copy with no short_id marker hide/unhide and no
+  tree write; TREE holds plain source with no short_id markers while CHECKSUMS and MAP
+  sections are preserved unchanged including next_free; DEGRADED per-mutation post-steps
+  per {d003}/{h008}: write updated in-session source only, record its SHA-256 checksum,
+  create one SessionRepo commit capturing source artefact only (one plain-text
+  modification equals one commit). Re-validation per {h009}: when a plain-text edit
+  makes source parseable again, rebuild tree via TreeBuilder.build, then restore short_id
+  markers in TREE via NodeIdMap (C-025) build while preserving TreeNodeUuid and
+  next_free from the existing MAP section per {n002}; record checksums; switch state
+  back to valid; resume full per-mutation invariant.   Phase write — two-stage external copy-out API boundary per {d004}/{n7k2}; in-session
+  artefacts are already finalized per {d003} and the write phase gates external copy-out
+  only (session-scoped write command entity implements preview and confirm stages).
+  Phase close — remove the EditSession from the active-session registry, then delete
+  the session directory entirely without validation, checksum, or consistency checks;
+  session git history is ephemeral and destroyed with the directory. Establish that
+  when tree-validity state is valid inside an active session the tree is the source of
+  truth and the external SourceFile is stale; when invalid the in-session source copy
+  is the editing surface.'
+concepts:
+- C-012
+- C-010
+- C-003
+- C-006
+- C-013
+- C-025
+- C-024
+inputs:
+- name: TreeLifecycle entity
+  type: domain entity definition (C-010)
+  description: Used in the open phase to validate or rebuild the TreeFile before
+    the session is considered active.
+- name: SourceFile
+  type: C-004 instance
+  description: The file the EditSession is opened on; copied into the session
+    directory at open time unless FINAL-2 content-supply applies.
+- name: NodeIdMap entity
+  type: domain entity definition (C-025)
+  description: build on re-validation restores TREE short_id markers while preserving
+    MAP UUID4 entries and next_free.
+outputs:
+- name: EditSession entity definition
+  type: domain entity definition
+  description: Four-phase lifecycle (open, edit, write, close) with FINAL-2 content-supply
+    on open, tree-validity-state tracking (valid/invalid) per {d002}/{h008} (C-012),
+    dual-mode edit (valid — hide/restore short_id markers in TREE + full per-mutation
+    per {d003}; invalid — plain-text on in-session source with MAP/next_free preserved
+    + DEGRADED per-mutation per {d003}/{h008}), re-validation via TreeBuilder.build
+    and NodeIdMap.build per {h009}/{n002}, write phase gates external copy-out via
+    session-scoped write command (preview then confirm per {d004}/{n7k2}), and blind
+    session-directory delete on close.
+- name: Tree-validity-state tracking
+  type: domain constraint definition
+  description: EditSession records tree-validity state (valid/invalid) during the session
+    per {d002}/{h008} (C-012); valid when source parses and checksum matches, invalid
+    when source cannot parse; re-validation per {h009} restores valid mode via NodeIdMap
+    build preserving UUID4 and next_free.
+- name: Session-is-truth invariant
+  type: domain constraint definition
+  description: When tree-validity state is valid, inside an active session the tree is
+    truth and the external SourceFile is stale; when invalid, the in-session source copy
+    is the editing surface and must not be read as truth from external positions while
+    a session is active.
+- name: Active-session registry
+  type: domain entity definition
+  description: Process-level registry of currently open EditSession instances keyed
+    by session_id; open registers, close removes; sole mechanism by which session-scoped
+    consumers resolve session_id to live EditSession and SessionRepo.
+source_labels:
+- '{d001}'
+- '{d002}'
+- '{d003}'
+- '{d005}'
+- '{h008}'
+- '{h009}'
+- '{n002}'
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+status: ready_for_review

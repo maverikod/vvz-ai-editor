@@ -1,0 +1,40 @@
+step_id: T-002
+parent_global_step: G-001
+name: Резолвер путей каталога сессии
+description: 'Создать сущность резолвера путей (концептуальный EditorWorkspacePaths), которая по CA session_id, project_id и file_path вычисляет Editor Session Directory (C-005), File Subtree (C-006), путь Origin Snapshot (C-007) и корень Edit Subdirectory (C-008). Имена подкаталогов файла детерминированы и стабильны для пары (project_id, file_path) в рамках сессии. Запрещено возвращать пути вне workspace_root/session_id/.
+
+  '
+concepts:
+- C-004
+- C-005
+- C-006
+- C-007
+- C-008
+- C-018
+inputs:
+- name: ca_session_id
+  type: string
+  description: Идентификатор CA Session (C-004).
+- name: project_id
+  type: string
+  description: UUID проекта на СА.
+- name: file_path
+  type: string
+  description: Путь файла относительно корня проекта.
+outputs:
+- name: session_directory
+  type: path
+  description: workspace_root/ca_session_id/.
+- name: file_subtree_root
+  type: path
+  description: Корень поддерева одного открытого файла.
+- name: origin_snapshot_path
+  type: path
+  description: Путь файла-исходника в поддереве.
+- name: edit_subdirectory_root
+  type: path
+  description: Корень подкаталога редактирования (допускается схема name-uuid).
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

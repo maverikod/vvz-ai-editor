@@ -1,0 +1,129 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: TreeNode dataclass and JSON adapters
+target_file: ai_editor/core/tree_temp/tree_node.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+prompt: |
+  Technical reference: docs/plans/2026-05-18-tree-sidecar/spec.yaml (concept C-001).
+  Parent scope: docs/plans/2026-05-18-tree-sidecar/G-001-tree-node-and-sidecar/README.yaml.
+  Tactical scope: docs/plans/2026-05-18-tree-sidecar/G-001-tree-node-and-sidecar/T-001-tree-node-dataclass/README.yaml.
+
+  ## Operation
+  create_file — create `ai_editor/core/tree_temp/tree_node.py` as the sole new module.
+
+  ## MRS excerpt (C-001 TreeNode)
+  - stable_id: UUID v4 string; assigned once; never reassigned in domain usage (caller responsibility).
+  - type: exactly one of object | array | string | number | boolean | null.
+  - key: optional string; when present, denotes an object member key; array elements and document-root nodes use key None.
+  - value: present only on scalar nodes string | number | boolean | null; for type null the Python value is None.
+  - children: ordered list of TreeNode on object and array nodes only; must be None on scalar nodes.
+  - comment_before: optional string; comment lines above this node.
+  - comment_inline: optional string; trailing comment on same line as this node.
+
+  ## Module header
+  Module docstring must state: TreeNode entity for tree-temp Sidecar (JSON/YAML); implements persistence-facing shape for C-001.
+  Author line: Vasiliy Zdanovskiy
+  Email line: vasilyvz@gmail.com
+
+  ## Imports (exact)
+  - from __future__ import annotations
+  - import uuid
+  - from dataclasses import dataclass
+  - from typing import Any, Dict, List, Literal, Optional
+
+  ## Types and constants
+  - TreeNodeType = Literal["object", "array", "string", "number", "boolean", "null"]
+  - TREE_NODE_TYPES: frozenset[str] containing exactly the six type strings above.
+
+  ## Dataclass TreeNode
+  @dataclass
+  class TreeNode:
+      stable_id: str
+      type: TreeNodeType
+      key: Optional[str] = None
+      value: Any = None
+      children: Optional[List["TreeNode"]] = None
+      comment_before: Optional[str] = None
+      comment_inline: Optional[str] = None
+
+  Single-line docstring on TreeNode: "One structured-tree node with Sidecar-stable identity (C-001)."
+
+  ## Function: _is_uuid_v4_string(value: str) -> bool
+  Docstring: Return True if value parses as a UUID with version 4.
+  Algorithm: uuid.UUID(value); return True only if no ValueError and UUID.version == 4.
+
+  ## Function: validate_node_constraints(node: TreeNode) -> None
+  Docstring: Validate TreeNode fields against C-001 type discriminator rules; raise ValueError on violation.
+  Algorithm:
+  1. If node.type not in TREE_NODE_TYPES: raise ValueError("invalid TreeNode.type: ...").
+  2. If node.stable_id is not a non-empty str or not _is_uuid_v4_string(node.stable_id): raise ValueError("stable_id must be a UUID version 4 string").
+  3. If node.type in ("object", "array"):
+       - If node.value is not None: raise ValueError("container nodes must not set value").
+       - If node.children is None: raise ValueError("container nodes require children list").
+       - If not isinstance(node.children, list): raise ValueError("children must be a list").
+       - For each child in node.children: if not isinstance(child, TreeNode): raise ValueError("children must be TreeNode instances").
+  4. If node.type == "string":
+       - If node.children is not None: raise ValueError("scalar string node must not set children").
+       - If not isinstance(node.value, str): raise ValueError("string node value must be str").
+  5. If node.type == "number":
+       - If node.children is not None: raise ValueError("scalar number node must not set children").
+       - If isinstance(node.value, bool) or not isinstance(node.value, (int, float)): raise ValueError("number node value must be int or float (not bool)").
+  6. If node.type == "boolean":
+       - If node.children is not None: raise ValueError("scalar boolean node must not set children").
+       - If not isinstance(node.value, bool): raise ValueError("boolean node value must be bool").
+  7. If node.type == "null":
+       - If node.children is not None: raise ValueError("null node must not set children").
+       - If node.value is not None: raise ValueError("null node value must be Python None").
+  8. If node.comment_before is not None and not isinstance(node.comment_before, str): raise ValueError("comment_before must be str or None").
+  9. If node.comment_inline is not None and not isinstance(node.comment_inline, str): raise ValueError("comment_inline must be str or None").
+  10. If node.key is not None and not isinstance(node.key, str): raise ValueError("key must be str or None").
+
+  ## Function: tree_node_to_json_dict(node: TreeNode) -> Dict[str, Any]
+  Docstring: Serialize TreeNode to a JSON-object-compatible dict for Sidecar root arrays (recursive).
+  Algorithm:
+  1. Call validate_node_constraints(node).
+  2. Build dict out with keys "stable_id" -> node.stable_id, "type" -> node.type (always).
+  3. If node.key is not None: set out["key"] = node.key.
+  4. If node.comment_before is not None: set out["comment_before"] = node.comment_before.
+  5. If node.comment_inline is not None: set out["comment_inline"] = node.comment_inline.
+  6. If node.type in ("object", "array"): set out["children"] = [tree_node_to_json_dict(ch) for ch in node.children].
+  7. If node.type in ("string", "number", "boolean", "null"): set out["value"] to node.value (including None for null).
+  8. Return out.
+
+  ## Function: tree_node_from_json_dict(data: Dict[str, Any]) -> TreeNode
+  Docstring: Deserialize dict from Sidecar JSON into TreeNode; strict keys for node objects.
+  Algorithm:
+  1. If not isinstance(data, dict): raise TypeError("TreeNode JSON must be an object").
+  2. Let allowed = {"stable_id", "type", "key", "value", "children", "comment_before", "comment_inline"}.
+  3. If set(data.keys()) - allowed is non-empty: raise ValueError("unexpected keys on TreeNode object: ...sorted list...").
+  4. Require "stable_id" str and "type" str present; type must be in TREE_NODE_TYPES.
+  5. Build kwargs: key optional str or None from data.get("key"); same for comment_before, comment_inline using Optional[str] cast when present.
+  6. If type is object or array:
+       - Require "children" present and list; recurse each element with tree_node_from_json_dict; value must be absent or JSON null only — if "value" in data and data["value"] is not None: raise ValueError("container node must not carry non-null value").
+       - Return TreeNode(..., children=child_nodes, value=None).
+  7. If type is scalar:
+       - Require "children" absent or JSON null; require "value" present in data (value may be JSON null for type null).
+       - Map JSON value to Python for number/string/boolean/null per type; enforce matching Python types same as validate_node_constraints expectations.
+       - Return TreeNode(..., children=None, value=...).
+
+  ## Error handling
+  - validate_node_constraints raises ValueError only with explicit messages above.
+  - tree_node_from_json_dict raises TypeError or ValueError with explicit cause; JSON layer may wrap as needed by callers.
+
+  ## Forbidden
+  - Do not reference .cst/, CST, or Python sidecars.
+  - Do not add network, filesystem, or Sidecar file I/O to this module.
+  - Do not use typing.Any for parameters except TreeNode.value field default already Any (keep value field typed usage consistent with scalar rules).
+
+  ## Layout and style
+  - Match nearby core modules (e.g. ai_editor/core/json_tree/models.py): future annotations, module docstring with Author/email.
+  - Estimated line count under 220 lines.
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/tree_node.py
+  expected: Black reports the file is formatted or reformatted without error; flake8 on the path exits zero with no issues; mypy on the path reports success with no issues.
+status: done

@@ -1,0 +1,56 @@
+# Global Step G-002 — Tree Object and Indexing
+
+# Level 3 artifact. Conceptual block. Domain objects and operations only.
+step_id: G-002
+name: Tree Object and Indexing
+description: "Establish the tree as a self-contained object that owns the root identified
+  node together with the whole subtree, and that owns and encapsulates the machinery
+  required to address, query, and mutate its nodes. Callers interact with this object
+  rather than walking raw nodes. The object owns three kinds of lookup machinery.
+  First, an identity index that maps a stable identity to its node and retrieves any
+  node by its identity without traversing the whole tree; this index is the primary
+  means by which external code addresses a node. Second, attribute indexes that map
+  query-relevant node attributes — node type, node kind, simple name, and qualified
+  name — to the nodes that bear them, so that selecting nodes by such an attribute
+  resolves against an index instead of scanning every node. Third, a parent relation
+  that maps a node to its parent and thereby lets traversal move from a node to its
+  parent or ancestors without rescanning. All of this lookup machinery is part of
+  the object's state and travels with it through persistence. The machinery is built
+  once when the object is created or loaded and is kept consistent with the current
+  structure thereafter, so that answering a lookup never triggers a full rescan. The
+  indexes are derived state: they are rebuilt from the nodes, and where an index entry
+  and a node's own stable identity could disagree, the node's identity is authoritative
+  and the index is brought back into agreement with it. The object also owns the query
+  interface as the surface through which these lookups are offered. This step defines
+  the tree object, the three kinds of indexes, the build-once-keep-consistent property,
+  the derived-state and authoritative-identity rule, and the ownership of the query
+  surface. It does not define how nodes acquire identity, conversion to or from the
+  source syntax tree, the internal evaluation logic of the query interface, persistence,
+  or the mutation operations — those belong to other steps."
+concepts:
+- C-004  # Tree
+- C-005 # IdIndex
+- C-006 # AttributeIndex
+- C-007 # ParentRelation
+relations:
+- C-004 owns C-001  # tree owns the root identified node and subtree
+- C-004 owns C-005 # tree owns the identity index
+- C-004 owns C-006 # tree owns the attribute indexes
+- C-004 owns C-007 # tree owns the parent relation
+- C-004 owns C-008 # tree owns and exposes the query surface
+- C-005 uses C-003 # identity index keys on the stable identity
+source_labels:
+- '{s3ig}'
+- '{wk0n}'
+- '{ln31}'
+- '{k9h7}'
+- '{prib}'
+depends_on:
+- G-001
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+status: draft

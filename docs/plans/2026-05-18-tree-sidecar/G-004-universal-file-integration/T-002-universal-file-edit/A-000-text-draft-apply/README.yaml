@@ -1,0 +1,47 @@
+step_id: A-006
+parent_tactical_step: T-002
+name: Extract FORMAT_TEXT draft replacement pipeline
+target_file: ai_editor/commands/universal_file_edit/text_draft_apply.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-003
+concepts:
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+  - MRS / HRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml, docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  - Technical plan spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - Parent global README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+
+  ## Goal
+  Extract the text-format edit path from `UniversalFileEditCommand._apply_text` inner `_run_text`
+  into:
+
+  `def run_text_draft_apply(session: EditSession, operations) -> SuccessResult | ErrorResult:`
+
+  Behavior unchanged: backup with `BackupManager` + `project_root_near` from
+  `edit_draft_path_utils`, sort replacements bottom-up using existing imports from
+  `universal_file_replace_command` (`TextReplacementTriple`, `_sort_text_replacements_bottom_up`),
+  same line-based replace/insert/delete semantics, write `session.draft_path`, return
+  SuccessResult with `line_count` as today.
+
+  ## Imports (match current edit_command inner imports)
+  Reuse the same lazy/local import style only if needed to avoid cycles; prefer top-level imports
+  if there is no cycle.
+
+  ## Forbidden
+  - Do not modify `edit_command.py` in this step.
+  - File ≤400 lines.
+
+  ## Mandatory validation
+  - black / flake8 / mypy on `text_draft_apply.py`
+
+verification:
+  type: static_analysis
+  target: ai_editor.commands.universal_file_edit.text_draft_apply.run_text_draft_apply
+  expected: black/flake8/mypy clean; file ≤400 lines
+status: done

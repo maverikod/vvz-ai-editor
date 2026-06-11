@@ -1,0 +1,54 @@
+step_id: A-007
+parent_tactical_step: T-006
+name: Search queue routing unit tests
+target_file: tests/unit/test_search_queue_routing.py
+operation: create_file
+priority: 7
+depends_on:
+  - T-004
+  - T-005
+concepts:
+  - C-022
+prompt: |
+  Operation: create_file
+  Target: tests/unit/test_search_queue_routing.py
+
+  Author: Vasiliy Zdanovskiy, vasilyvz@gmail.com.
+  Covers tests_required: queued_search_does_not_autoqueue_recursively.
+
+  Precondition: G-008/T-004 search_start and G-008/T-005 lifecycle commands implemented.
+
+  G-008 contract: queued paginated handoff exposes job_id; no opaque cursor in queue path.
+
+  Plan README compatibility: preserve queue/hard-timeout behavior; auto_queue_on_inline_timeout
+  must not recurse when the inner job is already queued.
+
+  IMPORTS:
+    from __future__ import annotations
+    import uuid
+    from unittest.mock import AsyncMock, MagicMock, patch
+    import pytest
+    from ai_editor.commands.search_start_command import SearchStartCommand
+    from ai_editor.core.search_session.compatibility import maybe_route_paginated
+    from mcp_proxy_adapter.commands.result import SuccessResult
+
+  TEST test_queued_search_does_not_autoqueue_recursively:
+  1. Mock legacy_executor to simulate inline timeout path returning queued job_id "job-outer".
+  2. Configure params paginated=true, auto_queue_on_inline_timeout=true, inline_timeout_seconds=0.001.
+  3. Patch queue submit hook; assert submit called exactly once for outer search.
+  4. When worker re-invokes search path with job context flag indicating already_queued=true,
+     assert maybe_route_paginated does NOT call queue submit again.
+  5. SearchStartCommand.run for semantic or fulltext with slow backend mock; verify single job_id in handoff.
+
+  TEST test_paginated_false_never_queues_via_compatibility_layer:
+  - maybe_route_paginated paginated=false calls legacy_executor once, no queue side effect.
+
+  File under 240 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_queue_routing.py
+  expected: >
+    Queued paginated search submits exactly one queue job; nested re-entry with already-queued context
+    does not trigger recursive auto_queue_on_inline_timeout; handoff uses job_id not cursor.
+status: ready_for_review

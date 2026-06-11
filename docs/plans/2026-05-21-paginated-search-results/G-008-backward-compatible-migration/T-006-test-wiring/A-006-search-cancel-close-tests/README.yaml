@@ -1,0 +1,74 @@
+step_id: A-006
+parent_tactical_step: T-006
+name: Search cancel and close unit tests
+target_file: tests/unit/test_search_cancel_close.py
+operation: create_file
+priority: 6
+depends_on:
+  - T-004
+  - T-005
+concepts:
+  - C-001
+  - C-020
+prompt: |
+  Operation: create_file
+  Target: tests/unit/test_search_cancel_close.py
+
+  Precondition: G-008/T-004 search_start and G-008/T-005 search_cancel, search_close, search_get_page implemented.
+
+  Precondition: G-008/T-004 search_start and G-008/T-005 search_get_page, search_cancel, search_close implemented.
+
+  Author: Vasiliy Zdanovskiy, vasilyvz@gmail.com.
+  Covers tests_required:
+  search_cancel_stops_running_grep, search_close_releases_buffer, cursor_invalid_after_close.
+
+  G-008 contract: all lifecycle commands use job_id parameter. After close, block_position continuation
+  is invalid (tests_required id cursor_invalid_after_close maps to block_position_invalid_after_close behavior).
+
+  MRS:
+  - C-001 SearchSession tracks cancelled and closed states; session directory lifecycle.
+  - C-020 SearchStatus: cancelled and timed_out distinct; apply_cancellation via snapshot_from_manifest.
+
+  Align with search_close command semantics (same tactical step A-004):
+  - close sets manifest status closed; buffer scratch files under buffer_dir removed;
+  - blocks and index remain on disk until background cleaner TTL (session directory NOT deleted immediately);
+  - search_get_page after close must receive ErrorResult code CLOSED_SESSION (not opaque cursor errors).
+
+  IMPORTS:
+    from __future__ import annotations
+    import asyncio, uuid
+    from pathlib import Path
+    from unittest.mock import AsyncMock, patch
+    import pytest
+    from ai_editor.commands.search_cancel_command import SearchCancelCommand
+    from ai_editor.commands.search_close_command import SearchCloseCommand
+    from ai_editor.commands.search_get_page_command import SearchGetPageCommand
+    from ai_editor.core.search_session.directory import provision_search_session_directory
+    from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  TEST test_search_cancel_stops_running_grep:
+  1. Start paginated grep session with mocked slow FsGgrepCommand (asyncio.Event gate).
+  2. Call SearchCancelCommand.run with job_id from handoff.
+  3. Assert SuccessResult cancelled=true; manifest status cancelled; background task event set or cancelled.
+  4. No new blocks appended after cancel (mock append_block_entry call count stable).
+
+  TEST test_search_close_releases_buffer:
+  1. Create session with published block at position 1 and buffer scratch files under buffer_dir.
+  2. SearchCloseCommand.run with job_id.
+  3. Assert SuccessResult closed=true; manifest status closed; buffer scratch files removed.
+  4. Session directory and blocks/index files still exist (cleaner deletes later per TTL).
+
+  TEST test_block_position_invalid_after_close (tests_required: cursor_invalid_after_close):
+  1. After SearchCloseCommand on job_id, SearchGetPageCommand.run with same job_id and block_position=1
+     returns ErrorResult with code CLOSED_SESSION (primary contract; SESSION_NOT_FOUND only after cleaner removal).
+  2. Assert success false, no items returned, and response does not expose cursor or next_cursor fields.
+
+  File under 320 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_cancel_close.py
+  expected: >
+    Cancel stops running grep and sets cancelled status via job_id; close releases buffer scratch but retains
+    blocks until cleaner; get_page after close fails with CLOSED_SESSION (not cursor-based errors).
+status: ready_for_review

@@ -1,0 +1,44 @@
+step_id: T-002
+parent_global_step: G-004
+name: PreviewNavigation and PreviewSelector
+description: 'Define the PreviewNavigation entity (C-016) as the three-phase procedure
+  for producing a structured preview of a tree node. Phase 1 enumerate: resolve the
+  focus node by NodeId and list its ordered child blocks. Phase 2 select: apply the
+  PreviewSelector (C-017) to choose a subset of the child blocks. Phase 3 render:
+  produce NodeId, type label, attribute summary, and text excerpt per selected block.
+  Establish that PreviewNavigation is identical for all five formats and for both
+  in-session (draft tree) and out-of-session (validated on-disk tree) access; a session_id
+  parameter switches navigation to the in-session draft. Establish that the preview
+  command validates or builds the tree via TreeLifecycle before returning results
+  when the tree is absent or invalid. Establish that NodeId is the node reference,
+  never line numbers. Define the PreviewSelector entity (C-017) as the expression
+  applied in phase 2 to choose a subset of blocks; two selector forms: a slice string
+  start:end (zero-based, exclusive end) that caps the block count, and a list of NodeIds
+  that cherry-picks specific blocks.'
+concepts:
+- C-016
+- C-017
+- C-002
+- C-010
+- C-009
+inputs:
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: Used by the preview command to ensure a valid tree exists before 
+    navigation begins.
+- name: NodeId entity definition
+  type: domain entity definition (C-002)
+  description: The node reference used throughout the three phases to address 
+    the focus node and selected child blocks.
+outputs:
+- name: PreviewNavigation entity definition
+  type: domain entity definition
+  description: Three-phase procedure (enumerate, select, render) identical for 
+    all formats and both session modes; NodeId is the sole node reference; tree 
+    is validated via TreeLifecycle before navigation.
+- name: PreviewSelector entity definition
+  type: domain entity definition
+  description: Two-form selector expression (slice start:end or NodeId list) 
+    applied in phase 2 to choose a subset of child blocks.
+atomic_steps: []
+status: draft

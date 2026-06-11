@@ -1,0 +1,268 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create EditSession entity module with four-phase lifecycle
+target_file: ai_editor/core/edit_session/edit_session.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-012
+- C-010
+- C-003
+- C-006
+status: draft
+prompt: "Create the file `ai_editor/core/edit_session/edit_session.py`.\nOperation:
+  create_file (the file does not exist yet).\n\nNote: this requires creating a new
+  package `ai_editor/core/edit_session/`.\nAlso create `ai_editor/core/edit_session/__init__.py`
+  as an empty\npackage init -- but that is a SEPARATE file and must NOT be created
+  in this\nstep (one-file rule). The coder model must create only edit_session.py
+  here.\nThe __init__.py will be authored in a separate A-step.\n\nWARNING: There
+  is already a different `EditSession` dataclass in\n`ai_editor/commands/universal_file_edit/session.py`
+  that serves the\ncurrent MCP draft-editing workflow (in-memory record with draft_path,\n\
+  lockfile_path). The new class defined here is DISTINCT: it represents the\non-disk
+  bounded editing context with a session directory and git history\n(MRS C-012, HRS
+  {d001}-{d005}). Name it `EditSession` in this module;\ndo NOT import or reference
+  the other `EditSession` from commands/.\n\n## extends-vs-creates resolution\n\n\
+  No implementation of C-012 (bounded session directory + dulwich git + four\nphase
+  lifecycle) exists anywhere in the codebase. Searches confirmed:\n- `class EditSession`
+  exists only in `commands/universal_file_edit/session.py`\n  as an in-memory registry
+  record (different concept).\n- No `session_dir`, no dulwich git init, no four-phase
+  open/edit/commit/close\n  outside search_session (different subsystem).\nTherefore:
+  `operation: create_file`.\n\n## MRS excerpt\n\nC-012 EditSession: A bounded editing
+  context represented by a session\ndirectory next to the source file, inside which
+  the tree is the source of truth.\n  Properties:\n  - session directory placed next
+  to the source file, with a unique name\n    derived from the source file name\n\
+  \  - open copies source in, validates or builds the tree, inits git, creates\n \
+  \   initial commit\n  - during the session the tree is truth and every modification
+  is written\n    then committed\n  - one tree modification equals one git commit,
+  no exceptions\n  - commit copies the tree out to its co-located sibling position\n\
+  \  - close deletes the session directory entirely\n\nC-010 TreeLifecycle: single
+  entry point for tree validity and creation;\n  provides path-based wrapper validate_or_recreate_tree_file.\n\
+  \  Used by EditSession in the open phase.\n\nC-003 TreeFile: sibling file <stem>.<ext>.tree;
+  produced/updated by EditSession\n  write/commit phase.\n\nC-006 ChecksumSyncPolicy:
+  four-branch decision; EditSession uses it to\n  determine whether to copy-in or
+  rebuild the tree at open.\n\n## HRS binding paragraphs\n\n{d001}: An edit session
+  is represented by a session directory placed next to\nthe source file. The directory
+  name is `<FileName>-<UUID4>` where `FileName`\nis the source file's base name and
+  `UUID4` is a randomly generated UUID.\n\n{d002}: Opening a session performs four
+  steps in order: create the session\ndirectory; copy the source file into the session
+  directory; validate the\nco-located tree file by checksum -- if valid, copy it into
+  the session\ndirectory, if missing or invalid, build a new tree from the source
+  content\ninside the session directory; initialize a git repository (dulwich 1.2.4,\n\
+  already installed) inside the session directory and create the initial commit\n\
+  containing the source copy and the tree file.\n\n{d003}: During an open session,
+  all editing operates on the tree file inside\nthe session directory. The tree is
+  the source of truth. The in-session source\ncopy is not touched by tree edits; only
+  the tree changes during editing. Every\ntree modification without exception must
+  be followed immediately by writing the\ntree to disk and creating a git commit.
+  One tree modification equals one git\ncommit. This invariant has no exceptions.\n\
+  \n{d004}: The write (commit) command makes a file edit permanent in two stages.\n\
+  First, inside the session: it writes the current tree, regenerates the\nin-session
+  source file from that tree via `unmark`, and commits both. Second,\nimmediately
+  after the in-session commit: it copies both artifacts out to their\nexternal locations
+  -- the regenerated source over the live project file, and\nthe tree onto its co-located
+  sibling position next to that source -- replacing\nthe previous external copies.
+  The copy-out of the two artifacts is atomic:\neither both are written externally
+  or neither is.\n\n{d005}: Closing a session deletes the session directory entirely,
+  including\nits git repository. Only the final co-located tree file survives. The
+  git\nhistory of the session is ephemeral and does not persist after close.\n\n##
+  TreeLifecycle reference\n\nThe open-phase tree validation routes through TreeLifecycle
+  (C-010):\n  from ai_editor.core.tree_lifecycle import validate_or_recreate_tree_file\n\
+  \nReal signature (verified on disk at ai_editor/core/tree_lifecycle/checksum.py):\n\
+  \  def validate_or_recreate_tree_file(\n      *, project_root: Path, file_path:
+  str, force: bool = False\n  ) -> tuple[TreeRepresentationRef, TreeValidityState]\n\
+  \nTreeRepresentationRef (verified on disk at\nai_editor/core/search_session/tree_representation.py):\n\
+  \  @dataclass(frozen=True)\n  class TreeRepresentationRef:\n      file_path: str\n\
+  \      sidecar_path: Path   # the actual path where the tree file lives\n      content_checksum:
+  str\n      root_stable_id: Optional[str]\n\nCRITICAL for open(): ALWAYS capture
+  the return value of validate_or_recreate_tree_file\nand use `ref.sidecar_path` as
+  the source of the tree copy-in. Do NOT hand-check\n`tree_abs.is_file()` after the
+  call. Rationale: validate_or_recreate_tree_file\ninternally computes the sidecar
+  path via `sidecar_path_for()` and rebuilds the tree\nthere if missing/invalid. `ref.sidecar_path`
+  is the authoritative path to the valid\nor newly-rebuilt tree file. Using `tree_abs`
+  directly would diverge when the\nlegacy sidecar convention differs from the co-located
+  sibling convention.\n\n## SessionRepo boundary (C-013, T-002)\n\nSessionRepo (the
+  dulwich git repository inside the session directory) is\ndefined in T-002. In this
+  file:\n- The `EditSession` class references `session_repo_path: Path` (the path
+  to\n  the git repo directory inside the session dir) as a dataclass field.\n- The
+  open/commit/close methods contain placeholder calls annotated with\n  # [SessionRepo:
+  T-002] to mark where T-002 will supply the dulwich logic.\n- Do NOT import dulwich
+  here. Do NOT implement git init, commit, or log here.\n\n## unmark boundary (FormatHandler,
+  C-007)\n\nThe write/commit phase (HRS {d004}) regenerates the in-session source
+  via\n`unmark`. `unmark` is implemented by the per-format FormatHandler (C-007,\n\
+  defined in G-001). In this file:\n- The write_commit method contains a placeholder:\n\
+  \  # [FormatHandler.unmark: G-001/T-002] regenerate in-session source from tree\n\
+  - Do NOT import or implement unmark here.\n- Do NOT add C-001 (MarkerContract) to
+  the concepts list.\n\n## Required file content\n\nWrite exactly this file:\n\n```python\n\
+  # Author: Vasiliy Zdanovskiy -- vasilyvz@gmail.com\n\n\"\"\"EditSession (C-012):
+  bounded editing context with four-phase lifecycle.\n\nAn EditSession is a session
+  directory placed next to the SourceFile (C-004)\nthat holds a copy of the source
+  and the active TreeFile (C-003). Inside an\nactive session the tree is the source
+  of truth; the external SourceFile is\nstale and must not be read as truth while
+  a session is active.\n\nSession-is-truth invariant (C-012, HRS {d003}):\n    Inside
+  an active edit session the tree is truth.\n    The external SourceFile is stale
+  and must not be read as truth.\n\nFour-phase lifecycle (HRS {d001}-{d005}):\n\n\
+  \    Phase 1 -- open:\n        Create session directory named ``<FileName>-<UUID4>``
+  next to the\n        SourceFile. Copy the SourceFile in. Validate or rebuild the
+  TreeFile\n        via TreeLifecycle (C-010); use the returned TreeRepresentationRef
+  to\n        locate the actual tree file. Initialize SessionRepo (C-013, T-002) and\n\
+  \        create the initial commit.\n\n    Phase 2 -- edit:\n        All editing
+  operates on the in-session TreeFile. Every tree\n        modification must be immediately
+  committed to the SessionRepo.\n        One modification == one commit, no exceptions.\n\
+  \n    Phase 3 -- write/commit:\n        Write the current tree. Regenerate the in-session
+  source via unmark\n        (FormatHandler.unmark, G-001/T-002). Commit both inside
+  the session.\n        Atomically copy both artifacts to their external co-located
+  positions.\n\n    Phase 4 -- close:\n        Delete the session directory entirely.
+  Only the external co-located\n        TreeFile survives. Session git history is
+  ephemeral.\n\nPackage location: ``ai_editor/core/edit_session/``.\nDistinct
+  from ``ai_editor/commands/universal_file_edit/session.py``\nwhich is an in-memory
+  draft-editing registry record (different concept).\n\"\"\"\n\nfrom __future__ import
+  annotations\n\nimport shutil\nimport uuid\nfrom dataclasses import dataclass, field\n\
+  from pathlib import Path\n\nfrom ai_editor.core.tree_lifecycle import validate_or_recreate_tree_file\n\
+  \n\n@dataclass\nclass EditSession:\n    \"\"\"EditSession (C-012): bounded editing
+  context with on-disk session directory.\n\n    Session-is-truth invariant: inside
+  this session the TreeFile is truth;\n    the external SourceFile is stale and must
+  not be read as truth.\n\n    Attributes:\n        session_id: Unique UUID string
+  identifying this session.\n        source_abs: Absolute path to the SourceFile on
+  disk.\n        tree_abs: Absolute path to the co-located TreeFile at the external\n\
+  \            position (sibling of source); updated during write/commit.\n      \
+  \  session_dir: Absolute path to the session directory created at open.\n      \
+  \  session_source_path: Copy of the SourceFile inside the session dir.\n       \
+  \ session_tree_path: Copy of the TreeFile inside the session dir;\n            the
+  active tree during the session.\n        session_repo_path: Path to the git repository
+  root inside session dir;\n            managed by SessionRepo (C-013, T-002).\n \
+  \       is_open: True while the session directory exists and git repo is live.\n\
+  \    \"\"\"\n\n    session_id: str\n    source_abs: Path\n    tree_abs: Path\n \
+  \   session_dir: Path\n    session_source_path: Path\n    session_tree_path: Path\n\
+  \    session_repo_path: Path\n    is_open: bool = field(default=False)\n\n    #
+  ------------------------------------------------------------------ #\n    # Class-level
+  factory                                                   #\n    # ------------------------------------------------------------------
+  #\n\n    @classmethod\n    def open(\n        cls,\n        *,\n        source_abs:
+  Path,\n        project_root: Path,\n        file_path: str,\n    ) -> EditSession:\n\
+  \        \"\"\"Phase 1 -- open: create the session directory and initialise the
+  session.\n\n        Steps performed in order (HRS {d002}):\n          1. Create
+  session directory named ``<FileName>-<UUID4>`` next to source.\n          2. Copy
+  the SourceFile into the session directory.\n          3. Validate or rebuild the
+  TreeFile via TreeLifecycle (C-010).\n             Capture TreeRepresentationRef;
+  use ref.sidecar_path as the\n             authoritative tree path (the path where
+  lifecycle built/found\n             the tree). Copy that file into the session directory.\n\
+  \          4. Initialise SessionRepo and create the initial commit.\n          \
+  \   [SessionRepo: T-002]\n\n        The `tree_abs` field of the returned EditSession
+  is set to\n        ref.sidecar_path so that write_commit copies from the correct
+  location.\n\n        Args:\n            source_abs: Absolute path to the SourceFile.\n\
+  \            project_root: Absolute path to the project root (for TreeLifecycle).\n\
+  \            file_path: Project-relative path to the SourceFile.\n\n        Returns:\n\
+  \            An EditSession with is_open=True.\n        \"\"\"\n        session_id
+  = str(uuid.uuid4())\n        # HRS {d001}: directory name is <FileName>-<UUID4>\n\
+  \        dir_name = f\"{source_abs.name}-{session_id}\"\n        session_dir = source_abs.parent
+  / dir_name\n        session_dir.mkdir(parents=False, exist_ok=False)\n\n       \
+  \ # Step 2: copy source into session directory\n        session_source_path = session_dir
+  / source_abs.name\n        shutil.copy2(source_abs, session_source_path)\n\n   \
+  \     # Step 3: validate or rebuild tree via TreeLifecycle (C-010).\n        # validate_or_recreate_tree_file
+  signature (verified on disk):\n        #   (*, project_root: Path, file_path: str,
+  force: bool = False)\n        #   -> tuple[TreeRepresentationRef, TreeValidityState]\n\
+  \        # TreeRepresentationRef.sidecar_path (verified on disk) is the\n      \
+  \  # authoritative path where the tree file lives after validation/rebuild.\n  \
+  \      ref, _state = validate_or_recreate_tree_file(\n            project_root=project_root,
+  file_path=file_path\n        )\n        # Use ref.sidecar_path -- NOT source_abs-derived
+  paths.\n        # ref.sidecar_path is authoritative regardless of sidecar convention.\n\
+  \        tree_abs = ref.sidecar_path\n        session_tree_path = session_dir /
+  tree_abs.name\n        shutil.copy2(tree_abs, session_tree_path)\n\n        # Step
+  4: initialise SessionRepo (C-013) inside session directory\n        session_repo_path
+  = session_dir\n        # [SessionRepo: T-002] git init + initial commit here\n\n\
+  \        return cls(\n            session_id=session_id,\n            source_abs=source_abs,\n\
+  \            tree_abs=tree_abs,\n            session_dir=session_dir,\n        \
+  \    session_source_path=session_source_path,\n            session_tree_path=session_tree_path,\n\
+  \            session_repo_path=session_repo_path,\n            is_open=True,\n \
+  \       )\n\n    # ------------------------------------------------------------------
+  #\n    # Phase 2 -- edit                                                       #\n\
+  \    # ------------------------------------------------------------------ #\n\n\
+  \    def record_tree_modification(self) -> None:\n        \"\"\"Phase 2 -- edit:
+  record that the in-session tree was modified.\n\n        Per HRS {d003}: every tree
+  modification must immediately produce a\n        git commit in the SessionRepo.
+  One modification == one commit.\n        After calling this, the caller must commit
+  via SessionRepo (C-013,\n        T-002) before making another modification.\n\n\
+  \        Raises:\n            RuntimeError: If the session is not open.\n      \
+  \  \"\"\"\n        if not self.is_open:\n            raise RuntimeError(\"EditSession
+  is not open; cannot record modification.\")\n        # [SessionRepo: T-002] git
+  commit of the current session_tree_path here\n\n    # ------------------------------------------------------------------
+  #\n    # Phase 3 -- write/commit                                               #\n\
+  \    # ------------------------------------------------------------------ #\n\n\
+  \    def write_commit(self) -> None:\n        \"\"\"Phase 3 -- write/commit: make
+  edits permanent.\n\n        Two stages (HRS {d004}):\n          Stage A (in-session):\n\
+  \            1. Write current tree to session_tree_path.\n            2. Regenerate
+  in-session source via unmark.\n               [FormatHandler.unmark: G-001/T-002]\n\
+  \            3. Commit both inside the SessionRepo.\n               [SessionRepo:
+  T-002]\n          Stage B (external, atomic):\n            Copy session_tree_path
+  over tree_abs and session_source_path over\n            source_abs. Both copies
+  must succeed or neither takes effect\n            (HRS {d004}: \"either both are
+  written externally or neither is\").\n\n            Atomicity mechanism: before
+  the second replace, back up the first\n            external target to a tmp path
+  so it can be restored if the second\n            replace fails. This guarantees
+  the pair is never half-written.\n\n        Raises:\n            RuntimeError: If
+  the session is not open.\n        \"\"\"\n        if not self.is_open:\n       \
+  \     raise RuntimeError(\"EditSession is not open; cannot write/commit.\")\n\n\
+  \        # Stage A: [SessionRepo: T-002] write tree, regenerate source, commit\n\
+  \n        # Stage B: atomic copy-out per HRS {d004}.\n        # Strategy: write
+  both to tmp, then replace in order.\n        # If tree replace succeeds but source
+  replace fails, restore tree from backup.\n        tmp_tree = self.tree_abs.with_suffix(self.tree_abs.suffix
+  + \".tmp\")\n        tmp_source = self.source_abs.with_suffix(self.source_abs.suffix
+  + \".tmp\")\n        # Backup of the first target (tree) to restore on partial failure\n\
+  \        backup_tree = self.tree_abs.with_suffix(self.tree_abs.suffix + \".bak\"\
+  )\n        try:\n            # Stage tmp files from session copies\n           \
+  \ shutil.copy2(self.session_tree_path, tmp_tree)\n            shutil.copy2(self.session_source_path,
+  tmp_source)\n            # Back up the current external tree before replacing it\n\
+  \            if self.tree_abs.exists():\n                shutil.copy2(self.tree_abs,
+  backup_tree)\n            # Replace tree first\n            tmp_tree.replace(self.tree_abs)\n\
+  \            try:\n                # Replace source second\n                tmp_source.replace(self.source_abs)\n\
+  \            except Exception:\n                # Source replace failed: restore
+  tree from backup to undo first replace\n                if backup_tree.exists():\n\
+  \                    shutil.copy2(backup_tree, self.tree_abs)\n                raise\n\
+  \        except Exception:\n            # Clean up any leftover tmp files\n    \
+  \        tmp_tree.unlink(missing_ok=True)\n            tmp_source.unlink(missing_ok=True)\n\
+  \            raise\n        finally:\n            backup_tree.unlink(missing_ok=True)\n\
+  \n    # ------------------------------------------------------------------ #\n \
+  \   # Phase 4 -- close                                                      #\n\
+  \    # ------------------------------------------------------------------ #\n\n\
+  \    def close(self) -> None:\n        \"\"\"Phase 4 -- close: delete the session
+  directory entirely.\n\n        Per HRS {d005}: closing deletes the session directory
+  entirely,\n        including the git repository inside it. Only the external co-located\n\
+  \        TreeFile survives. Session git history is ephemeral.\n\n        After close,
+  is_open is False and session_dir no longer exists.\n        \"\"\"\n        if self.session_dir.exists():\n\
+  \            shutil.rmtree(self.session_dir)\n        self.is_open = False\n\n\n\
+  #: Constant declaring the session-is-truth invariant (C-012, HRS {d003}).\n#: Machine-readable;
+  checked in tests.\nSESSION_IS_TRUTH_INVARIANT: str = (\n    \"Inside an active edit
+  session the tree is truth; \"\n    \"the external SourceFile is stale and must not
+  be read as truth.\"\n)\n```\n\n## Constraints\n- This file creates the package `ai_editor/core/edit_session/`.
+  The\n  `__init__.py` for that package is authored in a separate A-step (A-002).\n\
+  \  Do NOT create `__init__.py` here (one-file rule).\n- Import only: `from __future__
+  import annotations`, `shutil`, `uuid`,\n  `dataclasses.dataclass`, `dataclasses.field`,
+  `pathlib.Path`,\n  `ai_editor.core.tree_lifecycle.validate_or_recreate_tree_file`.\n\
+  \  No `Optional` import (unused). No dulwich imports. No unmark imports.\n- `validate_or_recreate_tree_file`
+  real signature (verified on disk):\n  `(*, project_root: Path, file_path: str, force:
+  bool = False)`\n  returning `tuple[TreeRepresentationRef, TreeValidityState]`.\n\
+  - `TreeRepresentationRef.sidecar_path: Path` is the authoritative tree\n  location;
+  capture and use it in open() -- do NOT hand-check tree_abs.is_file().\n- Do NOT
+  reference `ai_editor.commands.universal_file_edit.session.EditSession`.\n- Do
+  NOT add C-001 (MarkerContract) to concepts or import unmark.\n- SessionRepo (C-013)
+  is marked with placeholder comments `[SessionRepo: T-002]`\n  only; no dulwich code.\n\
+  - `write_commit` Stage B atomicity: backup-before-second-replace mechanism\n  ensures
+  HRS {d004} invariant (either both or neither). The backup file\n  (.bak) is removed
+  in the finally block.\n- `SESSION_IS_TRUTH_INVARIANT` constant is machine-readable
+  (testable).\n- File header: `# Author: Vasiliy Zdanovskiy -- vasilyvz@gmail.com`
+  (CR-012).\n- All docstrings and comments in English (ARTIFACT_LOCALE=en, CR-010).\n\
+  - Estimated line count: ~220 lines (within CR-008 soft limit ~350).\n"
+verification:
+  expected: Running `python -c 'import inspect; from 
+    ai_editor.core.edit_session.edit_session import EditSession, 
+    SESSION_IS_TRUTH_INVARIANT; assert inspect.isclass(EditSession); assert 
+    hasattr(EditSession, "open"); assert hasattr(EditSession, 
+    "record_tree_modification"); assert hasattr(EditSession, "write_commit"); 
+    assert hasattr(EditSession, "close"); assert "is_open" in {f.name for f in 
+    inspect.fields(EditSession) if hasattr(inspect, "fields")} or 
+    hasattr(EditSession, "is_open"); assert "tree" in 
+    SESSION_IS_TRUTH_INVARIANT.lower()'` exits with code 0 and no output. 
+    Verifies EditSession class exists with four lifecycle methods and 
+    SESSION_IS_TRUTH_INVARIANT constant.
+  target: ai_editor/core/edit_session/edit_session.py
+  type: import

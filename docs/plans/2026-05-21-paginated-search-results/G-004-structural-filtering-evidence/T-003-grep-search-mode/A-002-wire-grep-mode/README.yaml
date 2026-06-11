@@ -1,0 +1,82 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: GrepSearchMode fs_ggrep parameter mapping
+target_file: ai_editor/core/search_session/grep_mode_params.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-019
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/grep_mode_params.py
+
+  MRS excerpt (C-019 GrepSearchMode):
+  - Structural mode is the default; classic line grep is opt-in ({6fcd}).
+  - Structural mode validates or creates a file tree and returns PreviewReference data.
+  - Classic line grep must not count as structural evidence unless converted.
+
+  Existing fs_grep_command.py already exposes fast_text_only (default true) and enrich_blocks
+  (default false). Do not modify fs_grep_command.py (outside atomic step scope).
+
+  Precondition: ai_editor/commands/fs_grep_structural_integration.py exists with
+  GrepSearchMode, DEFAULT_GREP_MODE, GrepModeApplyResult, apply_ggrep_mode,
+  apply_ggrep_mode_multi_file, StructuralEvidenceEligibility.
+
+  Required imports:
+  - from __future__ import annotations
+  - from dataclasses import dataclass
+  - from pathlib import Path
+  - from typing import Any
+  - from ai_editor.commands.fs_grep_structural_integration import (
+        DEFAULT_GREP_MODE,
+        GrepModeApplyResult,
+        GrepSearchMode,
+        StructuralEvidenceEligibility,
+        apply_ggrep_mode,
+        apply_ggrep_mode_multi_file,
+    )
+
+  Implement:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. Re-export GrepSearchMode, DEFAULT_GREP_MODE, StructuralEvidenceEligibility, GrepModeApplyResult.
+
+  3. @dataclass(frozen=True) FsGgrepModeParams:
+       fast_text_only: bool
+       enrich_blocks: bool
+
+  4. def grep_mode_to_fs_ggrep_params(mode: GrepSearchMode) -> FsGgrepModeParams
+     - structural: fast_text_only=False, enrich_blocks=True
+     - classic_line: fast_text_only=True, enrich_blocks=False
+
+  5. def apply_ggrep_mode_to_match_payload(
+        *,
+        mode: GrepSearchMode,
+        project_root: Path,
+        file_path: str,
+        line_matches: list[dict[str, Any]],
+     ) -> GrepModeApplyResult
+     Delegates to apply_ggrep_mode; returns matches and structural_evidence_eligibility.
+
+  6. def apply_ggrep_mode_multi_file_payload(
+        *,
+        mode: GrepSearchMode,
+        project_root: Path,
+        line_matches: list[dict[str, Any]],
+     ) -> GrepModeApplyResult
+     Delegates to apply_ggrep_mode_multi_file for paginated multi-file batches.
+
+  Under 120 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_grep_mode_params.py
+  expected: >
+    test_grep_mode_to_fs_ggrep_params_structural maps fast_text_only=False enrich_blocks=True;
+    test_grep_mode_to_fs_ggrep_params_classic_line inverts mapping;
+    test_default_grep_mode_reexported is structural;
+    test_apply_grep_mode_to_match_payload_returns_GrepModeApplyResult with eligibility field.
+status: ready_for_review

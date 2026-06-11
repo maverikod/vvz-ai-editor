@@ -1,0 +1,394 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Хелперы multi-file bundle и disambiguation
+target_file: ai_editor/commands/universal_file_edit/session.py
+operation: modify_file
+priority: 2
+depends_on: []
+concepts:
+- C-004
+- C-005
+- C-006
+- C-009
+- C-016
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/commands/universal_file_edit/session.py`) — post ca_session_id bundle
+  registry baseline (do not re-apply registry registration changes here):
+  ```py
+  """
+  EditSession facade and command-layer metadata over core C-012 EditSession.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from pathlib import Path
+  from typing import Any, Dict, List, Optional
+
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.commands.universal_file_edit.format_group import FormatDescriptor
+  from ai_editor.core.edit_session import (
+      EditSession as CoreEditSession,
+      SessionTreeValidity,
+  )
+  from ai_editor.tree.edit_operations import EditOperation
+  from ai_editor.core.edit_session.edit_session import _active_sessions
+  from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  # ca_session_id -> project-relative file_path -> EditSession facade
+  _session_bundles: dict[str, dict[str, "EditSession"]] = {}
+  # (project_id, norm file_path) -> ca_session_id
+  _file_open_index: dict[tuple[str, str], str] = {}
+
+
+  @dataclass
+  class EditSession:
+      """Universal-file command facade over one core EditSession (C-012)."""
+
+      session_id: str
+      project_id: str
+      file_path: str
+      abs_path: Path
+      draft_path: Path
+      lockfile_path: Path
+      format_group: str
+      handler_id: str
+      tree_id: Optional[str]
+      core: CoreEditSession
+      source_sha256_at_open: Optional[str] = None
+      dirty: bool = False
+      tree_temp_roots: Optional[List[TreeNode]] = None
+      sidecar_write_intent: Optional[str] = None
+      fallback_reason: Optional[str] = None
+      original_format_group: Optional[str] = None
+      is_invalid: bool = False
+
+
+  def _norm_file_path(file_path: str) -> str:
+      return Path(str(file_path).replace("\\", "/")).as_posix()
+
+
+  def _file_key(project_id: str, file_path: str) -> tuple[str, str]:
+      return (str(project_id or "").strip(), _norm_file_path(file_path))
+
+
+  def lookup_ca_session_id(project_id: str, file_path: str) -> Optional[str]:
+      """Return ca_session_id for an open file, if any."""
+      return _file_open_index.get(_file_key(project_id, file_path))
+
+
+  def _resolve_project_root_near(abs_path: Path) -> Path:
+      """Locate project root upward from ``abs_path`` for core session open."""
+      resolved = abs_path.resolve()
+      probe = resolved.parent if resolved.is_file() else resolved
+      for candidate in (probe,) + tuple(probe.parents):
+          if (candidate / "pyproject.toml").exists() or (
+              candidate / "projectid"
+          ).exists():
+              return candidate
+      return probe
+
+
+  def create_session(
+      abs_path: Path,
+      descriptor: FormatDescriptor,
+      file_path: str,
+      ca_session_id: str,
+      tree_id: Optional[str] = None,
+      *,
+      project_root: Optional[Path] = None,
+      source_sha256_at_open: Optional[str] = None,
+      tree_temp_roots: Optional[List[TreeNode]] = None,
+      sidecar_write_intent: Optional[str] = None,
+      fallback_reason: Optional[str] = None,
+      original_format_group: Optional[str] = None,
+      is_invalid: bool = False,
+      initial_source_text: Optional[str] = None,
+      project_id: str = "",
+      workspace_origin_path: Optional[Path] = None,
+      workspace_edit_subdir: Optional[Path] = None,
+  ) -> EditSession:
+      """Open a core EditSession and register command-layer metadata under ca_session_id."""
+      sid = str(ca_session_id or "").strip()
+      if not sid:
+          raise ValidationError("ca_session_id is required", field="ca_session_id")
+      norm_path = _norm_file_path(file_path)
+      pid = str(project_id or "").strip()
+      if pid:
+          existing = _file_open_index.get(_file_key(pid, norm_path))
+          if existing is not None and existing != sid:
+              raise ValueError("FILE_ALREADY_IN_SESSION")
+      bundle = _session_bundles.get(sid)
+      if bundle is None:
+          bundle = {}
+          _session_bundles[sid] = bundle
+      if norm_path in bundle:
+          raise ValueError("FILE_ALREADY_IN_SESSION")
+
+      root = (
+          project_root
+          if project_root is not None
+          else _resolve_project_root_near(abs_path)
+      )
+      content = initial_source_text
+      if content is None and not abs_path.is_file():
+          content = ""
+      core = CoreEditSession.open(
+          source_abs=abs_path,
+          project_root=root,
+          file_path=file_path,
+          content=content if not abs_path.is_file() else None,
+      )
+      session = EditSession(
+          session_id=sid,
+          project_id=pid,
+          file_path=file_path,
+          abs_path=abs_path,
+          draft_path=core.session_source_path,
+          lockfile_path=descriptor.lockfile_path,
+          format_group=descriptor.format_group,
+          handler_id=descriptor.handler_id,
+          tree_id=tree_id,
+          core=core,
+          source_sha256_at_open=source_sha256_at_open,
+          dirty=False,
+          tree_temp_roots=tree_temp_roots,
+          sidecar_write_intent=sidecar_write_intent,
+          fallback_reason=fallback_reason,
+          original_format_group=original_format_group,
+          is_invalid=is_invalid,
+      )
+      if workspace_origin_path is not None:
+          session.__dict__["workspace_origin_path"] = workspace_origin_path
+      if workspace_edit_subdir is not None:
+          session.__dict__["workspace_edit_subdir"] = workspace_edit_subdir
+      bundle[norm_path] = session
+      if pid:
+          _file_open_index[_file_key(pid, norm_path)] = sid
+      return session
+
+
+  def get_session(session_id: str, file_path: Optional[str] = None) -> EditSession:
+      """Return the command facade for a ca_session_id and optional file path."""
+      bundle = _session_bundles.get(session_id)
+      if not bundle:
+          raise ValueError("SESSION_NOT_FOUND")
+      if file_path is None:
+          if len(bundle) == 1:
+              session = next(iter(bundle.values()))
+          else:
+              raise ValueError("SESSION_FILE_PATH_REQUIRED")
+      else:
+          session = bundle.get(_norm_file_path(file_path))
+          if session is None:
+              raise ValueError("SESSION_NOT_FOUND")
+      if not session.core.is_open:
+          raise ValueError("SESSION_NOT_FOUND")
+      return session
+
+
+  def release_session(session_id: str, file_path: Optional[str] = None) -> None:
+      """Remove one file (or the sole file) from a bundle and close its core session."""
+      bundle = _session_bundles.get(session_id)
+      if bundle is None:
+          return
+      if file_path is None:
+          if len(bundle) != 1:
+              raise ValueError("SESSION_FILE_PATH_REQUIRED")
+          norm_path = next(iter(bundle))
+      else:
+          norm_path = _norm_file_path(file_path)
+      session = bundle.pop(norm_path, None)
+      if session is not None:
+          if session.project_id:
+              _file_open_index.pop(
+                  _file_key(session.project_id, session.file_path),
+                  None,
+              )
+          if session.core.is_open:
+              session.core.close()
+      if not bundle:
+          _session_bundles.pop(session_id, None)
+
+
+  def active_session_uses_abs_path(abs_path: Path) -> bool:
+      """Return True if any registered core session uses this resolved absolute path."""
+      target = abs_path.resolve()
+      for core in _active_sessions.values():
+          if core.source_abs.resolve() == target:
+              return True
+      return False
+
+
+  def apply_tree_operation(session: EditSession, operation: EditOperation) -> None:
+      """Apply one G-004 EditOperation via core session adapter ({h008})."""
+      session.core.apply_tree_operation(operation)
+      session.draft_path = session.core.session_source_path
+      session.dirty = True
+
+
+  def apply_source_mutation(session: EditSession, new_source_text: str) -> None:
+      """Apply in-session source change via core valid-tree or plaintext mutation."""
+      if session.is_invalid or session.core.tree_validity == SessionTreeValidity.INVALID:
+          session.core.apply_plaintext_mutation(new_source_text)
+      else:
+          session.core.apply_valid_tree_mutation(lambda _: new_source_text)
+      session.draft_path = session.core.session_source_path
+      session.dirty = True
+
+
+  def apply_cst_sidecar_mutation(
+      session: EditSession,
+      new_source_text: str,
+      *,
+      sidecar_abs: Path,
+  ) -> None:
+      """Persist legacy CST sidecar edit into the session repo and undo history."""
+      session.core.apply_cst_sidecar_mutation(
+          new_source_text,
+          sidecar_abs=sidecar_abs,
+      )
+      session.draft_path = session.core.session_source_path
+      session.dirty = True
+  ```
+
+  Modify `ai_editor/commands/universal_file_edit/session.py` (operation: modify_file).
+
+  ## Goal (C-004, C-005, C-006, C-009, C-016)
+
+  Add multi-file bundle introspection and a single disambiguation entry point used by
+  edit/write/close. Produce `multi_file_bundle` payload for open responses ({8b1h}).
+
+  ## Imports to add
+
+  - None new (use existing `Dict`, `Any`, `List`, `Optional`, `Path`).
+
+  ## EditSession dataclass — add optional fields (after `is_invalid`)
+
+  ```python
+  workspace_origin_path: Optional[Path] = None
+  workspace_edit_subdir: Optional[Path] = None
+  ```
+
+  Remove the `session.__dict__["workspace_origin_path"]` hack in `create_session`; assign
+  the two new dataclass fields directly in the `EditSession(...)` constructor call.
+
+  ## New functions (add after `lookup_ca_session_id`)
+
+  ### `def bundle_file_count(ca_session_id: str) -> int`
+  Docstring: "Return number of open files in the ca_session bundle."
+
+  Algorithm:
+  1. `bundle = _session_bundles.get(str(ca_session_id or "").strip())`
+  2. Return `0` if bundle is None else `len(bundle)`.
+
+  ### `def bundle_has_multiple_files(ca_session_id: str) -> bool`
+  Docstring: "Return True when the bundle holds more than one open file."
+
+  Algorithm: return `bundle_file_count(ca_session_id) > 1`.
+
+  ### `def list_bundle_file_paths(ca_session_id: str) -> List[str]`
+  Docstring: "Return sorted project-relative file_path keys for the bundle."
+
+  Algorithm:
+  1. `bundle = _session_bundles.get(str(ca_session_id or "").strip())`
+  2. If bundle is None: return `[]`.
+  3. Return `sorted(bundle.keys())` (keys are already normalized posix paths).
+
+  ### `def resolve_session_for_command(ca_session_id: str, file_path: Optional[str]) -> EditSession`
+  Docstring: "Resolve EditSession for workflow commands; enforce file_path when N>1."
+
+  Algorithm:
+  1. Call `get_session(ca_session_id, file_path=file_path)`.
+  2. On `ValueError` with message exactly `"SESSION_FILE_PATH_REQUIRED"`: re-raise same.
+  3. On other `ValueError`: re-raise unchanged.
+  4. Return session.
+
+  (Thin wrapper — keeps one import site for edit/write/close AS.)
+
+  ### `def build_multi_file_bundle_payload(ca_session_id: str) -> Dict[str, Any]`
+  Docstring: "Build multi_file_bundle object for universal_file_open success (C-006)."
+
+  Algorithm:
+  1. `sid = str(ca_session_id or "").strip()`
+  2. `bundle = _session_bundles.get(sid)`
+  3. If bundle is None or empty: return
+     `{"session_id": sid, "open_file_count": 0, "files": []}`.
+  4. Build `files: List[Dict[str, Any]]` by iterating `sorted(bundle.items())`:
+     for each `(norm_path, session)` append dict:
+     ```python
+     {
+         "file_path": session.file_path,
+         "project_id": session.project_id,
+         "origin_path": str(
+             session.workspace_origin_path
+             if session.workspace_origin_path is not None
+             else session.abs_path
+         ),
+         "draft_path": str(session.draft_path),
+         "edit_subdir": str(
+             session.workspace_edit_subdir
+             if session.workspace_edit_subdir is not None
+             else session.core.session_dir
+         ),
+     }
+     ```
+  5. Return `{"session_id": sid, "open_file_count": len(files), "files": files}`.
+
+  ## create_session changes
+
+  - Pass `workspace_origin_path=workspace_origin_path` and
+    `workspace_edit_subdir=workspace_edit_subdir` into `EditSession(...)` constructor
+    (dataclass fields), not via `__dict__`.
+
+  ## Error handling
+
+  - `build_multi_file_bundle_payload`: never raises; empty bundle → zero count.
+  - `resolve_session_for_command`: propagates `ValueError` from `get_session`.
+  - `bundle_file_count` / `list_bundle_file_paths`: never raise for unknown session_id.
+
+  ## Edge cases
+
+  - Single-file bundle: `build_multi_file_bundle_payload` returns `open_file_count: 1`.
+  - `workspace_origin_path` None → fall back to `session.abs_path` in payload.
+  - `workspace_edit_subdir` None → fall back to `session.core.session_dir`.
+
+  ## Forbidden
+
+  - Do NOT reintroduce `uuid` or auto-generated session ids (T-001 owns registry).
+  - Do NOT change `get_session` / `release_session` disambiguation rules.
+  - Do NOT modify open/edit/write/close command modules in this AS.
+  - Do NOT add methods not listed above.
+
+  ## MRS
+
+  C-004: one ca_session_id, many File Subtrees; C-006: per-file origin/edit paths;
+  C-005: shared session_dir across files in bundle.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/session.py
+  flake8 ai_editor/commands/universal_file_edit/session.py
+  mypy ai_editor/commands/universal_file_edit/session.py
+  python -c "from ai_editor.commands.universal_file_edit.session import bundle_file_count, bundle_has_multiple_files, list_bundle_file_paths, resolve_session_for_command, build_multi_file_bundle_payload; print('helper imports ok')"
+  pytest tests/ -q --tb=no -x
+  ```
+
+  Expected: black/flake8/mypy clean on target file; helper symbols import without error
+  (`helper imports ok`); existing test suite passes (dedicated bundle unit tests are out of scope for this step).
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/session.py
+  expected: >
+    bundle_file_count, bundle_has_multiple_files, list_bundle_file_paths,
+    resolve_session_for_command, and build_multi_file_bundle_payload defined as
+    module-level functions importable from the module; EditSession dataclass includes
+    workspace_origin_path and workspace_edit_subdir optional fields; create_session
+    assigns those fields via constructor (no __dict__ hack); black, flake8, and mypy
+    exit 0 on the target file.
+status: draft

@@ -1,0 +1,61 @@
+step_id: G-010
+name: Приёмка и тесты
+description: >
+  Доменная верификация критериев приёмки продукта C-022 Product Acceptance Criteria
+  (source_spec {2a8s}): полный чеклист готовности thin AI Editor Server после
+  реализации плана. Каждый критерий проверяется на уровне продуктового поведения:
+
+  (1) Editor Session Directory layout — все артефакты сессии только под
+  workspace_root/session_id;
+
+  (2) Open Stage — загрузка с Upstream Client и создание Edit Subdirectory;
+
+  (3) Write Stage — без изменений no-op без вызова СА; с изменениями upload и
+  синхронизация Origin Snapshot;
+
+  (4) Close Stage — снятие блокировки на СА и удаление поддерева файла;
+
+  (5) конкуренция блокировок между CA sessions — вторая сессия не может открыть
+  тот же файл, пока первая держит блокировку;
+
+  (6) MCP Workflow Surface help — без дублирующих семейств команд.
+
+  Исход G-010: подтверждённое прохождение полного чеклиста C-022.
+concepts:
+- C-001
+- C-004
+- C-005
+- C-006
+- C-008
+- C-009
+- C-010
+- C-011
+- C-012
+- C-013
+- C-015
+- C-016
+- C-019
+- C-020
+- C-022
+relations:
+- from_concept: C-001
+  to_concept: C-009
+  type: implements
+- from_concept: C-022
+  to_concept: C-009
+  type: consumes
+source_ranges:
+- start: 91
+  end: 91
+depends_on:
+- G-005
+- G-006
+- G-007
+- G-008
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+status: ready_for_review

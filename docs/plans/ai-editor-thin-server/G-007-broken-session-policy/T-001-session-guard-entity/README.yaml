@@ -1,0 +1,27 @@
+step_id: T-001
+parent_global_step: G-007
+name: Session guard сущность
+description: 'Создать сущность Session Guard: обёртка над Session Validation (C-014) с политикой Broken Session (C-015) — классификация операции как обычной или завершающей (write, close). Единая точка вызова из universal_file_*.
+
+  '
+concepts:
+- C-001
+- C-014
+- C-015
+- C-017
+- C-024
+- C-004
+inputs:
+- name: operation_kind
+  type: enum
+  description: open, edit, preview, write, close.
+- name: ca_session_id
+  type: string
+  description: Сессия для проверки.
+outputs:
+- name: guard_decision
+  type: enum
+  description: allow, reject, allow_terminating.
+atomic_steps:
+- A-001
+status: ready_for_review

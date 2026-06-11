@@ -1,0 +1,138 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: JSON tolerant SourceParser module
+target_file: ai_editor/core/tree_temp/json_source_parser.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-004
+- C-005
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/tree_temp/json_source_parser.py
+
+  Prerequisite (must exist before this file can be imported or type-checked): module
+  ai_editor.core.tree_temp.tree_node defines dataclass TreeNode (C-001) per G-001 T-001.
+  Do not define TreeNode in this file.
+
+  MRS excerpts:
+  C-001 TreeNode fields: stable_id (UUID v4 string); type one of object|array|string|number|boolean|null;
+  key (string, object members only); value (scalar on string|number|boolean|null); children (ordered
+  list on object|array); comment_before (optional string); comment_inline (optional string).
+  C-004 CommentOwnershipRule: same-line trailing comment -> comment_inline on that node's TreeNode;
+  comment on its own line above the next structural or scalar element -> comment_before on that following
+  node; comment above the document's first root construct -> comment_before on the first root node.
+  Comment text stored as plain string including delimiters (e.g. "// x" or "/* y */" for JSON).
+  C-005 SourceParser JSON: tolerant; accepts // line comments and /* */ block comments in addition to standard JSON grammar.
+
+  Root list output shape (matches source_spec): if the JSON root is an object, return a list containing
+  exactly one TreeNode with type=="object". If the root is an array, return the ordered list of TreeNode
+  for each array element (no wrapper object node). If the root is a scalar, return a list containing one
+  scalar TreeNode.
+
+  Module docstring (exact):
+  """
+  Tolerant JSON SourceParser: text to TreeNode forest with comment fields (C-005, C-004).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  Imports (exact list, in this order):
+  from __future__ import annotations
+  import uuid
+  from dataclasses import dataclass
+  from typing import Any, List, Optional, Tuple
+
+  from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  Also define a private small @dataclass _Span(start: int, end: int) only if needed for lexer bookkeeping;
+  if unused, omit _Span. Do not export _Span from this module.
+
+  Public API (exact signatures and docstrings):
+  def parse_json_source(source_text: str) -> List[TreeNode]:
+      """Parse UTF-8 tolerant JSON text into root-level TreeNode list (C-005).
+
+      Raises:
+          ValueError: with message starting \"Invalid tolerant JSON:\" when the grammar cannot be parsed.
+      """
+
+  Forbidden:
+  - Do not read or write Sidecar, EditSession, or universal_file_* layers.
+  - Do not add dependencies beyond stdlib.
+  - Do not use json.loads on raw source_text without first handling comments in a way that preserves
+    CommentOwnershipRule; stdlib json may be used only on a comment-free extraction if you first build
+    an equivalent token stream that still lets you attach comments per C-004.
+  - File must not exceed 400 lines; split logic into private functions inside this single file if needed.
+
+  Implementation requirements (single deterministic approach — follow in order):
+
+  1. Treat source_text as Unicode string; all indices are 0-based character indices into source_text.
+
+  2. Implement class _Lexer with __init__(self, s: str), fields: s, n=len(s), i=0, line_begin=0.
+     Methods: def _peek(self) -> str; def _eof(self) -> bool; def _advance(self) -> None;
+     def _skip_ws(self) -> None skipping spaces, \\t, \\r, \\n and updating line_begin to index after
+     the last newline crossed when relevant for tracking \"start of line\" for comment placement;
+     def _read_line_comment(self) -> Tuple[int, int] returning (start, end) slice indices inclusive start
+     exclusive end of full \"// ... \" through newline or EOF; def _read_block_comment(self) -> Tuple[int, int]
+     for /* ... */ including delimiters; on unclosed block raise ValueError(\"Invalid tolerant JSON: unclosed block comment\").
+
+  3. Implement helper def _comment_text(span: Tuple[int, int]) -> str returning source_text[start:end].
+
+  4. Parsing strategy: recursive descent on JSON values after _skip_ws. Maintain pending_before:
+     Optional[str], initially None. When _skip_ws encounters // or /* at a position that is the first
+     non whitespace on the current line (after any newline since last value), read that comment, decode
+     text via _comment_text, then: if pending_before is None set pending_before to that text else
+     append using a single newline \\n between consecutive before-comments. Continue skipping until a value
+     starts or EOF. When about to create any TreeNode for a value, if pending_before is not None set
+     node.comment_before = pending_before and clear pending_before to None.
+
+  5. Inline comments: immediately after fully parsing a value (number, string, bool, null, or closing
+     delimiter of object/array **for a leaf** — for object/array containers, inline comments belong to
+     the **closing** position rules below), remain on the same line: call helper that consumes horizontal
+     whitespace only (no newlines), then if // or /* starts on same line capture comment slice and set
+     that value node's comment_inline to _comment_text (overwrite not expected). For object/array nodes,
+     apply inline comment rule to the closing '}' or ']' token: after reading '}' or ']' that ends the
+     container, scan horizontal whitespace on same line only and attach inline comment to that container node.
+
+  6. Numbers, strings, true, false, null: follow JSON lexical rules (RFC 8259) except comments allowed
+     where _skip_ws allows. Strings support Unicode and JSON escapes.
+
+  7. Objects: after '{', read string keys and values; assign each member TreeNode.key to the key string;
+     type is object; children ordered as key order in source.
+
+  8. Arrays: after '[', each element is a child TreeNode in order under a parent TreeNode with type array
+     when parsing nested arrays; the document root array case is handled in edge cases without an extra wrapper node.
+
+  9. Each new TreeNode: stable_id = str(uuid.uuid4()); set value only for scalar types; children only for
+     object/array; key None for non-object-member nodes; for object members key is the string key.
+
+  10. Top-of-file comments before first value: handled by pending_before on the first root node(s): for
+      root array, comment_before attaches to first element node; for root object, to the object node;
+      for root scalar, to that scalar node.
+
+  11. After parsing completes, _skip_ws to EOF; if pending_before is not None and no node consumed it,
+      raise ValueError(\"Invalid tolerant JSON: trailing comment without following value\").
+
+  Edge cases:
+  - Empty source after ws -> ValueError(\"Invalid tolerant JSON: empty document\").
+  - Root object with zero pairs {}: return a list with exactly one TreeNode type object with empty children.
+  - Root array with N elements: return a list of N element TreeNodes in order (no wrapper array TreeNode).
+  - Root array with zero elements []: return an empty list [] (no TreeNodes).
+  - Root scalar: return a list with one scalar TreeNode.
+  Implement: detect JSON root kind after ws/comments; build return list per the four bullets above.
+
+  12. ValueError messages for structural errors must start with prefix \"Invalid tolerant JSON:\" for consistency.
+
+  Validation after implementation (run from repo root with .venv active):
+  - black ai_editor/core/tree_temp/json_source_parser.py  → reformatted or unchanged
+  - flake8 ai_editor/core/tree_temp/json_source_parser.py → exit 0
+  - mypy ai_editor/core/tree_temp/json_source_parser.py → Success when TreeNode import resolves
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/json_source_parser.py
+  expected: Black and flake8 pass; mypy passes once G-001 TreeNode exists; module defines parse_json_source
+    with the documented contract; file length at most 400 lines.
+status: done

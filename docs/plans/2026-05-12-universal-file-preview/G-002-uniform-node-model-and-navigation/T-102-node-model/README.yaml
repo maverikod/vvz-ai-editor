@@ -1,0 +1,38 @@
+step_id: T-102
+parent_global_step: G-002
+name: Node model — NodeKind and Block
+status: frozen
+concepts:
+- C-003
+- C-004
+- C-005
+description: "Define NodeKind (C-004) as the complete closed enumeration of node classifications,\
+  \ and Block (C-005) as the self-contained unit of a focus node's ordered block set.\n\
+  NodeKind values (closed set — exactly five): - scalar: leaf node carrying a single\
+  \ value; block set is always empty. - lines: node whose block set is an ordered\
+  \ sequence of text lines;\n  each child line is itself a scalar.\n- mapping: node\
+  \ whose block set is an ordered sequence of key-value\n  pairs; each pair is a single\
+  \ self-contained block carrying both the\n  key and the value; rendering a mapping\
+  \ block never requires the\n  parent context.\n- sequence: node whose block set\
+  \ is an ordered sequence of elements\n  of arbitrary NodeKind.\n- tree_node: node\
+  \ that has both named attributes and an ordered child\n  set; examples include CST\
+  \ FunctionDef and ClassDef. Attributes are\n  a compact key-value map (e.g. params,\
+  \ returns).\n\nNodeKind is intrinsic to the node itself; it does not depend on the\
+  \ parent node or on the file type.\nBlock properties: - A Block is exactly one element\
+  \ of a focus node's ordered block set. - A Block carries its own NodeKind, its own\
+  \ block set (which may be\n  empty or non-empty), and its own node identifier.\n\
+  - A Block is self-contained: a BlockHandler rendering it needs no\n  information\
+  \ about the parent focus node.\n- For a mapping focus node, each Block is one complete\
+  \ key-value pair;\n  key and value travel together as a single unit.\n"
+inputs:
+- name: raw_node
+  type: file-handler-produced node
+  description: A node produced lazily by a FileHandler (C-003) when the NavigationProcedure
+    requests the children of a focus node.
+outputs:
+- name: classified_node
+  type: node with NodeKind (C-004) assigned
+  description: The same node with its NodeKind determined and its block set available
+    for enumeration by the NavigationProcedure.
+atomic_steps:
+- A-001

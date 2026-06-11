@@ -1,0 +1,477 @@
+meta:
+  plan_name: universal_file_preview
+  source_spec: source_spec.md
+  status: done
+concepts:
+- concept_id: C-001
+  name: PreviewCommand
+  definition: 'Single MCP command exposing a uniform schema for previewing a project
+    file.
+
+    '
+  properties:
+  - one MCP command name visible to callers
+  - input schema is fixed and validates statically
+  - response envelope is uniform across all file types and node kinds
+  - 'read-only: writes nothing to files, database, or external tree sessions'
+  source_ranges:
+  - start: 5
+    end: 12
+  - start: 14
+    end: 22
+- concept_id: C-002
+  name: HandlerDispatcher
+  definition: 'Internal router that selects a file handler for the file based on extension.
+
+    '
+  properties:
+  - dispatch key is file extension
+  - one extension maps to exactly one file handler
+  - 'file handlers are pluggable: adding one does not change the public schema'
+  source_ranges:
+  - start: 26
+    end: 31
+- concept_id: C-003
+  name: FileHandler
+  definition: 'Component that opens one family of files and produces the uniform in-memory
+    node representation. Does not implement navigation.
+
+    '
+  properties:
+  - has a static set of supported extensions
+  - produces a root Node when opening a file
+  - resolves node_ref values in its native identifier format to a Node
+  - produces children of any Node lazily on demand
+  source_ranges:
+  - start: 26
+    end: 31
+  - start: 65
+    end: 70
+- concept_id: C-004
+  name: NodeKind
+  definition: 'Classification of any node in the uniform representation. One of: scalar,
+    lines, mapping, sequence, tree_node.
+
+    '
+  properties:
+  - 'scalar: leaf value, empty block set'
+  - 'lines: ordered children, each is a line of text'
+  - 'mapping: ordered key-value pairs, each pair is one self-contained block'
+  - 'sequence: ordered indexed elements of arbitrary kind'
+  - 'tree_node: ordered children plus named attributes (e.g. CST FunctionDef)'
+  - the kind is intrinsic to the node, not to the parent or to the file type
+  source_ranges:
+  - start: 51
+    end: 59
+- concept_id: C-005
+  name: Block
+  definition: 'Self-contained unit of a focus node''s ordered block set. Addressed
+    by the selector and rendered by a block handler.
+
+    '
+  properties:
+  - one element of a focus node's ordered block set
+  - carries its own node kind, block set, and identifier
+  - 'self-contained: a block handler needs no parent context to render it'
+  - for mapping focus, a block is one key-value pair as a single unit
+  source_ranges:
+  - start: 72
+    end: 81
+- concept_id: C-006
+  name: NavigationProcedure
+  definition: 'The single three-phase procedure the command executes on every request:
+    enumerate the focus node''s blocks, select a subset via the selector, render each
+    selected block via its block handler.
+
+    '
+  properties:
+  - one procedure shared by all node kinds and all file types
+  - operates on one focus Node per request
+  - phase 1 produces the focus node's ordered block set
+  - phase 2 applies the selector to that block set
+  - phase 3 renders each selected block via its block handler
+  - 'recursive: drilling into a block issues a new request with that block''s node_ref'
+  source_ranges:
+  - start: 32
+    end: 47
+- concept_id: C-007
+  name: Selector
+  definition: 'Caller-supplied parameter that picks a subset of the focus node''s
+    block set. One parameter, three forms decided by value type and shape.
+
+    '
+  properties:
+  - 'form A: string with '':'' or leading ''-'' is a slice (zero-based half-open)'
+  - 'form B: list of integers is an explicit list of block indices'
+  - 'form C: list of strings is an explicit list of block node identifiers'
+  - mixed lists rejected as input error
+  - duplicates in list rejected as input error
+  - out-of-range index or unknown identifier rejected as input error
+  - selector on empty block set rejected as input error
+  - when omitted, returns first preview_lines blocks in natural order
+  source_ranges:
+  - start: 83
+    end: 121
+- concept_id: C-008
+  name: BlockHandler
+  definition: 'Rendering rule that turns a Block into a compact summary. The block
+    handler is chosen by the block''s own NodeKind. Five rules exist, one per node
+    kind. Closed set under this plan.
+
+    '
+  properties:
+  - 'scalar handler: truncated value'
+  - 'lines handler: count + first line truncated'
+  - 'sequence handler: length + coarse element-kind summary'
+  - 'mapping handler: key count + truncated key name list'
+  - 'tree_node handler: type, name, attributes, child count'
+  - never includes the block's own children content
+  - chosen by the block's own NodeKind, not by parent kind
+  source_ranges:
+  - start: 123
+    end: 142
+- concept_id: C-009
+  name: StableIdentifier
+  definition: 'Identifier of a node inside a tree-structured file. Reused from the
+    project''s existing tree infrastructure; not invented by this command.
+
+    '
+  properties:
+  - 'Python: stable_id UUID from cst_load_file outline_nodes'
+  - 'JSON: node_id from list_json_blocks, or JSON pointer'
+  - 'YAML: reused from project YAML tree infra when present, else JSON-pointer-style
+    path'
+  - 'lines and JSONL roots: child addressed by zero-based index, no separate identifier
+    scheme'
+  - identifier scheme is per-file-handler; format is opaque to the dispatcher
+  source_ranges:
+  - start: 144
+    end: 169
+- concept_id: C-010
+  name: NodeReference
+  definition: 'Optional caller-supplied parameter that focuses the preview on a specific
+    Node identified by a StableIdentifier.
+
+    '
+  properties:
+  - optional in the request
+  - default focus is the file root
+  - value is a StableIdentifier in the file handler's native format
+  source_ranges:
+  - start: 171
+    end: 173
+- concept_id: C-011
+  name: TreeSession
+  definition: 'In-memory parsed tree of a file identified by a tree_id, owned either
+    by the caller (via cst_load_file or json_load_file) or transiently by this command.
+
+    '
+  properties:
+  - identified by tree_id (UUID)
+  - owned either externally or internally
+  - command never closes a session it did not create
+  - command never invalidates a session it did not create
+  source_ranges:
+  - start: 175
+    end: 190
+- concept_id: C-012
+  name: ResponseEnvelope
+  definition: 'Uniform top-level shape of every successful preview response. One shape
+    for all NodeKind values and all selector forms.
+
+    '
+  properties:
+  - 'reports focus Node: node_kind, node_ref, type, name, attributes'
+  - reports the selector applied (echoed back in normalised form) or null
+  - reports total size of focus block set
+  - reports the selected blocks; order follows selector
+  - each reported block carries its own node_ref
+  - when relevant, reports tree_id for reuse
+  source_ranges:
+  - start: 192
+    end: 211
+- concept_id: C-013
+  name: PreviewBudget
+  definition: 'Caps that bound the size of one response, independent of selector.
+
+    '
+  properties:
+  - 'preview_lines: cap when selector is omitted'
+  - 'value_preview_len: cap on a single scalar value or name shown inline'
+  - overflow to file is delegated to the read-only batch mechanism
+  source_ranges:
+  - start: 213
+    end: 227
+- concept_id: C-014
+  name: ErrorClassification
+  definition: 'Distinction between input errors, file-structure errors, and file-handler-internal
+    errors, each with a deterministic error code class.
+
+    '
+  properties:
+  - 'input errors: malformed selector, mixed list, duplicates, out-of-range, unknown
+    id, selector on empty set, unknown extension, unknown node_ref, conflicting parameters'
+  - 'file-structure errors: parse failure with parser name and line range'
+  - 'file-handler-internal errors: code names the file handler'
+  - no silent fallback to a different file type
+  source_ranges:
+  - start: 229
+    end: 246
+- concept_id: C-015
+  name: ReadOnlyBatchIntegration
+  definition: 'Inclusion of the command name in the read-only batch whitelist so the
+    command is invocable inside read_only_batch.
+
+    '
+  properties:
+  - 'whitelist file: ai_editor/commands/read_only_batch_whitelist.py'
+  - 'whitelist constant: READ_ONLY_BATCH_WHITELIST (frozenset of strings)'
+  - inclusion is a separate step performed only after command tests are green
+  source_ranges:
+  - start: 19
+    end: 22
+  - start: 262
+    end: 272
+- concept_id: C-016
+  name: PythonFileHandler
+  definition: 'File handler for .py, .pyi, .pyw files. Produces a tree_node root (Module).
+    Identifier source is cst_load_file.
+
+    '
+  properties:
+  - 'supported extensions: .py, .pyi, .pyw'
+  - 'root NodeKind: tree_node (Module)'
+  - interior nodes are tree_node, sequence, or scalar depending on CST
+  - 'identifier source: cst_load_file outline_nodes stable_id'
+  source_ranges:
+  - start: 150
+    end: 156
+- concept_id: C-017
+  name: TextFileHandler
+  definition: 'File handler for .md, .txt, .rst, .adoc files. Produces a lines root.
+
+    '
+  properties:
+  - 'supported extensions: .md, .txt, .rst, .adoc'
+  - 'root NodeKind: lines'
+  - children are scalar lines
+  - node_ref values are zero-based line indices
+  source_ranges:
+  - start: 163
+    end: 167
+- concept_id: C-018
+  name: JsonFileHandler
+  definition: 'File handler for .json files. Root NodeKind depends on the document
+    type.
+
+    '
+  properties:
+  - 'supported extensions: .json'
+  - 'root NodeKind: mapping, sequence, or scalar'
+  - 'identifier source: list_json_blocks (node_id or JSON pointer)'
+  source_ranges:
+  - start: 158
+    end: 161
+- concept_id: C-019
+  name: JsonLinesFileHandler
+  definition: 'File handler for .jsonl, .ndjson files. Root is a lines node; the follow-up
+    request on a single line parses it as its own JSON root.
+
+    '
+  properties:
+  - 'supported extensions: .jsonl, .ndjson'
+  - 'root NodeKind: lines'
+  - selector on root selects line indices
+  - drilling into a line parses that line as JSON
+  source_ranges:
+  - start: 163
+    end: 167
+- concept_id: C-020
+  name: YamlFileHandler
+  definition: 'File handler for .yaml, .yml files. Root NodeKind depends on the document
+    type.
+
+    '
+  properties:
+  - 'supported extensions: .yaml, .yml'
+  - 'root NodeKind: mapping, sequence, or scalar'
+  - 'identifier source: reused from project YAML infra when present, else JSON-pointer-style
+    path'
+  source_ranges:
+  - start: 163
+    end: 167
+- concept_id: C-021
+  name: ScopeBoundary
+  definition: 'Explicit set of behaviours that the command does NOT perform, used
+    as negative invariants during review.
+
+    '
+  properties:
+  - no writes to files, db, or external tree sessions
+  - no raw file bytes in response
+  - no globs in file_path; exactly one file per call
+  - XML and HTML are out of scope
+  source_ranges:
+  - start: 248
+    end: 260
+- concept_id: C-022
+  name: PythonNodeRenderer
+  definition: Component that renders a CSTTree node into a structured text block suitable
+    for direct AI model consumption, following the rules in source_spec sections 15
+    and 16.
+  properties:
+  - 'renders Module as: docstring + top-level entities (imports, constants, classes,
+    functions) each prefixed with stable_id and line range'
+  - 'renders ClassDef as: class signature + docstring + method signatures + method
+    docstrings'
+  - 'renders FunctionDef/AsyncFunctionDef as: signature + docstring + first-level
+    body (compound stmts collapsed to first line + stable_id + range + ...)'
+  - 'renders compound stmts (If/For/While/Try/With/Match) as focus: first line + stable_id
+    + range + first-level body with same collapse rule'
+  - output placed in text field of block summary
+  - when text is present, it takes precedence over generic type/name/attributes/child_count
+    fields
+  source_ranges:
+  - start: 259
+    end: 295
+- concept_id: C-023
+  name: FullTextThreshold
+  definition: A numeric budget cap that triggers full-file text fallback in the Python
+    handler when the file line count is below the threshold.
+  properties:
+  - 'parameter name: full_text_max_lines'
+  - 'default value: 200 lines'
+  - 'when file lines < full_text_max_lines: return entire file source as single text
+    block'
+  - 'when value is 0: full-text fallback disabled'
+  - part of PreviewBudget alongside preview_lines and value_preview_len
+  source_ranges:
+  - start: 296
+    end: 307
+relations:
+- from_concept: C-001
+  to_concept: C-002
+  type: owns
+- from_concept: C-002
+  to_concept: C-003
+  type: uses
+- from_concept: C-001
+  to_concept: C-006
+  type: owns
+- from_concept: C-006
+  to_concept: C-005
+  type: produces
+- from_concept: C-006
+  to_concept: C-007
+  type: consumes
+- from_concept: C-006
+  to_concept: C-008
+  type: uses
+- from_concept: C-006
+  to_concept: C-012
+  type: produces
+- from_concept: C-005
+  to_concept: C-004
+  type: depends_on
+- from_concept: C-008
+  to_concept: C-004
+  type: depends_on
+- from_concept: C-001
+  to_concept: C-007
+  type: consumes
+- from_concept: C-010
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-006
+  to_concept: C-010
+  type: consumes
+- from_concept: C-001
+  to_concept: C-010
+  type: consumes
+- from_concept: C-006
+  to_concept: C-011
+  type: uses
+- from_concept: C-001
+  to_concept: C-011
+  type: uses
+- from_concept: C-001
+  to_concept: C-012
+  type: produces
+- from_concept: C-001
+  to_concept: C-013
+  type: consumes
+- from_concept: C-006
+  to_concept: C-013
+  type: consumes
+- from_concept: C-001
+  to_concept: C-014
+  type: produces
+- from_concept: C-003
+  to_concept: C-014
+  type: produces
+- from_concept: C-006
+  to_concept: C-014
+  type: produces
+- from_concept: C-016
+  to_concept: C-003
+  type: extends
+- from_concept: C-017
+  to_concept: C-003
+  type: extends
+- from_concept: C-018
+  to_concept: C-003
+  type: extends
+- from_concept: C-019
+  to_concept: C-003
+  type: extends
+- from_concept: C-020
+  to_concept: C-003
+  type: extends
+- from_concept: C-016
+  to_concept: C-004
+  type: produces
+- from_concept: C-017
+  to_concept: C-004
+  type: produces
+- from_concept: C-018
+  to_concept: C-004
+  type: produces
+- from_concept: C-019
+  to_concept: C-004
+  type: produces
+- from_concept: C-020
+  to_concept: C-004
+  type: produces
+- from_concept: C-016
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-018
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-020
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-015
+  to_concept: C-001
+  type: depends_on
+- from_concept: C-001
+  to_concept: C-021
+  type: implements
+- from_concept: C-022
+  to_concept: C-016
+  type: extends
+- from_concept: C-022
+  to_concept: C-003
+  type: uses
+- from_concept: C-022
+  to_concept: C-008
+  type: implements
+- from_concept: C-016
+  to_concept: C-022
+  type: uses
+- from_concept: C-023
+  to_concept: C-013
+  type: extends
+- from_concept: C-016
+  to_concept: C-023
+  type: consumes

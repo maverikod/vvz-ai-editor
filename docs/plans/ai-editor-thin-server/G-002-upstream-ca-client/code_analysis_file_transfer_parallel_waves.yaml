@@ -1,0 +1,34 @@
+# Parallel execution waves for ai_editor/core/upstream/code_analysis_file_transfer.py
+# Client AS (code_analysis_client.py) owned separately; run after corresponding transfer wave.
+target_file: ai_editor/core/upstream/code_analysis_file_transfer.py
+waves:
+  - wave: 1
+    serial: true
+    steps:
+      - G-002/T-003/A-002
+  - wave: 2
+    serial: true
+    depends_on_wave: 1
+    steps:
+      - G-002/T-003/A-003
+  - wave: 3
+    serial: true
+    depends_on_wave: 2
+    steps:
+      - G-002/T-005/A-002
+  - wave: 4
+    serial: true
+    depends_on_wave: 3
+    steps:
+      - G-002/T-006/A-002
+  - wave: 5
+    serial: true
+    depends_on_wave: 4
+    steps:
+      - G-002/T-007/A-002
+  - wave: 6
+    serial: true
+    depends_on_wave: 5
+    steps:
+      - G-002/T-007/A-001
+    note: Client upload_create_and_lock; depends on T-007/A-002 transfer helper (priority 2 after A-002 priority 1).

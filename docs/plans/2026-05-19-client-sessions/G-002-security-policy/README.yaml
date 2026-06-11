@@ -1,0 +1,36 @@
+concepts:
+- C-009
+- C-006
+- C-007
+- C-008
+depends_on:
+- G-001
+description: 'Define the SecurityPolicy domain: the three-mode access control policy
+  (disabled, allowlist, denylist), the SessionListVisibilityPolicy (show_session_ids
+  flag), and their evaluation against Role and RolePermission. This step covers the
+  SecurityPolicy and SessionListVisibilityPolicy config schema — validation rules
+  and generator defaults. Command-level enforcement of these policies is a concern
+  of the MCP command layer.'
+name: Security Policy
+relations:
+- from_concept: C-009
+  to_concept: C-007
+  type: uses
+- from_concept: C-009
+  to_concept: C-008
+  type: uses
+- from_concept: C-006
+  to_concept: C-009
+  type: depends_on
+source_ranges:
+- end: 153
+  start: 144
+- end: 175
+  start: 155
+- end: 215
+  start: 195
+status: done
+step_id: G-002
+tactical_steps:
+- T-001
+- T-002

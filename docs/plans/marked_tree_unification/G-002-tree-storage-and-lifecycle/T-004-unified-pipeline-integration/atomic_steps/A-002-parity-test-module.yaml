@@ -1,0 +1,137 @@
+step_id: A-002
+parent_tactical_step: T-004
+name: Add unified-vs-legacy parity pytest module
+target_file: tests/tree_pipeline_parity/test_unified_vs_legacy.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-011
+- C-007
+- C-010
+- C-003
+- C-024
+- C-025
+status: ready_for_review
+prompt: |
+  Create `tests/tree_pipeline_parity/test_unified_vs_legacy.py` only.
+  Operation: create_file.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml`
+
+  ## Locked model
+  - Unified path: TreeBuilder.build → three-section file (CHECKSUMS, MAP with next_free, TREE with short_id only).
+  - Legacy oracle: recreate_tree_from_content + TreeFormatKind (unchanged).
+  - Strategy new-alongside-old: parity failure → xfail/skip, never delete legacy.
+  - One test file only; inline fixture strings; tmp_path for writes.
+
+  ## Module docstring (exact)
+  """
+  Unified-vs-legacy tree pipeline parity tests.
+
+  Compares TreeBuilder.build (HandlerRegistry path) against recreate_tree_from_content
+  (legacy oracle). Asserts three-section layout for unified output.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact)
+  ```python
+  from __future__ import annotations
+
+  import re
+  from pathlib import Path
+
+  import pytest
+
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+  from ai_editor.core.tree_lifecycle.checksum import (
+      compute_content_checksum,
+      recreate_tree_from_content,
+  )
+  from ai_editor.core.search_session.tree_representation import (
+      TreeFormatKind,
+      classify_tree_format,
+  )
+  from ai_editor.core.tree_lifecycle.node_id_map import (
+      SECTION_CHECKSUMS_START,
+      SECTION_MAP_START,
+      SECTION_TREE_START,
+      parse_tree_file,
+  )
+  from ai_editor.tree.handler_registry import default_registry
+  ```
+
+  ## Constants (inline fixtures)
+  ```python
+  SAMPLE_TXT = "hello\nworld\n"
+  SAMPLE_MD = "# Title\n\nparagraph\n"
+  SAMPLE_YAML = "key: value\n"
+  SAMPLE_JSON = '{"a": 1}\n'
+  SAMPLE_PY = "def foo():\n    return 1\n"
+
+  FIXTURES: dict[str, str] = {
+      "sample.txt": SAMPLE_TXT,
+      "sample.md": SAMPLE_MD,
+      "sample.yaml": SAMPLE_YAML,
+      "sample.json": SAMPLE_JSON,
+      "sample.py": SAMPLE_PY,
+  }
+  ```
+
+  ## Helper `_roundtrip_unified(tmp_path, name, content) -> str`
+  1. Write source to `tmp_path / name`.
+  2. `source_abs = tmp_path / name`; `checksum = compute_content_checksum(content)`.
+  3. `ref = TreeBuilder.build(content=content, source_abs=source_abs, file_path=name, content_checksum=checksum)`.
+  4. `handler = default_registry().resolve(source_abs)`.
+  5. `text = ref.sidecar_path.read_text(encoding="utf-8")`.
+  6. Return `handler.unmark(text)` — use parse_tree_file to extract TREE section first:
+     `tree_body = parse_tree_file(text).tree`; return `handler.unmark(tree_body)`.
+
+  ## Helper `_assert_three_section_layout(path: Path) -> None`
+  1. `text = path.read_text(encoding="utf-8")`.
+  2. Assert `SECTION_CHECKSUMS_START`, `SECTION_MAP_START`, `SECTION_TREE_START` in text.
+  3. `sections = parse_tree_file(text)`.
+  4. Assert `sections.checksums["source_sha256"]` is 64-char lowercase hex.
+  5. Assert `sections.map.next_free >= 1`.
+  6. Assert all `entry.short_id >= 1` and UUID4 format in MAP only.
+  7. TREE section must NOT match UUID regex: `re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", sections.tree)` is None.
+
+  ## Tests (exact names)
+  - `test_unified_three_section_layout` — parametrize `sample.txt`, `sample.md`, `sample.yaml`, `sample.json`: build, `_assert_three_section_layout(ref.sidecar_path)`.
+  - `test_text_formats_unified_unmark_roundtrip` — parametrize txt/md/yaml/json; assert roundtrip == content.
+  - `test_python_unified_unmark_roundtrip` — sample.py roundtrip.
+  - `test_text_formats_legacy_oracle_unmark_roundtrip` — legacy recreate_tree_from_content + handler.unmark on legacy path output (may xfail if legacy layout differs).
+  - `test_python_node_id_set_parity_documented` — docstring lists covered vs unverified Python node types; assert unified roundtrip on sample.py.
+
+  Python parity docstring text:
+  Covered: FunctionDef, AsyncFunctionDef, ClassDef, SimpleStatementLine, Expr, AnnAssign, Assign, AugAssign, Decorator.
+  Unverified: Import, If, For, While, Try, With.
+
+  ## Forbidden
+  - Do NOT create conftest or other files under tests/tree_pipeline_parity/.
+  - Do NOT modify production modules.
+  - Do NOT delete legacy on failure.
+  - Do NOT reference universal-id.
+
+  ## Validation
+  ```bash
+  black tests/tree_pipeline_parity/test_unified_vs_legacy.py
+  flake8 tests/tree_pipeline_parity/test_unified_vs_legacy.py
+  mypy tests/tree_pipeline_parity/test_unified_vs_legacy.py
+  pytest tests/tree_pipeline_parity/test_unified_vs_legacy.py -v
+  pytest -q
+  ```
+
+  Estimated lines: ~180 (≤400). All tests must pass (xfail allowed for known legacy layout gaps with reason).
+verification:
+  type: pytest
+  target: tests/tree_pipeline_parity/test_unified_vs_legacy.py
+  expected: >
+    Unified tests assert CHECKSUMS/MAP/TREE layout and short_id-only TREE; roundtrip tests pass
+    for text formats; full suite green or documented xfail on legacy-only gaps.

@@ -1,0 +1,126 @@
+#!/bin/bash
+set -e
+
+# shellcheck source=/dev/null
+[ -f /etc/default/ai-editor ] && . /etc/default/ai-editor
+
+AI_EDITOR_USER="${AI_EDITOR_USER:-ai-editor}"
+AI_EDITOR_GROUP="${AI_EDITOR_GROUP:-ai-editor}"
+CONFIG_DIR="${AI_EDITOR_CONFIG_DIR:-/etc/ai-editor}"
+CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"
+LOG_DIR="${AI_EDITOR_LOG_DIR:-/var/log/ai-editor}"
+DATA_DIR="${AI_EDITOR_DATA_DIR:-/var/ai-editor}"
+MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
+DEFAULT_CONFIG="${CONFIG_DIR}/${CONFIG_FILE}"
+SHARE_CONFIG="/usr/share/ai-editor/${CONFIG_FILE}"
+IMAGE_SPEC="/usr/lib/ai-editor/image-spec"
+
+ensure_user() {
+  if ! getent group "$AI_EDITOR_GROUP" >/dev/null 2>&1; then
+    addgroup --system "$AI_EDITOR_GROUP"
+  fi
+  if ! getent passwd "$AI_EDITOR_USER" >/dev/null 2>&1; then
+    adduser --system --ingroup "$AI_EDITOR_GROUP" --home /var/lib/ai-editor \
+      --no-create-home --disabled-login --disabled-password "$AI_EDITOR_USER"
+  fi
+}
+
+ensure_dirs() {
+  install -d -o root -g root -m 755 "$CONFIG_DIR"
+  install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 "$LOG_DIR"
+  install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 "$DATA_DIR"
+  install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 \
+    "${DATA_DIR}/editor_workspaces" "${DATA_DIR}/versions"
+  install -d -o root -g root -m 755 "$MTLS_DIR"
+  install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 /var/lib/ai-editor
+
+  if [ ! -f "$DEFAULT_CONFIG" ] && [ -f "$SHARE_CONFIG" ]; then
+    install -o root -g root -m 644 "$SHARE_CONFIG" "$DEFAULT_CONFIG"
+  elif [ -f "$DEFAULT_CONFIG" ]; then
+    chown root:root "$DEFAULT_CONFIG"
+    chmod 644 "$DEFAULT_CONFIG"
+  fi
+}
+
+ensure_docker_ready() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "[ai-editor-docker] docker CLI not found (install docker.io or docker-ce)" >&2
+    return 1
+  fi
+  if ! systemctl is-active --quiet docker 2>/dev/null; then
+    echo "[ai-editor-docker] Starting docker.service ..."
+    systemctl start docker
+  fi
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if docker info >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "[ai-editor-docker] Docker daemon is not ready" >&2
+  return 1
+}
+
+pull_image() {
+  if [ ! -f "$IMAGE_SPEC" ]; then
+    echo "[ai-editor-docker] image-spec missing: $IMAGE_SPEC" >&2
+    return 1
+  fi
+  # shellcheck source=/dev/null
+  . "$IMAGE_SPEC"
+  if [ -z "${DOCKERHUB_REPO:-}" ] || [ -z "${IMAGE_TAG:-}" ]; then
+    echo "[ai-editor-docker] DOCKERHUB_REPO/IMAGE_TAG not set in $IMAGE_SPEC" >&2
+    return 1
+  fi
+  ensure_docker_ready
+  local image_ref="${DOCKERHUB_REPO}:${IMAGE_TAG}"
+  echo "[ai-editor-docker] Pulling ${image_ref} ..."
+  if ! docker pull "$image_ref"; then
+    echo "[ai-editor-docker] docker pull failed for ${image_ref}" >&2
+    echo "[ai-editor-docker] If the repository is private, run: docker login" >&2
+    return 1
+  fi
+  if ! docker image inspect "$image_ref" >/dev/null 2>&1; then
+    echo "[ai-editor-docker] Image not present after pull: ${image_ref}" >&2
+    return 1
+  fi
+  echo "[ai-editor-docker] Image ready: ${image_ref}"
+}
+
+show_host_info() {
+  if command -v ai-editor-info >/dev/null 2>&1; then
+    ai-editor-info || true
+  fi
+}
+
+update_documentation_index() {
+  if command -v mandb >/dev/null 2>&1; then
+    mandb -q /usr/share/man 2>/dev/null || true
+  fi
+}
+
+case "${1:-}" in
+  configure)
+    rm -f /var/lib/ai-editor/uninstall-image-ref
+    ensure_user
+    ensure_dirs
+    pull_image
+    systemctl daemon-reload
+    systemctl enable ai-editor-docker.service
+    if [ -x /usr/lib/ai-editor/docker-run.sh ]; then
+      AI_EDITOR_PULL_ON_RECREATE=1 /usr/lib/ai-editor/docker-run.sh recreate
+    fi
+    systemctl start ai-editor-docker.service
+    update_documentation_index
+    show_host_info
+    ;;
+  abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+  *)
+    echo "postinst called with unknown argument: ${1:-}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

@@ -1,0 +1,17 @@
+step_id: A-003
+parent_tactical_step: T-002
+name: Bump SCHEMA_VERSION for tree_checksum column
+target_file: ai_editor/core/database/schema_definition.py
+operation: modify_file
+priority: 1
+depends_on:
+- A-002
+concepts:
+- C-021
+status: ready_for_review
+status: ready_for_review
+prompt: "Bump SCHEMA_VERSION after tree_checksum column addition (C-021).\n\n## Parent documents\n- Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml\n- Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-002-watcher-integration/README.yaml\n- Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-021)\n\n## Required change\nReplace SCHEMA_VERSION = \"1.8.0\" with SCHEMA_VERSION = \"1.9.0\"  # files.tree_checksum column\nChange ONLY that line and its inline comment.\n\n## Forbidden\n- Do NOT modify MIGRATION_METHODS or add raw SQL.\n\n## Full current file content (verbatim — pre-step on disk)\n\nTotal lines: 47.\n\n```python\n\"\"\"\nStructured schema definition for ai_editor database.\n\nExposes SCHEMA_VERSION, MIGRATION_METHODS, and get_schema_definition() for\nsync_schema and schema comparison. Extracted from base.py to keep file size under limit.\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom typing import Any, Callable, Dict\n\nfrom .schema_definition_indexes import get_schema_indexes, get_schema_virtual_tables\nfrom .schema_definition_tables_core import get_tables_core\nfrom .schema_definition_tables_mid import get_tables_mid\nfrom .schema_definition_tables_rest import get_tables_rest\n\n# Schema version constant\nSCHEMA_VERSION = \"1.8.0\"  # client sessions + session file locks + roles\n\n# Migration methods registry: version -> migration function\n# Each migration function receives driver instance and performs version-specific migrations\nMIGRATION_METHODS: Dict[str, Callable[[Any], None]] = {\n    # Register migration methods here\n    # Format: \"version\": lambda driver: driver._migration_method_name()\n    # Note: Methods are defined in SQLiteDriver, registry is here for centralization\n}\n\ndef get_schema_definition() -> Dict[str, Any]:\n    \"\"\"\n    Return structured schema definition for synchronization.\n\n    Used by SchemaComparator and by RPC client when initializing an empty database.\n    Returns a dict with version, tables, indexes, virtual_tables, migration_methods.\n    \"\"\"\n    return {\n        \"version\": SCHEMA_VERSION,\n        \"tables\": {\n            **get_tables_core(),\n            **get_tables_mid(),\n            **get_tables_rest(),\n        },\n        \"indexes\": get_schema_indexes(),\n        \"virtual_tables\": get_schema_virtual_tables(),\n        \"migration_methods\": MIGRATION_METHODS,\n    }\n```\n"
+verification:
+  type: import
+  target: ai_editor/core/database/schema_definition.py
+  expected: SCHEMA_VERSION equals "1.9.0"; MIGRATION_METHODS unchanged and empty.

@@ -1,0 +1,28 @@
+concepts:
+- C-010
+- C-004
+- C-001
+- C-002
+depends_on:
+- G-001
+description: 'Extend the existing casmgr CLI with two new subcommands providing operator-level
+  visibility into sessions and file locks. Both subcommands read the DB directly via
+  config path without a running server, bypass MCP, SessionTouchRule, and SecurityPolicy.
+  casmgr sessions: lists all ClientSessions with session_id, comment, created_at,
+  last_active_at, open_lock_count. casmgr locks: lists all SessionFileLocks globally
+  as project_id, file_id, locked_at — session_id omitted.'
+name: CLI Extensions
+relations:
+- from_concept: C-010
+  note: CLI reads data via SessionService
+  to_concept: C-004
+  type: uses
+source_ranges:
+- end: 142
+  start: 132
+- end: 220
+  start: 217
+status: done
+step_id: G-004
+tactical_steps:
+- T-001

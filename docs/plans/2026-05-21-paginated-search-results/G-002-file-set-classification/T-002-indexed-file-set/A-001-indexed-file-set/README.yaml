@@ -1,0 +1,95 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: IndexedFileSet construction
+target_file: ai_editor/core/search_session/file_sets/indexed.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-012
+  - C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/file_sets/indexed.py
+
+  MRS excerpt (C-012 IndexedFileSet):
+  - Built from intersection of database-known files and disk files.
+  - Requires checksum or modification metadata validation (C-014 FreshnessValidation).
+  - Excludes stale, changed, missing, draft-only, or unavailable-index files.
+
+  Freshness module excerpt (ai_editor/core/search_session/file_sets/freshness.py — include
+  these definitions verbatim in implementation imports, do not re-read that file at execution time):
+
+  Required imports:
+  ```python
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from typing import Iterable, Mapping, Optional
+
+  from ai_editor.core.search_session.file_sets.freshness import (
+      DiskFileMetadata,
+      FreshnessVerdict,
+      IndexedFileRecord,
+      validate_freshness,
+  )
+  ```
+
+  Freshness types and function (behavior contract):
+  ```python
+  class FreshnessVerdict(str, Enum):
+      FRESH = "fresh"
+      STALE = "stale"
+      MISSING_INDEX = "missing_index"
+      UNAVAILABLE_INDEX = "unavailable_index"
+
+  @dataclass(frozen=True)
+  class IndexedFileRecord:
+      file_path: str
+      indexed_checksum: Optional[str]
+      indexed_mtime: Optional[float]
+
+  @dataclass(frozen=True)
+  class DiskFileMetadata:
+      checksum: str
+      mtime: float
+
+  def validate_freshness(
+      record: Optional[IndexedFileRecord],
+      disk: DiskFileMetadata,
+  ) -> FreshnessVerdict: ...
+  ```
+  Include only paths where validate_freshness returns FreshnessVerdict.FRESH.
+
+  Task:
+  Create indexed.py with module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  1. @dataclass(frozen=True) class IndexedFileSet:
+       files: frozenset[str]
+     Docstring: project-relative paths whose indexed state is fresh for current disk content.
+
+  2. def build_indexed_file_set(
+         database_files: Mapping[str, IndexedFileRecord],
+         disk_files: Iterable[str],
+         disk_metadata: Mapping[str, DiskFileMetadata],
+         *,
+         draft_only_paths: Iterable[str] = (),
+     ) -> IndexedFileSet:
+     Inclusion rules (document in docstring):
+     - Path must appear in both database_files and disk_files.
+     - Path must not be in frozenset(draft_only_paths).
+     - disk_metadata must contain the path.
+     - validate_freshness(record, disk_meta) must return FreshnessVerdict.FRESH.
+     Returns IndexedFileSet(files=frozenset(...)).
+
+  Constraints:
+  - Under 180 lines.
+  - Do not reimplement validate_freshness — call imported function only.
+
+verification:
+  type: pytest
+  target: tests/unit/test_indexed_file_set.py
+  expected: >
+    Only fresh intersection members appear; stale disk file excluded; draft_only_paths member
+    excluded even when validate_freshness would return FRESH; missing disk_metadata entry excluded.
+status: frozen

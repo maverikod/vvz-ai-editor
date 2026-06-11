@@ -1,0 +1,41 @@
+step_id: T-000
+parent_global_step: G-007
+name: Соответствие лимиту 400 строк command-модулей
+description: 'Инфраструктурный тактический шаг: структурное разбиение oversized command-модулей семейств open, write и preview в составе MCP Workflow Surface (C-016) на пары facade+runtime так, чтобы каждый результирующий модуль соблюдал плановый лимит 400 строк, без изменения поведения команд. Facade-модули остаются точкой регистрации MCP-команды; execute и вспомогательная логика переносятся в sibling runtime- и auxiliary-модули:
+
+  - семейство open: open_command → open_command_runtime (+ вспомогательный open_command_draft);
+  - семейство write: write_command → write_command_runtime (+ вспомогательный write_command_phases);
+  - семейство preview: universal_file_preview_command → universal_file_preview_runtime.
+
+  Инвариант: раскладка модулей (Edit Subdirectory C-008, стадии Edit и Write C-011/C-012, Internal Edit Engine C-019) меняется только структурно; семантика и контракты команд неизменны.
+
+  Граница scope: только структурное разбиение command-модулей; поведенческая интеграция Session Guard и политики broken session в команды open/edit/preview — вне scope этого шага.
+
+  '
+concepts:
+- C-008
+- C-011
+- C-012
+- C-016
+- C-019
+inputs:
+- name: monolith_command_modules
+  type: object
+  description: Текущие open/write/preview command-модули, превышающие лимит 400 строк.
+outputs:
+- name: facade_runtime_module_pairs
+  type: object
+  description: Пары facade+runtime для open, write и preview; каждый файл меньше 400 строк; поведение команд неизменно.
+atomic_steps:
+- A-001
+- A-010
+- A-007
+- A-002
+- A-011
+- A-003
+- A-008
+- A-004
+- A-005
+- A-009
+- A-006
+status: ready_for_review

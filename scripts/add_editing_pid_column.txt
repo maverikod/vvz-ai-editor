@@ -1,0 +1,10 @@
+add_editing_pid migration script
+Run manually:
+  python -c "
+from code_analysis.commands.base_mcp_command import BaseMCPCommand
+db = BaseMCPCommand._open_database_from_config(auto_analyze=False)
+db._execute('ALTER TABLE files ADD COLUMN IF NOT EXISTS editing_pid INTEGER DEFAULT NULL')
+db._commit()
+print('OK')
+db.disconnect()
+  "

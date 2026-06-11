@@ -1,0 +1,23 @@
+step_id: T-004
+parent_global_step: G-002
+name: ParentRelation
+description: "Define the ParentRelation entity (C-007) as the maintained mapping from
+  each IdentifiedNode (C-001) in the Tree to its parent node, enabling traversal from
+  any node to its parent or ancestors without rescanning the node structure. The ParentRelation
+  supports structural navigation in selector evaluation: when a path-style selector
+  narrows a result set by structural relations (child, descendant, sibling), the ParentRelation
+  provides the upward traversal required. The ParentRelation is built once when the
+  Tree is created or loaded, and is updated after each mutation to remain consistent.\n"
+concepts:
+- C-007
+inputs:
+- name: node structure
+  type: IdentifiedNode subtree
+  description: The full node subtree; used to build the child-to-parent mapping.
+outputs:
+- name: ParentRelation entity
+  type: domain entity definition
+  description: A node-to-parent mapping covering every node in the Tree; enables
+    ancestor traversal without rescanning; built-once-keep-consistent.
+atomic_steps: []
+status: draft

@@ -1,0 +1,50 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Delegate universal_file_edit tree-temp branch to TreeNode batch module
+target_file: ai_editor/commands/universal_file_edit/edit_command.py
+operation: modify_file
+priority: 5
+depends_on:
+  - A-007
+  - A-001
+concepts:
+  - C-001
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+
+  ## precondition (file size / a3)
+  `edit_command.py` MUST already be ≤400 lines. The **`depends_on`** edges encode order: slim/refactor on this file, then reconcile `tree_temp_edit_batch.py`, then this delegate step.
+
+  ## Goal
+  In `UniversalFileEditCommand`, for `fg == FORMAT_TREE_TEMP`, delegate to **`apply_tree_temp_mutations`** from
+  `ai_editor.commands.universal_file_edit.tree_temp_edit_batch` inside `_apply_tree_temp` using an async thread
+  runner (same shape as `_apply_sidecar`). The batch module owns TreeNode (**`session.tree_temp_roots`**) versus
+  legacy **`tree_id`** JSON/YAML internals; keep **`edit_command.py`** a thin delegate — call **`apply_tree_temp_mutations`**
+  end-to-end without reimplementing that routing.
+
+  ## Imports
+  - from ai_editor.commands.universal_file_edit.tree_temp_edit_batch import apply_tree_temp_mutations
+
+  ## Result handling
+  **`apply_tree_temp_mutations`** returns **`SuccessResult | ErrorResult`**. Thread the return value directly;
+  forbid tuple unpacking or **`(False, …)` ** coercion layers.
+
+  ## Cross-G / merge note
+  If **`G-003-sha-sync-and-session`** delivered an alternate delegate path, orchestration MUST converge on
+  **`ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py`** and **`apply_tree_temp_mutations`** as the only FORMAT_TREE_TEMP mutation entry (no parallel **`tree_temp_node_editing`** pipeline).
+
+  ## a8 (same file within T-002)
+  Baseline source is the full `edit_command.py` as committed after prerequisite **`modify_file`** work on this path in this tactical task per **`depends_on`**. Executor uses workspace bytes or orchestrator attachment; do not use pre-refactor (~730 line) snapshots as the patch base.
+
+  ## Forbidden
+  - Do not change sidecar (`FORMAT_SIDECAR`) batch semantics.
+  - Do not put sibling step identifiers inside code comments.
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/edit_command.py
+  expected: flake8/black clean and file line count ≤ 400
+status: done

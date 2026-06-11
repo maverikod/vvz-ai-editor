@@ -1,0 +1,85 @@
+#!/bin/bash
+# Service control wrapper: standard systemd verbs + recreate.
+set -e
+
+SERVICE="ai-editor-docker.service"
+RECREATE_SERVICE="ai-editor-docker-recreate.service"
+DOCKER_RUN="/usr/lib/ai-editor/docker-run.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: ai-editor-docker <command>
+
+Commands:
+  start      Start the service (systemctl start)
+  stop       Stop the service (systemctl stop)
+  restart    Restart container without recreating it (stop + start)
+  recreate   Remove and recreate container (apply config/mount/network changes)
+  status     Show systemd and container status
+  info       Show host user, port, paths, and image (ai-editor-info)
+
+Examples:
+  sudo ai-editor-docker recreate
+  sudo systemctl start ai-editor-docker-recreate.service
+EOF
+}
+
+require_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "[ERROR] Run as root: sudo ai-editor-docker $1" >&2
+    exit 1
+  fi
+}
+
+cmd="${1:-}"
+
+case "$cmd" in
+  start)
+    require_root start
+    systemctl start "$SERVICE"
+    ;;
+  stop)
+    require_root stop
+    systemctl stop "$SERVICE"
+    ;;
+  restart)
+    require_root restart
+    if [ -x "$DOCKER_RUN" ]; then
+      "$DOCKER_RUN" restart
+    else
+      systemctl restart "$SERVICE"
+    fi
+    ;;
+  recreate)
+    require_root recreate
+    if [ -x "$DOCKER_RUN" ]; then
+      "$DOCKER_RUN" recreate
+    else
+      systemctl start "$RECREATE_SERVICE"
+    fi
+    ;;
+  status)
+    systemctl status "$SERVICE" --no-pager 2>/dev/null || true
+    if command -v ai-editor-info >/dev/null 2>&1; then
+      echo ""
+      ai-editor-info
+    fi
+    ;;
+  info)
+    if command -v ai-editor-info >/dev/null 2>&1; then
+      ai-editor-info
+    else
+      echo "[ERROR] ai-editor-info not installed" >&2
+      exit 1
+    fi
+    ;;
+  -h|--help|help|"")
+    usage
+    [ -z "$cmd" ] && exit 0
+    ;;
+  *)
+    echo "[ERROR] Unknown command: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

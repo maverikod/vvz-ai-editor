@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+
+## AI Editor Server (daemon)
+
+Run commands from the **project root** (directory that contains `config.json`).
+`aiedmgr` and `python -m ai_editor.cli.server_manager_cli` change `cwd` there automatically.
+
+After `pip install -e .`:
+
+```bash
+cd /path/to/ai_editor   # project root
+aiedmgr status
+# or
+aiedmgr --config config.json start
+```
+
+Config path priority: CLI `--config` → `AIEDMGR_CONFIG` (legacy `CASMGR_CONFIG`) → `/etc/aiedmgr/config.json` (legacy `/etc/casmgr/config.json`) → `./config.json` in the current directory.
+
+Prefer **project-relative** config paths (`config.json`, not host absolute paths).
+
+Equivalent:
+
+```bash
+python -m ai_editor.cli.server_manager_cli status --config config.json
+```
+
+Commands: `start` | `stop` | `restart` | `status`
+
+- Daemon is started with **`cwd`** = project root and **`--config config.json`** (relative).
+- Interpreter: `.venv/bin/python` or `venv/bin/python` next to the config (if executable), else CLI Python; override with **`AI_EDITOR_DAEMON_PYTHON`**.
+- In containers: do not rely on a host `.venv` mount; use image Python or `AIEDMGR_PYTHON` (legacy `CASMGR_PYTHON`).
+- `start` / `status` / `stop` use process discovery, not pidfile alone. Multiple daemons → `stop` then `start`.

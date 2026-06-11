@@ -1,0 +1,30 @@
+step_id: A-001
+parent_tactical_step: T-706
+name: list_yaml_blocks MCP command and hook registration
+target_file: ai_editor/commands/list_yaml_blocks_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-009
+- C-020
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  MCP command module `ai_editor/commands/list_yaml_blocks_command.py`
+  (`ListYamlBlocksCommand`, name `list_yaml_blocks`): schema/metadata/execute for
+  project-relative `.yaml`/`.yml`, enumerating blocks with stable opaque ids aligned
+  to yaml_tree pointer semantics.
+
+  Registered in `ai_editor/hooks_register_part1.py`; auto-import path added in
+  `ai_editor/hooks.py`.
+implementation_note: >
+  Read-only listing only; callers use ids with `universal_file_preview` drill-down.
+verification:
+  type: pytest
+  target: tests/test_list_yaml_blocks_command.py
+  expected: >
+    Command executes under mocked DB; block rows expose node_id/yaml_pointer and
+    required keys; optional smoke assertion on registered command name in
+    `tests/test_universal_file_preview_smoke.py`.

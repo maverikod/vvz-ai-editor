@@ -1,0 +1,28 @@
+step_id: T-004
+parent_global_step: G-007
+name: DeadSessionDetection rules
+description: >
+  Creates DeadSessionDetection rules for deciding that SearchSession is dead or
+  orphaned. Treats missing main_pid as dead, treats process_start_time mismatch
+  as dead because PID reuse is possible, and treats stale SessionHeartbeat
+  beyond hard timeout as timed_out or orphaned. Allows application during status
+  reads and during background cleanup before session deletion.
+concepts:
+  - C-010
+inputs:
+  - name: server_process_identity
+    type: ServerProcessIdentity
+    description: main_pid and process_start_time recorded in SearchSessionManifest.
+  - name: session_heartbeat
+    type: SessionHeartbeat
+    description: Current heartbeat_at compared against hard timeout policy.
+  - name: live_process_probe
+    type: LiveProcessProbe
+    description: Observation of whether the recorded main_pid still exists with matching start time.
+outputs:
+  - name: dead_session_verdict
+    type: DeadSessionVerdict
+    description: Live, dead, orphaned, or timed_out classification for the session.
+atomic_steps:
+- A-001
+status: frozen

@@ -1,0 +1,105 @@
+meta:
+  plan: paginated-search-results
+  version: '1.0'
+  source_labels:
+  - '{tuj9}'
+  - '{rn07}'
+  contract_decision:
+    canonical_paging_fields:
+    - job_id
+    - block_position
+    - index_url
+    cursor_used: false
+    note: G-008 canonical contract uses job_id (UUID string returned by 
+      search_start), block_position (1-based integer), and index_url (HTTP path 
+      template for block retrieval). The opaque README cursor is not used as a 
+      G-008 continuation mechanism. All lifecycle commands (search_get_page, 
+      search_get_status, search_cancel, search_close) accept job_id as their 
+      session identifier.
+commands:
+- name: fs_grep
+  existing:
+  - direct inline payload with match list
+  - inline timeout (auto_queue_on_inline_timeout flag)
+  - hard timeout ceiling (hard_timeout_seconds)
+  - scan_all policy for full-project scan
+  - index-gap filtering (skip unindexed files)
+  - structural grep_mode default (enrich_blocks=true, fast_text_only=false)
+  - queue routing when inline timeout exceeded
+  new:
+  - SearchSession routing when paginated=true
+  - block paging via job_id and block_position
+  - finding normalization into RawFindingBuffer (C-028)
+  - first SearchResultBlock publication before job_id handoff
+- name: fulltext_search
+  existing:
+  - limit/offset-less inline results list
+  - inline queue fallback on timeout
+  - project_id required, query required
+  - entity_type and file_path optional filters
+  new:
+  - optional paginated mode via search_start bridge
+  - job_id and index_url in paginated handoff
+  - findings normalized into RawFindingBuffer before block assembly
+- name: semantic_search
+  existing:
+  - top_k inline results
+  - project_id and query required
+  - embedding-based vector retrieval
+  new:
+  - optional paginated session-backed blocks
+  - JSON-safe findings in SearchResultBlock items
+  - job_id and block_position continuation
+- name: project_cross_search
+  existing:
+  - merged evidence payload across multiple files
+  - require_structural_grep flag
+  - project_id and grep_patterns required
+  new:
+  - paginated merged blocks
+  - job_id handoff with block_position continuation
+  - findings written to RawFindingBuffer for block assembly
+- name: search_start
+  existing: []
+  new:
+  - creates SearchSession directory and manifest
+  - routes to one of five backends (fulltext, semantic, grep, cross, tree_query)
+  - returns job_id and index_url
+  - first_block_position present when first block published synchronously
+  - paginated=false preserves legacy inline behavior
+- name: search_get_page
+  existing: []
+  new:
+  - fetch SearchResultBlock by job_id and block_position
+  - wait_for_new_results option for streaming-style polling
+  - progress and warnings in response
+  - no opaque cursor in response
+- name: search_get_status
+  existing: []
+  new:
+  - status and progress without result rows
+  - summary warnings and errors from manifest
+  - accepts job_id to identify session; distinct from HTTPResultAccess (C-005)
+- name: search_cancel
+  existing: []
+  new:
+  - cancel running search session via job_id
+  - stop underlying queued work when possible via queue-cancel hook
+  - transitions manifest status to cancelled
+- name: search_close
+  existing: []
+  new:
+  - release buffer scratch files for job_id
+  - set manifest status to closed
+  - invalidate block_position continuation after close
+  - blocks remain accessible until cleaner TTL expires
+infrastructure:
+  existing:
+  - search_inline_execution
+  - search_timeouts
+  - queue_get_job_status
+  new:
+  - search_session package
+  - HTTP block access via index_url (HTTPResultAccess C-005)
+  - background cleaner with TTL policy (C-007, C-011)
+  - RawFindingBuffer for finding normalization (C-028)

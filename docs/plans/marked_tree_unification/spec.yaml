@@ -1,0 +1,739 @@
+# Machine-Readable Specification — Marked-Tree Unification
+# Level 2 (machine_spec) projected from source_spec.md (HRS).
+# Author: Vasiliy Zdanovskiy — vasilyvz@gmail.com
+# Direct edit FORBIDDEN — all changes flow via cascade from source_spec.md.
+plan_name: marked_tree_unification
+project_uuid: 8772a086-688d-4198-a0c4-f03817cc0e6c
+concepts:
+- concept_id: C-001
+  name: MarkerContract
+  definition: The three-operation contract (mark, parse, unmark) that defines
+    how a tree is built from and reduced back to source content.
+  properties:
+  - operation mark(content) embeds per-file monotonic integer short_id markers
+    natively into the TREE section only
+  - operation parse(marked_text) builds the node tree from markers
+  - operation unmark(marked_text) reproduces original source bytes exactly from
+    the TREE section only
+  - round-trip invariant unmark(mark(source)) equals source, verified by
+    checksum
+  - markers are short_id handles in the TREE section, not canonical identity;
+    canonical UUID4 lives only in the MAP section
+  - markers never appear in the source file and never cross the external API
+    boundary
+  - every addressable node in every format receives a short_id marker without
+    exception; where the format provides a metadata field or equivalent structured
+    slot the short_id lives in that metadata, otherwise the marker appears as a
+    format-native comment at the END of the block (never mid-lexeme, per
+    AddressableBlock granularity)
+  source_labels:
+  - '{a001}'
+  - '{a002}'
+  - '{a003}'
+  - '{b000}'
+- concept_id: C-002
+  name: NodeId
+  definition: The in-content integer short_id handle that names exactly one
+    addressable block within one tree file; it is the marker embedded in the
+    TREE section and the reference passed in preview, edit, and query APIs for
+    that file.
+  properties:
+  - short_id is a per-file monotonic decimal integer token, not the canonical
+    identity
+  - one short_id names exactly one addressable block within one tree file
+  - format-specific encoding of the short_id token in the TREE section (line
+    prefix, HTML comment, ___id___ key, JSON wrapper, CST metadata or trailing
+    comment)
+  - canonical UUID4 for the node is stored only in the MAP section and is never
+    embedded in marked content or returned at the API boundary
+  - used to address preview navigation, edits, diffs, and query results when
+    scoped to a project-relative file path plus short_id
+  - an unrecognised short_id for that file yields an input error, never silent
+    ignore
+  - short_id resolves to UUID4 via the NodeIdMap block when internal UUID
+    lookup is required
+  source_labels:
+  - '{a001}'
+  - '{a007}'
+  - '{f002}'
+  - '{i002}'
+  - '{n003}'
+- concept_id: C-003
+  name: TreeFile
+  definition: The on-disk artifact with three ordered sections — CHECKSUMS,
+    MAP, then TREE — holding checksum fields, the short_id↔UUID4 map with
+    next_free, and natively-marked content respectively.
+  properties:
+  - section 1 CHECKSUMS first — source content SHA-256 and related checksum
+    fields
+  - section 2 MAP second — short_id↔UUID4 entries, next_free counter, per-node
+    attributes including block level/type where needed
+  - section 3 TREE third — marked content with short_id markers embedded
+    natively per format; canonical UUID4 never appears in TREE
+  - stored as a sibling file placed directly next to the source file it
+    describes
+  - owns the MAP section including next_free and all UUID4 entries
+  - real source file is never modified and remains clean
+  source_labels:
+  - '{a002}'
+  - '{a006}'
+  - '{a007}'
+  - '{c001}'
+  - '{n001}'
+- concept_id: C-004
+  name: SourceFile
+  definition: The original, unmarked file that the tree describes; the source of
+    truth outside any edit session.
+  properties:
+  - never modified by the tree system, remains clean
+  - source of truth when no session is active
+  - its byte content is what unmark must reproduce exactly
+  source_labels:
+  - '{a002}'
+  - '{a005}'
+- concept_id: C-005
+  name: AddressableBlock
+  definition: The minimally-addressable logical unit a marker may name;
+    drilldown stops here and below it is plain text.
+  properties:
+  - granularity is the leaf addressable block, never smaller
+  - a marker never splits a lexeme or sits inside a literal or token
+  - per-format definition of the minimal block (line, md block, yaml block, json
+    element, py logical statement)
+  source_labels:
+  - '{a004}'
+- concept_id: C-006
+  name: ChecksumSyncPolicy
+  definition: The single mechanism that decides tree-vs-source truth by SHA-256
+    checksum comparison; the checksum comparison is the synchronization trigger.
+    Pure checksum helpers (compute_content_checksum, is_tree_valid) belong to
+    TreeLifecycle (C-010) per HRS {c004}, not to this policy entity.
+  properties:
+  - 'invariant: inside an active session the tree is truth, outside the source file
+    is truth'
+  - owns the four-branch decision only; wraps resolve_sha_sync_policy from
+    ai_editor/commands/universal_file_edit/sha_sync_policy.py
+  - does not own compute_content_checksum or is_tree_valid (TreeLifecycle /
+    tree-validity module scope per HRS {c004})
+  - SHA-256 checksum of source content is the synchronization trigger
+  - 'four-branch decision: no tree present, checksum match, mismatch outside session,
+    mismatch inside active session'
+  - on mismatch outside a session the tree is rebuilt from source applying
+    short_id allocation rules in {a007}
+  - applies uniformly to all formats
+  source_labels:
+  - '{a005}'
+  - '{a006}'
+  - '{a007}'
+  - '{c002}'
+  - '{c003}'
+- concept_id: C-007
+  name: FormatHandler
+  definition: A per-format component implementing the marker contract and the
+    tree-edit operations for one file format.
+  properties:
+  - implements the four-operation handler contract (parse_content, mark, unmark,
+    sidecar_path) for one file format
+  - implements the six tree-edit operations for its format
+  - uses only its own format marker syntax with integer short_id tokens, never
+    another format's syntax and never UUIDs in markers
+  - the common contract is the only coupling between handlers
+  - 'one handler per format: text, markdown, yaml, json, python'
+  - operation parse_content(file_path, content) builds the node tree from source
+    content
+  - operation mark(content) embeds short_id markers in the TREE section; canonical
+    UUID4 is written only in the MAP section, not by handlers inventing API-facing
+    ids
+  - operation sidecar_path(source_abs) returns the sibling tree-file path for
+    the source file
+  - uses the NodeIdMap block to resolve short_id↔UUID when building or parsing
+    trees; does not embed UUIDs in markers
+  - every addressable node receives a short_id marker without exception — metadata
+    slot where the format provides one, otherwise a format-native comment at the END
+    of the block
+  - hide/unhide of markers during mutation is NOT a FormatHandler responsibility;
+    the session mutation cycle (hide before edit, restore after) belongs to
+    EditSession
+  source_labels:
+  - '{b000}'
+  - '{b001}'
+  - '{b002}'
+  - '{b003}'
+  - '{b004}'
+  - '{b005}'
+  - '{h001}'
+  - '{n001}'
+- concept_id: C-008
+  name: HandlerRegistry
+  definition: The central registry that resolves a file to its FormatHandler by
+    file extension.
+  properties:
+  - keyed by file extension
+  - owns the set of registered handlers
+  source_labels:
+  - '{b000}'
+- concept_id: C-009
+  name: TreeNode
+  definition: An in-memory node produced by parsing a marked tree, carrying its
+    short_id, type, attributes, and content.
+  properties:
+  - produced by a FormatHandler from source content
+  - carries short_id, type label, attributes, and text or value
+  - the ordered set of TreeNodes produced by parsing forms the tree structure
+  - internal UUID4 association is resolved via the MAP section and NodeIdMap,
+    not embedded in marked content
+  source_labels:
+  - '{b000}'
+  - '{n001}'
+- concept_id: C-010
+  name: TreeLifecycle
+  definition: The single owner and coordinator of tree validity and tree
+    creation that every consumer routes through.
+  properties:
+  - 'single entry point: no ad-hoc per-call-site validation or creation exists outside
+    it'
+  - owns the validity decision and the build dispatch
+  - canonical build dispatch is TreeBuilder.build which resolves FormatHandler via
+    HandlerRegistry.default_registry().resolve(source_abs); does not use
+    TreeFormatKind or recreate_tree_from_content as the primary build path
+  - TreeBuilder.build writes the three-section tree file to
+    FormatHandler.sidecar_path(source_abs) including MAP with short_id↔UUID entries
+    and next_free, and records content_checksum in CHECKSUMS AND exposes it in the
+    returned tree reference for subsequent validity checks
+  - on rebuild invokes NodeIdMap validate_and_repair to preserve UUID4 for
+    unchanged content identity while refreshing short_id markers per {a007}
+  - legacy recreate_tree_from_content plus TreeFormatKind remain as an untouched
+    parity oracle alongside the unified pipeline until G-000 cutover
+  - provides a path-based wrapper for consumers that work with file paths rather
+    than content
+  source_labels:
+  - '{a006}'
+  - '{a007}'
+  - '{c004}'
+  - '{c005}'
+  - '{c006}'
+  - '{n002}'
+- concept_id: C-011
+  name: TreeBuilder
+  definition: The component that dispatches to the appropriate FormatHandler to
+    build and write a tree file from source content.
+  properties:
+  - exposes TreeBuilder.build(*, content, source_abs, file_path, content_checksum)
+    as the canonical unified-pipeline entry point
+  - resolves FormatHandler via HandlerRegistry.default_registry().resolve(source_abs),
+    produces natively-marked TREE section via FormatHandler.mark(content), writes
+    CHECKSUMS, MAP (including next_free and UUID4 entries via NodeIdMap build), and
+    TREE to FormatHandler.sidecar_path(source_abs), and records content_checksum in
+    CHECKSUMS AND in the returned tree reference
+  - on rebuild from an existing tree file copies next_free from the prior MAP
+    section per {a007}
+  - does not dispatch via TreeFormatKind enum or recreate_tree_from_content;
+    those legacy symbols are parity-oracle only until G-000 cutover
+  - 'the single place that writes unified-pipeline tree files: no other component
+    writes them directly on the canonical path'
+  source_labels:
+  - '{a007}'
+  - '{c005}'
+  - '{n002}'
+- concept_id: C-012
+  name: EditSession
+  definition: A bounded editing context represented by a session directory next
+    to the source file, inside which the tree is the source of truth when valid and
+    the in-session source copy is the editing surface when invalid.
+  properties:
+  - session directory placed next to the source file, with a unique name derived
+    from the source file name
+  - open copies source in, validates or builds the tree, inits git, creates
+    initial commit
+  - tracks tree-validity state during the session — valid when source parses and
+    checksum matches, invalid when source cannot parse
+  - >
+    content-supply rule on open (FINAL-2 per {d002}): caller-supplied content is
+    accepted ONLY when the target file is non-existent or its source/tree is
+    broken/corrupted; supplying content when a valid file exists is an ERROR;
+    when accepted, write provided source into the session code file FIRST, then
+    follow the standard open protocol (build tree, write tree, record checksums,
+    create initial git commit)
+  - when tree is valid, the tree is truth; before each mutation, short_id markers
+    in the TREE section are hidden into format-native comments (or equivalent inline
+    marker form), the mutation is applied to the temporarily denuded representation,
+    then short_id markers are fully restored to canonical positions (metadata slot
+    where available, format-native comment at END of block otherwise); CHECKSUMS and
+    MAP sections are preserved across mutations; UUID4 values in MAP are not altered
+    by hide/unhide
+  - full per-mutation post-steps when tree is valid without exception — write updated
+    tree to disk inside the session directory; export in-session source copy by
+    stripping markers via unmark into session TEMP artefacts; record SHA-256
+    checksums for both tree file and exported source; create a git commit capturing
+    both artefacts; one tree modification equals one git commit
+  - DEGRADED per-mutation invariant when tree is invalid (per {d003}, {h008}) —
+    write only the updated in-session source copy, record its SHA-256 checksum,
+    create a git commit capturing that source artefact only; no marker hide/unhide
+    and no tree-file write; CHECKSUMS and MAP sections are preserved unchanged;
+    one plain-text modification equals one git commit
+  - re-validation when plain-text edit makes source parseable again (per {h009}) —
+    rebuild tree via TreeBuilder.build, restore short_id markers in TREE via
+    NodeIdMap build while preserving UUID4 entries and next_free from existing MAP,
+    record checksums, switch back to valid mode and resume full per-mutation invariant
+  - >
+    write command is two-stage at the API boundary and gates external copy-out only;
+    in-session artefacts are already finalized per mutation by {d003}
+  - >
+    stage 1 preview ({d004}): computes diff between in-session unmark-exported source
+    and in-session tree versus live external source file and co-located sibling tree;
+    returns both diffs without modifying any external file; no-op when no diffs
+  - >
+    stage 2 confirm ({n7k2}): only upon explicit confirmation (second call or confirm
+    parameter) atomically copies both artefacts to external co-located positions
+    (in-session source over live file, in-session tree onto sibling); both or neither
+  - >
+    write-stage external diff is distinct from session_git_diff (C-014): compares
+    in-session artefacts against live external files, not session git history
+  - close deletes the session directory entirely without validation, checksum, or
+    consistency checks; session git history is ephemeral
+  source_labels:
+  - '{d001}'
+  - '{d002}'
+  - '{d003}'
+  - '{d004}'
+  - '{n7k2}'
+  - '{d005}'
+  - '{h008}'
+  - '{h009}'
+  - '{n002}'
+- concept_id: C-013
+  name: SessionRepo
+  definition: The version-control repository living inside the session directory
+    that records one commit per edit.
+  properties:
+  - backed by a git library declared as a project dependency
+  - exists only while the session is open
+  - history is accessible for inspection, with commit identity and timestamp per
+    edit
+  - one commit per tree mutation when tree is valid, one commit per plain-text
+    mutation when tree is invalid; full per-edit history preserved
+  - when tree is valid each commit captures both the tree file and the exported
+    in-session source copy per the full per-mutation invariant
+  - when tree is invalid each commit captures only the in-session source artefact
+    per the DEGRADED per-mutation invariant
+  - destroyed with the session directory on close
+  source_labels:
+  - '{d002}'
+  - '{d003}'
+  - '{d006}'
+  - '{h008}'
+- concept_id: C-014
+  name: SessionGitApi
+  definition: The set of session-scoped MCP commands exposing the session
+    version-control repository for history inspection, comparison, content
+    retrieval, status check, and rollback.
+  properties:
+  - every command requires an active session identifier and refuses to run
+    without a valid session context
+  - log command returns commit history (hash, message, timestamp)
+  - diff command supports tree mode (commit vs commit) and source mode (tree
+    revision rev_a versus the most recent per-mutation unmark-exported in-session
+    source copy; the live project file on disk is not an input to source mode)
+  - show command returns tree content at a given revision
+  - status command returns uncommitted changes versus the most recent commit
+  - revert command rolls the tree back to a revision by creating a new revert
+    commit
+  source_labels:
+  - '{e001}'
+  - '{e002}'
+  - '{e003}'
+  - '{e004}'
+  - '{e005}'
+  - '{e006}'
+- concept_id: C-015
+  name: EditOperation
+  definition: The uniform set of six tree-edit operations available for all formats,
+    addressed by short_id when the in-session tree is valid and by plain-text
+    string or line-range when invalid.
+  properties:
+  - six operations - insert, delete, replace, move, edit-attributes, edit-content
+  - tree-validity edit gate (per {h008}) selects addressing mode — valid tree
+    permits only short_id operations; invalid tree permits only plain-text string
+    or line-range edits; the mismatched mode is an input error
+  - when tree is valid every target identified by short_id, never by line number
+    or byte offset; each mutation follows full EditSession per-mutation invariant
+  - when tree is invalid short_id operations are forbidden; plain-text edits apply
+    directly to in-session source with DEGRADED per-mutation invariant only
+  - re-validation (per {h009}) — when plain-text edit makes source parseable,
+    session rebuilds tree via TreeBuilder.build and resumes short_id mode
+  - insert places a new block relative to a short_id and assigns a fresh short_id
+    per {a007}
+  - delete removes a block and its subtree, preserving format validity; retired
+    short_ids are never reused
+  - replace substitutes content while preserving the short_id
+  - move relocates a block atomically, preserving the short_id
+  - edit-attributes changes node metadata without changing content or position
+  - edit-content changes leaf-block text only, rejecting non-leaf targets
+  source_labels:
+  - '{a007}'
+  - '{h001}'
+  - '{h002}'
+  - '{h003}'
+  - '{h004}'
+  - '{h005}'
+  - '{h006}'
+  - '{h007}'
+  - '{h008}'
+  - '{h009}'
+- concept_id: C-016
+  name: PreviewNavigation
+  definition: The three-phase procedure (enumerate, select, render) that
+    produces a structured preview of a tree node for any format.
+  properties:
+  - phase 1 enumerate resolves the focus node and lists its ordered child blocks
+  - phase 2 select applies a selector to choose a subset of blocks
+  - phase 3 render produces short_id, type label, attribute summary, and text
+    excerpt per block
+  - identical for all formats and for in-session and out-of-session access
+  - when session_id is supplied, navigation operates on the in-session tree or
+    draft held by the active EditSession (in-memory CST for Python, in-session
+    draft artefacts for JSON/YAML/text) rather than only last committed on-disk
+    artefacts — the mechanism for previewing unsaved edits before write
+  - node_ref is always a short_id integer for the requested file's tree, never a
+    line number or UUID4; server resolves short_id to internal UUID4 via the MAP
+    section of the loaded tree file
+  - JSON and YAML short_id locates the node via MAP, walks up to nearest object or
+    array ancestor when needed
+  - Python preview yields CST type labels, line ranges, attribute summaries, and
+    accepts a previously loaded tree reference; IndentedBlock wrapper nodes are
+    transparent in enumeration — direct statement children appear in place of
+    the block container
+  - in annotated and full-text rendering modes, every line with an associated
+    short_id is prefixed at the start of the physical source line as [<short_id>]
+    followed by original line content; lines without an associated short_id use
+    blank padding sized to the maximum short_id digit count in the tree, not UUID
+    width
+  - 'before rendering Python source text, legacy identity comments are stripped
+    from the logical source used for display (# cst-node-ids begin/end block and
+    whole-line # @node-id comments); preview output shows short_id prefixes from
+    TREE section markers and MAP resolution, not preserved inline comment markers
+    or UUID values'
+  source_labels:
+  - '{f001}'
+  - '{f002}'
+  - '{i001}'
+  - '{i002}'
+  - '{i003}'
+  - '{i004}'
+  - '{i006}'
+  - '{i007}'
+  - '{i008}'
+  - '{n003}'
+- concept_id: C-017
+  name: PreviewSelector
+  definition: The selector expression applied during preview that chooses a
+    subset of the focus node blocks.
+  properties:
+  - a slice string start to end (zero-based, exclusive end) caps the block count
+  - a list of short_ids cherry-picks specific blocks
+  - per-format full_text_max_lines threshold controls inline versus drilldown
+    rendering (Python, JSON, YAML, Markdown, plain text); default 200 source
+    lines per format; setting zero disables full inline rendering (drilldown only)
+  - inline full-text rendering (annotated mode with short_id line prefixes) is used
+    when the node line span is strictly less than that format's
+    full_text_max_lines; when span equals or exceeds the threshold, or threshold
+    is zero, preview falls back to collapsed structural drilldown
+  - thresholds are measured in source lines for every format, not bytes
+  - for JSON, content is normalized to printable pretty-printed form BEFORE line
+    counting and inline rendering so the line-based threshold is meaningful
+  - max_chars paginates the serialized preview envelope only; it does not control
+    the inline-versus-drilldown decision
+  source_labels:
+  - '{i005}'
+- concept_id: C-018
+  name: TreeQuery
+  definition: Structural search over the marked tree of a file, in preview and
+    edit-session modes, returning short_id integers of matching nodes.
+  properties:
+  - operates on tree structure, not full-text or database
+  - returns short_id integers directly usable in navigation and edit operations
+  - simple mode filters by node type, name, qualified name, line range (Python
+    only)
+  - unique-match enforcement demands exactly one result or returns a structured
+    error with candidates
+  - source-inclusion option returns the source text of the matched node (Python
+    only)
+  - in a session runs against the in-memory draft, outside against the validated
+    on-disk tree
+  source_labels:
+  - '{j001}'
+  - '{j002}'
+  - '{j004}'
+  - '{j005}'
+  - '{j006}'
+- concept_id: C-019
+  name: CstQuerySelector
+  definition: The XPath-compatible selector string used by the tree query in
+    XPath mode.
+  properties:
+  - double-slash for recursive descendant traversal across any depth
+  - at-attribute access in filter predicates such as name equals foo
+  - numeric operators ge, le, gt, lt on start_line, end_line, children_count
+  - not pseudo-class for negation of a nested selector
+  - primary format-agnostic query mode
+  source_labels:
+  - '{j002}'
+  - '{j003}'
+- concept_id: C-020
+  name: GrepConsumer
+  definition: The grep subsystem that binds disk-scan matches to short_ids
+    through the tree lifecycle.
+  properties:
+  - routes all tree-validity checks through TreeLifecycle
+  - rebuilds the tree on checksum mismatch before binding a match
+  - a rebuild failure yields an ineligible lower-relevance match, not a
+    structural finding
+  source_labels:
+  - '{g001}'
+- concept_id: C-021
+  name: Watcher
+  definition: The file watcher that ensures a valid tree and persists the source
+    checksum before inserting or updating a database file row.
+  properties:
+  - calls the TreeLifecycle path wrapper before a file-row insert or update
+  - persists the computed source checksum in the database alongside the file row
+  - the schema extension is applied idempotently and requires no explicit
+    migration
+  source_labels:
+  - '{g002}'
+- concept_id: C-022
+  name: Indexer
+  definition: The indexer that decides reindexing by comparing the current
+    source checksum against the stored tree checksum.
+  properties:
+  - skip guard compares current source checksum against stored tree_checksum
+  - equal checksum skips reindex, differing checksum triggers reindex
+  - reindexing is content-driven
+  source_labels:
+  - '{g003}'
+- concept_id: C-023
+  name: SidecarLayoutMigration
+  definition: The sidecar layout cutover step (G-000) that redirects the remaining
+    legacy tree-path call sites (not reached by consumer integration) onto the
+    existing sibling_tree_path function and removes the three legacy layouts (.cst/
+    subdirectory, .trees/ mirror directory, .tree_sidecar adjacent file). It does
+    not create sibling_tree_path; that function already exists from the storage work.
+    Runs after G-001 through G-005 are built and verified end to end, with G-006
+    NodeIdMap identity in the tree-file MAP section; it is the final layout cutover
+    with no subsequent step.
+  properties:
+  - final sidecar cutover after G-001..G-005 verification; no subsequent global step
+  - 'replaces three independent legacy path resolvers (not delegates of one another)
+    with sibling_tree_path: sidecar_path_for_py (.cst/) in cst_tree/tree_sidecar.py,
+    the standalone resolve_trees_sidecar_path module (.trees/) in core/tree_temp/sidecar_paths.py
+    which is removed whole, and the inline .tree_sidecar branch of the format-dispatch
+    sidecar_path_for in tree_representation.py'
+  - redirects write_sidecar_atomic to write at the sibling path
+  - removes the legacy pending-sidecar mechanism entirely
+    (pending_sidecar_path_for_py, resolve_sidecar_write_path,
+    promote_pending_sidecar_to_final, _cleanup_empty_pending_dir, the _pending
+    subdirectory, and the is_file branch in write_sidecar_atomic); it is
+    deleted, not migrated, because the edit-session lifecycle removes the
+    pre-session no-source state
+  - redirects the reader functions in tree_representation.py to resolve the
+    sibling path
+  - 'redirects the direct legacy-path consumers onto sibling_tree_path: tree_builder,
+    tree_saver, stable_tree, grep_block_resolver (.cst/), and tree_temp_write_commit,
+    tree_temp_open_support (.trees/), so JSON and YAML tree files become siblings
+    like every other format'
+  - ensures TreeRepresentationRef carries the sibling path after
+    validate_or_recreate_tree_file
+  - replaces legacy path assertions in tests with sibling path assertions
+  - 'hard cutover: no backward-compatibility shim'
+  source_labels:
+  - '{c001}'
+  - '{k001}'
+  - '{k002}'
+  - '{k003}'
+  - '{k004}'
+- concept_id: C-024
+  name: TreeNodeUuid
+  definition: The canonical UUID4 identity of an addressable node, stored only in
+    the MAP section of a tree file and kept stable across validate-and-repair when
+    underlying content identity is unchanged.
+  properties:
+  - exactly one UUID4 per addressable node in the MAP section
+  - UUID4 is never embedded in marked TREE content, never returned by
+    preview/edit/query/grep MCP commands, and never accepted as an external node
+    reference
+  - assigned at node creation and preserved across validate-and-repair for nodes
+    whose underlying content identity is unchanged
+  - short_id in the TREE section resolves to TreeNodeUuid via the NodeIdMap block
+  source_labels:
+  - '{a001}'
+  - '{a002}'
+  - '{n001}'
+- concept_id: C-025
+  name: NodeIdMap
+  definition: The dedicated module exposing exactly three operations on the
+    short_id↔UUID4 map and next_free counter within one tree file context.
+  properties:
+  - operation build — scan TREE and MAP sections to generate or refresh the
+    short_id↔UUID map and per-node UUID entries
+  - operation validate_and_repair — detect inconsistencies between markers, map,
+    UUID entries, and next_free, then fix them while preserving UUID4 for unchanged
+    nodes per {a007}
+  - operation resolve — bidirectional lookup short_id→UUID and UUID→short_id within
+    one tree file context
+  - no other public entry points perform map mutation
+  - replaces the former universal-node-id generate/validate pair and centralizes map
+    logic previously split across format handlers
+  source_labels:
+  - '{a007}'
+  - '{n001}'
+  - '{n002}'
+  - '{n003}'
+- concept_id: C-026
+  name: SearchSessionFinding
+  definition: A search-session result record (`Finding`) whose payload and
+    ranking contract exclude file mtime.
+  properties:
+  - does not carry file mtime
+  - ranking does not use mtime as a sort dimension
+  - ordering uses relevance score with a deterministic result_id tie-break
+  source_labels:
+  - '{g004}'
+relations:
+- from_concept: C-001
+  to_concept: C-002
+  type: owns
+- from_concept: C-001
+  to_concept: C-003
+  type: produces
+- from_concept: C-001
+  to_concept: C-004
+  type: consumes
+- from_concept: C-001
+  to_concept: C-005
+  type: uses
+- from_concept: C-002
+  to_concept: C-005
+  type: uses
+- from_concept: C-002
+  to_concept: C-025
+  type: depends_on
+- from_concept: C-003
+  to_concept: C-024
+  type: owns
+- from_concept: C-003
+  to_concept: C-025
+  type: owns
+- from_concept: C-006
+  to_concept: C-003
+  type: uses
+- from_concept: C-006
+  to_concept: C-004
+  type: uses
+- from_concept: C-007
+  to_concept: C-001
+  type: implements
+- from_concept: C-007
+  to_concept: C-015
+  type: implements
+- from_concept: C-007
+  to_concept: C-009
+  type: produces
+- from_concept: C-007
+  to_concept: C-005
+  type: uses
+- from_concept: C-007
+  to_concept: C-025
+  type: uses
+- from_concept: C-008
+  to_concept: C-007
+  type: owns
+- from_concept: C-010
+  to_concept: C-006
+  type: owns
+- from_concept: C-010
+  to_concept: C-011
+  type: owns
+- from_concept: C-010
+  to_concept: C-008
+  type: uses
+- from_concept: C-010
+  to_concept: C-025
+  type: uses
+- from_concept: C-011
+  to_concept: C-007
+  type: uses
+- from_concept: C-011
+  to_concept: C-008
+  type: uses
+- from_concept: C-011
+  to_concept: C-003
+  type: produces
+- from_concept: C-011
+  to_concept: C-025
+  type: uses
+- from_concept: C-012
+  to_concept: C-013
+  type: owns
+- from_concept: C-012
+  to_concept: C-010
+  type: uses
+- from_concept: C-012
+  to_concept: C-003
+  type: produces
+- from_concept: C-012
+  to_concept: C-006
+  type: uses
+- from_concept: C-012
+  to_concept: C-025
+  type: uses
+- from_concept: C-014
+  to_concept: C-013
+  type: uses
+- from_concept: C-014
+  to_concept: C-012
+  type: depends_on
+- from_concept: C-015
+  to_concept: C-002
+  type: uses
+- from_concept: C-015
+  to_concept: C-009
+  type: consumes
+- from_concept: C-015
+  to_concept: C-012
+  type: depends_on
+- from_concept: C-016
+  to_concept: C-002
+  type: uses
+- from_concept: C-016
+  to_concept: C-017
+  type: uses
+- from_concept: C-016
+  to_concept: C-010
+  type: uses
+- from_concept: C-016
+  to_concept: C-009
+  type: consumes
+- from_concept: C-016
+  to_concept: C-025
+  type: uses
+- from_concept: C-018
+  to_concept: C-019
+  type: uses
+- from_concept: C-018
+  to_concept: C-002
+  type: produces
+- from_concept: C-018
+  to_concept: C-010
+  type: uses
+- from_concept: C-020
+  to_concept: C-010
+  type: uses
+- from_concept: C-021
+  to_concept: C-010
+  type: uses
+- from_concept: C-022
+  to_concept: C-006
+  type: uses
+- from_concept: C-025
+  to_concept: C-024
+  type: uses

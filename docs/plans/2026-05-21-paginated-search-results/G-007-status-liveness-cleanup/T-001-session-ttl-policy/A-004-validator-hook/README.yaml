@@ -1,0 +1,396 @@
+step_id: A-004
+parent_tactical_step: T-001
+name: Hook search_session validation in config validator
+target_file: ai_editor/core/config_validator/validator.py
+operation: modify_file
+priority: 5
+depends_on:
+  - A-003
+concepts:
+  - C-007
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/config_validator/validator.py
+
+  MRS (C-007 SessionTTLPolicy): configuration validator must enforce search_session settings.
+
+  Precondition: ai_editor/core/config_validator/section_search_session.py exists (section_search_session.py module).
+
+  Current full file content (apply edits to this baseline):
+
+  ```python
+  """
+  Main config validator: load config, run base + section validations, summary.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  import json
+  from typing import Any, Dict, List, Optional, Tuple
+
+  from mcp_proxy_adapter.core.config.simple_config import SimpleConfig
+  from mcp_proxy_adapter.core.config.simple_config_validator import (
+      SimpleConfigValidator,
+  )
+
+  from .field_types import validate_field_types_impl
+  from .field_values import validate_field_values_impl
+  from .result import ValidationResult
+  from .section_ai_editor import validate_ai_editor_section_impl
+  from .section_database_driver import validate_database_driver_section_impl
+  from .section_file_existence import validate_file_existence_impl
+  from .section_mtls import (
+      validate_external_servers_mtls_impl,
+      validate_protocol_consistency_impl,
+      validate_uuid_format_impl,
+  )
+
+
+  class CodeAnalysisConfigValidator:
+      """
+      Validate configuration for ai-editor-server.
+
+      Extends SimpleConfigValidator from mcp-proxy-adapter with ai_editor
+      specific validation (database.driver, ai_editor sections, etc.).
+      """
+
+      def __init__(self, config_path: Optional[str] = None):
+          """
+          Initialize configuration validator.
+
+          Args:
+              config_path: Path to configuration file (optional)
+          """
+          self.config_path = config_path
+          self.config_data: Dict[str, Any] = {}
+          self.validation_results: List[ValidationResult] = []
+          self._base_validator: Optional[SimpleConfigValidator] = None
+
+      def load_config(self, config_path: Optional[str] = None) -> None:
+          """
+          Load configuration from file.
+
+          Args:
+              config_path: Path to configuration file
+          """
+          if config_path:
+              self.config_path = config_path
+
+          if not self.config_path:
+              raise ValueError("No configuration path provided")
+
+          try:
+              with open(self.config_path, "r", encoding="utf-8") as f:
+                  self.config_data = json.load(f)
+          except FileNotFoundError:
+              raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
+          except json.JSONDecodeError as e:
+              raise ValueError(f"Invalid JSON in configuration file: {e}")
+          except Exception as e:
+              raise RuntimeError(f"Error loading configuration: {e}")
+
+      def validate_config(
+          self, config_data: Optional[Dict[str, Any]] = None
+      ) -> List[ValidationResult]:
+          """
+          Validate configuration data.
+
+          Uses SimpleConfigValidator from mcp-proxy-adapter for base validation,
+          then adds ai_editor specific validations.
+
+          Args:
+              config_data: Configuration data to validate (optional)
+
+          Returns:
+              List of validation results
+          """
+          if config_data is not None:
+              self.config_data = config_data
+
+          if not self.config_data:
+              raise ValueError("No configuration data to validate")
+
+          self.validation_results = []
+
+          if self.config_path:
+              try:
+                  if self._base_validator is None:
+                      self._base_validator = SimpleConfigValidator(self.config_path)
+
+                  simple_config = SimpleConfig(self.config_path)
+                  model = simple_config.load()
+                  base_errors = self._base_validator.validate(model)
+
+                  for error in base_errors:
+                      self.validation_results.append(
+                          ValidationResult(
+                              level="error",
+                              message=str(error),
+                              section=getattr(error, "section", None),
+                              key=getattr(error, "key", None),
+                              suggestion=getattr(error, "suggestion", None),
+                          )
+                      )
+              except Exception as e:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="warning",
+                          message=f"Base validation warning: {str(e)}",
+                          section=None,
+                          key=None,
+                          suggestion="Base validation skipped, continuing with ai_editor specific validations",
+                      )
+                  )
+
+          self._validate_required_sections()
+          self._validate_server_section()
+          self._validate_registration_section()
+          self._validate_queue_manager_section()
+          validate_ai_editor_section_impl(self.config_data, self.validation_results)
+          validate_database_driver_section_impl(self.config_data, self.validation_results)
+          validate_file_existence_impl(
+              self.config_data,
+              self.validation_results,
+              self.config_path,
+          )
+          validate_external_servers_mtls_impl(self.config_data, self.validation_results)
+          validate_protocol_consistency_impl(self.config_data, self.validation_results)
+          validate_uuid_format_impl(self.config_data, self.validation_results)
+          validate_field_types_impl(self.config_data, self.validation_results)
+          validate_field_values_impl(self.config_data, self.validation_results)
+
+          return self.validation_results
+
+      def _validate_required_sections(self) -> None:
+          """Validate that required sections exist."""
+          required_sections = ["server", "queue_manager"]
+          for section in required_sections:
+              if section not in self.config_data:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message=f"Required section '{section}' is missing",
+                          section=section,
+                          suggestion=f"Add '{section}' section to configuration",
+                      )
+                  )
+
+      def _validate_server_section(self) -> None:
+          """Validate server section."""
+          server = self.config_data.get("server", {})
+          if not server:
+              return
+
+          required_fields = ["host", "port", "protocol"]
+          for field in required_fields:
+              if field not in server:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message=f"Required field 'server.{field}' is missing",
+                          section="server",
+                          key=field,
+                          suggestion=f"Add '{field}' to server section",
+                      )
+                  )
+
+          protocol = server.get("protocol")
+          if protocol and protocol not in ("http", "https", "mtls"):
+              self.validation_results.append(
+                  ValidationResult(
+                      level="error",
+                      message=f"Invalid protocol '{protocol}'. Must be http, https, or mtls",
+                      section="server",
+                      key="protocol",
+                      suggestion="Use 'http', 'https', or 'mtls'",
+                  )
+              )
+
+          if protocol in ("https", "mtls"):
+              ssl = server.get("ssl")
+              if not ssl:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message=f"SSL configuration is required for protocol '{protocol}'",
+                          section="server",
+                          key="ssl",
+                          suggestion="Add 'ssl' section with cert, key, and ca",
+                      )
+                  )
+              else:
+                  required_ssl_fields = ["cert", "key"]
+                  if protocol == "mtls":
+                      required_ssl_fields.append("ca")
+                  for field in required_ssl_fields:
+                      if field not in ssl or not ssl[field]:
+                          self.validation_results.append(
+                              ValidationResult(
+                                  level="error",
+                                  message=f"Required SSL field 'server.ssl.{field}' is missing or empty",
+                                  section="server",
+                                  key=f"ssl.{field}",
+                                  suggestion=f"Add '{field}' to server.ssl section",
+                              )
+                          )
+
+      def _validate_registration_section(self) -> None:
+          """Validate registration section."""
+          registration = self.config_data.get("registration", {})
+          if not registration:
+              return
+
+          enabled = registration.get("enabled", False)
+          if not enabled:
+              return
+
+          required_fields = [
+              "protocol",
+              "register_url",
+              "unregister_url",
+              "instance_uuid",
+          ]
+          for field in required_fields:
+              if field not in registration or not registration[field]:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message=f"Required field 'registration.{field}' is missing or empty when registration is enabled",
+                          section="registration",
+                          key=field,
+                          suggestion=f"Add '{field}' to registration section",
+                      )
+                  )
+
+          protocol = registration.get("protocol")
+          if protocol in ("https", "mtls"):
+              ssl = registration.get("ssl")
+              if not ssl:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message=f"SSL configuration is required for registration protocol '{protocol}'",
+                          section="registration",
+                          key="ssl",
+                          suggestion="Add 'ssl' section with cert, key, and ca",
+                      )
+                  )
+
+      def _validate_queue_manager_section(self) -> None:
+          """Validate queue manager section."""
+          queue_manager = self.config_data.get("queue_manager", {})
+          if not queue_manager:
+              return
+
+          enabled = queue_manager.get("enabled", True)
+          if not enabled:
+              return
+
+          max_concurrent = queue_manager.get("max_concurrent_jobs")
+          if max_concurrent is not None:
+              if not isinstance(max_concurrent, int):
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message=f"queue_manager.max_concurrent_jobs must be int, got {type(max_concurrent).__name__}",
+                          section="queue_manager",
+                          key="max_concurrent_jobs",
+                          suggestion="Set max_concurrent_jobs to an integer value",
+                      )
+                  )
+              elif max_concurrent < 1:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message="queue_manager.max_concurrent_jobs must be at least 1",
+                          section="queue_manager",
+                          key="max_concurrent_jobs",
+                          suggestion="Set max_concurrent_jobs to 1 or higher",
+                      )
+                  )
+
+          retention = queue_manager.get("completed_job_retention_seconds")
+          if retention is not None:
+              if not isinstance(retention, int):
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message=f"queue_manager.completed_job_retention_seconds must be int, got {type(retention).__name__}",
+                          section="queue_manager",
+                          key="completed_job_retention_seconds",
+                          suggestion="Set completed_job_retention_seconds to an integer value",
+                      )
+                  )
+              elif retention < 0:
+                  self.validation_results.append(
+                      ValidationResult(
+                          level="error",
+                          message="queue_manager.completed_job_retention_seconds must be >= 0",
+                          section="queue_manager",
+                          key="completed_job_retention_seconds",
+                          suggestion="Set completed_job_retention_seconds to 0 or higher",
+                      )
+                  )
+
+      def get_validation_summary(self) -> Dict[str, Any]:
+          """
+          Get a summary of validation results.
+
+          Returns:
+              Dictionary with validation summary
+          """
+          error_count = sum(1 for r in self.validation_results if r.level == "error")
+          warning_count = sum(1 for r in self.validation_results if r.level == "warning")
+          info_count = sum(1 for r in self.validation_results if r.level == "info")
+
+          return {
+              "total_issues": len(self.validation_results),
+              "errors": error_count,
+              "warnings": warning_count,
+              "info": info_count,
+              "is_valid": error_count == 0,
+          }
+
+      def validate_file(
+          self, config_path: str
+      ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+          """
+          Validate configuration file.
+
+          Args:
+              config_path: Path to configuration file
+
+          Returns:
+              Tuple of (is_valid, error_message, config_data)
+          """
+          try:
+              self.load_config(config_path)
+              self.validate_config()
+              summary = self.get_validation_summary()
+
+              if summary["is_valid"]:
+                  return True, None, self.config_data
+              else:
+                  errors = [
+                      r.message for r in self.validation_results if r.level == "error"
+                  ]
+                  return False, "; ".join(errors), None
+          except Exception as e:
+              return False, str(e), None
+  ```
+
+  Required edits:
+  1. Add import: from .section_search_session import validate_search_session_section_impl
+  2. In validate_config(), after validate_ai_editor_section_impl(...), call
+     validate_search_session_section_impl(self.config_data, self.validation_results)
+
+  Forbidden: remove existing validation calls; modify section_ai_editor.py.
+
+  Run black/flake8/mypy on validator.py.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/config_validator/validator.py
+  expected: validate_config invokes validate_search_session_section_impl after ai_editor section check.
+status: ready_for_review

@@ -1,0 +1,29 @@
+step_id: T-001
+parent_global_step: G-002
+name: Sibling Storage Convention
+description: 'Define and implement the co-located sibling storage convention for
+  TreeFile (C-003) and SourceFile (C-004): a TreeFile is placed as a direct sibling
+  of the SourceFile it describes via sibling_tree_path. Define SourceFile (C-004)
+  as the original unmarked file that is the source of truth outside any edit session;
+  the tree system must never modify it. Establish that co-location is the canonical
+  TreeFile placement formula for the unified system. Legacy centralised (.trees/)
+  and per-format-subdirectory (.cst/, .tree_sidecar) layouts are NOT removed in this
+  step — that cutover is deferred to G-000 (C-023). Until G-000, G-001 FormatHandler
+  sidecar_path implementations may duplicate the sibling formula inline; G-002 introduces
+  the canonical sibling_tree_path function for all future and G-000 redirect targets.'
+concepts:
+- C-003
+- C-004
+inputs: []
+outputs:
+- name: Sibling storage convention
+  type: domain constraint definition
+  description: TreeFile is placed as a direct sibling of the SourceFile it describes
+    via sibling_tree_path; legacy layout removal is out of scope (G-000).
+- name: SourceFile invariant
+  type: domain constraint definition
+  description: SourceFile is never modified by the tree system; it is the source
+    of truth outside any active edit session.
+atomic_steps:
+- A-001
+status: needs_review

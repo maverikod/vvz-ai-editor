@@ -1,0 +1,13 @@
+global_step: G-004
+tactical_step: T-003
+name: TreeQuery and CstQuerySelector
+waves:
+  - wave: 1
+    steps:
+      - A-001
+    note: CstQuerySelector — XPath-compatible selector; evaluate returns List[NodeId] int.
+  - wave: 2
+    depends_on_wave: 1
+    steps:
+      - A-002
+    note: TreeQuery — simple and XPath modes; API returns short_id integers only ({n003}).

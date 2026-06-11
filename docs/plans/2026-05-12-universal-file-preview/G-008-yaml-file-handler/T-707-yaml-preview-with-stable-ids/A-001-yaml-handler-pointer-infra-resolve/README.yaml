@@ -1,0 +1,32 @@
+step_id: A-001
+parent_tactical_step: T-707
+name: YamlFileHandler builds pointer_by_id index and infra-backed resolve
+target_file: ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-009
+- C-011
+- C-020
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  `YamlFileHandler.open_root` builds an in-memory `YamlTree` (via yaml_tree
+  `build_yaml_tree_from_data`), keeps pointer ⇄ opaque id indexing consistent with
+  listing, and resolves `node_ref` through `resolve_yaml_node` when a `YamlTree`
+  session is in use.
+
+  Transient/command-owned flows register trees where appropriate so `tree_id` can be
+  returned for reuse (aligned with JSON session semantics).
+implementation_note: >
+  Falls back to pointer traversal on legacy paths only when infra session/value
+  lookup is unavailable; primary path matches T-705/T-706 infrastructure.
+verification:
+  type: pytest
+  target: tests/test_universal_file_preview_smoke.py
+  expected: >
+    YAML open_root mapping/scalar/sequence tests pass; YAML resolve tests including
+    pointer escapes and infra/session resolution pass.

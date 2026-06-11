@@ -1,0 +1,129 @@
+# G-001 local findings verification (read-only)
+# Plan root: docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/
+# Canonical prior audit file docs/ai_reports/g001_audit_findings.yaml: NOT FOUND on disk
+# Verified: 2026-05-30
+# Scope: G1-12, G1-14, G1-16, G1-04 only
+
+meta:
+  plan_root: docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/
+  prior_audit_file: docs/ai_reports/g001_audit_findings.yaml
+  prior_audit_exists: false
+  source_files_on_disk: false
+  note: >
+    All target paths (ai_editor/tree/handlers/*, handler_registry.py) are
+    PLANNED only — described inside atomic-step prompts; no matching tree/
+    package exists in the repository at verification time.
+
+findings:
+
+  G1-12:
+    verdict: NOT_REPRODUCIBLE
+    title: unused Tuple import in json handler
+    as_file: docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-006-json-handler.yaml
+    target_file: ai_editor/tree/handlers/json_handler.py
+    edit_type: plan-doc
+    location: prompt embedded code block (Required file content); not a source file on disk
+    current_text: |
+      from typing import Any, Dict, List
+    note_on_finding: |
+      No `Tuple` import appears anywhere under G-001 (grep over plan tree).
+      A-006 verification is type: import (not static_analysis / flake8); no
+      "flake8 exit 0" expectation exists in this AS.
+    proposed_corrected_text: null
+    reclassify_hint: >
+      Finding may have targeted a superseded draft, a different plan branch,
+      or conflated another handler AS. No edit required in current A-006.
+
+  G1-14:
+    verdict: CONFIRMED
+    title: invalid inline try/except in verification.expected
+    as_file: docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-002-handler-registry.yaml
+    target_file: ai_editor/tree/handler_registry.py
+    edit_type: plan-doc
+    location: verification.expected (lines 68-71)
+    syntax_check: >
+      Python compile() rejects the try/except one-liner with SyntaxError
+      (compound try/except cannot be written as a single-line statement).
+    also_violates: atomic_step_creation_standard a9 — expected must be prose, not code
+    current_text: |
+      verification:
+        type: import
+        target: ai_editor/tree/handler_registry.py
+        expected: "`from ai_editor.tree.handler_registry import HandlerRegistry, HandlerNotFoundError;
+          r = HandlerRegistry(); assert \".py\" not in r; try: r.resolve(__import__(\"pathlib\"
+          ).Path(\"foo.py\")) except HandlerNotFoundError: pass` exits with code 0 and no
+          output.\n"
+    proposed_corrected_text: |
+      verification:
+        type: import
+        target: ai_editor/tree/handler_registry.py
+        expected: >
+          Import of HandlerRegistry and HandlerNotFoundError succeeds.
+          A newly constructed registry reports no registered extensions.
+          Resolving a path whose suffix has no registered handler raises
+          HandlerNotFoundError rather than returning a handler.
+
+  G1-16:
+    verdict: CONFIRMED
+    title: invalid inline try/except in verification.expected
+    as_file: docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-007-python-handler.yaml
+    target_file: ai_editor/tree/handlers/python_handler.py
+    edit_type: plan-doc
+    location: verification.expected (lines 86-89)
+    syntax_check: >
+      Python compile() rejects `try: h.mark("x=1") except NotImplementedError: pass`
+      with SyntaxError.
+    also_violates: atomic_step_creation_standard a9 — expected must be prose, not code
+    current_text: |
+      verification:
+        type: import
+        target: ai_editor/tree/handlers/python_handler.py
+        expected: "`from ai_editor.tree.handlers.python_handler import PythonHandler;
+          h = PythonHandler(); from pathlib import Path; assert h.sidecar_path(Path(\"/tmp/foo.py\"
+          )) == Path(\"/tmp/foo.py.tree\"); try: h.mark(\"x=1\") except NotImplementedError:
+          pass` runs without error.\n"
+    proposed_corrected_text: |
+      verification:
+        type: import
+        target: ai_editor/tree/handlers/python_handler.py
+        expected: >
+          Import of PythonHandler succeeds. sidecar_path for a .py source path
+          returns the sibling path with a .tree suffix appended to the full
+          filename. Calling mark raises NotImplementedError with the CST
+          integration pending message defined in the prompt.
+
+  G1-04:
+    verdict: CONFIRMED
+    title: handlers __init__ missing depends_on for handler modules
+    as_file: docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-002-handlers-package-init.yaml
+    target_file: ai_editor/tree/handlers/__init__.py
+    edit_type: plan-doc
+    location: depends_on and priority fields (lines 6-7); also T-002 README atomic_steps order lists A-002 before A-003..A-007
+    issue: >
+      A-002 prompt imports JsonHandler, MarkdownHandler, PythonHandler, TextHandler,
+      YamlHandler from sibling modules, but depends_on is empty and TS list order
+      places A-002 before A-003..A-007. Handler AS files (A-003..A-007) each
+      depend_on A-001 only. Executing A-002 before handlers exist would fail import
+      verification.
+    handler_as_priorities:
+      A-003: { priority: 1, depends_on: [A-001] }
+      A-004: { priority: 1, depends_on: [A-001] }
+      A-005: { priority: 1, depends_on: [A-001] }
+      A-006: { priority: 1, depends_on: [A-001] }
+      A-007: { priority: 1, depends_on: [A-001] }
+    current_text: |
+      priority: 1
+      depends_on: []
+    proposed_corrected_text: |
+      priority: 1
+      depends_on:
+        - A-003
+        - A-004
+        - A-005
+        - A-006
+        - A-007
+    priority_change_note: >
+      Priority is local per target file; cross-file execution order is enforced
+      by depends_on. Changing A-002 priority alone does not fix the ordering bug.
+      Optional hygiene: move A-002 after A-007 in T-002/README.yaml atomic_steps
+      list to match dependency graph visually.

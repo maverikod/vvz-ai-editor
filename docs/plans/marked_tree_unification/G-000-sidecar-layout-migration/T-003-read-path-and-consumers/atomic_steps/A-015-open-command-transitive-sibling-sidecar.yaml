@@ -1,0 +1,85 @@
+step_id: A-015
+parent_tactical_step: T-003
+name: Confirm open_command observes sibling sidecar via write_sidecar_atomic
+target_file: ai_editor/commands/universal_file_edit/open_command.py
+operation: modify_file
+priority: 14
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/universal_file_edit/open_command.py
+
+  ## Goal
+  Satisfy the tactical requirement that universal_file_edit open_command observes the
+  sibling tree-file convention (C-003). This module does not resolve sidecar paths
+  directly; it calls write_sidecar_atomic(abs_path, tree) inside _write_sidecar_draft.
+  After the tree_sidecar module cutover (pending mechanism and .cst/ resolver removed,
+  write_sidecar_atomic writing sibling_tree_path only), open_command automatically
+  writes <source>.py.tree next to the source. This step updates the _write_sidecar_draft
+  docstring so the on-disk layout is explicit.
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover; write_sidecar_atomic writes at the sibling path.
+  - properties:
+    - hard cutover; no backward-compatibility shim
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact stored as a sibling file next to the source.
+  - properties:
+    - stored as a sibling file placed directly next to the source file it describes
+
+  ## Precondition (file state)
+  The tree_sidecar module on disk must write only via sibling_tree_path; no pending-sidecar API.
+
+  ## Required edits (migration-relevant ONLY)
+  In _write_sidecar_draft, replace the method docstring (keep signature and code):
+
+  FROM:
+      """Load Python file into CST tree and write sidecar.
+
+      Args:
+          abs_path: Absolute path to the Python file.
+
+      Returns:
+          In-memory CST tree UUID for subsequent edit/write commands.
+      """
+
+  TO:
+      """Load Python file into CST tree and write the sibling tree file.
+
+      Persists via write_sidecar_atomic at <source>.py.tree next to abs_path (C-003).
+      No .cst/ subdirectory and no pending-sidecar path.
+
+      Args:
+          abs_path: Absolute path to the Python file.
+
+      Returns:
+          In-memory CST tree UUID for subsequent edit/write commands.
+      """
+
+  ## a3 / a8
+  File is 557 lines (>400). Docstring region only; all other lines byte-for-byte identical.
+
+  ## Forbidden
+  - Do not import sibling_tree_path or sidecar_path_for_py here.
+  - Do not add promote_pending_sidecar_to_final.
+  - Do not reference  or universal-id remap.
+  - Do not touch other files.
+
+  ## Validation
+  black/flake8/mypy exit 0; grep for '.cst', 'pending', 'promote_pending',
+  'sidecar_path_for_py' in this file returns nothing.
+  All tests must pass before marking this step complete.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/open_command.py
+  expected: >
+    _write_sidecar_draft docstring documents sibling <source>.py.tree;
+    executable body still calls write_sidecar_atomic(abs_path, tree) only;
+    no legacy path symbols; black/flake8/mypy exit 0.

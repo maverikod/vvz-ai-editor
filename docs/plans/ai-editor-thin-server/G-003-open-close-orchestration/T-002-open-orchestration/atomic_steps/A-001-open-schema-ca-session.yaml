@@ -1,0 +1,215 @@
+step_id: A-001
+parent_tactical_step: T-002
+parent_global_step: G-003
+name: Схема open — обязательный ca session_id
+target_file: ai_editor/commands/universal_file_edit/open_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-014
+- C-016
+- C-024
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/open_command.py` (operation: modify_file).
+
+  ## Parent links (mandatory)
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-003-open-close-orchestration/README.yaml` (G-003)
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-003-open-close-orchestration/T-002-open-orchestration/README.yaml` (T-002)
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml`
+  - Guard-integrated facade baseline (execute only — do not re-apply): G-007 Session Guard integration in `open_command.py`.
+
+  ## MRS excerpt (concepts for this step only)
+
+  - **C-004 CA Session**: клиентская сессия Code Analysis Server; `session_id` задаётся СА и передаётся агентом; единственный session_id во всех `universal_file_*`; отдельный editor group UUID запрещён; обязательный контекст любой работы с файлами.
+  - **C-014 Session Validation**: проверка session_id на СА через Session Guard (C-024) и touch; обязательна перед `universal_file_open`; SESSION_NOT_FOUND при отсутствии сессии; единая точка входа — C-024.
+  - **C-016 MCP Workflow Surface**: `universal_file_open` — slim facade; schema/validate описывают публичный MCP-контракт; orchestration делегируется runtime после guard.
+  - **C-024 Session Guard**: внутренняя проверка session_id; для normal OPEN — reject при NOT_FOUND; не экспонируется как MCP; уже интегрирован в `execute()` (не менять в этом AS).
+
+  ## Scope (strict)
+
+  Modify **`get_schema()`** and **`validate_params()`** only.
+
+  Do **not** modify:
+  - `execute()` body (keep G-007 guard-integrated baseline verbatim)
+  - `metadata()`
+  - module-level imports
+  - any other file
+
+  Session Guard (C-024) / Session Validation (C-014) rejection paths remain in `execute()`; this AS adds schema + early param validation for empty `session_id` before guard runs.
+
+  ## CURRENT FILE CONTENT (post-G-007 guard-integrated facade baseline — syntactically valid; modify schema/validate only)
+
+  ```python
+  """MCP command: universal_file_open — facade (C-016)."""
+  from __future__ import annotations
+
+  import logging
+  from typing import Any, Dict, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+  from ai_editor.core.upstream.session_guard import (
+      GuardDecision,
+      OperationKind,
+      SessionGuard,
+  )
+  from ..core.exceptions import ValidationError
+  from .base_mcp_command import BaseMCPCommand
+  from .open_command_metadata import get_universal_file_open_metadata
+  from .open_command_runtime import run_open_execute
+
+  logger = logging.getLogger(__name__)
+
+
+  class UniversalFileOpenCommand(BaseMCPCommand):
+      name = "universal_file_open"
+      version = "1.0.0"
+      descr = "Open project file into editor workspace"
+      category = "universal_file_edit"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {"type": "string"},
+                  "session_id": {
+                      "type": "string",
+                      "description": "CA session id (required)",
+                  },
+                  "create": {"type": "boolean"},
+                  "initial_content": {"type": "string"},
+              },
+              "required": ["project_id", "file_path", "session_id"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls) -> Dict[str, Any]:
+          return get_universal_file_open_metadata(cls)
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          params = super().validate_params(params)
+          return params
+
+      def execute(self, **kwargs: Any) -> SuccessResult | ErrorResult:
+          ca_session_id = str(kwargs.get("session_id", "")).strip()
+          if ca_session_id == "":
+              return ErrorResult(
+                  message="session_id is required for universal_file_open",
+                  code=cast(Any, "SESSION_INVALID"),
+              )
+          guard = SessionGuard(get_code_analysis_client())
+          decision = guard.check(OperationKind.OPEN, ca_session_id)
+          if decision == GuardDecision.REJECT:
+              return ErrorResult(
+                  message=f"CA session not found or invalid: {ca_session_id}",
+                  code=cast(Any, "SESSION_NOT_FOUND"),
+              )
+          if decision == GuardDecision.ALLOW_TERMINATING:
+              return ErrorResult(
+                  message="internal guard misclassification for open",
+                  code=cast(Any, "OPEN_ERROR"),
+              )
+          try:
+              return run_open_execute(self, **kwargs)
+          except ValidationError as exc:
+              return ErrorResult(message=str(exc), code=cast(Any, "VALIDATION_ERROR"))
+          except Exception as exc:
+              logger.error("universal_file_open failed: %s", exc, exc_info=True)
+              return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
+  ```
+
+  ## Method to modify: `get_schema(cls) -> Dict[str, Any]`
+
+  Keep structure (`type`, `properties`, `required`, `additionalProperties`) unchanged except property descriptions below.
+
+  Replace property descriptions with **exact** strings:
+
+  - `project_id`:
+    `"Project UUID. Resolves the project root on disk. Use list_projects to discover valid values."`
+  - `file_path`:
+    `"Project-relative path to the file. Literal path; no globs."`
+  - `session_id`:
+    `"CA session id (required; same id as session_create on Code Analysis Server). Mandatory CA Session context (C-004); not an optional editor group id."`
+  - `create`:
+    `"When True, create the file on Code Analysis Server if it does not exist (upload+lock branch)."`
+  - `initial_content`:
+    `"Initial file content used only when create=True."`
+
+  Keep `"required": ["project_id", "file_path", "session_id"]` and `"additionalProperties": False`.
+
+  **Forbidden in schema text:**
+  - Any mention of "omit on first open"
+  - Any mention of "optional existing group session" or editor group UUID
+  - Making `session_id` optional (must stay in `required`)
+
+  ## Method to modify: `validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]`
+
+  Replace method body with this algorithm (preserve signature and docstring if present; add one-line docstring if absent: `"""Validate open params; require non-empty CA session_id."""`):
+
+  1. `params = super().validate_params(params)`
+  2. `sid = str(params.get("session_id", "")).strip()`
+  3. If `sid == ""`:
+     - Raise `ValidationError("session_id is required for universal_file_open", field="session_id")`
+  4. `params["session_id"] = sid`
+  5. Return `params`
+
+  Do **not** add create/initial_content validation here (unchanged from baseline; runtime handles create branch).
+
+  ### Error handling (validate_params)
+
+  - Only raise `ValidationError` for empty/whitespace-only `session_id`.
+  - Do not catch exceptions from `super().validate_params()` — let them propagate.
+
+  ### Edge cases (validate_params)
+
+  - `session_id` missing from params → treated as empty → `ValidationError` field `session_id`.
+  - `session_id` whitespace-only → `ValidationError` field `session_id`.
+  - Non-empty `session_id` → stripped value written back to `params["session_id"]`.
+
+  ## Forbidden
+
+  - Do **not** modify `execute()`, `metadata()`, imports, or logger.
+  - Do **not** modify `open_command_runtime.py`, metadata modules, or tests in this step.
+  - Do **not** call `validate_ca_session` directly.
+  - Do **not** import or call `open_command_runtime` in this step (runtime orchestration belongs in a separate module).
+  - Do **not** use `Any` in new annotations (baseline already uses `Any` where present — do not expand).
+  - Keep file ≤120 lines (slim facade C-016).
+
+  ## Expected deliverable
+
+  Public MCP schema documents mandatory CA Session id (C-004). `validate_params` rejects empty `session_id` before `execute`. Guard-integrated `execute()` unchanged.
+
+  ## Validation (mandatory after implementation)
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/open_command.py
+  flake8 ai_editor/commands/universal_file_edit/open_command.py
+  mypy ai_editor/commands/universal_file_edit/open_command.py
+  pytest tests/unit/test_session_guard_open.py -v
+  ```
+
+  Expected:
+  - black: "reformatted" or "All done!" / no changes needed
+  - flake8: no output (exit 0)
+  - mypy: "Success: no issues found" on touched file
+  - pytest: all tests PASSED
+
+  **All tests must pass.**
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/open_command.py
+  expected: >
+    get_schema lists session_id in required with C-004 CA Session wording (no optional
+    group id text); validate_params strips session_id and raises ValidationError when
+    empty after strip; execute() remains G-007 guard-integrated baseline unchanged.
+status: draft

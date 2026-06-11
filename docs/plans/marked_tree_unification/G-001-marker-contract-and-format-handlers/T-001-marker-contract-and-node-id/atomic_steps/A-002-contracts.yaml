@@ -1,0 +1,337 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Create contracts.py with MarkerContract, NodeId, AddressableBlock
+target_file: ai_editor/tree/contracts.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-009
+- C-024
+- C-025
+status: ready_for_review
+prompt: |
+  Create the file `ai_editor/tree/contracts.py`.
+  Operation: create_file (the file does not exist yet).
+
+  This file defines the domain contract types for this tactical step:
+    - MarkerContract (C-001): three-operation Protocol for marked-tree operations
+    - NodeId (C-002): per-file integer short_id handle (NOT str, NOT UUID)
+    - TreeNodeUuid (C-024): MAP-section-only canonical UUID4 identity type
+    - AddressableBlock (C-005): per-format minimal addressable unit
+    - Format enum and UnknownNodeIdError supporting types
+
+  TreeNode (C-009) is referenced only under TYPE_CHECKING as an inline forward
+  reference shape (see below). Do NOT import `ai_editor.tree.tree_node`
+  at runtime.
+
+  ## MRS excerpt — C-001 MarkerContract
+
+  definition: The three-operation contract (mark, parse, unmark) that defines how
+    a tree is built from and reduced back to source content.
+  properties:
+    - operation mark(content) embeds per-file monotonic integer short_id markers
+      natively into the TREE section only
+    - operation parse(marked_text) builds the node tree from markers
+    - operation unmark(marked_text) reproduces original source bytes exactly from
+      the TREE section only
+    - round-trip invariant unmark(mark(source)) equals source, verified by checksum
+    - markers are short_id handles in the TREE section, not canonical identity;
+      canonical UUID4 lives only in the MAP section
+    - markers never appear in the source file and never cross the external API boundary
+    - every addressable node receives a short_id marker without exception
+
+  ## MRS excerpt — C-002 NodeId
+
+  definition: The in-content integer short_id handle that names exactly one
+    addressable block within one tree file.
+  properties:
+    - short_id is a per-file monotonic decimal integer token, not canonical identity
+    - one short_id names exactly one addressable block within one tree file
+    - canonical UUID4 stored only in MAP section; never embedded in marked content
+      or returned at API boundary
+    - external consumers address nodes by (project-relative file path, short_id int)
+    - unrecognised short_id for that file yields input error, never silent ignore
+    - short_id resolves to UUID4 via NodeIdMap when internal UUID lookup is required
+
+  ## MRS excerpt — C-003 TreeFile
+
+  definition: On-disk artifact with three ordered sections — CHECKSUMS, MAP, TREE.
+  properties:
+    - section 1 CHECKSUMS first — source content SHA-256 and related checksum fields
+    - section 2 MAP second — short_id↔UUID4 entries, next_free counter, per-node attributes
+    - section 3 TREE third — marked content with integer short_id markers embedded natively;
+      canonical UUID4 never appears in TREE
+    - stored as sibling file next to the source file; real source file never modified
+
+  ## MRS excerpt — C-004 SourceFile
+
+  definition: Original unmarked file; source of truth outside edit session.
+  properties:
+    - never modified by tree system; byte content is what unmark must reproduce exactly
+
+  ## MRS excerpt — C-005 AddressableBlock
+
+  definition: Minimally-addressable logical unit a marker may name.
+  properties:
+    - marker never splits a lexeme or sits inside a literal or token
+    - per-format minimal block: line (text), md block (markdown), yaml block (YAML),
+      json element (JSON), py logical statement (Python)
+
+  ## MRS excerpt — C-009 TreeNode (forward reference only — TYPE_CHECKING)
+
+  definition: In-memory node from parsing marked tree; carries short_id, type,
+    attributes, content.
+  properties:
+    - internal UUID4 association resolved via MAP section and NodeIdMap, not embedded
+      in marked content
+
+  Inline forward-reference shape (do NOT create this class in this file):
+
+  ```python
+  @dataclass
+  class TreeNode:
+      short_id: NodeId
+      kind: str
+      content: str
+      attributes: Dict[str, Any] = field(default_factory=dict)
+      parent_short_id: Optional[NodeId] = None
+  ```
+
+  ## MRS excerpt — C-024 TreeNodeUuid
+
+  definition: Canonical UUID4 identity stored only in MAP section.
+  properties:
+    - exactly one UUID4 per addressable node in MAP section
+    - never embedded in TREE, never returned by preview/edit/query MCP commands,
+      never accepted as external node reference
+    - assigned at node creation; preserved across validate-and-repair for unchanged content
+    - short_id in TREE resolves to TreeNodeUuid via NodeIdMap
+
+  ## MRS excerpt — C-025 NodeIdMap (documentation only — NOT implemented here)
+
+  definition: Module exposing exactly three operations on short_id↔UUID4 map.
+  properties:
+    - build — scan TREE and MAP to generate/refresh short_id↔UUID map
+    - validate_and_repair — fix inconsistencies while preserving UUID4 for unchanged nodes
+    - resolve — bidirectional lookup short_id→UUID and UUID→short_id within one tree file
+  Note: NodeIdMap implementation belongs to a later tactical step. This file defines
+  only the type aliases and contract documentation referencing C-025.
+
+  ## Operation mapping (FormatHandler C-007 implements C-001 — parallel ABCs, NOT inheritance)
+
+  | MarkerContract (C-001) | FormatHandler (C-007) | Input | Output |
+  |---|---|---|---|
+  | mark(content) | mark(content) | unmarked SourceFile body (C-004) | marked TREE section body |
+  | parse(marked_text) | parse_content(file_path, content) | marked TREE body vs unmarked source | List[TreeNode] (C-009) |
+  | unmark(marked_text) | unmark(marked_text) | marked TREE body | unmarked SourceFile body |
+
+  Key distinctions:
+    - MarkerContract.parse(marked_text): input is marked TREE section text only
+    - FormatHandler.parse_content: input is unmarked SourceFile body (NOT MarkerContract.parse)
+    - mark/unmark operate on TREE-section marked text; UUID4 is written to MAP by builders,
+      not by MarkerContract methods directly
+    - FormatHandler adds sidecar_path (not part of MarkerContract)
+
+  ## File header (module docstring — exact content)
+
+  """
+  Domain contracts for the marked-tree unification package.
+
+  Defines MarkerContract (C-001), NodeId integer short_id (C-002),
+  TreeNodeUuid MAP-only identity (C-024), and AddressableBlock (C-005).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Complete import list
+
+  Imports:
+  - from __future__ import annotations
+  - import enum
+  - from abc import ABC, abstractmethod
+  - from dataclasses import dataclass, field
+  - from typing import TYPE_CHECKING, Any, Dict, List, NewType, Optional
+  - from uuid import UUID
+
+  Under TYPE_CHECKING only (no runtime import):
+  - none beyond inline dataclass stub below; use string forward ref "TreeNode" in annotations
+
+  ## Constants and literals
+
+  - NodeId NewType base name: "NodeId"
+  - TreeNodeUuid NewType base name: "TreeNodeUuid"
+  - Format enum values: TEXT="text", MARKDOWN="markdown", YAML="yaml", JSON="json", PYTHON="python"
+  - AddressableBlock.FORMAT_GRANULARITY labels:
+      Format.TEXT → "line"
+      Format.MARKDOWN → "md block"
+      Format.YAML → "yaml block"
+      Format.JSON → "json element"
+      Format.PYTHON → "py logical statement"
+  - UnknownNodeIdError message template: "Unknown short_id: {short_id!r}"
+  - Minimum valid short_id integer: 1 (positive int only)
+
+  ## Class/function skeleton
+
+  ### Type aliases
+
+  NodeId = NewType("NodeId", int)
+  """Per-file monotonic integer short_id handle (C-002). NOT str. NOT UUID."""
+
+  TreeNodeUuid = NewType("TreeNodeUuid", UUID)
+  """Canonical UUID4 identity stored only in MAP section (C-024). Never in TREE or API."""
+
+  ### class Format(enum.Enum)
+
+  Members: TEXT, MARKDOWN, YAML, JSON, PYTHON (str values as listed above).
+  Docstring: "Enumeration of file formats supported by the marked-tree system."
+
+  ### class UnknownNodeIdError(ValueError)
+
+  __init__(self, short_id: NodeId) -> None
+  Docstring: "Raised when a short_id is not recognised in the current tree file (C-002)."
+
+  Instance attribute: self.short_id: NodeId
+
+  Algorithm __init__:
+  1. Call super().__init__(f"Unknown short_id: {short_id!r}").
+  2. Set self.short_id = short_id.
+
+  Error handling: do not catch exceptions; always raise via super().__init__.
+
+  Edge cases:
+  - short_id 0 or negative → still stored and formatted in message (validation is caller duty)
+  - any int value accepted as NodeId at construction time
+
+  ### def validate_short_id(value: int) -> NodeId
+
+  Module-level function.
+  Docstring: "Return NodeId for a positive integer short_id; raise ValueError otherwise."
+
+  Algorithm:
+  1. If not isinstance(value, int): raise ValueError(f"short_id must be int, got {type(value)!r}").
+  2. If value < 1: raise ValueError(f"short_id must be >= 1, got {value}").
+  3. Return NodeId(value).
+
+  Edge cases:
+  - bool is subclass of int in Python → reject bool: if type(value) is bool: treat as invalid int
+    (check `type(value) is bool` before int check and raise ValueError with bool message)
+  - value 1 → valid NodeId(1)
+
+  ### class AddressableBlock
+
+  Docstring: per C-005; mention marker at END of block when no metadata slot; never mid-lexeme.
+
+  Class attribute FORMAT_GRANULARITY: dict[Format, str] (values from constants above).
+
+  __init__(self, fmt: Format, description: str) -> None
+  Sets self.fmt: Format, self.description: str.
+
+  @classmethod granularity_for(cls, fmt: Format) -> str
+  Algorithm: return cls.FORMAT_GRANULARITY[fmt]  (KeyError propagates if fmt missing)
+
+  __repr__(self) -> str  # pragma: no cover
+  Return f"AddressableBlock(fmt={self.fmt!r}, description={self.description!r})"
+
+  ### class MarkerContract(ABC)
+
+  Docstring must state:
+    - three-operation contract C-001
+    - round-trip: unmark(mark(source)) == source (SHA-256 verified by caller)
+    - markers are integer short_id tokens in TREE section only
+    - TreeNodeUuid (UUID4) lives in MAP only; external API uses (file_path, short_id int)
+    - FormatHandler implements operations in parallel but does NOT subclass this ABC
+
+  @abstractmethod mark(self, content: str) -> str
+  Docstring: embed per-file monotonic integer short_id markers into TREE-section text;
+    input is unmarked SourceFile body; output is marked TREE body; markers at
+    AddressableBlock boundaries only.
+
+  @abstractmethod parse(self, marked_text: str) -> List["TreeNode"]
+  Docstring: parse marked TREE-section text; return ordered TreeNode list (C-009);
+    distinct from FormatHandler.parse_content which takes unmarked source.
+  Raises UnknownNodeIdError when marker references unrecognised short_id.
+
+  @abstractmethod unmark(self, marked_text: str) -> str
+  Docstring: strip short_id markers from TREE-section text; reproduce SourceFile bytes exactly.
+
+  ### TYPE_CHECKING TreeNode stub (for annotation docs only)
+
+  Place after MarkerContract class:
+
+  if TYPE_CHECKING:
+      @dataclass
+      class TreeNode:
+          short_id: NodeId
+          kind: str
+          content: str
+          attributes: Dict[str, Any] = field(default_factory=dict)
+          parent_short_id: Optional[NodeId] = None
+
+  MarkerContract.parse return annotation: List["TreeNode"]
+
+  ## Forbidden patterns
+
+  Forbidden:
+  - Do NOT define NodeId as str or use string marker tokens
+  - Do NOT call uuid.uuid4() or embed UUIDs in mark/parse/unmark logic
+  - Do NOT reference P:/L: prefixes, {l*}, or {m*} marker syntax
+  - Do NOT import or implement NodeIdMap operations in this file
+  - Do NOT import ai_editor.tree.tree_node at runtime
+  - Do NOT make FormatHandler subclass MarkerContract
+  - Do NOT add methods or classes beyond those listed
+  - Do NOT use bare except
+  - Do NOT use Any on public API except TreeNode.attributes dict values
+  - Do NOT add cross-step references or depends_on prose in code comments
+  - Estimated post-implementation line count MUST be <= 400 (expected ~220 lines)
+
+  ## Validation commands (run from project root with .venv active)
+
+  Validation:
+  - black ai_editor/tree/contracts.py → "reformatted" or "All done!" / no error
+  - flake8 ai_editor/tree/contracts.py → no output (exit 0)
+  - mypy ai_editor/tree/contracts.py → "Success: no issues found"
+  - python -c "
+      from ai_editor.tree.contracts import (
+          MarkerContract, NodeId, TreeNodeUuid, AddressableBlock, Format,
+          UnknownNodeIdError, validate_short_id,
+      )
+      import inspect
+      from uuid import UUID
+      assert inspect.isabstract(MarkerContract)
+      sid = validate_short_id(1)
+      assert sid == NodeId(1)
+      try:
+          validate_short_id(0)
+      except ValueError:
+          pass
+      else:
+          raise AssertionError('expected ValueError for 0')
+      err = UnknownNodeIdError(NodeId(99))
+      assert err.short_id == NodeId(99)
+      assert '99' in str(err)
+      assert AddressableBlock.granularity_for(Format.PYTHON) == 'py logical statement'
+      uid = TreeNodeUuid(UUID('00000000-0000-4000-8000-000000000001'))
+      assert isinstance(uid, UUID)
+      sig = inspect.signature(MarkerContract.parse)
+      assert 'TreeNode' in str(sig.return_annotation)
+      " → exit 0, no output
+
+  Mandatory completion: all validation commands pass; all tests pass (no new tests required for this step).
+
+verification:
+  type: static_analysis
+  target: ai_editor/tree/contracts.py
+  expected: >
+    black, flake8, and mypy succeed on ai_editor/tree/contracts.py. Import smoke
+    test confirms NodeId is int-based NewType, TreeNodeUuid wraps UUID, MarkerContract
+    is abstract with parse returning List[TreeNode], validate_short_id(1) succeeds and
+    validate_short_id(0) raises ValueError, UnknownNodeIdError stores integer short_id,
+    and AddressableBlock.granularity_for(Format.PYTHON) equals "py logical statement".
+    File line count is at most 400.

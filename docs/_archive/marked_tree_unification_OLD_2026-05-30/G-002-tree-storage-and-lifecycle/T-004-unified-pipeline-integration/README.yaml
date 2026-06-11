@@ -1,0 +1,47 @@
+step_id: T-004
+parent_global_step: G-002
+name: Unified Pipeline Integration and Parity Verification
+description: 'Wire the canonical validate-or-recreate content path to TreeBuilder.build
+  (HandlerRegistry / FormatHandler unified pipeline) while leaving recreate_tree_from_content
+  and TreeFormatKind legacy dispatch in checksum.py untouched as a parity oracle.
+  Add pytest parity tests that compare unified-pipeline tree output against legacy
+  recreate_tree_from_content on shared real fixtures for each supported format. This
+  tactical step completes G-002 integration per decision A1 and strategy new-alongside-old;
+  it does not remove legacy code or redirect G-000 consumers.'
+concepts:
+- C-010
+- C-011
+- C-007
+- C-008
+- C-003
+- C-006
+depends_on:
+- T-003
+inputs:
+- name: TreeBuilder unified build API
+  type: domain entity definition (C-011)
+  description: 'T-003 MUST complete first. TreeBuilder.build in builder.py must resolve
+    HandlerRegistry.default_registry(), call FormatHandler.mark, and write sibling
+    TreeFile before this step runs.'
+- name: ChecksumSyncPolicy and validate helpers
+  type: domain entity definition (C-006, C-010)
+  description: 'T-002 MUST complete first. validate_or_recreate_from_content and
+    ChecksumSyncPolicy exist in checksum.py (post-T-002/A-001 state).'
+- name: HandlerRegistry and all FormatHandlers
+  type: MRS concepts (C-008, C-007)
+  description: 'G-001 MUST complete first (default_registry with Text, Markdown, Yaml,
+    Json, PythonHandler including cst_tree wrapper per A-007).'
+outputs:
+- name: Canonical validate path wired to unified build
+  type: integration behavior
+  description: validate_or_recreate_from_content on mismatch/outside-session rebuild
+    branches calls TreeBuilder.build instead of recreate_tree_from_content; legacy
+    function remains callable for parity tests only.
+- name: Parity test suite
+  type: verification artifact
+  description: Pytest module comparing unified vs legacy tree outputs on fixtures;
+    documents covered vs unverified node-type parity for Python CST.
+atomic_steps:
+- A-001
+- A-002
+status: needs_review

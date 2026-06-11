@@ -1,0 +1,209 @@
+step_id: A-004
+parent_tactical_step: T-003
+name: Edit — обязательный file_path при N>1
+target_file: ai_editor/commands/universal_file_edit/edit_command.py
+operation: modify_file
+priority: 4
+depends_on:
+- A-001
+- A-002
+concepts:
+- C-004
+- C-009
+- C-011
+- C-016
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/commands/universal_file_edit/edit_command.py`):
+  ```py
+  """
+  UniversalFileEditCommand: applies a batch of mutations to the draft.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import asyncio
+  from typing import Any, Dict, List, Type, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.edit_command_metadata import (
+      get_universal_file_edit_metadata,
+  )
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TREE_TEMP,
+  )
+  from ai_editor.commands.universal_file_edit.invalid_write_support import (
+      invalid_session_warning,
+  )
+  from ai_editor.commands.universal_file_edit.session import EditSession, get_session
+  from ai_editor.commands.universal_file_edit.sidecar_cst_apply import (
+      run_sidecar_cst_edit_batch,
+      validate_sidecar_nested_batch,
+  )
+  from ai_editor.commands.universal_file_edit.text_draft_apply import (
+      run_text_draft_apply,
+  )
+  from ai_editor.commands.universal_file_edit import tree_temp_edit_batch
+
+
+  class UniversalFileEditCommand(BaseMCPCommand):
+      """MCP command that applies a batch of mutation operations to the draft."""
+
+      name = "universal_file_edit"
+      version = "1.0.0"
+      descr = "Apply a batch of universal file edit operations to the session draft."
+      category = "file_management"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+      use_queue = False
+
+      @staticmethod
+      def get_name() -> str:
+          return "universal_file_edit"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "session_id": {"type": "string"},
+                  "file_path": {
+                      "type": "string",
+                      "description": (
+                          "Project-relative path when the session holds multiple files. "
+                          "Required when multi_file_bundle.open_file_count > 1."
+                      ),
+                  },
+                  "operations": {"type": "array", "items": {"type": "object"}},
+              },
+              "required": ["project_id", "session_id", "operations"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls: Type["UniversalFileEditCommand"]) -> Dict[str, Any]:
+          return cast(Dict[str, Any], get_universal_file_edit_metadata(cls))
+
+      async def execute(
+          self,
+          project_id: str,
+          session_id: str,
+          operations: List[Dict[str, Any]],
+          file_path: str = "",
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          del project_id, kwargs
+          try:
+              session = get_session(session_id, file_path=file_path or None)
+          except ValueError as exc:
+              msg = str(exc)
+              if msg == "SESSION_FILE_PATH_REQUIRED":
+                  return error_result_from_make_error(
+                      make_error(
+                          SESSION_NOT_FOUND,
+                          "file_path is required when the session has multiple open files",
+                      )
+                  )
+              return error_result_from_make_error(
+                  make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+              )
+
+          fg = session.format_group
+          if fg == FORMAT_SIDECAR:
+              validation = validate_sidecar_nested_batch(operations, session.tree_id)
+              if validation is not None:
+                  return error_result_from_make_error(validation)
+              result = await self._apply_sidecar(session, operations)
+          elif fg == FORMAT_TREE_TEMP:
+              result = await self._apply_tree_temp(session, operations)
+          else:
+              result = await self._apply_text(session, operations)
+
+          if session.is_invalid and isinstance(result, SuccessResult):
+              payload = dict(result.data)
+              payload["warning"] = invalid_session_warning(session)
+              return SuccessResult(data=payload)
+          return result
+
+      async def _apply_sidecar(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          return await asyncio.to_thread(run_sidecar_cst_edit_batch, session, operations)
+
+      async def _apply_tree_temp(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          return await asyncio.to_thread(
+              tree_temp_edit_batch.apply_tree_temp_mutations,
+              session,
+              operations,
+          )
+
+      async def _apply_text(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          return await asyncio.to_thread(run_text_draft_apply, session, operations)
+  ```
+
+  Modify `ai_editor/commands/universal_file_edit/edit_command.py` (operation: modify_file).
+
+  ## Goal (C-004, C-009, C-011, C-016)
+
+  When CA Session bundle holds N>1 files ({8b1h}), `universal_file_edit` must reject
+  calls without `file_path` using dedicated code `SESSION_FILE_PATH_REQUIRED`.
+
+  ## Required changes
+
+  ### Imports
+  1. Add `SESSION_FILE_PATH_REQUIRED` to errors import list.
+  2. Replace `get_session` import with `resolve_session_for_command` from session module.
+  3. Remove unused `get_session` import.
+
+  ### `get_schema()` — update `file_path` description
+  Replace description with:
+  `"Project-relative path. Required when the CA session has more than one open file (see multi_file_bundle from open). Optional when exactly one file is open."`
+
+  ### `execute()` — session resolution
+  1. Replace `get_session(session_id, file_path=file_path or None)` with
+     `resolve_session_for_command(session_id, file_path or None)`.
+  2. In `except ValueError`:
+     - if `msg == "SESSION_FILE_PATH_REQUIRED"`:
+       return `error_result_from_make_error(make_error(SESSION_FILE_PATH_REQUIRED, "file_path is required when the session has multiple open files", details={"session_id": session_id}))`
+     - elif `msg == "SESSION_NOT_FOUND"` or default:
+       return `error_result_from_make_error(make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}"))`
+
+  Do **not** change apply helpers or format-group branches.
+
+  ## Forbidden
+
+  - Do NOT add Session Guard here (G-007 owns edit guard integration).
+  - Do NOT modify files other than target.
+  - Do NOT change `required` schema fields.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/edit_command.py
+  flake8 ai_editor/commands/universal_file_edit/edit_command.py
+  mypy ai_editor/commands/universal_file_edit/edit_command.py
+  pytest tests/ -q --tb=no -x
+  ```
+
+  Expected: multi-file bundle + missing file_path → ErrorResult code SESSION_FILE_PATH_REQUIRED; all tests pass.
+verification:
+  type: pytest
+  target: ai_editor/commands/universal_file_edit/edit_command.py
+  expected: Omitting file_path with N>1 open files returns SESSION_FILE_PATH_REQUIRED; single-file session still works without file_path.
+status: draft

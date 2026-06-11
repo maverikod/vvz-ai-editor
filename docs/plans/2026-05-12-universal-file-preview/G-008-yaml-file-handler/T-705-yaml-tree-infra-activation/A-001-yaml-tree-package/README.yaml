@@ -1,0 +1,27 @@
+step_id: A-001
+parent_tactical_step: T-705
+name: Add ai_editor.core.yaml_tree package
+target_file: ai_editor/core/yaml_tree/__init__.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-009
+- C-011
+- C-020
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  Canonical YAML tree layer under `ai_editor/core/yaml_tree/`:
+  `models` (YamlTree, metadata), `tree_builder` (build/load/get/remove),
+  `yaml_pointer` helpers, public exports in `__init__.py`.
+implementation_note: >
+  Single-document trees; stable id generation aligns with pointer-based indexing
+  used by preview and listing helpers.
+verification:
+  type: import
+  target: ai_editor.core.yaml_tree
+  expected: >
+    Package imports; `__all__` exposes YamlTree, build/load helpers, and
+    `resolve_yaml_node`.

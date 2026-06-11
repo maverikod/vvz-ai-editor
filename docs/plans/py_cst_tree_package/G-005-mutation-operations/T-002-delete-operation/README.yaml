@@ -1,0 +1,31 @@
+step_id: T-002
+parent_global_step: G-005
+name: DeleteOperation
+description: Define the DeleteOperation entity (C-012). Delete removes a target 
+  node addressed by StableId (C-003) and its entire subtree from the Tree 
+  (C-004). Every surviving node keeps its StableId unchanged; removed nodes 
+  StableIds are gone with them. After the delete, the IdIndex (C-005), 
+  AttributeIndex (C-006), and ParentRelation (C-007) are updated; no entry 
+  points at a removed node.
+concepts:
+- C-012
+- C-004
+- C-003
+- C-005
+- C-006
+- C-007
+inputs:
+- name: target Tree
+  type: C-004 instance
+  description: The Tree from which the target node and subtree are removed.
+- name: target address
+  type: StableId
+  description: The StableId of the node to remove; obtained by querying the Tree
+    through the QueryInterface (C-008) before calling this operation.
+outputs:
+- name: Tree after delete
+  type: C-004 instance
+  description: Tree after delete; surviving nodes retain StableIds; indexes 
+    consistent.
+atomic_steps: []
+status: draft

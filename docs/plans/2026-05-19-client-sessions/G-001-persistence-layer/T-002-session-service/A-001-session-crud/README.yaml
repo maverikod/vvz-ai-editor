@@ -1,0 +1,133 @@
+concepts:
+- C-001
+- C-004
+depends_on: []
+name: Add ClientSession CRUD operations to client_sessions.py
+operation: modify_file
+parent_tactical_step: T-002
+priority: 1
+prompt: "Modify the existing file at the exact path:\n  ai_editor/core/client_sessions.py\n\
+  \nOperation: modify_file. The file currently contains (post A-001 of T-001):\n-
+  Module docstring\n- Imports: from __future__ import annotations, import logging,
+  from typing import Any\n- logger = logging.getLogger(__name__)\n- Five TABLE NAME
+  constants: CLIENT_SESSIONS_TABLE, SESSION_FILE_LOCKS_TABLE, ROLES_TABLE, ROLE_PERMISSIONS_TABLE,
+  SESSION_ROLES_TABLE\n- DDL string constants: CLIENT_SESSIONS_DDL, CLIENT_SESSIONS_IDX,
+  SESSION_FILE_LOCKS_DDL, SESSION_FILE_LOCKS_IDX_SESSION, SESSION_FILE_LOCKS_IDX_FILE,
+  ROLES_DDL, ROLE_PERMISSIONS_DDL, ROLE_PERMISSIONS_IDX, SESSION_ROLES_DDL\n- Domain
+  exceptions: SessionNotFoundError, SessionHasLocksError\n- Migration function: ensure_client_session_tables(conn:
+  Any) -> None\n\nAdd the following imports to the existing imports block (after 'from
+  typing import Any'):\n  import uuid\n  from typing import Optional\n  from ai_editor.core.database_client.client
+  import DatabaseClient\n\nThen append the following seven functions at the END of
+  the file, after ensure_client_session_tables. Do not modify any existing content.\n\
+  \nDATABASE API CONTRACT (mandatory for all functions):\n- database parameter type
+  is DatabaseClient in all functions.\n- database.execute(sql, params) returns {\"\
+  data\": list[dict]} for SELECT, {\"affected_rows\": int, ...} for DML.\n- To fetch
+  one row: res = database.execute(sql, params); row = res[\"data\"][0] if res.get(\"\
+  data\") else None\n- To fetch all rows: res = database.execute(sql, params); rows
+  = res.get(\"data\") or []\n- To get affected_rows for DML: res = database.execute(sql,
+  params); res.get(\"affected_rows\", 0)\n- Transactions: tid = database.begin_transaction();
+  then database.commit_transaction(tid) or database.rollback_transaction(tid)\n- Never
+  call database.commit(), database.rollback(), or database.execute().fetchone() —
+  these do not exist on DatabaseClient.\n\n--- FUNCTION 1 ---\n\ndef create_client_session(\n\
+  \    database: DatabaseClient,\n    comment: str,\n    role_ids: Optional[list[str]]
+  = None,\n) -> dict[str, object]:\n    \"\"\"\n    Create a new client session and
+  assign roles.\n\n    Inserts a row into client_sessions with a server-generated
+  UUID4 session_id.\n    If role_ids is provided and non-empty, inserts rows into
+  session_roles for\n    each role_id. All inserts are wrapped in a single transaction:
+  if any insert\n    fails the entire operation is rolled back and the exception is
+  re-raised.\n\n    Args:\n        database: DatabaseClient instance.\n        comment:
+  Human-readable label for the session. May be empty string.\n        role_ids: Optional
+  list of role UUID4 strings to assign at creation.\n\n    Returns:\n        dict
+  with keys: session_id (str), comment (str), created_at (float),\n        last_active_at
+  (float).\n    \"\"\"\n    session_id = str(uuid.uuid4())\n    tid = database.begin_transaction()\n\
+  \    try:\n        database.execute(\n            'INSERT INTO client_sessions (session_id,
+  comment) VALUES (?, ?)',\n            (session_id, comment),\n        )\n      \
+  \  if role_ids:\n            for role_id in role_ids:\n                database.execute(\n\
+  \                    'INSERT INTO session_roles (session_id, role_id) VALUES (?,
+  ?)',\n                    (session_id, role_id),\n                )\n        database.commit_transaction(tid)\n\
+  \    except Exception:\n        try:\n            database.rollback_transaction(tid)\n\
+  \        except Exception:\n            pass\n        raise\n    res = database.execute(\n\
+  \        'SELECT session_id, comment, created_at, last_active_at FROM client_sessions
+  WHERE session_id = ?',\n        (session_id,),\n    )\n    return dict(res[\"data\"\
+  ][0])\n\n--- FUNCTION 2 ---\n\ndef get_client_session(\n    database: DatabaseClient,\n\
+  \    session_id: str,\n) -> Optional[dict[str, object]]:\n    \"\"\"\n    Fetch
+  one client session by primary key.\n\n    Args:\n        database: DatabaseClient
+  instance.\n        session_id: UUID4 string.\n\n    Returns:\n        dict with
+  keys session_id, comment, created_at, last_active_at,\n        or None if not found.\n\
+  \    \"\"\"\n    res = database.execute(\n        'SELECT session_id, comment, created_at,
+  last_active_at FROM client_sessions WHERE session_id = ?',\n        (session_id,),\n\
+  \    )\n    data = res.get(\"data\") or []\n    return dict(data[0]) if data else
+  None\n\n--- FUNCTION 3 ---\n\ndef is_session_valid(\n    database: DatabaseClient,\n\
+  \    session_id: str,\n) -> bool:\n    \"\"\"\n    Return True if session_id exists
+  in client_sessions, False otherwise.\n\n    No side effects: last_active_at is NOT
+  updated.\n\n    Args:\n        database: DatabaseClient instance.\n        session_id:
+  UUID4 string.\n\n    Returns:\n        True if the session exists, False otherwise.\n\
+  \    \"\"\"\n    res = database.execute(\n        'SELECT 1 FROM client_sessions
+  WHERE session_id = ? LIMIT 1',\n        (session_id,),\n    )\n    return bool(res.get(\"\
+  data\"))\n\n--- FUNCTION 4 ---\n\ndef touch_client_session(\n    database: DatabaseClient,\n\
+  \    session_id: str,\n) -> bool:\n    \"\"\"\n    Update last_active_at to now
+  for the given session.\n\n    Args:\n        database: DatabaseClient instance.\n\
+  \        session_id: UUID4 string.\n\n    Returns:\n        True if the session
+  was found and updated, False if not found.\n    \"\"\"\n    res = database.execute(\n\
+  \        \"UPDATE client_sessions SET last_active_at = julianday('now') WHERE session_id
+  = ?\",\n        (session_id,),\n    )\n    return (res.get(\"affected_rows\") or
+  0) > 0\n\n--- FUNCTION 5 ---\n\ndef touch_or_error(\n    database: DatabaseClient,\n\
+  \    session_id: str,\n) -> None:\n    \"\"\"\n    Update last_active_at or raise
+  SessionNotFoundError.\n\n    Args:\n        database: DatabaseClient instance.\n\
+  \        session_id: UUID4 string.\n\n    Raises:\n        SessionNotFoundError:
+  if session_id is not found in client_sessions.\n    \"\"\"\n    if not touch_client_session(database,
+  session_id):\n        raise SessionNotFoundError(session_id)\n\n--- FUNCTION 6 ---\n\
+  \ndef list_client_sessions(\n    database: DatabaseClient,\n    stale_threshold_seconds:
+  Optional[int] = None,\n) -> list[dict[str, object]]:\n    \"\"\"\n    List all client
+  sessions, optionally filtered by inactivity threshold.\n\n    Args:\n        database:
+  DatabaseClient instance.\n        stale_threshold_seconds: If provided, return only
+  sessions whose\n            last_active_at is older than this many seconds. Must
+  be >= 1.\n\n    Returns:\n        List of dicts with keys: session_id, comment,
+  created_at,\n        last_active_at. Ordered by last_active_at ascending.\n    \"\
+  \"\"\n    if stale_threshold_seconds is not None:\n        threshold_days = stale_threshold_seconds
+  / 86400.0\n        res = database.execute(\n            'SELECT session_id, comment,
+  created_at, last_active_at '\n            'FROM client_sessions '\n            \"\
+  WHERE julianday('now') - last_active_at > ? \"\n            'ORDER BY last_active_at
+  ASC',\n            (threshold_days,),\n        )\n    else:\n        res = database.execute(\n\
+  \            'SELECT session_id, comment, created_at, last_active_at '\n       \
+  \     'FROM client_sessions ORDER BY last_active_at ASC'\n        )\n    return
+  [dict(row) for row in (res.get(\"data\") or [])]\n\n--- FUNCTION 7 ---\n\ndef delete_client_session(\n\
+  \    database: DatabaseClient,\n    session_id: str,\n    force: bool = False,\n\
+  ) -> dict[str, object]:\n    \"\"\"\n    Delete a client session, optionally force-releasing
+  all file locks.\n\n    If force is False and open file locks exist, raises SessionHasLocksError.\n\
+  \    If force is True, deletes all session_file_locks rows for this session\n  \
+  \  before deleting the session.\n\n    Args:\n        database: DatabaseClient instance.\n\
+  \        session_id: UUID4 string.\n        force: If True, release all file locks
+  before deleting.\n\n    Returns:\n        dict with keys: session_id (str), deleted
+  (bool, always True),\n        released_lock_count (int).\n\n    Raises:\n      \
+  \  SessionNotFoundError: if session_id is not found.\n        SessionHasLocksError:
+  if force is False and open locks exist.\n    \"\"\"\n    if get_client_session(database,
+  session_id) is None:\n        raise SessionNotFoundError(session_id)\n    res =
+  database.execute(\n        'SELECT COUNT(*) as cnt FROM session_file_locks WHERE
+  session_id = ?',\n        (session_id,),\n    )\n    data = res.get(\"data\") or
+  []\n    lock_count: int = data[0][\"cnt\"] if data else 0\n    if lock_count > 0
+  and not force:\n        raise SessionHasLocksError(session_id, lock_count)\n   \
+  \ released = 0\n    if force and lock_count > 0:\n        res2 = database.execute(\n\
+  \            'DELETE FROM session_file_locks WHERE session_id = ?',\n          \
+  \  (session_id,),\n        )\n        released = res2.get(\"affected_rows\") or
+  0\n    database.execute(\n        'DELETE FROM client_sessions WHERE session_id
+  = ?',\n        (session_id,),\n    )\n    return {'session_id': session_id, 'deleted':
+  True, 'released_lock_count': released}\n\nConstraints:\n- Do not modify any existing
+  content (DDL constants, exceptions, ensure_client_session_tables).\n- All functions
+  must have Google-style docstrings with Args and Returns sections.\n- All parameters
+  and return types must be annotated.\n- database parameter type is DatabaseClient
+  in all functions.\n- Do not use f-strings in SQL queries; use ? placeholders.\n\
+  - COUNT(*) query: use alias 'cnt' and access as row[\"cnt\"] (DatabaseClient returns
+  dicts, not tuples)."
+status: done
+step_id: A-001
+target_file: ai_editor/core/client_sessions.py
+verification:
+  expected: All seven functions are importable from 
+    ai_editor.core.client_sessions. Calling create_client_session with a 
+    mock database that records SQL calls produces a session_id UUID4 string. 
+    Calling touch_or_error with a database returning rowcount=0 raises 
+    SessionNotFoundError. Calling delete_client_session with force=False and 
+    lock_count>0 raises SessionHasLocksError.
+  target: ai_editor/core/client_sessions.py
+  type: import

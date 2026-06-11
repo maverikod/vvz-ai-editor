@@ -1,0 +1,28 @@
+step_id: T-001
+parent_global_step: G-004
+name: Implement BatchValidation for sidecar group
+description: Implement BatchValidation (C-008) for sidecar group batches only.
+  Given a list of EditOperations (C-007), check every pair of node addresses:
+  if any node in the batch is an ancestor of another node in the same batch,
+  reject the entire batch atomically with NESTED_BATCH_FORBIDDEN (C-014).
+  No operation is applied on violation. Tree-temp and text groups do not
+  invoke this validation.
+concepts:
+- C-007
+- C-008
+- C-014
+inputs:
+- name: operations
+  type: list of EditOperation
+  description: Batch of edit operations submitted by the caller.
+- name: tree_id
+  type: str
+  description: In-memory CST tree UUID used to resolve ancestor relationships.
+outputs:
+- name: validation_result
+  type: None or error
+  description: None when batch is valid; NESTED_BATCH_FORBIDDEN error when
+    an ancestor-descendant pair is found.
+atomic_steps:
+- A-001
+status: draft

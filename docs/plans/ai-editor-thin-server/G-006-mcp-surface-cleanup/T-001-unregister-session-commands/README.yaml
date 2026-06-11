@@ -1,0 +1,20 @@
+step_id: T-001
+parent_global_step: G-006
+name: Снять session и subordinate с MCP
+description: 'Удалить из MCP Workflow Surface (C-016) регистрацию session_create/delete/list/view, session_open_file/close_file/list_file_locks, subordinate_session_* — duplicate MCP command families (C-020). Реализацию session-команд на этом шаге не удалять; снять только с MCP registration surface (C-016).
+
+  '
+concepts:
+- C-016
+- C-020
+inputs:
+- name: command_registry
+  type: object
+  description: Состояние MCP registration surface (C-016) до снятия duplicate families (C-020).
+outputs:
+- name: slimmed_mcp_registration_surface
+  type: object
+  description: MCP registration surface (C-016) без session/subordinate MCP команд.
+atomic_steps:
+- A-001
+status: ready_for_review

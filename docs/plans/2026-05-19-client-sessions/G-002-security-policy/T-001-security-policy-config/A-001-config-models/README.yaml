@@ -1,0 +1,61 @@
+concepts:
+- C-009
+- C-006
+depends_on: []
+name: Add SessionsConfig and SecurityConfig pydantic models to config_server.py
+operation: modify_file
+parent_tactical_step: T-001
+priority: 1
+prompt: "Modify the existing file at the exact path:\n  ai_editor/core/config_server.py\n\
+  \nOperation: modify_file. The file currently contains (relevant excerpt):\n- Two
+  pydantic model classes before ServerConfig: DocsIndexingConfig and FileLockConfig.\n\
+  - ServerConfig(BaseModel) at line 113 with model_config = {'extra': 'forbid'}.\n\
+  - ServerConfig has many Optional fields. The last field before validators is:\n\
+  \    preview_full_text_max_lines: Optional[int] = Field(default=None, ...)\n\nRequired
+  change: add two new pydantic model classes BEFORE the ServerConfig class\n(insert
+  after FileLockConfig, before ServerConfig).\n\nImport to add: Literal is already
+  imported from typing. No new imports needed.\n\n--- CLASS 1: SessionsConfig ---\n\
+  \nInsert this class after FileLockConfig and before ServerConfig:\n\nclass SessionsConfig(BaseModel):\n\
+  \    \"\"\"Client session subsystem configuration.\"\"\"\n\n    model_config = {'extra':
+  'forbid'}\n\n    show_session_ids: bool = Field(\n        default=False,\n     \
+  \   description=(\n            'When False (default): session_list may be called
+  without session_id '\n            'and session_id is never included in output. '\n\
+  \            'When True: session_id is required in session_list and is included
+  in output.'\n        ),\n    )\n\n    @field_validator('show_session_ids')\n   \
+  \ @classmethod\n    def validate_show_session_ids(cls, v: bool) -> bool:\n     \
+  \   \"\"\"Validate show_session_ids is a boolean.\"\"\"\n        if not isinstance(v,
+  bool):\n            raise ValueError('sessions.show_session_ids must be a boolean')\n\
+  \        return v\n\n--- CLASS 2: SecurityConfig ---\n\nInsert this class after
+  SessionsConfig and before ServerConfig:\n\nclass SecurityConfig(BaseModel):\n  \
+  \  \"\"\"Security policy configuration for MCP command access control.\"\"\"\n\n\
+  \    model_config = {'extra': 'forbid'}\n\n    policy: Literal['disabled', 'allowlist',
+  'denylist'] = Field(\n        default='disabled',\n        description=(\n     \
+  \       'Access control policy mode. '\n            'disabled: no checks performed,
+  all commands pass. '\n            'allowlist: only commands explicitly granted via
+  role_permissions are allowed. '\n            'denylist: all commands permitted except
+  those explicitly denied via role_permissions.'\n        ),\n    )\n\n    @field_validator('policy')\n\
+  \    @classmethod\n    def validate_policy(cls, v: str) -> str:\n        \"\"\"\
+  Validate security policy mode.\"\"\"\n        allowed = {'disabled', 'allowlist',
+  'denylist'}\n        if v not in allowed:\n            raise ValueError(\n     \
+  \           f'security.policy must be one of: {', '.join(sorted(allowed))}'\n  \
+  \          )\n        return v\n\n--- FIELD ADDITIONS TO ServerConfig ---\n\nAdd
+  two new Optional fields to ServerConfig, after the existing\n'preview_full_text_max_lines'
+  field and before the first @field_validator:\n\n    sessions: Optional[SessionsConfig]
+  = Field(\n        default=None,\n        description='Client session subsystem configuration.',\n\
+  \    )\n    security: Optional[SecurityConfig] = Field(\n        default=None,\n\
+  \        description='Security policy configuration for MCP command access control.',\n\
+  \    )\n\nConstraints:\n- Do not modify any existing content.\n- Do not add any
+  other imports.\n- Both new classes must use model_config = {'extra': 'forbid'}.\n\
+  - File must not exceed 400 lines after modification."
+status: done
+step_id: A-001
+target_file: ai_editor/core/config_server.py
+verification:
+  expected: Importing config_server succeeds. 
+    SessionsConfig(show_session_ids=True) parses without error. 
+    SessionsConfig(show_session_ids='yes') raises ValidationError. 
+    SecurityConfig(policy='allowlist') parses without error. 
+    SecurityConfig(policy='unknown') raises ValidationError. ServerConfig() has 
+    sessions=None and security=None by default.
+  target: ai_editor/core/config_server.py
+  type: import

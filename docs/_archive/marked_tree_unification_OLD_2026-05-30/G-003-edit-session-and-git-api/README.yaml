@@ -1,0 +1,66 @@
+concepts:
+- C-012
+- C-013
+- C-014
+depends_on:
+- G-002
+description: 'Defines the EditSession as a bounded editing context represented by
+  a session directory placed next to the SourceFile. Establishes the lifecycle:
+  open (session directory creation, SourceFile copy, TreeFile validation or rebuild
+  via TreeLifecycle, SessionRepo initialisation with initial commit), edit (hide
+  markers into format-native comments before each mutation, apply mutation on denuded
+  representation, restore markers to canonical positions after), per-mutation post-steps
+  (write tree, export stripped source via unmark to session TEMP artefacts, record
+  SHA-256 checksums for tree and exported source, git commit both artefacts — one
+  modification equals one commit, no exceptions), write/commit (in-session source
+  regenerated via unmark, both artifacts committed, then atomically propagated to
+  their co-located external positions), and close (session directory deleted without
+  validation, checksum, or consistency checks; only the co-located TreeFile survives
+  if previously written out; session git history is ephemeral). Content-supply rule
+  on open ({d002} FINAL-2): caller-supplied content accepted ONLY when target file
+  is non-existent or source/tree is broken; ERROR if valid file exists; when accepted,
+  write content to session code file first then standard open protocol. Defines the
+  SessionGitApi as the set of session-scoped MCP commands that expose the SessionRepo
+  for history inspection and revert: log (commit history), diff (tree-level or
+  source-level comparison), show (tree content at a revision), status (uncommitted
+  changes), and revert (roll back to a prior revision by new commit). Declares a
+  git-access library as a required project dependency.'
+name: Edit Session and Session Git API
+relations:
+- from_concept: C-012
+  to_concept: C-013
+  type: owns
+- from_concept: C-012
+  to_concept: C-010
+  type: uses
+- from_concept: C-012
+  to_concept: C-003
+  type: produces
+- from_concept: C-012
+  to_concept: C-006
+  type: uses
+- from_concept: C-014
+  to_concept: C-013
+  type: uses
+- from_concept: C-014
+  to_concept: C-012
+  type: depends_on
+source_labels:
+- '{d001}'
+- '{d002}'
+- '{d003}'
+- '{d004}'
+- '{d005}'
+- '{d006}'
+- '{e001}'
+- '{e002}'
+- '{e003}'
+- '{e004}'
+- '{e005}'
+- '{e006}'
+status: needs_review
+step_id: G-003
+tactical_steps:
+- T-001
+- T-002
+- T-003

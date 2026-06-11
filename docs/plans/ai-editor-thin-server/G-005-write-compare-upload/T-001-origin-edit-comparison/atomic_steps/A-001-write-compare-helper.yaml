@@ -1,0 +1,190 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Сравнение origin и edit export
+target_file: ai_editor/commands/universal_file_edit/write_compare.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-007
+- C-008
+- C-012
+- C-019
+prompt: |
+  Create `ai_editor/commands/universal_file_edit/write_compare.py` (operation: create_file).
+  Pure comparison module — no MCP, no upstream RPC.
+
+  ## MRS C-012 Write Stage (embed verbatim for coder)
+
+  - сравнение — format-specific export (sidecar, tree-temp, text) vs origin bytes
+  - write_mode preview — локальный diff; commit — compare-and-upload
+  - in-session lockfile не gate для RPC к СА
+  - при равенстве — no-op без вызова СА; при отличии — upload; при успехе — перезапись Origin Snapshot; при ошибке — локальное состояние не меняется
+
+  ## Canonical-export comparison rule (C-012)
+
+  Export current edit state to canonical serialized form; byte-for-byte compare against
+  Origin Snapshot baseline (`session.abs_path.read_bytes()`). NOT raw in-place byte compare
+  of draft/sidecar artifacts.
+
+  ## Per-format export algorithm (exact)
+
+  | format_group constant | export steps |
+  |-----------------------|--------------|
+  | `FORMAT_SIDECAR` | `get_tree(session.tree_id)` → `strip_inline_node_id_lines_from_source(str(tree.module.code))` → `.encode("utf-8")` |
+  | `FORMAT_TREE_TEMP` | `serialize_tree_temp_session_source(session)` → `.encode("utf-8")` |
+  | `FORMAT_TEXT` (and any other) | `session.draft_path.read_text(encoding="utf-8")` → `.encode("utf-8")` |
+  | origin baseline | `session.abs_path.read_bytes()` — never from draft |
+
+  ## File header (exact module docstring)
+
+  ```
+  """
+  Canonical-export comparison for Write Stage (C-012).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (exact list)
+
+  ```
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from enum import Enum
+
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TREE_TEMP,
+  )
+  from ai_editor.commands.universal_file_edit.session import EditSession
+  ```
+
+  Lazy imports inside `_export_canonical_bytes` only (do not add at module top):
+  - `from ai_editor.core.cst_tree.tree_builder import get_tree as get_cst_tree`
+  - `from ai_editor.core.cst_tree.node_stable_id import strip_inline_node_id_lines_from_source`
+  - `from ai_editor.commands.universal_file_edit.tree_temp_write_commit import serialize_tree_temp_session_source`
+
+  ## Types and public API (exact signatures)
+
+  ```python
+  class CompareResult(str, Enum):
+      EQUAL = "equal"
+      DIFF = "diff"
+
+  @dataclass(frozen=True)
+  class WriteComparison:
+      result: CompareResult
+      origin_bytes: bytes
+      exported_bytes: bytes
+
+  def _export_canonical_bytes(session: EditSession) -> bytes:
+      """Format-specific canonical export of Edit Subdirectory state."""
+
+  def compare_session_to_origin(session: EditSession) -> WriteComparison:
+      """Byte-compare canonical export vs Origin Snapshot."""
+  ```
+
+  ## Method: `_export_canonical_bytes(session: EditSession) -> bytes`
+
+  Algorithm:
+  1. Read `fg = session.format_group`.
+  2. If `fg == FORMAT_SIDECAR`:
+     a. If `not session.tree_id`: raise `ValueError("Session has no tree_id for sidecar export")`.
+     b. `tree = get_cst_tree(session.tree_id)`.
+     c. If `tree is None`: raise `ValueError(f"CST tree {session.tree_id!r} not found")`.
+     d. `code = strip_inline_node_id_lines_from_source(str(tree.module.code))`.
+     e. Return `code.encode("utf-8")`.
+  3. If `fg == FORMAT_TREE_TEMP`:
+     a. `text = serialize_tree_temp_session_source(session)`.
+     b. Return `text.encode("utf-8")`.
+  4. Else (FORMAT_TEXT and fallback):
+     a. Return `session.draft_path.read_text(encoding="utf-8").encode("utf-8")`.
+
+  Error handling:
+  - Raise `ValueError` with messages above for missing tree_id or missing CST tree.
+  - Let `OSError` from `read_text` propagate unchanged.
+
+  Edge cases:
+  - Empty draft text → return `b""` (valid export).
+  - Empty origin → comparison handled by caller via byte equality.
+
+  ## Method: `compare_session_to_origin(session: EditSession) -> WriteComparison`
+
+  Algorithm:
+  1. `origin_bytes = session.abs_path.read_bytes()`.
+  2. `exported_bytes = _export_canonical_bytes(session)`.
+  3. If `exported_bytes == origin_bytes`: `result = CompareResult.EQUAL`.
+  4. Else: `result = CompareResult.DIFF`.
+  5. Return `WriteComparison(result=result, origin_bytes=origin_bytes, exported_bytes=exported_bytes)`.
+
+  Error handling:
+  - Propagate `ValueError` from `_export_canonical_bytes`.
+  - Propagate `OSError` from `read_bytes` / `read_text`.
+
+  ## Reference implementation skeleton (translate line-by-line)
+
+  ```python
+  def _export_canonical_bytes(session: EditSession) -> bytes:
+      fg = session.format_group
+      if fg == FORMAT_SIDECAR:
+          from ai_editor.core.cst_tree.tree_builder import get_tree as get_cst_tree
+          from ai_editor.core.cst_tree.node_stable_id import (
+              strip_inline_node_id_lines_from_source,
+          )
+          if not session.tree_id:
+              raise ValueError("Session has no tree_id for sidecar export")
+          tree = get_cst_tree(session.tree_id)
+          if tree is None:
+              raise ValueError(f"CST tree {session.tree_id!r} not found")
+          code = strip_inline_node_id_lines_from_source(str(tree.module.code))
+          return code.encode("utf-8")
+      if fg == FORMAT_TREE_TEMP:
+          from ai_editor.commands.universal_file_edit.tree_temp_write_commit import (
+              serialize_tree_temp_session_source,
+          )
+          return serialize_tree_temp_session_source(session).encode("utf-8")
+      return session.draft_path.read_text(encoding="utf-8").encode("utf-8")
+
+  def compare_session_to_origin(session: EditSession) -> WriteComparison:
+      origin_bytes = session.abs_path.read_bytes()
+      exported_bytes = _export_canonical_bytes(session)
+      result = (
+          CompareResult.EQUAL
+          if exported_bytes == origin_bytes
+          else CompareResult.DIFF
+      )
+      return WriteComparison(
+          result=result,
+          origin_bytes=origin_bytes,
+          exported_bytes=exported_bytes,
+      )
+  ```
+
+  ## Forbidden
+
+  - Do NOT compare draft_path bytes directly for sidecar or tree-temp.
+  - Do NOT read origin from draft_path or project root.
+  - Do NOT import or call CodeAnalysisClient or SessionGuard.
+  - Do NOT add MCP command classes or tests in this step.
+  - Do NOT use `Any` type annotations.
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/write_compare.py
+  flake8 ai_editor/commands/universal_file_edit/write_compare.py
+  mypy ai_editor/commands/universal_file_edit/write_compare.py
+  pytest tests/unit/test_write_compare.py -v
+  ```
+
+  Expected: black reformats or "unchanged"; flake8 silent; mypy success; all tests PASSED.
+  All tests must pass before handoff.
+verification:
+  type: pytest
+  target: tests/unit/test_write_compare.py
+  expected: EQUAL when canonical export matches origin bytes; DIFF when draft changed; sidecar uses CST export not raw draft.
+status: ready_for_review

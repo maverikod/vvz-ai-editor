@@ -1,0 +1,46 @@
+step_id: T-004
+parent_global_step: G-003
+name: Session Write Command
+description: 'Define the session-scoped MCP command entity (session_write) that exposes
+  the two-stage external copy-out API boundary for EditSession (C-012) per {d004} and
+  {n7k2}. Stage 1 preview (default): invokes EditSession.preview_external_write() to
+  compute unified diffs between in-session unmark-exported source and in-session tree
+  versus live external SourceFile and co-located sibling TreeFile; returns both diffs
+  without modifying any external file; no-op when no diffs (has_changes=False). Stage 2
+  confirm: only when the caller passes confirm=true, invokes EditSession.confirm_external_copy_out()
+  to atomically copy both in-session artefacts to external co-located positions (both
+  or neither when tree_validity is valid; source-only when invalid). In-session artefacts
+  are already finalized per mutation by {d003}; this command gates external copy-out only.
+  Write-stage external diff is distinct from SessionGitApi session_git_diff (C-014/{e003}),
+  which compares session git history artefacts, not live external files. Requires active
+  session_id; refuses without an open EditSession.'
+concepts:
+- C-012
+- C-003
+- C-004
+source_labels:
+- '{d004}'
+- '{n7k2}'
+inputs:
+- name: EditSession entity definition
+  type: domain entity definition (C-012)
+  description: Must expose preview_external_write() and confirm_external_copy_out()
+    on the active session resolved by session_id.
+- name: Active-session registry
+  type: domain entity definition
+  description: get_active_session(session_id) resolves live EditSession; KeyError when
+    session absent.
+outputs:
+- name: session_write MCP command
+  type: MCP command definition
+  description: session_write(project_id, session_id, confirm=false) — preview returns
+    has_changes, source_diff, tree_diff; confirm=true performs atomic external copy-out
+    via confirm_external_copy_out().
+- name: Two-stage write API boundary
+  type: domain constraint definition
+  description: External files are never modified on preview; confirm requires explicit
+    confirm=true parameter; no SessionRepo commit in write command (per-mutation {d003}
+    only).
+atomic_steps:
+- A-001
+status: ready_for_review

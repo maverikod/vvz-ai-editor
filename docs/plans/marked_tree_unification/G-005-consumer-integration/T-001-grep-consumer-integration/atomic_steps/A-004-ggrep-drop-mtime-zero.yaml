@@ -1,0 +1,240 @@
+step_id: A-004
+parent_tactical_step: T-001
+name: Drop mtime=0.0 from normalize_ggrep_match
+target_file: ai_editor/commands/search_paginated_ggrep.py
+operation: modify_file
+priority: 1
+depends_on:
+- A-002
+concepts:
+- C-026
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/search_paginated_ggrep.py
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-001-grep-consumer-integration/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-026)
+
+  ## Goal
+  Remove `mtime=0.0` from `normalize_ggrep_match` Finding constructor (C-026).
+
+  ## Required edit
+  In `normalize_ggrep_match`, delete the `mtime=0.0,` line from the `return Finding(...)` call.
+
+  ## Forbidden
+  - Do NOT touch other files
+  - Do NOT add Finding.mtime
+  - Do NOT reference G-007, universal-id, UUID-in-marker
+
+  ## Full current file content (verbatim, 190 lines — delete mtime=0.0 only)
+
+  ```python
+  """
+  Paginated fs_ggrep (ggrep) backend adapter.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import time
+  from dataclasses import replace
+  from typing import Any, Callable, Optional
+
+  from mcp_proxy_adapter.commands.result import ErrorResult
+
+  from ai_editor.core.search_session.atomic_publication import atomic_write_json
+  from ai_editor.core.search_session.block_assembler import BlockAssembler
+  from ai_editor.core.search_session.directory import SearchSessionDirectoryLayout
+  from ai_editor.core.search_session.grep_mode_params import (
+      grep_mode_to_fs_ggrep_params,
+  )
+  from ai_editor.core.search_session.manifest import (
+      DEFAULT_METRICS,
+      SearchSessionManifest,
+      capture_server_process_identity,
+      update_manifest_atomic,
+      write_manifest_atomic,
+  )
+  from ai_editor.core.search_session.policy import load_session_ttl_policy
+  from ai_editor.core.search_session.raw_finding_buffer import RawFindingBuffer
+  from ai_editor.core.search_session.finding import (
+      Finding,
+      FindingSource,
+      score_for_source,
+  )
+  from ai_editor.core.search_session.result_index import (
+      COMPLETENESS_FINISHED,
+      append_block_entry,
+      mark_index_finished,
+  )
+  from ai_editor.core.search_session.service_metadata import (
+      initialize_service_metadata,
+  )
+  from ai_editor.core.search_session.session import SearchSession
+  from ai_editor.commands.fs_ggrep_command import FsGgrepCommand
+  from ai_editor.commands.fs_ggrep_structural_integration import GrepSearchMode
+
+  _STRIP_KEYS = frozenset(
+      {
+          "paginated",
+          "include_job_id",
+          "job_id",
+          "block_position",
+          "search_type",
+          "page_size",
+      }
+  )
+
+
+  def normalize_ggrep_match(raw: dict[str, Any], *, index: int) -> Optional[Finding]:
+      """Map an enriched grep match to a Finding; return None when no stable node address."""
+      node_ref = (
+          raw.get("node_ref")
+          or (raw.get("evidence") or {}).get("node_ref")
+          or raw.get("block_id")
+          or (raw.get("evidence") or {}).get("block_id")
+          or ""
+      )
+      if not node_ref:
+          return None
+      file_path = str(raw.get("file_path") or raw.get("relative_path") or "")
+      if not file_path:
+          return None
+      return Finding(
+          result_id=f"grep-{index:06d}",
+          source=FindingSource.grep,
+          file_path=file_path,
+          stable_id=str(node_ref),
+          score=score_for_source(FindingSource.grep, raw),
+          mtime=0.0,
+      )
+
+
+  def build_ggrep_backend_params(params: dict[str, Any]) -> dict[str, Any]:
+      """Map search_start/grep params to FsGgrepCommand kwargs."""
+      require_structural = bool(params.get("require_structural_ggrep", True))
+      grep_mode = (
+          GrepSearchMode.structural if require_structural else GrepSearchMode.classic_line
+      )
+      mode_params = grep_mode_to_fs_ggrep_params(grep_mode)
+      backend: dict[str, Any] = {
+          "project_id": params["project_id"],
+          "pattern": params.get("query") or params.get("pattern") or "",
+          "fast_text_only": mode_params.fast_text_only,
+          "enrich_blocks": mode_params.enrich_blocks,
+      }
+      for key in (
+          "file_pattern",
+          "scan_all",
+          "auto_queue_on_inline_timeout",
+          "inline_timeout_seconds",
+          "hard_timeout_seconds",
+      ):
+          if key in params:
+              backend[key] = params[key]
+      return {k: v for k, v in backend.items() if v is not None}
+
+
+  def _make_block_assembler(
+      layout: SearchSessionDirectoryLayout,
+      raw_config: dict[str, Any],
+  ) -> BlockAssembler:
+      policy = load_session_ttl_policy(raw_config)
+
+      def _append_index(position: int, completeness: str) -> None:
+          block_path = layout.blocks_dir / f"block_{position}.json"
+          size = block_path.stat().st_size if block_path.is_file() else 0
+          append_block_entry(
+              layout.index_path,
+              position=position,
+              size_bytes=size,
+              completeness=completeness,
+          )
+
+      def _update_metrics(metrics: dict[str, int]) -> None:
+          def mutator(m: SearchSessionManifest) -> SearchSessionManifest:
+              nxt = dict(m.metrics)
+              nxt["produced_results"] = nxt.get("produced_results", 0) + int(
+                  metrics.get("produced_results", 0)
+              )
+              nxt["written_blocks"] = nxt.get("written_blocks", 0) + int(
+                  metrics.get("written_blocks", 0)
+              )
+              return replace(
+                  m,
+                  metrics=nxt,
+                  block_ready_count=m.block_ready_count
+                  + int(metrics.get("written_blocks", 0)),
+              )
+
+          update_manifest_atomic(layout, mutator)
+
+      return BlockAssembler(
+          layout,
+          RawFindingBuffer(layout.buffer_dir),
+          policy.max_block_size_bytes,
+          append_index_entry=_append_index,
+          update_manifest_metrics=_update_metrics,
+      )
+
+
+  async def run_paginated_ggrep(
+      *,
+      command: FsGgrepCommand,
+      params: dict[str, Any],
+      session: SearchSession,
+      layout: SearchSessionDirectoryLayout,
+      raw_config: dict[str, Any],
+      block_assembler_factory: Callable[..., BlockAssembler] = _make_block_assembler,
+  ) -> Optional[int]:
+      """Run legacy fs_ggrep execute and publish first SearchResultBlock."""
+      now = time.time()
+      backend_params = build_ggrep_backend_params(params)
+      manifest = SearchSessionManifest(
+          search_id=session.search_id,
+          created_at=now,
+          last_access_at=now,
+          heartbeat_at=now,
+          status="running",
+          phase="indexed_search",
+          request=backend_params,
+          metrics=dict(DEFAULT_METRICS),
+          process=capture_server_process_identity(),
+          block_ready_count=0,
+      )
+      write_manifest_atomic(layout, manifest)
+      initialize_service_metadata(layout, now=now)
+      result = await command.execute(**backend_params)
+      if isinstance(result, ErrorResult):
+          raise RuntimeError(result.message)
+      matches = list((result.data or {}).get("matches") or [])
+      buffer = RawFindingBuffer(layout.buffer_dir)
+      for i, raw in enumerate(matches):
+          if isinstance(raw, dict):
+              finding = normalize_ggrep_match(raw, index=i)
+              if finding is not None:
+                  buffer.append_finding(f"grep-{i:06d}", finding.to_dict())
+      assembler = block_assembler_factory(layout, raw_config)
+      assembler.run_until_idle(search_completed=True)
+      return 1 if (layout.blocks_dir / "block_1.json").is_file() else None
+  ```
+
+  Post-step: 189 lines (≤400). All tests must pass.
+
+  ## Validation (.venv active)
+
+      black ai_editor/commands/search_paginated_ggrep.py
+      flake8 ai_editor/commands/search_paginated_ggrep.py
+      mypy ai_editor/commands/search_paginated_ggrep.py
+      pytest -q
+verification:
+  type: pytest
+  target: tests
+  expected: >
+    normalize_ggrep_match constructs Finding without mtime keyword.
+    search_paginated_ggrep.py ≤400 lines. Full pytest suite passes.

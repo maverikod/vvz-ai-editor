@@ -1,0 +1,56 @@
+atomic_steps:
+- A-001
+- A-002
+concepts:
+- C-001
+- C-002
+- C-007
+- C-008
+description: "Create the database schema for four domain entities and register it
+  in the migration pipeline.\n\nEntities created:\n- client_sessions schema: columns
+  session_id (UUID4 PK), comment (TEXT NOT NULL DEFAULT ''), created_at (REAL), last_active_at
+  (REAL); index on last_active_at.\n- session_file_locks schema: columns session_id
+  (FK -> client_sessions CASCADE DELETE), project_id (FK -> projects CASCADE DELETE),
+  file_id (FK -> files CASCADE DELETE), locked_at (REAL); PRIMARY KEY (session_id,
+  project_id, file_id); index on session_id; index on (project_id, file_id).\n- roles
+  schema: columns role_id (UUID4 PK), name (TEXT UNIQUE NOT NULL).\n- role_permissions
+  schema: columns role_id (FK -> roles CASCADE DELETE), command_name (TEXT NOT NULL),
+  server_uuid (UUID4 NOT NULL); PRIMARY KEY (role_id, command_name, server_uuid).\n\
+  - session_roles schema: columns session_id (FK -> client_sessions CASCADE DELETE),
+  role_id (FK -> roles CASCADE DELETE); PRIMARY KEY (session_id, role_id).\n\nActions:\n\
+  - Define DDL constants for all five tables and their indexes.\n- Create an idempotent
+  migration function ensure_client_session_tables(conn) that creates all tables and
+  indexes using CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS, then commits.\n\
+  - Register ensure_client_session_tables in the existing migration entry point run_all_ensure()
+  so it is called automatically on every DB connection."
+inputs:
+- description: The run_all_ensure(conn) function in the existing migration 
+    pipeline that calls all ensure_* functions in sequence.
+  name: DB migration entry point
+  type: existing domain contract
+name: Database schema and migration hook
+outputs:
+- description: client_sessions table and last_active_at index registered in the 
+    DB.
+  name: ClientSession schema
+  type: domain schema
+- description: session_file_locks table with FK constraints and two indexes 
+    registered in the DB.
+  name: SessionFileLock schema
+  type: domain schema
+- description: roles table registered in the DB.
+  name: Role schema
+  type: domain schema
+- description: role_permissions table with FK constraint registered in the DB.
+  name: RolePermission schema
+  type: domain schema
+- description: session_roles join table with FK constraints registered in the 
+    DB.
+  name: SessionRole schema
+  type: domain schema
+- description: ensure_client_session_tables registered in run_all_ensure().
+  name: Migration hook
+  type: domain contract modification
+parent_global_step: G-001
+status: done
+step_id: T-001

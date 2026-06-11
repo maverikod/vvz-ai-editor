@@ -1,0 +1,93 @@
+concepts:
+- C-015
+- C-016
+- C-017
+- C-018
+- C-019
+depends_on:
+- G-002
+- G-003
+description: Defines the six uniform EditOperations (insert, delete, replace, 
+  move, edit-attributes, edit-content) addressed by NodeId, available for all 
+  formats. Defines PreviewNavigation as the three-phase procedure (enumerate 
+  focus node children, apply PreviewSelector, render selected blocks) — 
+  identical for all formats and both in-session and out-of-session access, using
+  NodeId as the node reference, never line numbers. When session_id is supplied,
+  navigation operates on the in-session tree or draft held by EditSession rather
+  than only last committed on-disk artefacts. Python preview treats IndentedBlock
+  as transparent in enumeration; annotated and full-text modes place node-id
+  prefixes at the start of each physical line ({i007}); legacy Python identity
+  comments are stripped before render ({i008}). Defines PreviewSelector with
+  per-format full_text_max_lines thresholds (default 200 source lines, zero
+  disables inline rendering), inline-versus-drilldown based on node line span
+  versus format threshold measured in source lines not bytes, JSON pretty-print
+  normalization before line counting, and max_chars paginating the envelope only.
+  Defines TreeQuery as structural search over the 
+  marked tree of a file returning NodeIds of matching nodes, supporting simple 
+  attribute-filter mode and XPath mode via CstQuerySelector; covers require_one 
+  uniqueness enforcement, include_code result enrichment, and in-session query 
+  against the draft tree. Establishes that the preview command builds a valid 
+  marked tree via TreeLifecycle before returning navigation results if the tree 
+  is absent or invalid.
+name: Edit Operations, Preview, and Tree Query
+relations:
+- from_concept: C-015
+  to_concept: C-002
+  type: uses
+- from_concept: C-015
+  to_concept: C-009
+  type: consumes
+- from_concept: C-015
+  to_concept: C-012
+  type: depends_on
+- from_concept: C-016
+  to_concept: C-002
+  type: uses
+- from_concept: C-016
+  to_concept: C-017
+  type: uses
+- from_concept: C-016
+  to_concept: C-010
+  type: uses
+- from_concept: C-016
+  to_concept: C-009
+  type: consumes
+- from_concept: C-018
+  to_concept: C-019
+  type: uses
+- from_concept: C-018
+  to_concept: C-002
+  type: produces
+- from_concept: C-018
+  to_concept: C-010
+  type: uses
+source_labels:
+- '{f001}'
+- '{f002}'
+- '{h001}'
+- '{h002}'
+- '{h003}'
+- '{h004}'
+- '{h005}'
+- '{h006}'
+- '{h007}'
+- '{i001}'
+- '{i002}'
+- '{i003}'
+- '{i004}'
+- '{i005}'
+- '{i006}'
+- '{i007}'
+- '{i008}'
+- '{j001}'
+- '{j002}'
+- '{j003}'
+- '{j004}'
+- '{j005}'
+- '{j006}'
+status: needs_review
+step_id: G-004
+tactical_steps:
+- T-001
+- T-002
+- T-003

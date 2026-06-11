@@ -1,0 +1,78 @@
+step_id: A-005
+parent_tactical_step: T-003
+name: Paginated fulltext execute adapter
+target_file: ai_editor/commands/search_paginated_fulltext.py
+operation: create_file
+priority: 5
+depends_on: []
+concepts:
+  - C-021
+  - C-023
+  - C-024
+  - C-001
+  - C-004
+  - C-029
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_paginated_fulltext.py
+
+  MRS (C-021 ExistingSearchCommand): legacy fulltext execute unchanged; paginated path is extension module only.
+  MRS (C-023 BackwardCompatibleCommandContract): paginated defaults false; optional job_id and block_position fields.
+  MRS (C-001 SearchSession): owns result blocks, directory index, status; search_id is job_id.
+  MRS (C-004 SearchResultBlock): immutable block addressed by position number via directory index.
+  MRS (C-029 BlockAssembler): drains RawFindingBuffer, publishes blocks atomically, updates index.
+  MRS (C-024 OptionalPaginationParameters): paginated path is opt-in; legacy command executes unchanged.
+
+  Import typing: Any, Callable, Optional from typing.
+
+  Shared types (import only; do not reimplement):
+  - SearchSession, SearchSessionState from ai_editor.core.search_session.session
+  - SearchSessionDirectoryLayout from ai_editor.core.search_session.directory
+  - SearchSessionManifest, write_manifest_atomic, capture_server_process_identity, DEFAULT_METRICS
+    from ai_editor.core.search_session.manifest
+  - initialize_service_metadata from ai_editor.core.search_session.service_metadata
+  - RawFindingBuffer from ai_editor.core.search_session.raw_finding_buffer
+  - BlockAssembler from ai_editor.core.search_session.block_assembler
+  - append_block_entry, mark_index_finished, COMPLETENESS_FINISHED from ai_editor.core.search_session.result_index
+  - update_manifest_atomic from ai_editor.core.search_session.manifest
+  - atomic_write_json from ai_editor.core.search_session.atomic_publication
+  - load_session_ttl_policy from ai_editor.core.search_session.policy
+  - FulltextSearchMCPCommand from ai_editor.commands.search_mcp_commands_fulltext
+
+  Implement:
+  - def normalize_fulltext_finding(raw: dict[str, Any], *, index: int) -> dict[str, Any]
+    Maps legacy fulltext result dict to JSON-safe finding with stable result_id
+    f"fulltext-{index:06d}", source="fulltext", file_path, line/start_line fields from legacy keys,
+    score/rank from bm25 or rank field, text snippet from chunk_text when present.
+
+  - async def run_paginated_fulltext(
+        *,
+        command: FulltextSearchMCPCommand,
+        params: dict[str, Any],
+        session: SearchSession,
+        layout: SearchSessionDirectoryLayout,
+        raw_config: dict[str, Any],
+        block_assembler_factory: Callable[..., BlockAssembler],
+    ) -> Optional[int]
+    Algorithm:
+    1. Strip pagination-only keys (paginated, include_job_id, job_id, block_position, search_type, page_size).
+    2. Write initial manifest (status running, phase indexed_search) and service metadata.
+    3. await command.execute(**backend_params) using same param mapping as legacy fulltext.
+    4. On ErrorResult, raise RuntimeError with message.
+    5. Append each result to RawFindingBuffer via normalize_fulltext_finding.
+    6. Run block_assembler_factory(...).run_until_idle(search_completed=True).
+    7. Return 1 when layout.blocks_dir / "block_1.json" exists, else None.
+
+  Constraints:
+  - Under 200 lines.
+  - Author header.
+  - No NotImplementedError, TODO, or stub backends.
+  - Do not modify search_mcp_commands_fulltext.py.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_paginated_fulltext.py
+  expected: >
+    run_paginated_fulltext with mocked legacy execute populates buffer, publishes block_1.json,
+    updates index entry for position 1, and returns first block position 1; normalized findings are JSON-safe.
+status: ready_for_review

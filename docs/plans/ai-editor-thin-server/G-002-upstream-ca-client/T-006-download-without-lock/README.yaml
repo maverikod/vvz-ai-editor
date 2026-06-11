@@ -1,0 +1,28 @@
+step_id: T-006
+parent_global_step: G-002
+name: Download без lock для preview
+description: 'Добавить в Upstream Client (C-017) передачу содержимого без блокировки для one-shot preview Edit Stage (C-011) по контракту C-023: transfer без предварительной блокировки файла. Граница C-017: core-клиент предоставляет публичную thin-обёртку download без lock (вход project_id и file_path); sibling transfer-слой выполняет resolve file_path→file_id и chunked download bytes. Публичная поверхность Upstream Client для preview-path остаётся на core-клиенте.
+
+  '
+concepts:
+- C-011
+- C-017
+- C-023
+inputs:
+- name: project_id
+  type: string
+  description: Проект.
+- name: file_path
+  type: string
+  description: Путь файла.
+outputs:
+- name: file_bytes
+  type: bytes
+  description: Содержимое без блокировки.
+- name: code_analysis_file_transfer_module
+  type: module
+  description: Sibling-модуль transfer-хелперов Preview (C-011) — download без lock; расширяется в рамках T-006.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

@@ -1,0 +1,27 @@
+step_id: T-001
+parent_global_step: G-001
+name: SearchSession entity
+description: "Creates the SearchSession logical execution context for one search request.\n\
+  Assigns a unique search_id used for HTTP access to the directory index, result\n\
+  blocks, and status. Defines the full lifecycle state enumeration: running,\ncompleted,
+  failed, cancelled, timed_out, dead, expired, and closed. Establishes\nSearchSession
+  as the owner of session-scoped artefacts and the anchor for\nlater status, paging,
+  and cleanup bindings. Request parameters and creation\ntriggers are persisted in
+  the session manifest; directory binding happens after\nprovisioning. This step creates
+  the entity with directory_path unset (None)\nuntil bind_session_directory is called
+  by the directory provisioning step.\n"
+concepts:
+- C-001
+inputs: []
+outputs:
+- name: search_session
+  type: SearchSession
+  description: Initialized session with unique search_id, running state, and 
+    directory_path=None.
+- name: search_id
+  type: SearchIdentifier
+  description: Stable identifier returned to callers for subsequent index, 
+    block, and status access.
+atomic_steps:
+- A-001
+status: ready_for_review

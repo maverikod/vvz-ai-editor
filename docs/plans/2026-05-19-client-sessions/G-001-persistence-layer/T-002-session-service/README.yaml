@@ -1,0 +1,61 @@
+atomic_steps:
+- A-001
+- A-002
+- A-003
+concepts:
+- C-004
+- C-001
+- C-002
+- C-007
+- C-008
+description: "Create the SessionService (C-004) — a pure data-access layer with no
+  MCP or HTTP coupling that provides all DB operations for ClientSession (C-001),
+  SessionFileLock (C-002), Role (C-007), and RolePermission (C-008).\n\nDomain exceptions
+  created:\n- SessionNotFoundError (subclass of ValueError): raised when session_id
+  is absent from client_sessions.\n- SessionHasLocksError (subclass of ValueError)
+  with lock_count attribute: raised when a session has open SessionFileLocks and force=False.\n\
+  \nOperations created on ClientSession (C-001):\n- create_client_session(comment,
+  role_ids) -> dict: generates UUID4, inserts into client_sessions and session_roles
+  for each role_id, returns full session record.\n- get_client_session(session_id)
+  -> dict | None: reads one row by PK.\n- is_session_valid(session_id) -> bool: existence
+  check without side effects.\n- touch_client_session(session_id) -> bool: updates
+  last_active_at to now; returns True if row found.\n- touch_or_error(session_id)
+  -> None: calls touch_client_session; raises SessionNotFoundError if not found.\n\
+  - delete_client_session(session_id, force) -> dict: if not force and locks exist
+  raises SessionHasLocksError; if force deletes all SessionFileLocks first; deletes
+  session; returns {session_id, deleted, released_lock_count}.\n- list_client_sessions(stale_threshold_seconds) -> list[dict]: all sessions optionally filtered by inactivity threshold;
+  when show_ids=False the session_id field is excluded from each returned dict.\n\n\
+  Operations created on SessionFileLock (C-002):\n- open_session_file(session_id,
+  project_id, file_id) -> dict: INSERT OR IGNORE; returns {acquired, session_id, project_id,
+  file_id}.\n- close_session_file(session_id, project_id, file_id) -> dict: DELETE
+  by PK; returns {released, was_locked, session_id, project_id, file_id}.\n- list_session_file_locks(session_id)
+  -> list[dict]: all locks for one session as {project_id, file_id, locked_at}.\n\
+  - count_session_file_locks(session_id) -> int.\n- list_locked_files() -> list[dict]:
+  all locks across all sessions as {project_id, file_id, locked_at}; session_id intentionally
+  omitted.\n\nOperations created on Role (C-007) and RolePermission (C-008):\n- list_roles()
+  -> list[dict]: all roles as {role_id, name}.\n- get_roles_for_session(session_id)
+  -> list[dict]: roles assigned to a session.\n- get_permissions_for_roles(role_ids,
+  server_uuid) -> list[str]: command_names permitted for the given roles on the given
+  server."
+inputs:
+- description: All five DB schemas and ensure_client_session_tables migration 
+    function produced by T-001.
+  name: DB schema (C-001, C-002, C-007, C-008)
+  type: domain schema
+name: SessionService data-access layer
+outputs:
+- description: SessionNotFoundError and SessionHasLocksError domain exceptions.
+  name: Domain exceptions
+  type: domain contract
+- description: All ClientSession CRUD and query operations on C-001.
+  name: ClientSession operations
+  type: domain contract
+- description: All SessionFileLock acquire/release/query operations on C-002.
+  name: SessionFileLock operations
+  type: domain contract
+- description: Role and RolePermission query operations on C-007 and C-008.
+  name: Role and RolePermission operations
+  type: domain contract
+parent_global_step: G-001
+status: done
+step_id: T-002

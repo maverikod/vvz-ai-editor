@@ -1,0 +1,76 @@
+step_id: A-008
+parent_tactical_step: T-003
+name: Paginated fs_ggrep execute adapter
+target_file: ai_editor/commands/search_paginated_ggrep.py
+operation: create_file
+priority: 8
+depends_on: []
+concepts:
+  - C-021
+  - C-023
+  - C-024
+  - C-001
+  - C-004
+  - C-019
+  - C-029
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_paginated_ggrep.py
+
+  MRS (C-021 ExistingSearchCommand): legacy fs_ggrep execute unchanged; this module is paginated extension only.
+  MRS (C-023 BackwardCompatibleCommandContract): paginated path is opt-in; non-paginated callers unchanged.
+  MRS (C-019 GrepSearchMode): structural mode is default for paginated grep path.
+  MRS (C-001 SearchSession): incremental grep flushes findings into session buffer.
+  MRS (C-029 BlockAssembler): publishes page-ready batches into blocks.
+
+  Import typing: Any, Callable, Optional from typing.
+
+  Shared types (import only; do not reimplement — same block as G-008/T-003/A-005):
+  - SearchSession, SearchSessionState from ai_editor.core.search_session.session
+  - SearchSessionDirectoryLayout from ai_editor.core.search_session.directory
+  - SearchSessionManifest, write_manifest_atomic, capture_server_process_identity, DEFAULT_METRICS
+    from ai_editor.core.search_session.manifest
+  - initialize_service_metadata from ai_editor.core.search_session.service_metadata
+  - RawFindingBuffer from ai_editor.core.search_session.raw_finding_buffer
+  - BlockAssembler from ai_editor.core.search_session.block_assembler
+  - append_block_entry, mark_index_finished, COMPLETENESS_FINISHED from ai_editor.core.search_session.result_index
+  - update_manifest_atomic from ai_editor.core.search_session.manifest
+  - atomic_write_json from ai_editor.core.search_session.atomic_publication
+  - load_session_ttl_policy from ai_editor.core.search_session.policy
+  - FsGgrepCommand from ai_editor.commands.fs_ggrep_command
+  - GrepSearchMode from ai_editor.commands.fs_grep_structural_integration
+  - grep_mode_to_fs_ggrep_params from ai_editor.core.search_session.grep_mode_params
+
+  Implement:
+  - def normalize_ggrep_match(raw: dict[str, Any], *, index: int) -> dict[str, Any]
+    Stable result_id f"grep-{index:06d}", source from match mode (grep_unindexed, grep_changed, etc.),
+    file_path, line_number, preview/evidence when structural enrichment present.
+
+  - def build_ggrep_backend_params(params: dict[str, Any]) -> dict[str, Any]
+    Maps search_start/grep params to FsGgrepCommand kwargs including grep_mode_to_fs_ggrep_params output
+    when require_structural_grep true (default).
+
+  - async def run_paginated_ggrep(
+        *,
+        command: FsGgrepCommand,
+        params: dict[str, Any],
+        session: SearchSession,
+        layout: SearchSessionDirectoryLayout,
+        raw_config: dict[str, Any],
+        block_assembler_factory: Callable[..., BlockAssembler],
+    ) -> Optional[int]
+    Executes legacy fs_ggrep, normalizes matches into buffer, runs assembler, returns first block position.
+
+  Constraints:
+  - Under 250 lines.
+  - Author header.
+  - Do not modify fs_ggrep_command.py.
+  - No NotImplementedError stubs.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_paginated_ggrep.py
+  expected: >
+    Structural grep matches normalize into buffer and publish block_1.json; require_structural_ggrep default
+    uses structural mode params; returns 1 when matches exist and block published.
+status: ready_for_review

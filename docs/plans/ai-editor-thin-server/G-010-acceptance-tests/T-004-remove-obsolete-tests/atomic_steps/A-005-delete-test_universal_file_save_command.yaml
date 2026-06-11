@@ -1,0 +1,19 @@
+step_id: A-005
+parent_tactical_step: T-004
+name: Удалить test_universal_file_save_command.py
+target_file: tests/test_universal_file_save_command.py
+operation: delete_file
+priority: 5
+depends_on:
+- A-004
+concepts:
+- C-020
+- C-022
+prompt: 'Delete `tests/test_universal_file_save_command.py` only. Obsolete MCP command tests removed per MCP surface cleanup
+
+  '
+verification:
+  type: pytest
+  target: tests/
+  expected: File tests/test_universal_file_save_command.py absent; remaining tests import no removed MCP modules.
+status: draft

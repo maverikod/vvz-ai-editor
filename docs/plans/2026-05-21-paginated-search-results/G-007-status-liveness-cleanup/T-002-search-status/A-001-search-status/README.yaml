@@ -1,0 +1,68 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: SearchStatus model
+target_file: ai_editor/core/search_session/status.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-020
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/status.py
+
+  MRS (C-020 SearchStatus): running/completed/failed/cancelled/timed_out/dead; phases; distinguish
+  block-not-ready from failure; no partial invalid evidence on timeout.
+
+  Imports:
+  - from __future__ import annotations
+  - from dataclasses import dataclass, replace
+  - from enum import Enum
+  - from typing import Optional
+  - from ai_editor.core.search_session.manifest import SearchSessionManifest
+
+  Module constant:
+  - STRUCTURAL_EVIDENCE_SUPPRESSED = "STRUCTURAL_EVIDENCE_SUPPRESSED"
+
+  Implement:
+  - class SearchPhase(str, Enum): indexed_search, dynamic_discovery, tree_validation,
+    tree_reconstruction, xpath_filtering, block_writing, completion
+  - @dataclass(frozen=True) SearchStatusSnapshot:
+      status: str
+      phase: SearchPhase
+      block_not_ready: bool
+      message: Optional[str]
+
+  block_not_ready rules (HTTP status snapshot vs per-block fetch):
+  - snapshot_from_manifest sets block_not_ready=True only when
+    manifest.status == "running" AND manifest.block_ready_count == 0.
+  - block_not_ready=False for all terminal statuses (completed, failed, cancelled, timed_out, dead)
+    and when running with block_ready_count > 0.
+  - apply_cancellation and apply_timeout always set block_not_ready=False.
+  - Per-block BLOCK_NOT_READY (409) is decided in http_access.handle_get_block when a requested
+    position is not yet indexed; SearchStatusSnapshot.block_not_ready reflects whole-job readiness
+    from manifest, not a single missing block position.
+
+  - def snapshot_from_manifest(manifest: SearchSessionManifest) -> SearchStatusSnapshot
+      Copy manifest.status; map manifest.phase via _phase_from_manifest (unknown => indexed_search).
+      Apply block_not_ready rule above; message=None initially.
+  - def apply_cancellation(snapshot: SearchStatusSnapshot, *, reason: str) -> SearchStatusSnapshot
+      replace(snapshot, status="cancelled", block_not_ready=False, message=reason).
+      Used by the search_cancel MCP lifecycle command when persisting manifest status.
+  - def apply_timeout(snapshot: SearchStatusSnapshot, *, reason: str) -> SearchStatusSnapshot
+      status="timed_out"; append STRUCTURAL_EVIDENCE_SUPPRESSED to message when absent;
+      block_not_ready=False.
+  - def _phase_from_manifest(raw_phase: str) -> SearchPhase
+      Return matching enum member or SearchPhase.indexed_search when unknown.
+
+  Under 200 lines. Author header.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_status.py
+  expected: >
+    snapshot_from_manifest maps manifest status and phase; block_not_ready True only for
+    running with block_ready_count 0; False when block_ready_count > 0 or status terminal.
+    apply_cancellation sets status cancelled, block_not_ready False, message=reason.
+    apply_timeout sets timed_out, block_not_ready False, message contains STRUCTURAL_EVIDENCE_SUPPRESSED.
+status: frozen

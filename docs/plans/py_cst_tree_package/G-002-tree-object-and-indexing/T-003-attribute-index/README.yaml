@@ -1,0 +1,26 @@
+step_id: T-003
+parent_global_step: G-002
+name: AttributeIndex
+description: "Define the AttributeIndex entity (C-006) as the set of indexes mapping
+  query-relevant node attributes to the nodes that carry them. The indexed attributes
+  are node type (the underlying LibCST class name such as FunctionDef or Call), node
+  kind (the semantic classification such as function, class, method, statement, small-statement,
+  import, or decorator), simple name, and qualified name. A query that selects nodes
+  by any of these attributes resolves against the AttributeIndex rather than scanning
+  every node. The AttributeIndex is built once when the Tree is created or loaded,
+  and is updated after each mutation to remain consistent.\n"
+concepts:
+- C-006
+inputs:
+- name: node structure
+  type: IdentifiedNode subtree
+  description: The full node subtree; used to build the attribute-to-nodes 
+    mappings.
+outputs:
+- name: AttributeIndex entity
+  type: domain entity definition
+  description: A set of indexes covering node type, node kind, simple name, and 
+    qualified name; each mapping attribute values to the nodes that carry them; 
+    built-once-keep-consistent.
+atomic_steps: []
+status: draft

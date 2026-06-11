@@ -1,0 +1,17 @@
+step_id: A-005
+parent_tactical_step: T-001
+name: Удалить session_view
+target_file: ai_editor/core/session_view.py
+operation: delete_file
+priority: 5
+depends_on:
+- A-001
+concepts:
+- C-020
+prompt: |
+  Delete `ai_editor/core/session_view.py`. Validation uses session_list_file_locks only.
+verification:
+  type: static_analysis
+  target: ai_editor/core/session_view.py
+  expected: File absent.
+status: draft

@@ -1,0 +1,92 @@
+step_id: A-008
+parent_tactical_step: T-006
+name: MCP search session pagination integration tests
+target_file: tests/mcp/test_search_session_pagination.py
+operation: create_file
+priority: 8
+depends_on:
+  - T-004
+  - T-005
+concepts:
+  - C-001
+  - C-005
+  - C-016
+  - C-022
+prompt: |
+  Operation: create_file
+  Target: tests/mcp/test_search_session_pagination.py
+
+  Author: Vasiliy Zdanovskiy, vasilyvz@gmail.com.
+  In-process MCP smoke tests patterned after tests/mcp/test_universal_file_mcp_regression.py.
+
+  Precondition: G-008/T-004 search_start and G-008/T-005 lifecycle commands registered (hooks A-003 + A-005).
+
+  Covers all six MCP tests_required IDs:
+  start_cross_search_returns_search_id, get_first_page_while_running, preview_result_from_first_page,
+  request_next_page, cancel_long_ggrep_search, server_responsive_during_running_search.
+
+  G-008 contract: job_id + block_position + index_url — not README search_id/cursor/next_cursor.
+
+  MRS excerpts:
+  - C-001 SearchSession / job_id in responses.
+  - C-005 HTTPResultAccess (optional cross-check index_url template matches handoff).
+  - C-016 PreviewReference for preview-compatible hits.
+  - C-022 paginated cross search partial blocks while sources running.
+
+  STANDARD SETUP:
+    from __future__ import annotations
+    import asyncio, time, uuid
+    from pathlib import Path
+    from unittest.mock import AsyncMock, patch
+    import pytest
+    import pytest_asyncio
+    import ai_editor.hooks  # noqa: F401
+    from mcp_proxy_adapter.commands.command_registry import registry
+    from mcp_proxy_adapter.commands.hooks import hooks
+    from mcp_proxy_adapter.commands.result import SuccessResult
+    from ai_editor.commands.health_command import HealthCommand
+
+  @pytest_asyncio.fixture(scope="module", autouse=True)
+  async def _register_commands(): hooks.execute_custom_commands_hooks(registry)
+
+  Use dedicated tmp_path mini-project (not test_data/) with 2-3 Python files and predictable cross-search hits.
+  Mock heavy backends (semantic embedding, full DB) where needed; real command dispatch through registry.
+
+  TEST test_start_cross_search_returns_job_id (@pytest.mark.asyncio):
+  - registry.get_command("search_start") not None.
+  - run with project_id mock, search_type=cross, query="needle", paginated=true.
+  - Assert SuccessResult, data.job_id str non-empty, index_url present, status in {running, completed, queued}.
+
+  TEST test_get_first_block_while_running:
+  - Patch cross_search to delay grep completion via asyncio.Event.
+  - After search_start, call search_get_page with job_id and block_position=1 before event set.
+  - Assert items may be partial, status running, has_more or progress indicates incomplete.
+
+  TEST test_preview_result_from_first_block:
+  - From first block item with preview or preview_ref, call universal_file_preview or validate preview object
+    contains node_ref or selector plus file_path resolvable relative to project root.
+
+  TEST test_request_next_block:
+  - Drive search to produce >= 2 published blocks (mocked).
+  - Block 1 via search_get_page job_id block_position=1; block 2 with block_position=2;
+    assert disjoint result_id sets.
+
+  TEST test_cancel_long_ggrep_search:
+  - search_start search_type=grep with slow mock; search_cancel with job_id; assert cancelled true;
+    subsequent search_get_page status cancelled or BLOCK_NOT_READY.
+
+  TEST test_server_responsive_during_running_search:
+  - While long-running search session active (background task), await HealthCommand.run().
+  - Assert SuccessResult within 2s wall time; health payload success true.
+
+  Register assertions for commands: search_start, search_get_page, search_cancel, search_close, health.
+  File under 400 lines.
+
+verification:
+  type: pytest
+  target: tests/mcp/test_search_session_pagination.py
+  expected: >
+    All six MCP tests_required scenarios pass via in-process Command.run using job_id and block_position;
+    server health responsive during long search; cross-search returns job_id, blocks while running,
+    preview-compatible items, next block via block_position increment, and grep cancel succeeds.
+status: ready_for_review

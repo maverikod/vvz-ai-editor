@@ -1,0 +1,1 @@
+"""Remove old trash directories from yaml_editor plans."""

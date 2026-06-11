@@ -1,0 +1,24 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Удалить in-memory session модули
+target_file: ai_editor/core/client_sessions.py
+operation: delete_file
+priority: 1
+depends_on: []
+concepts:
+- C-017
+- C-020
+prompt: |
+  Delete `ai_editor/core/client_sessions.py` only.
+
+  This module provides legacy in-memory client session management (C-020). All session
+  state coordination is now delegated exclusively to Upstream Client (C-017) via CA API.
+  The file is no longer imported by any actively maintained module after G-006 unregistration.
+
+  Do not modify any other file in this step. Import cleanup in dependent modules
+  that still import ai_editor.core.client_sessions is out of scope for this delete_file step.
+verification:
+  type: static_analysis
+  target: ai_editor/core/client_sessions.py
+  expected: File absent from repository; no active module imports ai_editor.core.client_sessions.
+status: draft

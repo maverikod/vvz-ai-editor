@@ -1,0 +1,35 @@
+step_id: T-004
+parent_global_step: G-001
+name: Scope boundary invariants
+status: frozen
+concepts:
+- C-001
+- C-014
+- C-021
+description: "Define the ScopeBoundary (C-021) as the complete set of negative invariants\n\
+  that PreviewCommand (C-001) must never violate, expressed as verifiable\nconstraints.\n\
+  \nNegative invariants:\n1. No writes: the command writes nothing to files, the project\
+  \ database,\n   or any external tree session. Read-only behaviour is unconditional;\n\
+  \   no parameter combination can trigger a write.\n2. No raw bytes: the response\
+  \ never contains raw file bytes. All output\n   is structured JSON conforming to\
+  \ ResponseEnvelope.\n3. Single file per call: file_path is a single literal path.\
+  \ Globs,\n   wildcards, and multi-path values are rejected as input errors of\n\
+  \   class ErrorClassification (C-014), specifically GLOB_IN_FILE_PATH.\n4. No XML\
+  \ or HTML: the command has no registered FileHandler for .xml,\n   .html, or .htm\
+  \ extensions. Requests for these extensions produce an\n   input error of class\
+  \ ErrorClassification (C-014), specifically\n   UNKNOWN_EXTENSION.\n\nThese invariants\
+  \ are not enforced by the caller; they are structural\nproperties of the command\
+  \ implementation and must hold regardless of\nthe parameters supplied.\n"
+inputs:
+- name: none
+  type: n/a
+  description: ScopeBoundary is a constraint set, not a data transformation. No runtime
+    input triggers it; it is verified statically at review and dynamically by the
+    absence of write operations in the implementation.
+outputs:
+- name: none
+  type: n/a
+  description: ScopeBoundary produces no output artifact. Its realisation is the absence
+    of the prohibited behaviours in the implemented command.
+atomic_steps:
+- A-001

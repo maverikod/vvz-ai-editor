@@ -1,0 +1,253 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Remove promote_pending_sidecar_to_final from write_command _second_call
+target_file: ai_editor/commands/universal_file_edit/write_command.py
+operation: modify_file
+priority: 2
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/universal_file_edit/write_command.py
+
+  ## Goal
+  Remove the dependency on promote_pending_sidecar_to_final, which no longer
+  exists after the sibling cutover in tree_sidecar.py together with the entire
+  pending-sidecar mechanism. After the sibling cutover write_sidecar_atomic writes
+  the sibling tree file directly. This change touches ONLY the _second_call method's
+  sidecar post-write block; nothing else in the file changes.
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover redirecting legacy path call sites onto sibling_tree_path; removes .cst/, .trees/, .tree_sidecar layouts and the pending-sidecar mechanism.
+  - properties:
+    - hard cutover; no backward-compatibility shim
+    - write_sidecar_atomic writes at the sibling path; promote_pending_sidecar_to_final deleted
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact with CHECKSUMS, MAP, TREE sections stored as a sibling file next to the source.
+  - properties:
+    - stored as a sibling file placed directly next to the source file it describes
+
+  ## Context
+  In _second_call, after the source file is written, there is a block guarded by
+  ``if session.format_group == FORMAT_SIDECAR and session.tree_id:`` that imports
+  and calls two helpers from cst_tree.tree_sidecar. promote_pending_sidecar_to_final
+  no longer exists in tree_sidecar.py; write_sidecar_atomic remains and already writes to
+  the sibling path.
+
+  ## Required edits (migration-relevant ONLY; do not refactor anything else)
+  1. In the local import inside _second_call, drop promote_pending_sidecar_to_final
+     from the cst_tree.tree_sidecar import, keeping write_sidecar_atomic:
+         from ai_editor.core.cst_tree.tree_sidecar import (
+             write_sidecar_atomic,
+         )
+
+  2. Delete the call line ``promote_pending_sidecar_to_final(session.abs_path)`` so
+     the block becomes:
+         tree = get_cst_tree(session.tree_id)
+         if tree is not None:
+             write_sidecar_atomic(session.abs_path, tree)
+
+  ## Forbidden
+  - Do not change any other method, import, or response field. The mode_notice
+    fields, the get_tree import, write_sidecar_atomic call, lockfile/backup/commit
+    logic, and all other branches stay exactly as they are.
+  - No backward-compatibility shim for pending sidecars.
+  - Do not touch other files.
+
+  ## a3/a8 waiver (pre-existing oversized file)
+  Target is pre-existing project file >400 lines. Region/sectioned embed with explicit anchor markers satisfies a8; full-file embed not required.
+
+  Do not split this file. This prompt uses a sectioned embed: verbatim imports, signature stubs for untouched methods, and full verbatim _second_call (sole edit target). The a8 post-prior-state chain is preserved by the file-state contract below requiring byte-for-byte match outside _second_call.
+
+  ## File state contract (post tree_sidecar.py sibling-path cutover, pre-this-step)
+  Total lines on disk: 515. Modify ONLY ``UniversalFileWriteCommand._second_call``.
+  Every line outside _second_call must match the pre-step file byte-for-byte after
+  your edit.
+
+  ## Section 1 — module header and imports (verbatim; do NOT edit)
+  ```python
+  """
+  UniversalFileWriteCommand: two-phase write with diff and lockfile.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import os
+  import tempfile
+  from pathlib import Path
+  from typing import Any, Dict, Optional, Type, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.errors import (
+      FORMAT_INVALID_ON_OPEN,
+      SESSION_NOT_FOUND,
+      WRITE_FAILED,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TEXT,
+      FORMAT_TREE_TEMP,
+      delete_lockfile,
+      read_lockfile_pid,
+      write_lockfile_pid,
+  )
+  from ai_editor.commands.universal_file_edit.session import EditSession, get_session
+  from ai_editor.commands.universal_file_edit.tree_temp_write_commit import (
+      build_tree_temp_preview_text,
+      commit_tree_temp_to_disk,
+      serialize_tree_temp_session_source,
+  )
+  from ai_editor.commands.universal_file_edit.write_command_metadata import (
+      get_universal_file_write_metadata,
+  )
+  from ai_editor.core.backup_manager import BackupManager
+  from ai_editor.core.cst_tree.node_stable_id import (
+      strip_inline_node_id_lines_from_source,
+  )
+  from ai_editor.core.cst_tree.tree_builder import get_tree as get_cst_tree
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.core.file_handlers.diff_support import unified_diff_text
+  from ai_editor.core.git_integration import commit_after_write
+  from ai_editor.commands.universal_file_edit.invalid_write_support import (
+      mode_notice_text,
+      restore_session_format_after_recovery,
+      try_clear_invalid_after_write,
+      validate_invalid_session_for_commit,
+  )
+  ```
+
+  ## Section 2 — other methods (unchanged; do NOT edit bodies)
+  The class ``UniversalFileWriteCommand`` and every method listed below keep their
+  exact pre-step bodies on disk. Signatures listed for orientation only:
+  - class attributes: name, version, descr, category, author, email, use_queue
+  - get_name() -> str
+  - get_schema() -> Dict[str, Any]
+  - validate_params(params) -> Dict[str, Any]
+  - metadata(cls) -> Dict[str, Any]
+  - execute(...) -> SuccessResult | ErrorResult
+  - _tree_temp_preview(session) -> SuccessResult | ErrorResult
+  - _tree_temp_write_commit(session, project_id) -> SuccessResult | ErrorResult
+  - _generate_code(session) -> str
+  - _text_preview(session) -> SuccessResult | ErrorResult
+  - _text_write_commit(session, project_id) -> SuccessResult | ErrorResult
+  - _invalid_text_write_commit(session, project_id) -> SuccessResult | ErrorResult
+  - _sidecar_preview(session) -> SuccessResult | ErrorResult
+  - _first_call(session, current_pid) -> SuccessResult | ErrorResult
+
+  ## Section 3 — _second_call (FULL pre-edit body; apply required edits HERE ONLY)
+  ```python
+      def _second_call(
+          self, session: EditSession, _project_id: str
+      ) -> SuccessResult | ErrorResult:
+          """Handle second write call: backup, commit, cleanup.
+
+          Args:
+              session: Active EditSession.
+              _project_id: Reserved for callers that delegate path helpers (unused
+                  here).
+
+          Returns:
+              SuccessResult with success flag and committed-phase diff.
+          """
+          _ = _project_id
+          fp_parts = Path(session.file_path).parts
+          root_dir = session.abs_path.parents[len(fp_parts) - 1]
+          rel = session.abs_path.relative_to(root_dir)
+          rel_str = str(rel)
+          bm = BackupManager(root_dir)
+          bm.create_backup(session.abs_path, command="universal_file_write")
+          original_content = session.abs_path.read_text()
+          try:
+              code = self._generate_code(session)
+          except Exception as exc:
+              bm.restore_file(rel_str)
+              return error_result_from_make_error(
+                  make_error(WRITE_FAILED, f"Code generation failed: {exc}")
+              )
+          tmp_path: Optional[str] = None
+          try:
+              with tempfile.NamedTemporaryFile(
+                  mode="w",
+                  suffix=session.abs_path.suffix,
+                  dir=str(session.abs_path.parent),
+                  delete=False,
+                  encoding="utf-8",
+              ) as tmp:
+                  tmp.write(code)
+                  tmp_path = tmp.name
+              os.replace(tmp_path, str(session.abs_path))
+          except OSError as exc:
+              bm.restore_file(rel_str)
+              if tmp_path:
+                  Path(tmp_path).unlink(missing_ok=True)
+              return error_result_from_make_error(
+                  make_error(WRITE_FAILED, f"Write failed: {exc}")
+              )
+
+          if session.format_group == FORMAT_SIDECAR and session.tree_id:
+              from ai_editor.core.cst_tree.tree_builder import (
+                  get_tree as get_cst_tree,
+              )
+              from ai_editor.core.cst_tree.tree_sidecar import (
+                  promote_pending_sidecar_to_final,
+                  write_sidecar_atomic,
+              )
+
+              tree = get_cst_tree(session.tree_id)
+              if tree is not None:
+                  promote_pending_sidecar_to_final(session.abs_path)
+                  write_sidecar_atomic(session.abs_path, tree)
+
+          delete_lockfile(session.abs_path)
+          diff = unified_diff_text(
+              original_content,
+              code,
+              before_label=str(session.abs_path),
+              after_label=str(session.abs_path),
+          )
+          if not session.is_invalid:
+              try_clear_invalid_after_write(session)
+          try:
+              commit_after_write(
+                  root_dir,
+                  [rel],
+                  command_name="universal_file_write",
+                  config_data={},
+              )
+          except Exception:
+              pass
+          return SuccessResult(
+              data={
+                  "success": True,
+                  "phase": "committed",
+                  "write_mode": "commit",
+                  "diff": diff,
+                  "is_invalid": session.is_invalid,
+                  "mode_notice": mode_notice_text(
+                      session.is_invalid, session.fallback_reason
+                  ),
+              }
+          )
+  ```
+  (This is the last method in the file; the module ends after this method body.)
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/write_command.py
+  expected: black, flake8, mypy exit 0; _second_call no longer imports or calls 
+    promote_pending_sidecar_to_final; the sidecar post-write block still calls 
+    write_sidecar_atomic(session.abs_path, tree); grep for 
+    'promote_pending_sidecar_to_final' in this file returns nothing; no other 
+    line in the file changed.

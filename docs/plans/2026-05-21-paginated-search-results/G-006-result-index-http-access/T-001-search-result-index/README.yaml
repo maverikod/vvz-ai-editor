@@ -1,0 +1,30 @@
+step_id: T-001
+parent_global_step: G-006
+name: SearchResultIndex contract
+description: >
+  Creates the SearchResultIndex as the client-facing directory index inside
+  SearchSessionDirectory. Lists every written SearchResultBlock in order by
+  position number and carries an explicit completeness marker with two states:
+  search still running and search finished. Defines the index as the single
+  mutable artefact of the job while result blocks remain immutable, requires
+  atomic append when a new block is published, and reports a final closed block
+  set once the completeness marker is search finished.
+concepts:
+  - C-027
+inputs:
+  - name: search_session_directory
+    type: SearchSessionDirectory
+    description: Session directory that owns the directory index artefact.
+  - name: published_block_entry
+    type: BlockIndexEntry
+    description: Position-number entry for one atomically published result block.
+  - name: completeness_state
+    type: IndexCompletenessMarker
+    description: Running or finished marker supplied by block production completion.
+outputs:
+  - name: search_result_index
+    type: SearchResultIndex
+    description: Ordered index of available blocks and current completeness state.
+atomic_steps:
+- A-001
+status: ready_for_review

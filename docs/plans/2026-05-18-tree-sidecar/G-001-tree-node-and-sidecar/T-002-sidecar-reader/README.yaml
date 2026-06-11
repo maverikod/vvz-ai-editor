@@ -1,0 +1,28 @@
+step_id: T-002
+parent_global_step: G-001
+name: Sidecar reader
+description: |
+  Define the load operation for Sidecar (C-002): accept a persisted Sidecar document
+  whose top-level fields carry source_sha256 and a root array; decode root entries
+  as TreeNode (C-001) values satisfying the field rules in the MRS definition of C-001;
+  surface the recorded source digest together with the ordered root TreeNode list. Validate
+  that the document is valid JSON and that the Sidecar shape matches the persistence
+  contract (digest field plus root whose elements conform to TreeNode per C-001).
+concepts:
+- C-001
+- C-002
+inputs:
+- name: persisted_sidecar_payload
+  type: Sidecar serial payload (C-002)
+  description: Serialized Sidecar content exposing source_sha256 and root array per the
+    Sidecar concept.
+outputs:
+- name: recorded_source_digest
+  type: hex digest string
+  description: The source_sha256 value stored in the Sidecar at last write (C-002).
+- name: root_tree_nodes
+  type: ordered TreeNode list (C-001)
+  description: Root-level TreeNode entries decoded from the Sidecar root array in order.
+atomic_steps:
+- A-001
+status: done

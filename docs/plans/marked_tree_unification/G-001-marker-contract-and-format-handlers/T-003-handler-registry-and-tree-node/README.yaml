@@ -1,0 +1,53 @@
+step_id: T-003
+parent_global_step: G-001
+name: HandlerRegistry and TreeNode Definition
+description: "Define the HandlerRegistry entity (C-008) as the central registry that
+  resolves a SourceFile to its FormatHandler by file extension; keyed by extension,
+  owns the set of registered FormatHandlers. Establish that HandlerRegistry is the
+  sole resolution path: no caller may bypass it to select a handler directly. Define
+  TreeNode (C-009) as the in-memory unit produced by a FormatHandler's parse_content
+  operation from source content, carrying its integer short_id (NodeId C-002), type
+  label, attributes, and content. Internal TreeNodeUuid (C-024) association is resolved
+  via the MAP section and NodeIdMap (C-025), not embedded in marked content or carried
+  as an external API reference. Establish that parse_content returns the node list
+  forming the tree structure, and that a TreeNode is the unit consumed by subsequent
+  navigation and edit operations.\n"
+concepts:
+- C-008
+- C-009
+- C-007
+- C-003
+- C-002
+- C-024
+- C-025
+source_labels:
+- '{b000}'
+- '{n001}'
+inputs:
+- name: FormatHandler specification
+  type: MRS concept definition (C-007)
+  description: Per-format component defined in MRS as C-007; HandlerRegistry
+    owns and registers one instance per supported file extension.
+- name: NodeId specification
+  type: MRS concept definition (C-002)
+  description: Per-file integer short_id handle defined in MRS as C-002 that TreeNode
+    carries as its in-content addressable identity.
+- name: NodeIdMap specification
+  type: MRS concept definition (C-025)
+  description: short_id↔UUID4 resolution module; TreeNode internal UUID association
+    is resolved through NodeIdMap, not embedded in TreeNode marked content.
+outputs:
+- name: HandlerRegistry entity definition
+  type: domain entity definition
+  description: Central registry keyed by file extension; sole resolution path
+    from SourceFile to FormatHandler; no bypass allowed.
+- name: TreeNode entity definition
+  type: domain entity definition
+  description: "In-memory product of the FormatHandler parse_content operation carrying
+    integer short_id, type label, attributes, and content; forms the tree structure;
+    UUID4 resolved via MAP/NodeIdMap only.\n"
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: needs_review

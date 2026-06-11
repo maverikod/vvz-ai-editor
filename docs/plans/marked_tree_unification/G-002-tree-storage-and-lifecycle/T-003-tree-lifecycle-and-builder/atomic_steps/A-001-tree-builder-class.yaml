@@ -1,0 +1,267 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Create TreeBuilder entity with three-section TreeFile write
+target_file: ai_editor/core/tree_lifecycle/builder.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-011
+- C-007
+- C-008
+- C-003
+- C-024
+- C-025
+status: ready_for_review
+prompt: |
+  Create `ai_editor/core/tree_lifecycle/builder.py`.
+  Operation: create_file.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-011, C-007, C-008, C-003, C-024, C-025)
+
+  ## Locked model (mandatory)
+  - Canonical build: HandlerRegistry.default_registry().resolve → FormatHandler.mark →
+    NodeIdMap.build → serialize three-section TreeFile (CHECKSUMS → MAP → TREE).
+  - CHECKSUMS records `source_sha256` = content_checksum.
+  - MAP via NodeIdMap.build with UUID4 (C-024) entries and next_free ({a007}).
+  - TREE = marked text only; integer short_id markers; NO UUID in TREE section.
+  - On rebuild when prior `.tree` exists: copy next_free from prior MAP; preserve UUIDs
+    by content_fingerprint; then validate_and_repair.
+  - Do NOT call recreate_tree_from_content or TreeFormatKind.
+  - FormatHandler.sidecar_path must return sibling `.tree` path.
+
+  ## Hard prerequisites (MUST exist before coding — do NOT stub or inline)
+
+  Before writing any code, verify these imports succeed. If any import fails,
+  STOP immediately and report a blocker to orchestrator_tactical — do NOT stub,
+  inline, or choose an alternative implementation.
+
+
+  ## FormatHandler / HandlerRegistry prerequisite (MUST exist before coding)
+
+  If any of these imports fail, STOP and report blocker — do NOT implement stubs inline.
+
+  From `ai_editor/tree/handler_registry.py`:
+  - `HandlerRegistry` class
+  - `default_registry() -> HandlerRegistry`
+  - `HandlerNotFoundError`
+
+  From `ai_editor/tree/format_handler.py`:
+  - `FormatHandler` ABC with methods:
+  - `mark(content: str) -> str`
+  - `unmark(marked_text: str) -> str`
+  - `parse_content(file_path: Path, content: str) -> List[TreeNode]`
+  - `sidecar_path(source_abs: Path) -> Path` — sibling `.tree` path
+
+  From `ai_editor/tree/tree_node.py`:
+  - `TreeNode` dataclass with fields: short_id: int, kind: str, content: str, attributes: dict
+
+  ## NodeIdMap module prerequisite (C-025 — MUST exist before coding)
+
+  Module path: `ai_editor/core/tree_lifecycle/node_id_map.py`
+
+  If `import ai_editor.core.tree_lifecycle.node_id_map` fails, STOP and report blocker
+  — do NOT implement NodeIdMap inline or stub it.
+
+  Public types and helpers consumed by TreeBuilder:
+  - `DiscoveredNode` — frozen dataclass: content_fingerprint: str, kind: str, marker_short_id: int, attributes: Dict[str, Any] = field(default_factory=dict)
+  - `MapSection` — dataclass: next_free: int, entries: List[MapEntry]
+  - `TreeSections` — dataclass: checksums: ChecksumsSection, map: MapSection, tree: str
+  - `ChecksumsSection` — TypedDict: source_sha256: str
+  - `NodeIdMap` — class with exactly three public map-mutation methods
+
+  Public functions:
+  - `compute_content_fingerprint(content: str) -> str` — SHA-256 hex of UTF-8 content
+  - `parse_tree_file(text: str) -> TreeSections` — parse three-section tree file
+  - `serialize_tree_file(sections: TreeSections) -> str` — serialize to disk format
+
+  NodeIdMap.build (staticmethod):
+  ```python
+  def build(
+    *,
+    tree_marked_text: str,
+    discovered_nodes: List[DiscoveredNode],
+    source_sha256: str,
+    prior_map: Optional[MapSection] = None,
+  ) -> tuple[TreeSections, NodeIdMap]:
+  ```
+  Algorithm summary:
+  1. Validate source_sha256 (64 lowercase hex).
+  2. Require non-empty discovered_nodes.
+  3. next_free = prior_map.next_free if prior_map else 1.
+  4. Preserve UUID4 by content_fingerprint from prior_map on rebuild.
+  5. Assign new uuid4 for new fingerprints; bump next_free per {a007}.
+  6. Return (TreeSections, NodeIdMap instance).
+
+  NodeIdMap.validate_and_repair (instance method):
+  ```python
+  def validate_and_repair(
+    self,
+    *,
+    tree_marked_text: str,
+    discovered_nodes: List[DiscoveredNode],
+    checksums: ChecksumsSection,
+  ) -> TreeSections:
+  ```
+  Repairs MAP/TREE/next_free inconsistencies; preserves UUID4 when content_fingerprint unchanged.
+
+  NodeIdMap.resolve (instance method):
+  ```python
+  def resolve(
+    self,
+    *,
+    short_id: Optional[int] = None,
+    uuid: Optional[str] = None,
+  ) -> ResolveResult:
+  ```
+  Bidirectional lookup; exactly one of short_id or uuid required.
+
+  Tree file delimiters (module constants):
+  - `---CHECKSUMS---`, `---MAP---`, `---TREE---`
+
+  ## Module docstring (exact)
+  """
+  TreeBuilder (C-011): canonical unified writer of three-section TreeFiles (C-003).
+
+  HandlerRegistry → FormatHandler.mark → NodeIdMap.build → atomic sibling write.
+  Does NOT use recreate_tree_from_content or TreeFormatKind (legacy parity oracle).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact)
+  ```python
+  from __future__ import annotations
+
+  import os
+  from pathlib import Path
+  from typing import List, Optional
+
+  from ai_editor.core.search_session.tree_representation import TreeRepresentationRef
+  from ai_editor.core.tree_lifecycle.node_id_map import (
+      ChecksumsSection,
+      DiscoveredNode,
+      MapSection,
+      NodeIdMap,
+      compute_content_fingerprint,
+      parse_tree_file,
+      serialize_tree_file,
+  )
+  from ai_editor.tree.format_handler import FormatHandler
+  from ai_editor.tree.handler_registry import HandlerRegistry, default_registry
+  from ai_editor.tree.tree_node import TreeNode
+  ```
+
+  ## Private helpers
+
+  ```python
+  def _discovered_nodes_from_tree_nodes(nodes: List[TreeNode]) -> List[DiscoveredNode]:
+      """Map parse_content nodes to NodeIdMap inputs."""
+
+  def _first_root_stable_id(nodes: List[TreeNode]) -> str | None:
+      """Return str(first.short_id) or None when empty."""
+
+  def _load_prior_map(sidecar_path: Path) -> MapSection | None:
+      """If sidecar exists and parses, return MAP; else None."""
+  ```
+
+  ### Algorithm: `_discovered_nodes_from_tree_nodes(nodes)`
+  1. Initialize `out: List[DiscoveredNode] = []`.
+  2. For each `node` in `nodes`:
+     a. `fp = compute_content_fingerprint(node.content)`.
+     b. Append `DiscoveredNode(content_fingerprint=fp, kind=node.kind, marker_short_id=node.short_id, attributes=dict(node.attributes))`.
+  3. Return `out`.
+
+  ### Algorithm: `_first_root_stable_id(nodes)`
+  1. If not nodes: return None.
+  2. Return `str(nodes[0].short_id)`.
+
+  ### Algorithm: `_load_prior_map(sidecar_path)`
+  1. If not `sidecar_path.is_file()`: return None.
+  2. Read text UTF-8.
+  3. Try `parse_tree_file(text).map`; on any exception return None.
+
+  ## Class TreeBuilder
+
+  ```python
+  class TreeBuilder:
+      """TreeBuilder (C-011): unified HandlerRegistry writer."""
+
+      @staticmethod
+      def build(
+          *,
+          content: str,
+          source_abs: Path,
+          file_path: str,
+          content_checksum: str,
+          registry: Optional[HandlerRegistry] = None,
+      ) -> TreeRepresentationRef:
+          ...
+  ```
+
+  ### Algorithm: `TreeBuilder.build`
+  1. `reg = registry if registry is not None else default_registry()`.
+  2. `handler = reg.resolve(source_abs)`.
+  3. `marked_text = handler.mark(content)`  # TREE body only (markers are short_id ints).
+  4. `nodes = handler.parse_content(source_abs, content)`.
+  5. `discovered = _discovered_nodes_from_tree_nodes(nodes)`.
+  6. If `discovered` is empty: raise `ValueError("TreeBuilder.build requires at least one addressable node")`.
+  7. `sidecar_path = handler.sidecar_path(source_abs)`.
+  8. `prior_map = _load_prior_map(sidecar_path)`.
+  9. `checksums: ChecksumsSection = {"source_sha256": content_checksum}`.
+  10. `sections, node_map = NodeIdMap.build(tree_marked_text=marked_text, discovered_nodes=discovered, source_sha256=content_checksum, prior_map=prior_map)`.
+  11. If `prior_map is not None`:
+      a. `sections = node_map.validate_and_repair(tree_marked_text=marked_text, discovered_nodes=discovered, checksums=checksums)`.
+  12. `file_text = serialize_tree_file(sections)`.
+  13. `sidecar_path.parent.mkdir(parents=True, exist_ok=True)`.
+  14. Atomic write: `tmp = sidecar_path.with_suffix(sidecar_path.suffix + ".tmp")`; write `file_text` UTF-8 to tmp; `os.replace(tmp, sidecar_path)`.
+  15. Return `TreeRepresentationRef(file_path=file_path, sidecar_path=sidecar_path, content_checksum=content_checksum, root_stable_id=_first_root_stable_id(nodes))`.
+
+  ### Docstring for build (include)
+  Documents Args: content, source_abs, file_path, content_checksum, registry.
+  Returns TreeRepresentationRef with checksum in ref and CHECKSUMS on disk.
+  Raises: HandlerNotFoundError, ValueError (empty nodes), OSError, NodeIdMapError, handler errors.
+
+  ### Error handling
+  - Propagate all exceptions; do not catch-and-swallow.
+
+  ### Edge cases
+  - First build (`prior_map is None`): next_free starts at 1 per NodeIdMap.build.
+  - Rebuild (`prior_map` loaded): next_free copied from prior; UUID preserved by fingerprint.
+  - Empty content with no nodes → ValueError at step 6.
+  - Existing sidecar corrupt → _load_prior_map returns None (treat as first build).
+
+  ### Concrete example
+  - content `"hello\n"`, text handler, checksum 64-hex sha256.
+  - Output file contains `---CHECKSUMS---`, `source_sha256:`, `---MAP---`, `next_free:`, `---TREE---`, marked lines `1:hello`.
+
+  ## Module __all__
+  `__all__ = ["TreeBuilder"]`
+
+  ## Forbidden
+  - Do NOT import recreate_tree_from_content, TreeFormatKind, classify_tree_format.
+  - Do NOT write only marked_text without CHECKSUMS/MAP sections.
+  - Do NOT embed UUID in TREE body.
+  - Do NOT use universal-id or legacy `.cst/` / `.trees/` paths.
+  - Do NOT modify checksum.py or lifecycle.py.
+
+  ## Validation
+  ```bash
+  black ai_editor/core/tree_lifecycle/builder.py
+  flake8 ai_editor/core/tree_lifecycle/builder.py
+  mypy ai_editor/core/tree_lifecycle/builder.py
+  python -c "from ai_editor.core.tree_lifecycle.builder import TreeBuilder; import inspect; assert hasattr(TreeBuilder,'build')"
+  pytest -q
+  ```
+
+  Estimated lines: ~200 (≤400). All tests must pass.
+verification:
+  type: import
+  target: ai_editor/core/tree_lifecycle/builder.py
+  expected: >
+    TreeBuilder.build writes three-section sibling TreeFile via HandlerRegistry and
+    NodeIdMap; no legacy TreeFormatKind imports. All tests pass.

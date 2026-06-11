@@ -1,0 +1,35 @@
+step_id: T-601
+parent_global_step: G-007
+name: JSON Lines file handler — open and produce lines root
+status: done
+concepts:
+- C-003
+- C-004
+- C-019
+description: "Define the opening behaviour of JsonLinesFileHandler (C-019), which\
+  \ extends\nFileHandler (C-003), for .jsonl and .ndjson files. At the root level,\n\
+  JsonLinesFileHandler composes a lines representation without parsing any\nJSON content.\n\
+  \nRoot Node:\n- NodeKind (C-004): lines.\n- Block set: the ordered sequence of all\
+  \ text lines in the file, in\n  file order. Each line is one Block.\n\nLine Block\
+  \ properties at root level:\n- NodeKind: scalar.\n- Value: the raw text of the line,\
+  \ without the trailing newline.\n- Block set: empty at the root-level view (lines\
+  \ are treated as\n  opaque text until the caller drills in).\n- node_ref: the zero-based\
+  \ index of the line.\n\nNo JSON parsing at root:\nJsonLinesFileHandler does NOT\
+  \ parse any JSON at open time or when the\nSelector operates at the root level.\
+  \ The Selector addresses line indices;\neach line is returned as a scalar block\
+  \ containing its raw text. This\nallows efficient navigation of large .jsonl files\
+  \ without parsing all lines.\n\nFile-structure errors: JsonLinesFileHandler does\
+  \ not validate JSON content\nat the root level. Any readable file is accepted. Individual\
+  \ line parse\nerrors surface only when the caller drills into a specific line by\
+  \ passing\nits zero-based index as node_ref.\n"
+inputs:
+- name: file_path
+  type: string
+  description: Project-relative path to the .jsonl or .ndjson file to open.
+outputs:
+- name: root_node
+  type: Node with NodeKind lines (C-004)
+  description: The lines root Node whose block set is the ordered sequence of scalar
+    line Nodes, each carrying its raw text and zero-based line index as node_ref.
+atomic_steps:
+- A-001

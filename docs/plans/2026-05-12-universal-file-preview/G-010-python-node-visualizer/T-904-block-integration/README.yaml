@@ -1,0 +1,35 @@
+step_id: T-904
+parent_global_step: G-010
+name: Wire visualizer into PythonFileHandler block rendering
+description: >
+  Modify PythonFileHandler (C-016, extends FileHandler C-003) open_root to call
+  render_module (C-022) and store result in Node.attributes["text"].
+  Modify resolve_node_ref to call render_node (C-022) and return text in attributes.
+  Add optional text field to Block dataclass (C-005) alongside summary dict.
+  BlockHandler update is out of scope for this step (handled in G-011/T-1003).
+concepts:
+- C-003
+- C-005
+- C-016
+- C-022
+inputs:
+- name: python_visualizer_py
+  type: file
+  description: python_visualizer.py with render_module and render_node (C-022)
+- name: python_handler_py
+  type: file
+  description: handlers/python_handler.py (PythonFileHandler C-016)
+- name: models_py
+  type: file
+  description: models.py (Block C-005)
+outputs:
+- name: python_handler_py
+  type: file
+  description: wired to visualizer; open_root and resolve_node_ref use C-022
+- name: models_py
+  type: file
+  description: Block (C-005) with optional text field
+atomic_steps:
+- A-001
+- A-002
+status: done

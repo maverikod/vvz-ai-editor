@@ -1,0 +1,94 @@
+step_id: G-001
+name: Marker Contract and Format Handlers
+description: 'Establishes the MarkerContract as the three-operation interface (mark,
+  parse, unmark) that every FormatHandler must implement. Defines NodeId (C-002) as
+  the per-file integer short_id embedded in the TREE section that names exactly one
+  AddressableBlock. TreeNodeUuid (C-024) is UUID4 stored in the MAP section only —
+  never in markers or external API. Establishes the minimally-addressable granularity
+  rule: a marker must never split a lexeme, never be inserted inside a literal or token,
+  and never mark a fragment smaller than the minimally-addressable block for the format.
+  Establishes the all-nodes short_id marker rule ({b000}): every addressable node in
+  every format receives a marker without exception — metadata slot where the format
+  provides one, otherwise a format-native comment at the END of the block. Defines
+  the FormatHandler for each supported format — text, markdown, YAML, JSON, and Python
+  — specifying the format-native marker syntax and the unmark invertibility invariant
+  (unmark reproduces original source bytes, verified by SHA-256 checksum). FormatHandlers
+  resolve short_id to TreeNodeUuid via NodeIdMap (C-025); no UUIDs are embedded in
+  markers. Hide/unhide of markers during session mutation is EditSession responsibility,
+  not FormatHandler. The Python FormatHandler uses a hybrid marking scheme: for CST
+  nodes that already carry a metadata dict in the existing codebase, the short_id is
+  written into that metadata dict under a reserved key; for all other CST node types,
+  a trailing comment is used. Establishes the HandlerRegistry as the central component
+  that resolves a SourceFile to its FormatHandler by file extension. Defines TreeNode
+  as the in-memory unit produced by parsing a marked TreeFile, carrying its short_id,
+  type, attributes, and content.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-007
+- C-008
+- C-009
+- C-024
+- C-025
+relations:
+- from_concept: C-001
+  to_concept: C-002
+  type: owns
+- from_concept: C-001
+  to_concept: C-003
+  type: produces
+- from_concept: C-001
+  to_concept: C-004
+  type: consumes
+- from_concept: C-001
+  to_concept: C-005
+  type: uses
+- from_concept: C-002
+  to_concept: C-005
+  type: uses
+- from_concept: C-002
+  to_concept: C-025
+  type: depends_on
+- from_concept: C-003
+  to_concept: C-024
+  type: owns
+- from_concept: C-003
+  to_concept: C-025
+  type: owns
+- from_concept: C-007
+  to_concept: C-001
+  type: implements
+- from_concept: C-007
+  to_concept: C-009
+  type: produces
+- from_concept: C-007
+  to_concept: C-005
+  type: uses
+- from_concept: C-007
+  to_concept: C-025
+  type: uses
+- from_concept: C-008
+  to_concept: C-007
+  type: owns
+source_labels:
+- '{a001}'
+- '{a002}'
+- '{a003}'
+- '{a004}'
+- '{a007}'
+- '{b000}'
+- '{b001}'
+- '{b002}'
+- '{b003}'
+- '{b004}'
+- '{b005}'
+- '{n001}'
+depends_on: []
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: ready_for_review

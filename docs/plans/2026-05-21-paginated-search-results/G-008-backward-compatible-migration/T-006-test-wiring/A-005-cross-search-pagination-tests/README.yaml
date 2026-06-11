@@ -1,0 +1,67 @@
+step_id: A-005
+parent_tactical_step: T-006
+name: Cross-search pagination unit tests
+target_file: tests/unit/test_cross_search_pagination.py
+operation: create_file
+priority: 5
+depends_on:
+  - T-004
+  - T-005
+concepts:
+  - C-018
+  - C-022
+prompt: |
+  Operation: create_file
+  Target: tests/unit/test_cross_search_pagination.py
+
+  Precondition: G-008/T-004 search_start and G-008/T-005 search_get_page implemented.
+
+  Author: Vasiliy Zdanovskiy, vasilyvz@gmail.com.
+  Covers tests_required:
+  cross_search_pages_structural_grep_only, cross_search_grep_timeout_drops_grep_evidence.
+
+  G-008 contract: collect all block items via job_id + block_position iteration (not cursor).
+
+  MRS (C-018 StructuralEvidence):
+  - line-only grep not evidence when require_structural_grep=true.
+  - timed_out phase must not emit partial invalid evidence.
+
+  Plan README project_cross_search_changes:
+  - source_counts include grep_line_only_ignored.
+  - timed-out grep evidence dropped unless fully structural.
+
+  IMPORTS:
+    from __future__ import annotations
+    import uuid
+    from unittest.mock import AsyncMock, patch
+    import pytest
+    from ai_editor.commands.search_start_command import SearchStartCommand
+    from ai_editor.commands.search_get_page_command import SearchGetPageCommand
+    from ai_editor.core.search_session.structural_evidence import PhaseOutcome
+    from mcp_proxy_adapter.commands.result import SuccessResult
+
+  TEST test_cross_search_pages_structural_grep_only:
+  1. Mock project_cross_search merged output containing:
+     - one semantic hit with preview_ref,
+     - one fulltext hit,
+     - one grep hit classic_line without preview_ref (line-only),
+     - one grep hit structural with preview_ref and tree_ref.
+  2. SearchStartCommand.run search_type=cross, paginated=true, require_structural_grep=true.
+  3. Collect all items from every published block_position; assert no item has line-only grep without evidence.preview_ref.
+  4. Assert summary or source_counts includes grep_line_only_ignored >= 1 when exposed in status response.
+
+  TEST test_cross_search_grep_timeout_drops_grep_evidence:
+  1. Mock cross search where grep phase returns PhaseOutcome.timed_out and partial line matches.
+  2. Semantic and fulltext phases completed with valid evidence.
+  3. Paginated blocks must not include grep-sourced evidence from timed_out phase.
+  4. Assert warnings or errors list mentions grep timeout suppression code if command exposes it.
+
+  File under 300 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_cross_search_pagination.py
+  expected: >
+    Line-only grep excluded from blocks when require_structural_grep=true; timed-out grep evidence absent
+    from merged cross-search blocks while other sources remain.
+status: ready_for_review

@@ -1,0 +1,30 @@
+step_id: T-001
+parent_global_step: G-006
+name: Close sidecar group session
+description: Implement CloseCommand (C-010) for sidecar group sessions.
+  Look up the EditSession (C-001) by session_id; return SESSION_NOT_FOUND (C-014)
+  if unknown. Verify the sidecar checksum against the source file using
+  ExistingInfrastructure (C-012). If checksums match, leave the sidecar DraftFile
+  (C-003) as-is and delete the WriteLockfile (C-004) if present. If checksums do
+  not match, rebuild the sidecar from source without creating a backup, delete the
+  WriteLockfile (C-004), and set draft_rebuilt=True in the response.
+  The sidecar DraftFile (C-003) is never deleted.
+  Release the EditSession (C-001) from the session registry.
+concepts:
+- C-001
+- C-003
+- C-004
+- C-010
+- C-012
+- C-014
+inputs:
+- name: session
+  type: EditSession (C-001)
+  description: Active sidecar group session to close.
+outputs:
+- name: draft_rebuilt
+  type: bool
+  description: True when sidecar was rebuilt from source; False when checksums matched.
+atomic_steps:
+- A-001
+status: draft

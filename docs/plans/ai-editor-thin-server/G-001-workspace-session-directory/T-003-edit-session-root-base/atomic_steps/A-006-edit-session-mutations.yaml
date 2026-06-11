@@ -1,0 +1,127 @@
+step_id: A-006
+parent_tactical_step: T-003
+name: EditSession lifecycle mutations
+target_file: ai_editor/core/edit_session/edit_session_mutations.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-019
+prompt: |
+  Create `ai_editor/core/edit_session/edit_session_mutations.py` (operation: create_file).
+
+  ## Parent scope (T-003)
+
+  Mechanical extraction of lifecycle helpers from monolithic `edit_session.py` into a
+  module consumed by `edit_session_impl.py`. No workspace path binding changes here.
+
+  ## OUT OF SCOPE (do NOT implement in this AS)
+
+  - session_root / file_subtree / origin / edit_subdir binding in `EditSession.open` workspace mode
+  - draft_path and lockfile_path relocation → T-004
+  - sidecar and tree-temp workspace relocation → T-006
+  - Do NOT change where `session.tree_abs` points; preserve legacy external sidecar paths
+
+  ## File header (exact)
+
+  ```python
+  """EditSession lifecycle and tree helper functions (C-019).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list)
+
+  ```python
+  from __future__ import annotations
+
+  import difflib
+  import os
+  import shutil
+  from pathlib import Path
+  from typing import TYPE_CHECKING, Any
+
+  from ai_editor.core.tree_lifecycle import compute_content_checksum
+  from ai_editor.core.tree_lifecycle.node_id_map import (
+      ChecksumsSection,
+      DiscoveredNode,
+      NodeIdMap,
+      compute_content_fingerprint,
+      parse_tree_file,
+      serialize_tree_file,
+  )
+  from ai_editor.tree.handler_registry import HandlerRegistry
+
+  if TYPE_CHECKING:
+      from .edit_session_impl import EditSession, SessionTreeValidity
+  ```
+
+  ## Functions to implement (signatures + one-line docstrings)
+
+  Move verbatim logic from `ai_editor/core/edit_session/edit_session.py` private methods
+  and module-level helpers, adapting `self` → first `session: EditSession` parameter:
+
+  | Function | Source in monolith |
+  |----------|-------------------|
+  | `checkout_history_index(session, index: int) -> None` | `EditSession.checkout_history_index` body |
+  | `undo(session) -> dict[str, object]` | `EditSession.undo` body; call `checkout_history_index(session, target)` |
+  | `redo(session) -> dict[str, object]` | `EditSession.redo` body |
+  | `record_revert_commit(session, *, rev: str) -> str` | `EditSession.record_revert_commit` body |
+  | `export_source_via_unmark(session) -> None` | `_export_source_via_unmark` |
+  | `update_session_tree_checksums(session, source_sha256: str) -> None` | `_update_session_tree_checksums` |
+  | `build_session_tree(session, source_text: str) -> bool` | `_build_session_tree` |
+  | `try_revalidate(session) -> None` | `_try_revalidate`; call `build_session_tree`, `export_source_via_unmark`, `update_session_tree_checksums` as module functions |
+  | `preview_external_write(session) -> dict[str, Any]` | `preview_external_write` |
+  | `confirm_external_copy_out(session) -> None` | `confirm_external_copy_out` |
+  | `close(session) -> None` | `close`; import `_active_sessions` from `.edit_session_impl` inside function |
+  | `record_tree_modification(session) -> None` | `record_tree_modification`; raise same RuntimeError |
+
+  ## try_revalidate algorithm (fix vs monolith)
+
+  1. If `session.tree_validity != SessionTreeValidity.INVALID`: return
+  2. Read source_text from session_source_path
+  3. Try parse via HandlerRegistry; on any Exception return
+  4. If not `build_session_tree(session, source_text)`: return
+  5. `export_source_via_unmark(session)`
+  6. Update checksums, set VALID, commit_full, record history — same as monolith
+
+  ## Error handling
+
+  - `checkout_history_index`, `undo`, `redo`, `preview_external_write`, `confirm_external_copy_out`:
+    same RuntimeError messages as monolith when session not open or preconditions fail
+  - `close`: pop from `_active_sessions`; rmtree session_dir if exists; set is_open False
+
+  ## Edge cases
+
+  - `preview_external_write`: missing external files → empty string in diff baseline
+  - `confirm_external_copy_out`: no changes → early return; VALID mode atomic two-file replace
+
+  ## Forbidden patterns
+
+  - Do NOT import `sidecar_path_for` in this module
+  - Do NOT add draft/lockfile path helpers
+  - Do NOT relocate tree_abs to workspace edit subdir (T-006)
+  - Do NOT modify `edit_session.py` monolith in this AS
+
+  ## Validation commands
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/edit_session_mutations.py
+  flake8 ai_editor/core/edit_session/edit_session_mutations.py
+  mypy ai_editor/core/edit_session/edit_session_mutations.py
+  python -c "from ai_editor.core.edit_session.edit_session_mutations import checkout_history_index"
+  pytest tests/unit/test_edit_session_lifecycle.py -v
+  ```
+
+  Expected: import ok; lifecycle tests still pass against monolith until impl split and monolith
+  delete.
+  **Mandatory:** all project tests must pass before handoff.
+verification:
+  type: import
+  target: ai_editor.core.edit_session.edit_session_mutations.checkout_history_index
+  expected: Callable is importable; monolith lifecycle tests pass once integrated with the edit-session open-workspace-mode implementation in this tactical step.
+status: draft

@@ -1,0 +1,26 @@
+step_id: T-004
+parent_global_step: G-002
+name: YAML serializer with comment restoration
+description: 'Create the YAML-facing SourceSerializer (C-006): consume an in-memory
+  ordered list of root TreeNode entries (C-001) and emit YAML source text via ruamel.yaml,
+  restoring hash-prefixed commentary from comment_inline and comment_before so placements
+  obey CommentOwnershipRule (C-004). Operational scope is tree-to-text serialization only:
+  no sidecar file reads or writes, no EditSession registration or mutation, and no
+  coupling to universal file open, preview, or write lifecycle hooks.'
+concepts:
+- C-006
+- C-001
+- C-004
+inputs:
+- name: tree_root_nodes
+  type: ordered list of TreeNode (C-001)
+  description: Fully populated tree whose nodes carry comment_inline and comment_before
+    values per C-004, sufficient for ruamel.yaml round-trip write-back per C-006.
+outputs:
+- name: serialized_source_text
+  type: string
+  description: UTF-8 YAML text with line comments restored at positions implied by
+    the TreeNode comment fields, consistent with C-006 YAML serializer properties.
+atomic_steps:
+- A-001
+status: done

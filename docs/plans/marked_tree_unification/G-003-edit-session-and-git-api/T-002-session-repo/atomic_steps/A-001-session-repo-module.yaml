@@ -1,0 +1,136 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Create SessionRepo with dual full/degraded commit shape
+target_file: ai_editor/core/edit_session/session_repo.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-013
+- C-012
+status: ready_for_review
+prompt: |
+  Create `ai_editor/core/edit_session/session_repo.py` (C-013).
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-012, C-013)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-002-session-repo/README.yaml`
+
+  ## MRS / HRS
+
+  - One commit per mutation ({d003}); no batching.
+  - **FULL (tree valid, {h008})**: each commit stages in-session tree file AND
+    unmark-exported in-session source copy; SHA-256 recorded by EditSession before commit.
+  - **DEGRADED (tree invalid, {h008}/{d003})**: each commit stages in-session source ONLY;
+    no tree path in index.
+  - Dulwich 1.2.4: `Repo.init`, `porcelain_add`, `porcelain_commit`, `get_walker` for log.
+  - No `porcelain.log`. No destroy method (directory delete on close {d005}).
+
+  ## Imports (exact list)
+  ```
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from pathlib import Path
+  from typing import List
+
+  from dulwich import porcelain as porcelain
+  from dulwich.repo import Repo
+  ```
+
+  ## Public API (replace single `commit()` with dual shape)
+
+  ```python
+  ONE_COMMIT_PER_MUTATION_INVARIANT: str = (
+      "Every mutation produces exactly one SessionRepo commit; "
+      "FULL captures tree+source; DEGRADED captures source only."
+  )
+
+  @dataclass(frozen=True)
+  class SessionCommit:
+      hash: str
+      message: str
+      timestamp: int
+
+  class SessionRepo:
+      def __init__(self, *, repo_dir: Path, source_name: str, tree_name: str, repo: Repo): ...
+
+      @classmethod
+      def init(
+          cls,
+          *,
+          repo_dir: Path,
+          source_name: str,
+          tree_name: str,
+          include_tree: bool,
+      ) -> SessionRepo:
+          """Init repo; initial commit FULL if include_tree else DEGRADED."""
+
+      def commit_full(self, *, message: str) -> str:
+          """Stage source_name + tree_name; one commit (valid-tree {d003})."""
+
+      def commit_degraded(self, *, message: str) -> str:
+          """Stage source_name only (invalid-tree DEGRADED {d003})."""
+
+      def log(self) -> List[SessionCommit]: ...
+      def show_tree(self, *, rev: str) -> bytes: ...
+      def show_source(self, *, rev: str) -> bytes: ...
+      def status_is_clean(self) -> bool:
+          """Compare working tree to HEAD for tracked files present in latest commit."""
+
+      def revert(self, *, rev: str) -> str:
+          """Restore tree file at rev; commit_full revert message."""
+  ```
+
+  ## commit_full algorithm
+
+  1. `paths = [str(repo_dir / source_name), str(repo_dir / tree_name)]`
+  2. `porcelain_add(self._repo, paths=paths)`
+  3. `porcelain_commit(..., message=message.encode("utf-8"), author=SESSION_COMMIT_IDENTITY, committer=...)`
+  4. Return hex sha str.
+
+  ## commit_degraded algorithm
+
+  1. `paths = [str(repo_dir / source_name)]` only.
+  2. Same commit flow.
+
+  ## init algorithm
+
+  `Repo.init(str(repo_dir))`; if `include_tree`: `commit_full(message="session: initial commit")`
+  else `commit_degraded(message="session: initial commit (degraded)")`.
+
+  ## status_is_clean
+
+  At HEAD, for each path that exists in the commit tree, compare working bytes to blob.
+  If HEAD missing → False.
+
+  ## Internal helper
+
+  `_blob_bytes_at_commit(*, rev: str, name: str) -> bytes` using `tree_lookup_path` (same as prior draft).
+
+  ## Constraints
+
+  - No edit_session import.
+  - SESSION_COMMIT_IDENTITY bytes constant.
+  - ~260 lines max.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/session_repo.py
+  flake8 ai_editor/core/edit_session/session_repo.py
+  mypy ai_editor/core/edit_session/session_repo.py
+  pytest -q
+  ```
+
+  All tests must pass.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/edit_session/session_repo.py
+  expected: |
+    SessionRepo defines init, commit_full, commit_degraded, log, show_tree, show_source,
+    status_is_clean, revert; no method named commit(); no porcelain.log; ONE_COMMIT_PER_MUTATION_INVARIANT present.
+    All tests pass.

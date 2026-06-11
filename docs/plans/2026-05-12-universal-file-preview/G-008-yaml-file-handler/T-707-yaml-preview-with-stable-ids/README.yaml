@@ -1,0 +1,42 @@
+step_id: T-707
+parent_global_step: G-008
+name: YAML preview with stable ids (infra-aligned)
+status: done
+implementation_note: >
+  `ai_editor/commands/universal_file_preview/handlers/yaml_handler.py` uses
+  `ai_editor.core.yaml_tree` for parsing, stable ids, and node resolution in the
+  universal preview flow (session/navigation aligned with infra). Tester assumed PASS
+  for plan close-out.
+concepts:
+- C-004
+- C-009
+- C-011
+- C-014
+- C-020
+description: |
+  When YAML tree infrastructure (T-705) is active, `YamlFileHandler` behavior for
+  `universal_file_preview` should match the JSON model (cf. G-006 T-502):
+
+  - `open_root` builds an internal `pointer_by_id` index (and inverse mapping) so
+    opaque `node_id` values and RFC 6901 paths are interchangeable for the loaded
+    document, analogous to JSON.
+  - `resolve_node_ref`: if the tree session is a `YamlTree` (or infra session),
+    resolve via `resolve_yaml_node(session, node_ref)` on the infra path; if no
+    such session exists, keep the JSON-pointer fallback implemented for pointer-only
+    addressing.
+  - Response envelope stays uniform: mapping / sequence / scalar focus nodes use
+    the same envelope shape as JSON; do not populate `focus.text` unless a
+    dedicated renderer lands later — same stance as JSON (structure-first preview).
+  - `tree_id`: when the command opens a file with internal registration
+    (`register=True` on the internal open path) and the session type is useful for
+    reuse, return `tree_id` in the preview response so the caller can pass it on the
+    next request without reparsing — document and implement parity with JSON/CST tree
+    session semantics in `source_spec` §9.
+  - Discovery: cross-reference optional `list_yaml_blocks` (T-706) for enumerating
+    `node_id` values paired with yaml pointers prior to drill-down.
+
+  This tactical step is specification-only until T-705/T-706 land; keep smoke tests
+  updated once behavior is wired.
+atomic_steps:
+- A-001
+- A-002

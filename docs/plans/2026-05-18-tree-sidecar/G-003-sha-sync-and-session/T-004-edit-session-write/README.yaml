@@ -1,0 +1,40 @@
+step_id: T-004
+parent_global_step: G-003
+name: EditSession write — serialize, write file and sidecar
+description: 'Implement universal_file_write for tree-temp: consume the EditSession''s
+  TreeNode tree (C-001) via SourceSerializer (C-006) to produce source bytes with
+  comments restored from comment_before and comment_inline fields; atomically replace
+  the source file on disk; compute the post-write SHA-256 of those bytes; write the
+  Sidecar (C-002) JSON with updated source_sha256 and serialized root matching the
+  in-memory tree. Clear the session dirty flag to false after successful persistence.
+  This step does not run SHASyncPolicy resolution, parse source for rebuild, or release
+  the session.'
+concepts:
+- C-001
+- C-002
+- C-006
+- C-007
+inputs:
+- name: session_id
+  type: UUID
+  description: EditSession (C-007) supplying tree, format_kind, and dirty state gating.
+- name: format_kind
+  type: enum (json | yaml)
+  description: Selects JSON or YAML SourceSerializer behavior.
+- name: tree_snapshot
+  type: TreeNode root list (C-001)
+  description: Authoritative tree at commit time; equals session tree after last edit.
+outputs:
+- name: written_source_bytes
+  type: octets
+  description: Serialized source file payload produced by SourceSerializer (C-006).
+- name: persisted_sidecar
+  type: Sidecar (C-002)
+  description: 'On-disk sidecar JSON with source_sha256 matching written bytes and root
+    array mirroring stable_id-preserving tree state.'
+- name: session_dirty
+  type: boolean
+  description: Session dirty flag after successful write; false when persistence completes.
+atomic_steps:
+  - A-001
+status: done

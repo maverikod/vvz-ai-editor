@@ -1,0 +1,232 @@
+# Machine-readable edit brief for coder models (MCP → ai-editor-server).
+# Prose docs: docs/commands/file_editing/WORKFLOW.md
+# Lifecycle rules: docs/standards/FILE_EDIT_WORKFLOW.yaml
+
+meta:
+  title: Universal File Edit — Coder Brief
+  version: '1.0'
+  locale: en
+  audience: coder_model
+  schema_source: 'help(server_id="ai-editor-server", command="<name>")'
+  invoke: 'call_server(server_id="ai-editor-server", copy_number=1, command="...", params={...})'
+
+commands:
+  preview: universal_file_preview
+  search: universal_file_search
+  open: universal_file_open
+  edit: universal_file_edit
+  write: universal_file_write
+  close: universal_file_close
+
+deprecated_do_not_use:
+  - cst_load_file
+  - cst_modify_tree
+  - cst_save_tree
+  - cst_apply_buffer
+  - query_cst
+  - list_cst_blocks
+  - read_project_text_file
+  - write_project_text_lines
+  - get_file_lines
+  - universal_file_read
+  - universal_file_save
+  - universal_file_replace
+  - universal_file_delete
+  - replace_file_lines
+
+invariants:
+  disk_write: Only universal_file_write commit writes canonical file; edit never touches disk.
+  one_session_per_file: Until universal_file_close.
+  session_invalid_on_server_restart: Re-open required.
+  session_id_not_client_session: Unrelated to session_create / session_open_file.
+
+identity:
+  stable_id:
+    role: Persistent node identity for preview and edit (preview node_ref).
+    storage: TreeNodeMetadata.stable_id in RAM; persisted in .cst/<stem>.tree sidecar JSON.
+    not_in_py_source: Logical .py has no @node-id markers for statements; sidecar holds ids.
+    must_preserve: Across insert/replace/delete batches and save/reload when sidecar matches source.
+  node_id:
+    role: Ephemeral span UUID; internal index key (node_map, path_to_node_id).
+    remappable: Rebuilt after each libcst mutation; may change when lines shift.
+    resolution: Server maps preview node_ref (stable_id) → current node_id before each op.
+    client_rule: Prefer node_ref from preview; if STALE_NODE_ID, re-preview — stable_id unchanged.
+
+lifecycle:
+  - step: 1
+    command: universal_file_preview
+    when: Before open (discover node_ref); before edit when targets unknown or after text line shifts
+    params_required: [project_id, file_path]
+    params_optional: [node_ref, session_id, selector]
+  - step: 2
+    command: universal_file_open
+    when: Start edit session
+    params_required: [project_id, file_path]
+    params_optional: [create, initial_content]
+    returns: [session_id, format_group]
+  - step: 2b
+    command: universal_file_search
+    when: Optional; XPath/CSTQuery on session CST tree (Python sidecar only)
+    params_required: [project_id, session_id]
+    params_optional: [query, search_type, include_code, require_one, max_results]
+    note: Searches in-memory draft tree for session_id only — not project-wide
+  - step: 3
+    command: universal_file_edit
+    when: Repeat; mutates draft only
+    params_required: [project_id, session_id, operations]
+  - step: 4a
+    command: universal_file_write
+    when: Preview diff — always before commit
+    note_tree_temp: write_mode=preview required
+    note_sidecar_text: first call creates lockfile, returns diff
+  - step: 4b
+    command: universal_file_write
+    when: Commit to disk
+    note_tree_temp: write_mode=commit after preview in same session
+    note_sidecar_text: second call when lock valid
+  - step: 5
+    command: universal_file_close
+    when: Always — after commit or abort
+    params_required: [project_id, session_id]
+
+format_groups:
+  sidecar:
+    extensions: ['.py', '.pyi', '.pyw']
+    draft: '<file>.cst_sidecar'
+    preview_node_ref: stable_uuid
+    edit_address_field: node_id
+    write_phases: two_call_lockfile  # preview then commit; write_mode may also work
+  tree_temp:
+    extensions: ['.json', '.yaml', '.yml', '.jsonl', '.ndjson']
+    draft: '<file>.draft'
+    preview_node_ref: json_pointer  # e.g. /timeout
+    edit_address_field: json_pointer  # NOT node_id
+    write_phases: explicit_write_mode  # preview then commit
+  text:
+    extensions: ['.md', '.txt', '.rst', '.adoc']
+    draft: '<file>.draft'
+    preview_node_ref:
+      markdown: slug_path  # e.g. intro.setup
+      plain: zero_based_line_index_string  # e.g. '3'
+    edit_address_field: node_ref  # preferred; or start_line/end_line
+    write_phases: two_call_lockfile
+
+node_ref_mapping:
+  rule: preview returns node_ref (= stable_id); edit uses format-specific field name
+  sidecar: node_ref (stable_id) → server resolves to current node_id internally
+  tree_temp: node_ref → json_pointer
+  text_markdown: node_ref → node_ref
+  text_plain_line_index: start_line = int(node_ref) + 1  # if using lines
+
+operation_types: [replace, insert, delete]
+
+operations:
+  sidecar:
+    replace:
+      required: [type, node_id]
+      content: code_lines  # preferred; or code for single line
+      example:
+        type: replace
+        node_id: '<uuid-from-preview>'
+        code_lines: ['def foo(x: int) -> str:', '    return str(x)']
+    insert_module:
+      required: [type, parent_node_id, position, code_lines]
+      parent_node_id: __root__
+      position: first | last
+    insert_sibling:
+      required: [type, target_node_id, position, code_lines]
+      position: before | after
+      note: omit parent_node_id or use __root__
+    delete:
+      required: [type, node_id]
+    batch_rule: >
+      sibling and unrelated nodes in one batch OK (including methods in a class or
+      nested functions under the same outer def). Forbidden: ancestor AND descendant
+      in the same batch (e.g. replace outer + replace inner_a).
+    batch_error: NESTED_BATCH_FORBIDDEN
+    stable_id_note: >
+      stable_id lives in metadata/sidecar and is preserved across ops (qualname for
+      def/class, statement text for imports). node_id is remapped internally each
+      rebuild; edit params named node_id accept stable_id UUID from preview.
+
+  tree_temp:
+    replace:
+      required: [type, json_pointer, value]
+      value_type: any_json
+    insert:
+      required: [type, parent_json_pointer, value]
+      optional: [key, index]
+      array_append: 'parent_json_pointer ends with /- e.g. /items/-'
+    delete:
+      required: [type, json_pointer]
+
+  text:
+    replace:
+      preferred: {type: replace, node_ref: '<from-preview>', content: '...'}
+      alternative: {type: replace, start_line: N, end_line: M, content: '...'}
+      rule: node_ref wins when both node_ref and lines present
+    insert:
+      fields: [type, content]
+      optional: [node_ref, position, start_line]
+      append: {type: insert, position: last, content: '...'}
+    delete:
+      fields: [type, node_ref]  # or start_line/end_line
+    safety_optional: [anchor_head, anchor_tail]  # 5 non-ws chars; mismatch → ANCHOR_MISMATCH
+    line_numbers: 1_based_inclusive; stale after each edit — re-preview with session_id
+
+python_replace_semantics:
+  applies_to: format_group sidecar
+  targets: [FunctionDef, ClassDef]
+  header_only:
+    condition: single_non_empty_line AND no_indented_body_lines in code_lines
+    effect: patch signature/class line only; preserve body and docstring
+    parse_stub: 'def name(...) -> T: pass'  # pass not written to body
+    example:
+      type: replace
+      node_id: '<function-uuid>'
+      code_lines: ['def process(self, v: int) -> str: pass']
+  full_replace:
+    condition: multiple_non_empty_lines OR any_indented_line
+    effect: entire node replaced by parsed snippet
+  docstring:
+    not_in_header: true
+    change_via: full_replace of function/class OR replace docstring statement node
+  insert_parent:
+    allowed: [Module via __root__, FunctionDef, ClassDef]
+    forbidden: IndentedBlock
+  fine_grained:
+    universal_edit: leaf refs promoted to SimpleStatementLine; Param/Name/Annotation not direct targets
+  internal_only:
+    cst_modify_tree_flag: replace_all_child_nodes  # not on universal_file_edit
+
+forbidden:
+  direct_ide_edit_on_project_files: when server available
+  reuse_text_line_numbers_after_edit: re-preview with session_id (text format only)
+  ancestor_descendant_in_one_python_batch: parent + child node_ids in same batch
+  commit_without_preview: tree-temp always; sidecar/text strongly required
+  use_search_line_as_edit_target: fulltext_search line ≠ draft coordinates
+
+common_errors:
+  SESSION_NOT_FOUND: reopen session
+  STALE_NODE_ID: unexpected stable_id loss — re-preview with session_id
+  UNKNOWN_NODE_REF: preview again; check format_group field mapping
+  NESTED_BATCH_FORBIDDEN: split batch — do not combine parent and child targets
+  ANCHOR_MISMATCH: re-preview or fix anchors
+  WRITE_FAILED: fix validation; backup restored
+  PARSE_ERROR: fix snippet syntax
+
+parse_error_fallback:
+  flag: is_invalid
+  behavior: line_based edit until successful commit restores structural editing
+
+post_commit_python:
+  sequence: [lint_code, format_code, type_check_code]
+  update_indexes: only if project-wide rebuild needed
+
+discovery_read_only:
+  before_edit: [fulltext_search, semantic_search, fs_grep]
+  in_session_tree_search: universal_file_search  # XPath on open session CST tree only
+  then: universal_file_preview for drill-down; node_ref from search or preview for edit
+
+multi_line_payload:
+  python: use code_lines array not code string

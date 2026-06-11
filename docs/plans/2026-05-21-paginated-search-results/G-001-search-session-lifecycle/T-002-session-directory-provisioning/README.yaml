@@ -1,0 +1,33 @@
+step_id: T-002
+parent_global_step: G-001
+name: SearchSessionDirectory provisioning
+description: "Creates the SearchSessionDirectory on disk before search execution begins.\n\
+  Provisions reserved areas for the manifest, the directory index, immutable result\n\
+  blocks, and service metadata within the session tree. Accepts an unbound SearchSession\n\
+  (directory_path=None), provisions the layout keyed by search_id, and binds the\n\
+  provisioned root via bind_session_directory. Documents directory-level ownership
+  rules\nso later writers and readers operate on a stable layout. Raw finding buffer
+  directories\nare provisioned by the result production step, not here.\n"
+concepts:
+- C-002
+inputs:
+- name: search_session
+  type: SearchSession
+  description: Unbound SearchSession with search_id set and directory_path=None.
+- name: config_dir
+  type: Path
+  description: Project root / config directory used to resolve the 
+    search_sessions root.
+outputs:
+- name: search_session_directory
+  type: SearchSessionDirectory
+  description: Provisioned on-disk directory tree ready to receive manifest, 
+    index, blocks, and metadata files.
+- name: bound_search_session
+  type: SearchSession
+  description: SearchSession with directory_path set to the provisioned layout 
+    root after bind_session_directory.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

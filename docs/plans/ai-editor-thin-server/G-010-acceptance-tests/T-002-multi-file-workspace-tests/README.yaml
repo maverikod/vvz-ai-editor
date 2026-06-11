@@ -1,0 +1,25 @@
+step_id: T-002
+parent_global_step: G-010
+name: Multi-file в одной CA Session
+description: >
+  Приёмочная верификация multi-file CA Session (C-004): два file_path, один
+  ca_session_id, два File Subtree (C-006) под одним Editor Session Directory;
+  command-level open, write (no-op и changed) и close по явному file_path;
+  критерий C-022 (1) и инвариант source_spec {8b1h}.
+concepts:
+- C-004
+- C-006
+- C-022
+inputs:
+- name: two_file_paths
+  type: array
+  description: Два пути в одном проекте.
+outputs:
+- name: multi_file_acceptance_tests
+  type: object
+  description: >
+    Проходящие command-level pytest-сценарии multi-file open/write/close в одной
+    CA Session с подтверждением C-022 (1) и {8b1h}.
+atomic_steps:
+- A-001
+status: ready_for_review

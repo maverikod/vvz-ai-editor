@@ -1,0 +1,44 @@
+step_id: T-302
+parent_global_step: G-004
+name: Python file handler — resolve node_ref
+status: frozen
+concepts:
+- C-004
+- C-009
+- C-011
+- C-014
+- C-016
+description: "Define the identifier-resolution behaviour of PythonFileHandler (C-016)\
+  \ for .py, .pyi, and .pyw files. When the caller supplies a node_ref, PythonFileHandler\
+  \ resolves it to the specific CST Node the identifier addresses.\nIdentifier format:\n\
+  \  The StableIdentifier (C-009) for Python files is a stable_id UUID\n  string produced\
+  \ by the project's cst_load_file infrastructure in its\n  outline_nodes array. PythonFileHandler\
+  \ accepts exactly this format;\n  no other formats (line numbers, qualified names,\
+  \ JSON pointers) are\n  accepted.\n\nResolution process:\n  PythonFileHandler looks\
+  \ up the stable_id UUID in the CST node index\n  of the open or transiently-opened\
+  \ TreeSession. If found, it returns\n  the corresponding CST Node with its NodeKind,\
+  \ type label, name,\n  attributes, and block set.\n\nResolution failure:\n  If the\
+  \ stable_id UUID is not found in the current CST (the node was\n  deleted, the file\
+  \ changed since the UUID was issued, or the UUID is\n  syntactically invalid), PythonFileHandler\
+  \ signals an UNKNOWN_NODE_REF\n  condition, which the command surfaces as an ErrorClassification\
+  \ (C-014)\n  input error.\n"
+inputs:
+- name: node_ref_value
+  type: string (UUID)
+  description: A stable_id UUID string from cst_load_file outline_nodes, supplied
+    by the caller as the node_ref parameter.
+- name: cst_session
+  type: TreeSession containing the parsed Python CST
+  description: The in-memory CST of the Python file, available either from a caller-owned
+    TreeSession or from a transient session opened by PythonFileHandler for this request.
+outputs:
+- name: resolved_node
+  type: Node with NodeKind (C-004) assigned
+  description: The CST Node addressed by node_ref_value, with its NodeKind, type label,
+    name, attributes, and block set ready for the NavigationProcedure.
+- name: resolution_error
+  type: ErrorClassification (C-014) UNKNOWN_NODE_REF input error
+  description: Returned instead of resolved_node when the stable_id UUID is not found
+    in the current CST.
+atomic_steps:
+- A-001

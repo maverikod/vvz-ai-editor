@@ -1,0 +1,42 @@
+step_id: T-003
+parent_global_step: G-003
+name: EditSession edit — mutate tree, preserve UUIDs
+description: 'Define universal_file_edit semantics on the TreeNode graph (C-001) held
+  by an open EditSession (C-007): apply structural and scalar mutations requested by
+  the edit command while preserving stable_id on every node that survives the operation
+  unchanged in identity; allocate new UUID v4 values for newly introduced TreeNode
+  instances. Update the session dirty flag to true on any successful mutation. Invalid
+  operations complete with a structured edit error and leave the tree and dirty flag
+  unchanged. This step does not
+  serialize to source bytes, write disk, touch the Sidecar file, run SHASyncPolicy,
+  or tear down the session.'
+concepts:
+- C-001
+- C-007
+inputs:
+- name: session_id
+  type: UUID
+  description: Identifies the EditSession (C-007) whose in-memory tree is mutated.
+- name: edit_operations
+  type: ordered list of tree edit operations
+  description: Concrete structural edits targeting nodes by stable_id and paths; the
+    handler applies operations in request order.
+- name: session_lookup
+  type: EditSession registry view
+  description: Resolves session_id to the live EditSession; enforces session exists
+    and format_group tree-temp.
+outputs:
+- name: mutated_tree
+  type: TreeNode root list (C-001)
+  description: Updated in-memory tree after successful apply; unchanged on failure.
+- name: session_dirty
+  type: boolean
+  description: Session dirty state after edit; true when at least one operation applied
+    successfully; unchanged on failure.
+- name: edit_error
+  type: structured error or null
+  description: Populated when operations fail validation; null on full success.
+atomic_steps:
+  - A-001
+  - A-002
+status: done

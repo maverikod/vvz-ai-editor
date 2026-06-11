@@ -1,0 +1,117 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: TreeRepresentation validation lifecycle
+target_file: ai_editor/core/search_session/tree_representation.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-015
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/tree_representation.py
+
+  MRS excerpt (C-015 TreeRepresentation):
+  - Stable structural representation for JSON, YAML, Python CST, Markdown, and text-as-paragraphs.
+  - Maintains stable node identifiers comparable to Python CST sidecar identifiers.
+  - Validated using checksum or equivalent freshness metadata before structural processing.
+  - Recreated when missing or invalid ({ygmh}).
+
+  Required imports:
+  - from __future__ import annotations
+  - import hashlib, json, os
+  - import yaml
+  - from dataclasses import dataclass
+  - from enum import Enum
+  - from pathlib import Path
+  - from typing import Any, Optional, cast
+  - from ai_editor.core.cst_tree.tree_builder import create_tree_from_code
+  - from ai_editor.core.cst_tree.tree_sidecar import read_sidecar_payload, sidecar_path_for_py, write_sidecar_atomic
+  - from ai_editor.core.json_tree.tree_builder import build_tree_from_data
+  - from ai_editor.core.structure_extraction.extractor import extract_structure
+  - from ai_editor.core.structure_extraction.format_registry import (
+        JSON_SUFFIX, MD_SUFFIXES, PY_SUFFIXES, TEXT_PLAIN_SUFFIXES, YAML_SUFFIXES, suffix_for_path,
+    )
+  - from ai_editor.core.tree_temp.sidecar_paths import resolve_trees_sidecar_path
+  - from ai_editor.core.tree_temp.sidecar_payload import SidecarParseError, loads_sidecar, serialize_sidecar_to_json_text
+  - from ai_editor.core.yaml_tree.tree_builder import build_yaml_tree_from_data
+
+  Implement:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. TreeFormatKind(str, Enum): json, yaml, python_cst, markdown, text
+     Docstring: supported TreeRepresentation storage formats.
+
+  3. TreeValidityState(str, Enum): reused, recreated
+     Docstring: whether validate_or_recreate_tree returned an existing valid sidecar (reused)
+     or rebuilt the sidecar because it was missing, stale, or force=True (recreated).
+
+  4. @dataclass(frozen=True) TreeRepresentationRef:
+       file_path: str
+       sidecar_path: Path
+       content_checksum: str
+       root_stable_id: Optional[str]
+     Docstring on class and each field.
+
+  5. def classify_tree_format(file_path: str) -> TreeFormatKind
+     Docstring: map project-relative path suffix to TreeFormatKind; raise ValueError when unsupported.
+
+  6. def sidecar_path_for(file_path: str, project_root: Path) -> Path
+     Docstring must state explicit layout:
+     - python_cst: ``<parent>/.cst/<stem>.tree`` via sidecar_path_for_py
+     - json: ``project_root/.trees/<rel>.tree`` via resolve_trees_sidecar_path
+     - yaml: same ``.trees/`` mirror as json via resolve_trees_sidecar_path
+     - markdown, text: adjacent ``<source>.tree_sidecar`` next to source file
+
+  7. def validate_or_recreate_tree(
+        *,
+        project_root: Path,
+        file_path: str,
+        force: bool = False,
+     ) -> tuple[TreeRepresentationRef, TreeValidityState]
+     Docstring: compare sidecar source_sha256 to current source SHA-256; return (ref, reused)
+     when digest matches; otherwise delegate to _recreate_tree_for_format and return (ref, recreated).
+     Raises FileNotFoundError when source file absent.
+
+  8. def _recreate_tree_for_format(
+        *,
+        kind: TreeFormatKind,
+        project_root: Path,
+        file_path: str,
+        source_abs: Path,
+        content_checksum: str,
+     ) -> TreeRepresentationRef
+     Docstring: rebuild sidecar via existing indexer tree builders — must NOT raise NotImplementedError.
+     Explicit recreation paths per format:
+     - python_cst: create_tree_from_code(str(source_abs), source_text, persist_sidecar=True);
+       write_sidecar_atomic when sidecar still missing.
+     - json: json.loads source text; build_tree_from_data; serialize_sidecar_to_json_text;
+       atomic write to resolve_trees_sidecar_path(project_root, Path(file_path)).
+     - yaml: yaml.safe_load source text; build_yaml_tree_from_data; persist via same .trees/
+       sidecar path and serialize_sidecar_to_json_text as json format branch.
+     - markdown, text: extract_structure(..., ensure_persisted_tree=True); write adjacent
+       ``<source>.tree_sidecar`` JSON with source_sha256 equal to content_checksum.
+     After rebuild, re-read sidecar digest and root_stable_id; return TreeRepresentationRef.
+
+  Private helpers (_compute_file_sha256_hex, _read_sidecar_state, format-specific digest readers)
+  as needed. Forbidden: NotImplementedError, TODO stubs, unwired TreeFormatKind branches.
+
+  __all__: TreeFormatKind, TreeValidityState, TreeRepresentationRef, classify_tree_format,
+  sidecar_path_for, validate_or_recreate_tree.
+
+  Under 300 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_tree_representation.py
+  expected: >
+    test_validate_or_recreate_tree_reuses_valid_sidecar returns TreeValidityState.reused;
+    test_validate_or_recreate_tree_recreates_stale_sidecar returns TreeValidityState.recreated;
+    test_recreate_tree_for_format_json_persists_under_project_root_trees_mirror;
+    test_recreate_tree_for_format_yaml_persists_under_project_root_trees_mirror;
+    test_recreate_tree_for_format_python_cst_persists_cst_sidecar;
+    test_recreate_tree_for_format_markdown_persists_adjacent_sidecar;
+    test_recreate_tree_for_format_text_persists_adjacent_sidecar;
+    no NotImplementedError for any TreeFormatKind.
+status: frozen

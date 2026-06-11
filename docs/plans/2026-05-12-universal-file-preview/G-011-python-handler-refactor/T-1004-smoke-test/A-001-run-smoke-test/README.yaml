@@ -1,0 +1,124 @@
+step_id: A-001
+parent_tactical_step: T-1004
+name: Smoke-test universal_file_preview on three Python files
+target_file: docs/plans/2026-05-12-universal-file-preview/G-011-python-handler-refactor/T-1004-smoke-test/smoke_test_results.md
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-016
+status: done
+verification:
+  type: manual
+  target: docs/plans/2026-05-12-universal-file-preview/G-011-python-handler-refactor/T-1004-smoke-test/smoke_test_results.md
+  expected: >
+    File exists and documents results for all three test cases.
+    Case 1 shows full-text fallback (text field present in focus, no blocks needed).
+    Case 2 shows module overview with imports, classes, functions in text field.
+    Case 3 shows function body with signature, docstring, first-level statements.
+prompt: |
+  ## Task
+
+  Run a live smoke-test of the universal_file_preview MCP command and record
+  results in a new file.
+
+  Target file: docs/plans/2026-05-12-universal-file-preview/G-011-python-handler-refactor/T-1004-smoke-test/smoke_test_results.md
+  Operation: create_file
+
+  The file does not exist. Create it with the test results after running
+  the three cases below.
+
+  ## Prerequisites
+
+  After any code changes to the server, restart ai-editor-server before running this smoke test.
+  The MCP server ai-editor-server must be running.
+  project_id: read `id` from repository root file `projectid` (JSON). Example in this repo: 8772a086-688d-4198-a0c4-f03817cc0e6c.
+
+  ## Test cases
+
+  ### Case 1 — Small file (full-text fallback, < 200 lines)
+
+  Call universal_file_preview with:
+    project_id: <from projectid>
+    file_path: ai_editor/commands/universal_file_preview/budget.py
+    full_text_max_lines: 200
+
+  budget.py is under 200 lines (e.g. 49), so full-text fallback must trigger.
+
+  Expected: response focus dict contains key 'text' with the full file source.
+  Record: whether 'text' key is present in focus, first 5 lines of text.
+
+  ### Case 2 — Large file module overview (> 200 lines, no node_ref)
+
+  Call universal_file_preview with:
+    project_id: <from projectid>
+    file_path: ai_editor/commands/universal_file_preview/python_visualizer.py
+    full_text_max_lines: 200
+
+  Use python_visualizer.py (large module, e.g. 328 lines), not handlers/python_handler.py (~197 lines — too small for this case).
+
+  Expected: response focus dict contains key 'text' with a structured module
+  overview: imports prefixed with stable_id and line range, class and function
+  entries with docstring first lines.
+  Record: whether 'text' key is present in focus, first 10 lines of text.
+
+  ### Case 3 — Large file with node_ref pointing to a FunctionDef
+
+  Step 3a: call universal_file_preview with:
+    project_id: <from projectid>
+    file_path: ai_editor/commands/universal_file_preview/python_visualizer.py
+    full_text_max_lines: 200
+
+  From the blocks in the response (or metadata), pick the stable_id of a top-level function
+  (look for a block whose summary.type is 'FunctionDef' or similar).
+
+  Step 3b: call universal_file_preview with:
+    project_id: <from projectid>
+    file_path: ai_editor/commands/universal_file_preview/python_visualizer.py
+    node_ref: <stable_id from step 3a>
+    full_text_max_lines: 200
+
+  Expected: response focus dict contains key 'text' showing the function
+  signature, docstring, and first-level body with compound statements collapsed.
+  Record: stable_id used, whether 'text' is present, first 10 lines of text.
+
+  ## What to produce
+
+  Create the file with the following exact structure, filled with real results:
+
+  # Smoke Test Results — G-011 T-1004
+
+  ## Case 1: Small file full-text fallback
+  - File: ai_editor/commands/universal_file_preview/budget.py
+  - Line count: (actual)
+  - text present in focus: yes/no
+  - First 5 lines of text: ...
+  - Status: PASS / FAIL
+  - Notes: (if FAIL, describe what went wrong and what fix was applied)
+
+  ## Case 2: Large file module overview
+  - File: ai_editor/commands/universal_file_preview/python_visualizer.py
+  - Line count: (actual; must be >200)
+  - text present in focus: yes/no
+  - First 10 lines of text: ...
+  - Status: PASS / FAIL
+  - Notes:
+
+  ## Case 3: Large file single FunctionDef
+  - File: ai_editor/commands/universal_file_preview/python_visualizer.py
+  - node_ref used: <stable_id>
+  - text present in focus: yes/no
+  - First 10 lines of text: ...
+  - Status: PASS / FAIL
+  - Notes:
+
+  ## Overall: PASS / FAIL
+
+  If any case FAILs, apply the fix and re-run before writing PASS.
+
+  ## Constraints
+
+  This step produces a Markdown document, not Python code.
+  All three cases must be actually executed via MCP; do not fabricate results.
+  The file must be non-empty and contain real observed output.

@@ -1,0 +1,15 @@
+#!/bin/bash
+# debian/postrm - post-removal script
+
+set -e
+
+SERVICE_NAME="code-analysis-server"
+
+# Reload systemd after removal
+if [ "$1" = "purge" ]; then
+    systemctl daemon-reload
+    systemctl reset-failed "$SERVICE_NAME" 2>/dev/null || true
+fi
+
+exit 0
+

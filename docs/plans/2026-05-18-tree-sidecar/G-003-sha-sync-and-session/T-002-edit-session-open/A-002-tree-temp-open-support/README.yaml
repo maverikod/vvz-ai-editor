@@ -1,0 +1,123 @@
+step_id: A-002
+parent_tactical_step: T-002
+parent_global_step_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/README.yaml
+parent_tactical_task_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/T-002-edit-session-open/README.yaml
+machine_spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+source_spec: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+name: Tree-temp open acquisition helper
+target_file: ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-003
+  - C-002
+  - C-005
+  - C-001
+status: done
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+  expected: black, flake8, mypy exit 0; pytest -q passes once callers exist.
+prompt: |
+  Executor: coder_auto. Create only ai_editor/commands/universal_file_edit/tree_temp_open_support.py (max 400 lines).
+
+  Module docstring:
+    """Helpers to acquire TreeNode roots for tree-temp universal_file_open (G-003).
+
+    Author: Vasiliy Zdanovskiy
+    Email: vasilyvz@gmail.com
+    """
+
+  Imports:
+    from __future__ import annotations
+
+    import hashlib
+    from dataclasses import dataclass
+    from enum import Enum
+    from pathlib import Path
+    from typing import List, Optional, Sequence, Tuple
+
+    from copy import deepcopy
+
+    from ai_editor.commands.universal_file_edit.session import active_session_uses_abs_path
+    from ai_editor.commands.universal_file_edit.sha_sync_policy import (
+        ShaSyncBranch,
+        resolve_sha_sync_policy,
+    )
+    from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  Prerequisite APIs (G-001 .trees/ JSON sidecar — not Python CST sidecar):
+
+    - ai_editor.core.tree_temp.sidecar_paths.resolve_trees_sidecar_path(project_root: Path,
+      source_relative_to_project: Path) -> Path
+        Absolute path to `.trees/<mirrored-relative>.tree` for the source file (C-002).
+
+    - Read existing sidecar optional: if path missing → None; else Path.read_bytes() then
+      ai_editor.core.tree_temp.sidecar_payload.parse_sidecar_json_bytes(raw) -> Tuple[str, List[TreeNode]].
+      On SidecarParseError treat as None (no valid sidecar) unless tactical spec requires strict mode.
+
+    - parse_source_bytes_to_roots(handler_id: str, raw: bytes) -> List[TreeNode]
+        G-002 SourceParser entry (json/yaml). Import the concrete module the repo exposes after G-002
+        (may live under ai_editor/core/tree_temp/ or sibling package — match implementation, not tree_sidecar).
+
+  If any symbol name differs after G-001/G-002 lands, adjust imports to the repo public API without
+  changing behavioural contracts below.
+
+  --- Types ---
+
+  class SidecarWriteIntent(str, Enum):
+      NONE = "none"
+      CREATE = "create"
+      REPLACE = "replace"
+
+  @dataclass(frozen=True)
+  class TreeTempOpenAcquisition:
+      roots: List[TreeNode]
+      source_sha256: str
+      sidecar_path: Path
+      sidecar_write_intent: SidecarWriteIntent
+
+  --- Function ---
+
+  def acquire_tree_temp_for_open(
+      *,
+      project_root: Path,
+      source_abs: Path,
+      handler_id: str,
+      raw_source_bytes: bytes,
+  ) -> TreeTempOpenAcquisition:
+      """Compute SHA, run SHASyncPolicy, return roots + staging intent for session open.
+
+      Steps (exact):
+        1. current_sha = hashlib.sha256(raw_source_bytes).hexdigest().
+        2. source_rel = source_abs.resolve().relative_to(project_root.resolve()); sidecar_path =
+           resolve_trees_sidecar_path(project_root.resolve(), source_rel).
+        3. loaded = _read_trees_sidecar_optional(sidecar_path)  # implement using read_bytes + parse_sidecar_json_bytes
+        4. sidecar_exists = loaded is not None
+        5. sidecar_sha = loaded[0] if loaded else None
+        6. decision = resolve_sha_sync_policy(
+               sidecar_exists=sidecar_exists,
+               sidecar_source_sha256=sidecar_sha,
+               current_source_sha256=current_sha,
+               active_session_holds_file=active_session_uses_abs_path(source_abs),
+           )
+        7. Branch on decision.branch (ShaSyncBranch):
+           - NO_SIDECAR: roots = parse_source_bytes_to_roots(handler_id, raw_source_bytes);
+             intent = CREATE.
+           - SHA_MATCH: assert loaded is not None; roots = deepcopy(loaded[1]); intent = NONE.
+           - SHA_MISMATCH_NO_SESSION: roots = parse_source_bytes_to_roots(handler_id, raw_source_bytes); intent = REPLACE.
+           - SHA_MISMATCH_ACTIVE_SESSION: assert loaded is not None; roots = deepcopy(loaded[1]); intent = NONE.
+
+  Return TreeTempOpenAcquisition(roots=roots, source_sha256=current_sha, sidecar_path=sidecar_path, sidecar_write_intent=intent).
+
+  Errors: raise ValueError with clear message if SHA_MATCH or SHA_MISMATCH_ACTIVE_SESSION but loaded is None; raise if parser returns empty roots where source bytes are non-empty document (optional: allow empty list only for empty source file).
+
+  Forbidden: MCP types, BaseMCPCommand, disk writes in this module, logging/print, Any.
+
+  Validation:
+    black ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+    flake8 ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+    mypy ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+    pytest -q

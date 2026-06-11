@@ -1,0 +1,16 @@
+step_id: T-704
+parent_global_step: G-008
+name: YAML handler integration and verification
+status: done
+concepts:
+- C-002
+- C-020
+description: |
+  YamlFileHandler is registered on HandlerDispatcher (C-002) for extensions
+  .yaml and .yml. NavigationProcedure calls open_root with PreviewBudget then
+  optional resolve_node_ref. Smoke/unit tests cover open_root kinds, pointer
+  resolution, invalid YAML, and UNKNOWN_NODE_REF paths (tests/test_universal_file_preview_smoke.py).
+  No separate YAML-specific MCP command; behavior is exercised via universal_file_preview.
+atomic_steps:
+- A-001
+implementation_note: Implemented; tests added in pytest smoke module.

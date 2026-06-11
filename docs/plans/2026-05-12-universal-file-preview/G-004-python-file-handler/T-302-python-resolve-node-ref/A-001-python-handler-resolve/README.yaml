@@ -1,0 +1,128 @@
+step_id: A-001
+parent_tactical_step: T-302
+name: Harden PythonFileHandler.resolve_node_ref with try/except import fallback
+target_file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-009
+- C-011
+- C-014
+- C-016
+status: done
+prompt: "Modify an existing Python file.\n\nTarget file (modify_file):\n  ai_editor/commands/universal_file_preview/handlers/python_handler.py\n\
+  \nCurrent content of the file (python_handler.py) after T-301 has been fully applied:\n\
+  \n  \"\"\"\n  PythonFileHandler -- FileHandler for .py, .pyi, .pyw files (C-016).\n\
+  \n  Opens Python source via the project's cst_load_file infrastructure.\n  Root\
+  \ NodeKind is tree_node with type label 'Module'.\n  Identifier format: stable_id\
+  \ UUID from cst_load_file outline_nodes.\n\n  Author: Vasiliy Zdanovskiy\n  email:\
+  \ vasilyvz@gmail.com\n  \"\"\"\n  from __future__ import annotations\n\n  import\
+  \ logging\n  from typing import Any\n\n  from ..base_handler import FileHandler\n\
+  \  from ..errors import (\n      PreviewError, file_structure_error, input_error,\n\
+  \      INPUT_ERROR_UNKNOWN_NODE_REF,\n  )\n  from ..models import Node, NodeKind\n\
+  \n  logger = logging.getLogger(__name__)\n\n\n  class PythonFileHandler(FileHandler):\n\
+  \      \"\"\"\n      FileHandler for Python files (.py, .pyi, .pyw) (C-016).\n\n\
+  \      Root NodeKind: tree_node (Module).\n      Interior nodes: tree_node for ClassDef\
+  \ and FunctionDef;\n      tree_node or scalar for other statements; scalar for leaf\
+  \ values.\n      Identifier source: cst_load_file outline_nodes stable_id UUID.\n\
+  \      Lazy materialisation: only root and requested children are loaded.\n\n  \
+  \    Attributes:\n          supported_extensions: Frozenset of .py, .pyi, .pyw.\n\
+  \      \"\"\"\n\n      @property\n      def supported_extensions(self) -> frozenset[str]:\n\
+  \          \"\"\"Frozenset of lowercase extensions this handler supports.\"\"\"\n\
+  \          return frozenset({'.py', '.pyi', '.pyw'})\n\n      def open_root(self,\
+  \ file_path: str, session: Any | None) -> Node | PreviewError:\n          \"\"\"\
+  \n          Parse the Python file and return a tree_node Module root Node.\n\n \
+  \         Uses libcst to parse the file. If the file fails to parse, returns a\n\
+  \          FILE_STRUCTURE_ERROR carrying parser name 'libcst'. The root's\n    \
+  \      children are the top-level CST statements, loaded lazily.\n\n          Args:\n\
+  \              file_path: Project-relative path to the .py/.pyi/.pyw file.\n   \
+  \           session: Existing CST TreeSession (parsed Module) or None.\n\n     \
+  \     Returns:\n              Module root Node (NodeKind.TREE_NODE) or PreviewError.\n\
+  \          \"\"\"\n          try:\n              from pathlib import Path\n    \
+  \          import libcst as cst\n\n              if session is not None:\n     \
+  \             tree = session\n              else:\n                  source = Path(file_path).read_text(encoding='utf-8',\
+  \ errors='replace')\n                  tree = cst.parse_module(source)\n\n     \
+  \         self._last_file_path = file_path\n              self._last_session = tree\n\
+  \n              def _load_children() -> list[Node]:\n                  return _cst_statements_to_nodes(tree.body)\n\
+  \n              return Node(\n                  node_kind=NodeKind.TREE_NODE,\n\
+  \                  node_ref='',\n                  type_label='Module',\n      \
+  \            name=None,\n                  attributes={},\n                  _children_loader=_load_children,\n\
+  \              )\n          except Exception as exc:\n              import libcst\
+  \ as cst  # noqa: F811\n              if isinstance(exc, cst.ParserSyntaxError):\n\
+  \                  return file_structure_error(\n                      parser='libcst',\n\
+  \                      message=str(exc),\n                      line_start=getattr(exc,\
+  \ 'raw_line', None),\n                  )\n              return file_structure_error(parser='libcst',\
+  \ message=str(exc))\n\n      def resolve_node_ref(self, node_ref: str, session:\
+  \ Any | None) -> Node | PreviewError:\n          \"\"\"\n          Resolve a stable_id\
+  \ UUID to the CST Node it addresses (C-009).\n\n          Looks up the UUID in the\
+  \ CST node index. Returns UNKNOWN_NODE_REF if\n          the UUID is not found.\n\
+  \n          Args:\n              node_ref: stable_id UUID string from cst_load_file\
+  \ outline_nodes.\n              session: CST TreeSession (parsed Module) or None.\n\
+  \n          Returns:\n              Resolved Node or PreviewError(UNKNOWN_NODE_REF).\n\
+  \          \"\"\"\n          if session is None:\n              return input_error(\n\
+  \                  INPUT_ERROR_UNKNOWN_NODE_REF,\n                  'No active CST\
+  \ session to resolve node_ref.',\n                  details={'node_ref': node_ref},\n\
+  \              )\n          try:\n              from ai_editor.core.cst_tree.tree_metadata\
+  \ import get_node_by_stable_id\n              cst_node = get_node_by_stable_id(session,\
+  \ node_ref)\n          except ImportError:\n              cst_node = None\n    \
+  \      if cst_node is None:\n              return input_error(\n               \
+  \   INPUT_ERROR_UNKNOWN_NODE_REF,\n                  f'stable_id {node_ref!r} not\
+  \ found in current CST.',\n                  details={'node_ref': node_ref},\n \
+  \             )\n          return _cst_node_to_node(cst_node, node_ref)\n\n\n  def\
+  \ _cst_statements_to_nodes(stmts: Any) -> list[Node]:\n      \"\"\"Convert a sequence\
+  \ of top-level CST statements to preview Nodes lazily.\"\"\"\n      nodes = []\n\
+  \      for stmt in stmts:\n          kind = _classify_cst_node(stmt)\n         \
+  \ name_attr = getattr(stmt, 'name', None)\n          name = getattr(name_attr, 'value',\
+  \ None)\n          has_body = hasattr(stmt, 'body')\n\n          def _make_loader(s:\
+  \ Any) -> Any:\n              def _load() -> list[Node]:\n                  body\
+  \ = s.body\n                  inner = getattr(body, 'body', body)\n            \
+  \      return _cst_statements_to_nodes(inner)\n              return _load\n\n  \
+  \        nodes.append(Node(\n              node_kind=kind,\n              node_ref=getattr(stmt,\
+  \ '_stable_id', '') or '',\n              type_label=type(stmt).__name__,\n    \
+  \          name=name,\n              attributes={},\n              _children_loader=_make_loader(stmt)\
+  \ if has_body else None,\n          ))\n      return nodes\n\n\n  def _classify_cst_node(node:\
+  \ Any) -> NodeKind:\n      \"\"\"Return NodeKind for a libcst CST node.\"\"\"\n\
+  \      try:\n          import libcst as cst\n          if isinstance(node, (cst.ClassDef,\
+  \ cst.FunctionDef, cst.Module)):\n              return NodeKind.TREE_NODE\n    \
+  \  except ImportError:\n          pass\n      return NodeKind.SCALAR\n\n\n  def\
+  \ _cst_node_to_node(cst_node: Any, node_ref: str) -> Node:\n      \"\"\"Convert\
+  \ a single libcst CST node to a preview Node.\"\"\"\n      return Node(\n      \
+  \    node_kind=_classify_cst_node(cst_node),\n          node_ref=node_ref,\n   \
+  \       type_label=type(cst_node).__name__,\n          name=getattr(getattr(cst_node,\
+  \ 'name', None), 'value', None),\n          attributes={},\n      )\n\nChange to\
+  \ make:\n  Replace the body of resolve_node_ref with a robust implementation.\n\
+  \  Also add a new private module-level function _find_by_stable_id after _cst_node_to_node.\n\
+  \n  New body of resolve_node_ref:\n\n    if session is None:\n        fp = getattr(self,\
+  \ '_last_file_path', None)\n        if fp is None:\n            return input_error(\n\
+  \                INPUT_ERROR_UNKNOWN_NODE_REF,\n                'No active CST session\
+  \ and no cached file_path to scan.',\n                details={'node_ref': node_ref},\n\
+  \            )\n        open_result = self.open_root(fp, None)\n        if isinstance(open_result,\
+  \ PreviewError):\n            return open_result\n        session = getattr(self,\
+  \ '_last_session', None)\n        if session is None:\n            return input_error(\n\
+  \                INPUT_ERROR_UNKNOWN_NODE_REF,\n                'Could not open\
+  \ CST session for stable_id scan.',\n                details={'node_ref': node_ref},\n\
+  \            )\n\n    try:\n        from ai_editor.core.cst_tree.tree_metadata\
+  \ import (\n            get_node_by_stable_id,\n        )\n        cst_node = get_node_by_stable_id(session,\
+  \ node_ref)\n    except ImportError:\n        cst_node = _find_by_stable_id(session,\
+  \ node_ref)\n\n    if cst_node is None:\n        return input_error(\n         \
+  \   INPUT_ERROR_UNKNOWN_NODE_REF,\n            f'stable_id {node_ref!r} not found\
+  \ in current CST.',\n            details={'node_ref': node_ref},\n        )\n  \
+  \  return _cst_node_to_node(cst_node, node_ref)\n\n  New private module-level function\
+  \ to add after _cst_node_to_node:\n\n    def _find_by_stable_id(tree: Any, stable_id:\
+  \ str) -> Any | None:\n        \"\"\"Linear scan of a CST tree for a node with _stable_id\
+  \ == stable_id.\"\"\"\n        import libcst as cst\n\n        class _Finder(cst.CSTVisitor):\n\
+  \            found: Any = None\n\n            def on_visit(self, node: cst.CSTNode)\
+  \ -> bool:  # type: ignore[override]\n                if getattr(node, '_stable_id',\
+  \ None) == stable_id:\n                    _Finder.found = node\n              \
+  \      return False\n                return True\n\n        finder = _Finder()\n\
+  \        if hasattr(tree, 'walk'):\n            tree.walk(finder)\n        return\
+  \ finder.found\n\nNo other changes to the file.\nRequired imports already present:\
+  \ input_error, INPUT_ERROR_UNKNOWN_NODE_REF.\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+  expected: resolve_node_ref body contains a try/except ImportError block for get_node_by_stable_id
+    with a _find_by_stable_id fallback; _find_by_stable_id is a private module-level
+    function; no bare exceptions propagate out of resolve_node_ref.

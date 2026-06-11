@@ -1,0 +1,163 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Deprecation exports в __init__
+target_file: client/ai_editor_client/__init__.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-016
+- C-020
+prompt: |
+  CURRENT FILE CONTENT (`client/ai_editor_client/__init__.py`):
+  ```py
+  """
+  Public async client for ai-editor-server (JSON-RPC via mcp-proxy-adapter).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from pathlib import Path
+
+  from ai_editor_client.client import CodeAnalysisAsyncClient
+  from ai_editor_client.commands_proxy import ValidatedCommandsProxy
+  from ai_editor_client.config import (
+      adapter_settings_from_server_config,
+      adapter_settings_to_jsonrpc_kwargs,
+      load_server_config,
+  )
+  from ai_editor_client.editor_file import EditorFileClient, EditorFileHandle
+  from ai_editor_client.exceptions import ClientValidationError
+  from ai_editor_client.file_session import FileSessionClient, SessionNotFoundError
+  from ai_editor_client.local_edit_workspace import (
+      EditorFileWorkflowError,
+      LocalEditWorkspace,
+  )
+  from ai_editor_client.server_api import (
+      CLIENT_FACADE_COMMANDS,
+      CST_REMOVED_COMMANDS,
+      FILE_SESSION_COMMANDS,
+      FILE_SESSION_FACADE_METHODS,
+      LEGACY_REMOVED_COMMANDS,
+      REMOVED_COMMANDS,
+      TRANSFER_FACADE_METHODS,
+      UNIVERSAL_FILE_COMMANDS,
+  )
+  from ai_editor_client.universal_file import UniversalFileClient
+  from ai_editor_client.server_schema import (
+      fetch_command_schema_from_server,
+      parse_schema_from_help_payload,
+  )
+  from ai_editor_client.validation import (
+      prepare_params_for_schema,
+      validate_params_against_schema,
+  )
+
+  __all__ = [
+      "CLIENT_FACADE_COMMANDS",
+      "CST_REMOVED_COMMANDS",
+      "ClientValidationError",
+      "CodeAnalysisAsyncClient",
+      "EditorFileClient",
+      "EditorFileHandle",
+      "EditorFileWorkflowError",
+      "FILE_SESSION_COMMANDS",
+      "FILE_SESSION_FACADE_METHODS",
+      "FileSessionClient",
+      "LEGACY_REMOVED_COMMANDS",
+      "LocalEditWorkspace",
+      "REMOVED_COMMANDS",
+      "SessionNotFoundError",
+      "TRANSFER_FACADE_METHODS",
+      "UNIVERSAL_FILE_COMMANDS",
+      "UniversalFileClient",
+      "ValidatedCommandsProxy",
+      "adapter_settings_from_server_config",
+      "adapter_settings_to_jsonrpc_kwargs",
+      "fetch_command_schema_from_server",
+      "load_server_config",
+      "parse_schema_from_help_payload",
+      "prepare_params_for_schema",
+      "validate_params_against_schema",
+  ]
+
+
+  def _read_package_version() -> str:
+      vf = Path(__file__).resolve().parent / "version.txt"
+      if vf.is_file():
+          return vf.read_text(encoding="utf-8").strip()
+      try:
+          import importlib.metadata as _imd
+
+          return _imd.version("ai-editor-client")
+      except Exception:
+          return "0.0.0"
+
+
+  __version__ = _read_package_version()
+  ```
+
+  Modify `client/ai_editor_client/__init__.py` only.
+
+  **Prerequisite** (file state before this step): `client/ai_editor_client/client.py` already emits `DeprecationWarning` when `CodeAnalysisAsyncClient` deprecated facade properties (`file_sessions`, `editor_files`) are accessed, per **C-020 Legacy Removal Scope**. This step adds deprecation warnings for deprecated symbols exported from `__init__.py`.
+
+  ## MRS excerpt
+
+  - **C-020 Legacy Removal Scope**: duplicate client facades are deprecated before physical removal.
+  - **C-016 MCP Workflow Surface**: `UniversalFileClient` and `CodeAnalysisAsyncClient.universal_files` are the supported public API.
+
+  ## Task
+
+  1. Add `import warnings` at top (after `from __future__ import annotations`).
+
+  2. Add module-level `_DEPRECATED_EXPORTS: frozenset[str] = frozenset({"FileSessionClient", "EditorFileClient", "EditorFileHandle", "LocalEditWorkspace"})`.
+
+  3. Add function `_emit_deprecated_export_warning(class_name: str) -> None` that calls `warnings.warn(f"{class_name} export is deprecated; use UniversalFileClient via CodeAnalysisAsyncClient.universal_files (C-016). Removal under C-020.", DeprecationWarning, stacklevel=3)`.
+
+  4. Wrap deprecated class imports with thin factory aliases that warn on **instantiation**:
+     - Keep direct imports of `EditorFileClient`, `FileSessionClient`, `LocalEditWorkspace`, `EditorFileHandle` for type identity.
+     - For each deprecated class `Cls`, define `def _deprecated_Cls(*args: Any, **kwargs: Any) -> Cls:` that calls `_emit_deprecated_export_warning("Cls")` then `return Cls(*args, **kwargs)`.
+     - Re-bind public name only if needed for `__all__` — preferred approach: leave classes in `__all__` but document in module docstring that `UniversalFileClient` is primary; emit warning from a new `__getattr__` on the package module is **forbidden** (use explicit wrapper subclasses instead).
+
+     **Prescribed approach (no `__getattr__`)**: create wrapper subclasses:
+     ```py
+     class _DeprecatedFileSessionClient(FileSessionClient):
+         def __init__(self, *args: Any, **kwargs: Any) -> None:
+             _emit_deprecated_export_warning("FileSessionClient")
+             super().__init__(*args, **kwargs)
+     ```
+     Repeat for `EditorFileClient`, `LocalEditWorkspace`. For `EditorFileHandle`, subclass and warn in `__init__`.
+     Re-export wrapped names as `FileSessionClient = _DeprecatedFileSessionClient` etc. so existing `from ai_editor_client import FileSessionClient` still works but warns.
+
+  5. Add `from typing import Any` import for wrapper `__init__` signatures.
+
+  6. Update module docstring: state `UniversalFileClient` is the single supported file-workflow facade (C-016); `FileSessionClient` / `EditorFileClient` / `LocalEditWorkspace` are deprecated (C-020).
+
+  7. Keep `__all__` list unchanged (names stay exported for one minor version).
+
+  ## Forbidden
+
+  - Do NOT remove symbols from `__all__` in this step.
+  - Do NOT modify `client.py` in this step.
+  - Do NOT use module-level `__getattr__` lazy deprecation.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black client/ai_editor_client/__init__.py
+  flake8 client/ai_editor_client/__init__.py
+  mypy client/ai_editor_client/__init__.py
+  pytest tests/ -q --tb=short
+  ```
+
+  All tests must pass.
+verification:
+  type: import
+  target: client.ai_editor_client
+  expected: Instantiating FileSessionClient, EditorFileClient, or LocalEditWorkspace from package import emits DeprecationWarning; UniversalFileClient remains primary export (C-016).
+status: draft

@@ -1,0 +1,30 @@
+step_id: T-003
+parent_global_step: G-005
+name: SourceParser unit tests (YAML)
+status: done
+description: 'Establish verification obligations on the YAML-facing SourceParser (C-005)
+  using round-trip-capable parsing so TreeNode trees (C-001) preserve CommentOwnershipRule
+  (C-004). Prove hash-line (#) comments are extracted into comment_inline when they
+  terminate the same line as the associated value, and into comment_before when they occupy
+  their own lines above the following node, including comments above the first root
+  mapping or sequence. Prove parity of ownership semantics with JSON under C-004 across
+  mappings, sequences, scalars, null representations, and nested structures. Prove
+  support for both .yaml and .yml logical document shapes consistent with the plan scope.
+  Prove child ordering matches document order for sequences and mapping member order as
+  emitted by the parser contract.'
+concepts:
+- C-005
+- C-001
+- C-004
+inputs:
+- name: yaml_source_documents
+  type: UTF-8 source text
+  description: 'YAML documents with hash-line (#) comments and structural variants covering
+    mappings, sequences, scalars, null representations, and nested containers.'
+outputs:
+- name: parsed_tree_obligations_met
+  type: verification outcome
+  description: For each input document, the emitted TreeNode forest matches structure
+    expectations and comment fields satisfy C-004 for YAML sources.
+atomic_steps:
+- A-001

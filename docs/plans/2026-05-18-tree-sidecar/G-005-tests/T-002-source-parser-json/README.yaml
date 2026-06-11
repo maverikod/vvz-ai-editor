@@ -1,0 +1,30 @@
+step_id: T-002
+parent_global_step: G-005
+name: SourceParser unit tests (JSON)
+status: done
+description: 'Establish verification obligations on the JSON-facing SourceParser (C-005)
+  producing TreeNode trees (C-001) with CommentOwnershipRule (C-004) applied. Prove
+  tolerant grammar accepts standard JSON plus line comments (//) and block comments
+  (/* */) without rejecting otherwise valid structure. Prove inline comments attach
+  as comment_inline on the node whose value shares the line. Prove standalone-line comments
+  attach as comment_before on the node immediately following the comment. Prove top-of-document
+  comments above the first root construct attach as comment_before on that first root
+  node. Prove faithful extraction of structure for nested objects and arrays, all scalar
+  types, null, empty containers, and numeric or string edge representations the tolerant
+  grammar allows. Prove ordering of object members and array elements matches source order.'
+concepts:
+- C-005
+- C-001
+- C-004
+inputs:
+- name: json_source_documents
+  type: UTF-8 source text
+  description: JSON documents with permitted comments and structural variants spanning
+    scalar types, nesting depth, and comment placement patterns under C-004.
+outputs:
+- name: parsed_tree_obligations_met
+  type: verification outcome
+  description: For each input document, the emitted root node list matches structural
+    and scalar expectations and comment fields match C-004 ownership rules.
+atomic_steps:
+- A-001

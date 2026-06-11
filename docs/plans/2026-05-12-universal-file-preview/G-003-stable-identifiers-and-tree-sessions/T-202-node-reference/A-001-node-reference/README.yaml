@@ -1,0 +1,67 @@
+step_id: A-001
+parent_tactical_step: T-202
+name: Add default_focus concrete method to FileHandler ABC
+target_file: ai_editor/commands/universal_file_preview/base_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-009
+- C-010
+- C-014
+status: done
+prompt: "Modify an existing Python file.\n\nTarget file (modify_file):\n  ai_editor/commands/universal_file_preview/base_handler.py\n\
+  \nCurrent content of the file (base_handler.py) is exactly:\n\n  \"\"\"\n  FileHandler\
+  \ ABC for universal_file_preview.\n\n  Defines the abstract interface (C-003) that\
+  \ every file handler must\n  implement. Each handler opens one family of files and\
+  \ produces the\n  uniform Node representation. StableIdentifier (C-009) format is\n\
+  \  opaque at this level; each handler interprets it natively.\n\n  Author: Vasiliy\
+  \ Zdanovskiy\n  email: vasilyvz@gmail.com\n  \"\"\"\n  from __future__ import annotations\n\
+  \  import abc\n  from typing import Any\n  from .errors import PreviewError\n  from\
+  \ .models import Node\n\n  class FileHandler(abc.ABC):\n      \"\"\"\n      Abstract\
+  \ base for file handlers (C-003).\n\n      Each concrete handler opens one family\
+  \ of files (by extension) and\n      produces the uniform in-memory Node representation.\
+  \ Navigation logic\n      is not implemented here; it lives in NavigationProcedure\
+  \ (C-006).\n\n      Attributes:\n          supported_extensions: Frozenset of lowercase\
+  \ extensions this\n                                handler accepts (e.g. frozenset({'.py'})).\n\
+  \      \"\"\"\n\n      @property\n      @abc.abstractmethod\n      def supported_extensions(self)\
+  \ -> frozenset[str]:\n          \"\"\"Frozenset of lowercase file extensions this\
+  \ handler supports.\"\"\"\n\n      @abc.abstractmethod\n      def open_root(\n \
+  \         self,\n          file_path: str,\n          session: Any | None,\n   \
+  \   ) -> Node | PreviewError:\n          \"\"\"\n          Open the file and return\
+  \ the root Node.\n\n          On success returns the root Node (NodeKind depends\
+  \ on handler).\n          On parse failure returns a file_structure_error PreviewError.\n\
+  \n          Args:\n              file_path: Project-relative path to the file.\n\
+  \              session: An existing in-memory tree session (TreeSession C-011),\n\
+  \                       or None when no session is provided by the caller.\n\n \
+  \         Returns:\n              Root Node or PreviewError.\n          \"\"\"\n\
+  \n      @abc.abstractmethod\n      def resolve_node_ref(\n          self,\n    \
+  \      node_ref: str,\n          session: Any | None,\n      ) -> Node | PreviewError:\n\
+  \          \"\"\"\n          Resolve a StableIdentifier (C-009) to the specific\
+  \ Node it addresses.\n\n          The identifier format is native to this handler\
+  \ and opaque to the\n          dispatcher. On failure returns an UNKNOWN_NODE_REF\
+  \ PreviewError.\n\n          Args:\n              node_ref: StableIdentifier string\
+  \ in this handler's native format.\n              session: In-memory tree session,\
+  \ or None.\n\n          Returns:\n              Resolved Node or PreviewError.\n\
+  \          \"\"\"\n\nChange to make:\n  Add the following concrete method to the\
+  \ FileHandler class, immediately\n  after the resolve_node_ref abstract method:\n\
+  \n      def default_focus(\n          self,\n          file_path: str,\n       \
+  \   node_ref: str | None,\n          session: Any | None,\n      ) -> Node | PreviewError:\n\
+  \          \"\"\"\n          Resolve the focus Node from file_path and optional\
+  \ node_ref (C-010).\n\n          When node_ref is None the focus is the file root\
+  \ (open_root).\n          When node_ref is provided the focus is the specific node\
+  \ resolved\n          by resolve_node_ref. On any error returns a PreviewError.\n\
+  \n          Args:\n              file_path: Project-relative path to the file.\n\
+  \              node_ref: StableIdentifier (C-009) or None.\n              session:\
+  \ In-memory tree session or None.\n\n          Returns:\n              Focus Node\
+  \ or PreviewError.\n          \"\"\"\n          if node_ref is None:\n         \
+  \     return self.open_root(file_path, session)\n          root_result = self.open_root(file_path,\
+  \ session)\n          if isinstance(root_result, PreviewError):\n              return\
+  \ root_result\n          return self.resolve_node_ref(node_ref, session)\n\n  No\
+  \ other changes to the file.\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.base_handler
+  expected: Module imports without error; FileHandler has a concrete method default_focus(file_path,
+    node_ref, session) with the signature (str, str | None, Any | None) -> Node |
+    PreviewError; open_root and resolve_node_ref remain abstract.

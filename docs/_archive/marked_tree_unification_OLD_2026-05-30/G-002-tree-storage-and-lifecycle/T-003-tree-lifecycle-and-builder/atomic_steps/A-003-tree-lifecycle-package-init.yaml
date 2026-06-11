@@ -1,0 +1,172 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: Extend tree_lifecycle package __init__ to re-export entity classes
+target_file: ai_editor/core/tree_lifecycle/__init__.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+- A-002
+concepts:
+- C-010
+- C-011
+- C-006
+status: needs_review
+prompt: |
+  Modify the file `ai_editor/core/tree_lifecycle/__init__.py`.
+  Operation: modify_file.
+
+  The file already exists and must not be replaced. Extend the package public
+  API to re-export TreeBuilder (from builder.py), TreeLifecycle (from
+  lifecycle.py), ChecksumSyncPolicy and related types (from checksum.py), plus
+  all existing checksum helper functions.
+
+  ## Why modify_file
+
+  `core/tree_lifecycle/` is the single owner of tree validity and tree creation
+  (HRS {c006}). Its `__init__.py` is the canonical public entry point. After
+  A-001 creates TreeBuilder in builder.py and A-002 creates TreeLifecycle in
+  lifecycle.py, consumers must import from the package root:
+
+    `from ai_editor.core.tree_lifecycle import TreeLifecycle, TreeBuilder`
+
+  rather than knowing internal module layout.
+
+  ## MRS excerpt
+
+  C-010 TreeLifecycle: single owner and coordinator; single entry point that
+  every consumer routes through. The package `core/tree_lifecycle/` IS that
+  single entry point; its `__init__.py` is the public surface.
+
+  C-011 TreeBuilder: single writer of TreeFiles; must be importable from the
+  package root.
+
+  C-006 ChecksumSyncPolicy: owned by TreeLifecycle; must be importable from the
+  same package root.
+
+  ## HRS {c006}
+
+  `core/tree_lifecycle/` is the single owner of tree validity and tree creation.
+  Every consumer routes through this module. The `__init__.py` must export all
+  entity names and helper functions. Path wrapper name:
+  `validate_or_recreate_tree_file`.
+
+  ## Current file content (full — pre-A-003 state)
+
+  ```python
+  """
+  Tree-lifecycle package: centralized checksum + validate + recreate of trees.
+
+  See ``checksum`` for the content-core and the file wrapper.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from ai_editor.core.tree_lifecycle.checksum import (
+      compute_content_checksum,
+      is_tree_valid,
+      recreate_tree_from_content,
+      validate_or_recreate_from_content,
+      validate_or_recreate_tree_file,
+  )
+
+  __all__ = [
+      "compute_content_checksum",
+      "is_tree_valid",
+      "recreate_tree_from_content",
+      "validate_or_recreate_from_content",
+      "validate_or_recreate_tree_file",
+  ]
+  ```
+
+  Note: after T-002/A-001, checksum.py also exports ChecksumSyncPolicy,
+  ShaSyncBranch, ShaSyncDecision — but __init__.py has not yet re-exported
+  them. This step adds those plus TreeBuilder and TreeLifecycle.
+
+  ## Changes to make
+
+  ### 1. Replace import block
+
+  Replace the existing import block with three import statements (entity modules
+  first, then checksum helpers):
+
+  ```python
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+  from ai_editor.core.tree_lifecycle.lifecycle import TreeLifecycle
+  from ai_editor.core.tree_lifecycle.checksum import (
+      ChecksumSyncPolicy,
+      ShaSyncBranch,
+      ShaSyncDecision,
+      compute_content_checksum,
+      is_tree_valid,
+      recreate_tree_from_content,
+      validate_or_recreate_from_content,
+      validate_or_recreate_tree_file,
+  )
+  ```
+
+  Import sources:
+    - TreeBuilder → builder.py (A-001)
+    - TreeLifecycle → lifecycle.py (A-002)
+    - ChecksumSyncPolicy, ShaSyncBranch, ShaSyncDecision → checksum.py (T-002/A-001)
+    - helper functions → checksum.py (existing)
+
+  Do NOT import TreeBuilder or TreeLifecycle from checksum.py.
+
+  ### 2. Replace __all__
+
+  ```python
+  __all__ = [
+      "ChecksumSyncPolicy",
+      "ShaSyncBranch",
+      "ShaSyncDecision",
+      "TreeBuilder",
+      "TreeLifecycle",
+      "compute_content_checksum",
+      "is_tree_valid",
+      "recreate_tree_from_content",
+      "validate_or_recreate_from_content",
+      "validate_or_recreate_tree_file",
+  ]
+  ```
+
+  ### 3. Do NOT change module docstring
+
+  Keep the existing module docstring exactly as shown above.
+
+  ## Forbidden patterns
+
+  - Do NOT import TreeBuilder or TreeLifecycle from checksum.py.
+  - Do NOT modify builder.py, lifecycle.py, or checksum.py.
+  - Do NOT create any other files.
+  - Do NOT remove any existing re-export from __all__.
+
+  ## Estimated post-implementation line count
+
+  ~35 lines (within 350-line recommended cap).
+
+  ## Validation commands
+
+  From project root with `.venv` activated:
+
+  ```bash
+  black ai_editor/core/tree_lifecycle/__init__.py
+  flake8 ai_editor/core/tree_lifecycle/__init__.py
+  mypy ai_editor/core/tree_lifecycle/__init__.py
+  python -c "from ai_editor.core.tree_lifecycle import (TreeLifecycle, TreeBuilder, ChecksumSyncPolicy, ShaSyncBranch, ShaSyncDecision, compute_content_checksum, is_tree_valid, recreate_tree_from_content, validate_or_recreate_from_content, validate_or_recreate_tree_file); import ai_editor.core.tree_lifecycle as pkg; expected = {'TreeLifecycle','TreeBuilder','ChecksumSyncPolicy','ShaSyncBranch','ShaSyncDecision','compute_content_checksum','is_tree_valid','recreate_tree_from_content','validate_or_recreate_from_content','validate_or_recreate_tree_file'}; assert expected.issubset(set(pkg.__all__))"
+  pytest -q
+  ```
+
+  Expected:
+  - black: "reformatted" or "would be left unchanged"
+  - flake8: no output (exit 0)
+  - mypy: "Success: no issues found"
+  - python -c: exit 0, no output
+  - pytest: all tests PASSED
+
+  All tests must pass before marking this step complete.
+verification:
+  type: import
+  target: ai_editor/core/tree_lifecycle/__init__.py
+  expected: Running `python -c 'from ai_editor.core.tree_lifecycle import TreeLifecycle, TreeBuilder, ChecksumSyncPolicy, ShaSyncBranch, ShaSyncDecision, compute_content_checksum, is_tree_valid, recreate_tree_from_content, validate_or_recreate_from_content, validate_or_recreate_tree_file'` exits with code 0 and no output. All entity classes and helper functions are importable from the package root. All project tests pass.

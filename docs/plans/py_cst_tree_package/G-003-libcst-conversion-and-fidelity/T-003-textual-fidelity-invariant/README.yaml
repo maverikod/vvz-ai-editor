@@ -1,0 +1,28 @@
+step_id: T-003
+parent_global_step: G-003
+name: Textual Fidelity Invariant
+description: "Define the TextualFidelity invariant entity (C-015) and specify its
+  contract over the LibcstConverter (C-009). The invariant requires that a full mutate-nothing
+  round trip through the package reproduces the original Python source text exactly:
+  parse source text with LibCST into a LibCST tree, convert inbound to a package Tree
+  via the LibcstConverter (C-009), apply no mutation, convert outbound back to a LibCST
+  tree via the LibcstConverter (C-009), then render. The rendered text must be identical
+  to what a plain LibCST parse-and-render round trip would produce, preserving whitespace,
+  comments, string quoting, and all formatting. This invariant bounds exact byte fidelity
+  to the mutate-nothing path; trees that have been mutated are governed by their per-operation
+  contracts. This step realizes the C-015 depends_on C-009 relation.\n"
+concepts:
+- C-015
+- C-009
+inputs:
+- name: Python source text
+  type: str
+  description: Arbitrary valid Python source text; used as the round-trip 
+    reference.
+outputs:
+- name: TextualFidelity invariant
+  type: domain invariant definition
+  description: A defined invariant requiring any mutate-nothing round trip 
+    through the LibcstConverter to reproduce the original source text exactly.
+atomic_steps: []
+status: draft

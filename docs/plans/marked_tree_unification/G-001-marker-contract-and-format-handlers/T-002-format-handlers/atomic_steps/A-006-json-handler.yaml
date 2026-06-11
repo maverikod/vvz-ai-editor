@@ -1,0 +1,87 @@
+step_id: A-006
+parent_tactical_step: T-002
+name: Create JsonHandler for .json files
+target_file: ai_editor/tree/handlers/json_handler.py
+operation: create_file
+priority: 5
+depends_on:
+- A-001
+concepts:
+- C-007
+- C-001
+- C-002
+- C-005
+- C-009
+status: draft
+prompt: |
+  Create `ai_editor/tree/handlers/json_handler.py`.
+
+  ## Parent documents
+  - GS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - TS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/README.yaml`
+  - MRS: `docs/plans/marked_tree_unification/spec.yaml`
+
+  ## Locked syntax (JSON / {b004})
+  - Every value recursively wrapped: `{"___id___": <int>, "v": <original_value>}`
+  - short_id is JSON number (integer), never string UUID
+  - Root scalar `"hello"` → `{"___id___": 1, "v": "hello"}`
+
+  ## Module docstring — Author Vasiliy Zdanovskiy, vasilyvz@gmail.com
+
+  ## Imports
+  - from __future__ import annotations
+  - import json
+  - from pathlib import Path
+  - from typing import Any, List, Optional, Tuple
+  - from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  - from ai_editor.tree.tree_node import TreeNode
+
+  ## Constants
+  - `_ID_KEY = "___id___"`
+  - `_VAL_KEY = "v"`
+
+  ## Helper: _detect_json_format(text) -> Tuple[Optional[int], str]
+  Return (indent, ensure_ascii_flag):
+  - If single line or no leading spaces after newline → indent=None, separators compact
+  - Else count leading spaces on first indented line after `{` as indent int (typically 2 or 4)
+  Used so mark/unmark use identical json.dumps settings.
+
+  ## Helper: _wrap(obj, allocator) -> Any
+  - dict: `{_ID_KEY: allocator.allocate(), _VAL_KEY: {k: _wrap(v, allocator) for k,v in obj.items()}}`
+  - list: `{_ID_KEY: allocator.allocate(), _VAL_KEY: [_wrap(i, allocator) for i in obj]}`
+  - scalar: `{_ID_KEY: allocator.allocate(), _VAL_KEY: obj}`
+
+  ## Helper: _unwrap(obj) -> Any
+  If dict with _ID_KEY and _VAL_KEY: unwrap _VAL_KEY recursively; else return obj
+
+  ## Helper: _collect_nodes(wrapped, pointer, nodes)
+  Traverse wrapped tree; emit TreeNode per wrapper with integer short_id from _ID_KEY, kind object/array/scalar, attributes json_pointer
+
+  ## Class JsonHandler(FormatHandler)
+
+  ### parse_content
+  json.loads → _wrap with ShortIdAllocator(1) → _collect_nodes → nodes
+
+  ### mark
+  obj=json.loads(content); indent,_=_detect_json_format(content); wrapped=_wrap(obj, ShortIdAllocator(1)); return json.dumps(wrapped, indent=indent, ensure_ascii=False, sort_keys=False)
+
+  ### unmark
+  obj=json.loads(marked_text); indent,_=_detect_json_format(marked_text); clean=_unwrap(obj); return json.dumps(clean, indent=indent, ensure_ascii=False, sort_keys=False)
+
+  ### sidecar_path — sibling `.tree`
+
+  ## Round-trip
+  json.loads(h.unmark(h.mark(src))) == json.loads(src) AND for compact JSON also byte-exact equality.
+
+  ## Forbidden
+  - NO uuid.uuid4; ___id___ MUST be int not str
+  - NO 36-char UUID strings
+  - NO TreeNode fields `node_id` or `parent_id` — use `short_id` / `parent_short_id` only
+  - NO EditSession (C-012) hide/unhide logic
+
+  ## Validation + pytest -q — all tests must pass
+verification:
+  type: import
+  target: ai_editor/tree/handlers/json_handler.py
+  expected: >
+    Recursive wrapper uses integer ___id___; unmark(mark) restores original JSON semantics and bytes for compact input; no uuid.

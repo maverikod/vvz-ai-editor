@@ -1,0 +1,30 @@
+step_id: T-004
+parent_global_step: G-009
+name: Удалить transfer MCP модули
+description: 'Удалить MCP-модули transfer и advisory lock из Legacy Removal Scope (C-020). Удаление выполняется
+  только при выполнении обоих предусловий: G-002/T-005 (wrapper для upload/transfer реализован в Upstream
+  Client C-017) и G-006/T-002 (transfer/lock команды сняты с MCP-поверхности). До выполнения обоих
+  предусловий удаление заблокировано. После удаления внутренний chunked transfer существует исключительно
+  в Upstream Client (C-017).
+
+  '
+concepts:
+- C-017
+- C-020
+inputs:
+- name: transfer_command_modules
+  type: array
+  description: Устаревшие MCP-модули transfer и lock.
+outputs:
+- name: transfer_internal_only
+  type: boolean
+  description: Нет дублирующих MCP модулей на диске.
+depends_on:
+- G-002/T-005
+- G-006/T-002
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+status: ready_for_review

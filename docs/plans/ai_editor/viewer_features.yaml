@@ -1,0 +1,475 @@
+meta:
+  title: universal_file_preview — Viewer Feature Catalog
+  source_project: ai_editor
+  status: complete
+  handlers_covered:
+  - python (.py .pyi .pyw) — python_handler.py + python_visualizer.py
+  - yaml (.yaml .yml) — yaml_handler.py
+  - json (.json) — json_handler.py
+  - jsonl (.jsonl .ndjson) — jsonl_handler.py
+  - markdown (.md) — markdown_handler.py
+  - text (.txt .rst .adoc) — text_handler.py
+universal:
+  node_kinds:
+    scalar: leaf value; no children; not sliceable
+    lines: ordered children = text lines; sliceable
+    mapping: ordered key-value pairs; sliceable
+    sequence: ordered indexed elements; sliceable
+    tree_node: ordered children + named attributes; sliceable
+  full_text_threshold:
+    param: full_text_max_lines
+    default: 200
+    disable: set full_text_max_lines=0
+    implemented_by:
+    - python
+    - yaml
+    - json
+    - markdown
+    not_implemented_by:
+    - text
+    - jsonl
+  node_ref_formats:
+    python: stable_id UUID (persisted in sidecar)
+    yaml: JSON Pointer ('/key/subkey') OR opaque uuid5(pointer)
+    json: JSON Pointer ('/key/0') OR opaque uuid5(pointer)
+    jsonl: zero-based line index string
+    markdown: uuid5 stable_id (full-text) OR dot-slug path (section mode)
+    text: zero-based line index string
+  annotated_full_text_return_kind:
+    python: NodeKind.TREE_NODE (type_label=Module)
+    yaml: NodeKind.SCALAR; full_text=True
+    json: NodeKind.SCALAR; full_text=True
+    markdown: NodeKind.TREE_NODE (type_label=markdown_document); full_text=True
+  edit_contract_for_md:
+    format_group_reported_by_open: text
+    edit_node_ref_conversion: start_line = int(node_ref) + 1
+    note: 'Mismatch: preview returns UUIDs for .md but edit uses text contract (line
+      numbers)'
+  session_handling:
+    uses_tree_session:
+    - python
+    - yaml
+    - json
+    no_session:
+    - markdown
+    - text
+  budget_params:
+    preview_lines: cap on top-level blocks returned when selector omitted
+    value_preview_len: cap on inline scalar length
+    full_text_max_lines: full-text fallback threshold (default 200)
+    max_chars: post-render cap (32000); applied outside handlers
+    preview_offset: pagination offset (default 0)
+python:
+  extensions:
+  - .py
+  - .pyi
+  - .pyw
+  format_group: sidecar
+  root_node_kind: TREE_NODE (type_label=Module)
+  full_text_mode:
+    annotation_format: '[{stable_id}] {source_line}'
+    annotation_width: 39
+    priority_rule: '0=stmt preferred; 1=FunctionDef/ClassDef; 2=function/method/class/import;
+      3=inner leaves; tiebreak: longer span wins'
+  module_view:
+    trigger: node_ref omitted
+    function_format: '[{sid}] {range}  {headline}'
+    class_format: '[{sid}] {range}  class {name}:'
+    methods: "direct children only; sorted by start_line; method_format: '    [{meth_sid}]
+      {range}  {headline}'"
+  node_view:
+    body_simple: '  [{sid}] {range}  {headline}'
+    body_compound: '  [{sid}] {range}  {headline}  ...'
+    compound_types:
+    - If
+    - For
+    - While
+    - Try
+    - With
+    - Match
+    - ClassDef
+    - FunctionDef
+    - AsyncFunctionDef
+  indented_block_descent:
+    rule: _direct_children() transparently descends into IndentedBlock
+    filter: kind == 'stmt'
+  range_format:
+    multi_line: L{start}-{end}
+    single_line: L{line}
+yaml:
+  extensions:
+  - .yaml
+  - .yml
+  format_group: tree-temp
+  parser: PyYAML safe_load (comments NOT preserved)
+  root_node_kinds:
+    dict: MAPPING
+    list: SEQUENCE
+    scalar: SCALAR
+    empty: MAPPING
+  node_ref_format:
+    primary: "JSON Pointer: '' (root) | '/key' | '/key/subkey' | '/0'"
+    secondary: opaque uuid5 node_id
+    rfc6901_escaping: ~1 for '/', ~0 for '~'
+  inline_value_surfacing: 'For scalar mapping children: attributes.value = str(v).
+    YAML-only.'
+  error_handling:
+    parse_error: invalid_source_node (is_invalid=True)
+    invalid_node_ref: INPUT_ERROR_UNKNOWN_NODE_REF
+json:
+  extensions:
+  - .json
+  format_group: tree-temp
+  parser: json.loads
+  root_node_kinds:
+    dict: MAPPING
+    list: SEQUENCE
+    scalar: SCALAR
+  node_ref_format:
+    primary: "JSON Pointer (RFC 6901): '' | '/key' | '/a/0/b'"
+    secondary: opaque uuid5(pointer)
+  difference_from_yaml: JSON mapping children do NOT expose scalar values 
+    inline; must drill down
+  error_handling:
+    parse_error: json.JSONDecodeError -> invalid_source_node
+    invalid_node_ref: UNKNOWN_NODE_REF
+jsonl:
+  extensions:
+  - .jsonl
+  - .ndjson
+  format_group: text (lines root)
+  parser: none at root; per-line json.loads on drill-down
+  root_node_kind: LINES
+  root_children:
+    kind: SCALAR
+    node_ref: str(zero_based_index)
+    attributes: '{value: raw_line_string}'
+  drill_down:
+    behavior: parses line as JSON; FILE_STRUCTURE_ERROR if invalid JSON
+    error_out_of_range: UNKNOWN_NODE_REF with details.total_lines
+  no_full_text_mode: true
+markdown:
+  extensions:
+  - .md
+  format_group: text (reported by universal_file_open)
+  parser: markdown-it-py
+  session: None always
+  draft_fallback: empty draft -> falls back to reading original file
+  full_text_mode:
+    trigger: line count < full_text_max_lines
+    annotation_format: '[{uuid5_stable_id}] {source_line}'
+    output: NodeKind.TREE_NODE; type_label=markdown_document; full_text=True
+  section_tree_mode:
+    trigger: line count >= full_text_max_lines
+    output: NodeKind.MAPPING; node_ref=''
+    node_ref_format: "dot-separated slug path: '' | 'heading-slug' | 'parent.child-slug'"
+    content_child: node_ref = '{section_ref}/__content'; kind=SCALAR; 
+      attributes.value = joined content_lines
+  list_rendering:
+    status: fixed
+    fix: _collect_list_text() expands bullet_list_open/ordered_list_open tokens 
+      into readable items
+  section_slugify:
+    rule: lowercase; non-word chars removed; spaces/underscores -> hyphens
+    duplicates: first keeps slug; subsequent get '-2', '-3', ...
+text:
+  extensions:
+  - .md
+  - .txt
+  - .rst
+  - .adoc
+  format_group: text
+  session: ignored
+  root_node_kind: LINES
+  root_children:
+    kind: SCALAR
+    node_ref: str(zero_based_index)
+    attributes: '{value: line_content}'
+  edit_contract:
+    node_ref_to_line: start_line = int(node_ref) + 1
+  no_full_text_mode: true
+dispatcher:
+  class: HandlerDispatcher
+  mapping:
+    .py: PythonFileHandler
+    .pyi: PythonFileHandler
+    .pyw: PythonFileHandler
+    .md: MarkdownFileHandler
+    .txt: TextFileHandler
+    .rst: TextFileHandler
+    .adoc: TextFileHandler
+    .json: JsonFileHandler
+    .yaml: YamlFileHandler
+    .yml: YamlFileHandler
+    .jsonl: JsonLinesFileHandler
+    .ndjson: JsonLinesFileHandler
+  unknown_extension: PreviewError INPUT_ERROR_UNKNOWN_EXTENSION
+edit_session_integration:
+  command: universal_file_edit
+  param: session_id
+  sidecar_format: injects tree_id -> preview uses in-memory CST tree
+  text_format: sets _preview_abs_path to draft_path; empty draft falls back to 
+    original
+  tree_temp_format: injects tree_id from edit session
+  errors:
+    unknown_session: INPUT_ERROR_CONFLICTING_PARAMETERS
+    path_mismatch: INPUT_ERROR_CONFLICTING_PARAMETERS
+    tree_id_conflict: INPUT_ERROR_CONFLICTING_PARAMETERS
+bugs:
+  markdown_list_rendering:
+    status: fixed
+    file: 
+      ai_editor/commands/universal_file_preview/handlers/markdown_handler.py
+    symptom: bullet_list_open/ordered_list_open rendered as placeholder instead 
+      of list item text
+    fix: _collect_list_text() added; expands list_item_open -> inline -> content
+    verified: true
+  preview_full_text_suppressed_in_drilldown:
+    note: 'full_text intentionally suppressed in drill-down mode. Not a bug. Real
+      gap: elif/else branch addressability — see feature_gaps.elif_else_drilldown.'
+    status: not_a_bug
+  sidecar_replace_elif_wrong_node:
+    fix: _logical_to_module_line_map + _iter_compound_statement_branches in 
+      tree_modifier_ops_find.py
+    resolution: RESOLVED (2026-05-21)
+    root_cause: embed_stable_ids_into_tree inserted @node-id markers without 
+      rebuilding index; position lookup used shifted line numbers; find_node 
+      promoted nested hits to module.body node
+    status: fixed
+    symptom: replace with elif-body stable_id landed on statement before the If 
+      block
+  sidecar_code_lines_double_newline:
+    fix: join_code_lines() in tree_modifier_ops_parse.py strips trailing \n 
+      before join
+    resolution: RESOLVED (2026-05-21)
+    root_cause: code_lines elements include trailing \n; '\n'.join() produced 
+      double newlines
+    status: fixed
+    symptom: insert with code_lines produced blank line after every statement
+  yaml_array_drilldown_prints_from_head:
+    status: open
+    needs: verification against current analysis-server build
+    symptom: "universal_file_preview full_text drill-down on an array element node_ref
+      (e.g. /concepts/30) prints array content from index 0, not the requested element;
+      element-wise reading of large YAML arrays via drill-down is unreliable.\n"
+    workaround: read by line ranges instead of element drill-down
+  open_command_initial_content_not_uniform:
+    status: fixed (2026-05-21) — Cursor applied uniform initial_content handling
+      for .json and else branches
+    symptom: .json and else branches ignore initial_content on create=True; 
+      always write default. .py and .yaml use it correctly.
+    fix_needed: ".json: write initial_content if initial_content else '{}\\n'; else:
+      write initial_content if initial_content else ''"
+  replace_else_branch_cst_error:
+    status: fixed (2026-05-21) — _iter_compound_statement_branches now handles 
+      cst.Else node via isinstance check
+    symptom: "replace of SimpleStatementLine inside else-body raises: 'Else' object
+      is not iterable"
+    root_cause_hypothesis: _iter_compound_statement_branches does not handle 
+      If.orelse when it contains a plain else (ElseClause/Else node, not another
+      If node)
+    task_id: fix-replace-else-branch-cst-error
+  content_node_listed_as_child_block:
+    status: fixed
+    severity: medium
+    file: 
+      ai_editor/commands/universal_file_preview/handlers/markdown_handler.py
+    related_files:
+    - ai_editor/commands/universal_file_preview/navigation.py
+    - ai_editor/commands/universal_file_preview/handlers/text_handler.py
+    - ai_editor/commands/universal_file_preview/handlers/json_handler.py
+    - ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+    symptom: When previewing a markdown section, its own body is returned as a 
+      separate child block whose node_ref ends in '/__content'. The body is not 
+      a sub-section; it is the focus node's own content, but it appears in the 
+      blocks[] list and is truncated to value_preview_len, forcing a second 
+      drill-down call to read the section text.
+    root_cause: _Section.to_node() appends the section body as a child Node 
+      (NodeKind.SCALAR, node_ref '<ref>/__content'). navigate() sets block_set =
+      focus_node.children, so the synthetic __content child is enumerated as a 
+      sibling block alongside real sub-sections.
+    expected: A node's own content must never appear as an entry in its own 
+      children/blocks list. When __content exists, its text must be surfaced 
+      inline on the focus node (focus.text), and the children/blocks list must 
+      contain only genuine descendant nodes. Rule applies uniformly across all 
+      formats.
+    verified: true
+  yaml_pointer_line_resolution_ignores_index_and_collides_on_keys:
+    status: fixed
+    severity: high
+    file: ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+    related_files:
+    - ai_editor/core/yaml_tree/models.py
+    - ai_editor/core/yaml_tree/tree_builder.py
+    symptom: "For YAML files served in annotated full-text mode, universal_file_preview
+      with a numeric array-index node_ref (e.g. /concepts/9) returns the WRONG element:
+      every /concepts/N renders the same head element (the first list item in the
+      file, /concepts/0). Separately, the per-line [json_pointer] annotation prefixes
+      are misaligned: lines are tagged with pointers that do not match their content
+      (e.g. the concept_id line tagged /concepts/N/source_ranges/0; a 'start:' line
+      tagged as the array element). This caused a false 'duplicate C-001 / corrupted
+      plan' diagnosis when /concepts/57 and /concepts/58 both rendered C-001."
+    root_cause: "YamlNodeMetadata has no start_line field, so getattr(meta,'start_line',None)
+      is always None in _line_span_for_pointer and _annotated_lines_in_range. Both
+      fall back to _line_for_yaml_pointer(source_lines, ptr) for EVERY node. That
+      fallback is positional-blind: (1) for a numeric last segment (array index) it
+      ignores the index entirely and returns the first line in the whole file starting
+      with '- ', so all array elements map to the first list item; (2) for a key segment
+      it returns the first line anywhere in the file matching '^\\s*<key>\\s*:' ,
+      so repeated key names (name, start, end, definition) collide on their first
+      global occurrence. Result: line spans and per-line annotation pointers are computed
+      against wrong lines."
+    expected: A numeric array-index node_ref must resolve to the line span of 
+      that specific element (Nth list item under the parent sequence), and 
+      per-line annotation prefixes must reflect the true pointer of each source 
+      line. True line numbers must be captured at parse time (e.g. yaml.compose 
+      / SafeLoader start_mark.line) and stored on YamlNodeMetadata, so span and 
+      annotation logic use real positions instead of the positional-blind 
+      _line_for_yaml_pointer fallback.
+    verified: true
+yaml_write_quirks:
+  context: "universal_file_open create=True writes initial_content as-is before YAML
+    parsing. Bare scalars with ': ' or inline comments cause parse failure -> text-mode
+    fallback."
+  problem_unquoted_colon_in_value:
+    symptom: 'key: value containing: colon parses as nested mapping'
+    yaml_rule: "Plain scalar containing ': ' illegal in block mappings; PyYAML rejects
+      with scanner error"
+  problem_inline_comment_on_bare_value:
+    symptom: 'key: value  # comment misparses when value has special chars'
+  fix_location:
+    file: ai_editor/commands/universal_file_edit/open_command.py
+    method: execute
+    branch: "elif suffix in ('.yaml', '.yml'):"
+    current_code: abs_path.write_text(initial_content if initial_content else 
+      '{}\n', encoding='utf-8')
+    required_code: abs_path.write_text(_fix_yaml_string_values(initial_content 
+      if initial_content else '{}\n'), encoding='utf-8')
+    helper_function: _fix_yaml_string_values
+    status: applied (2026-05-21)
+  fix_blocked_by:
+    bug_id: fix-sidecar-cst-apply-replace-constraints
+    status: RESOLVED (2026-05-21)
+    resolution: P1/P2/P3 fixed; replace now works for SimpleStatementLine inside
+      nested IndentedBlock. Acceptance test on open_command.py L179 passed.
+    next_step: apply _fix_yaml_string_values patch to open_command.py
+  problem_unquoted_colon_in_list_item:
+    example: '- for modify_file and delete_file: full current content of the target
+      file'
+    observed_in: atomic_step_creation_standard.yaml lines 223-224 
+      (prompt_rules.must_include); file does not load under PyYAML safe_load
+    status: open
+    symptom: "An unquoted YAML list item containing ': ' is parsed as a nested mapping
+      or fails with 'could not find expected :'. Same root cause as problem_unquoted_colon_in_value
+      but in a sequence item, not a mapping value."
+    workaround: "quote the whole list item or rephrase to avoid ': '"
+feature_gaps:
+  elif_else_drilldown:
+    description: 'node_view for If shows only the if-branch body. elif/else/except/finally
+      clauses are not addressable as separate drill-down targets. Workaround: cst_find_node
+      by line range.'
+    feature_request: Expose elif/else/except/finally as named child nodes in 
+      node_view so caller can drill into them and get their body stable_ids.
+    status: open
+    task_id: fix-preview-drilldown-elif-else-branches
+  NQ001_full_text_threshold_mode:
+    severity: MEDIUM
+    topic: full_text_threshold mode not specified in ai_editor plan
+    description: When file line count < full_text_max_lines (default 200), 
+      preview returns the entire source as an annotated text block instead of a 
+      structural tree. Implemented by python, yaml, json, markdown handlers. Not
+      implemented by text, jsonl. In ai_editor plan (G-003) AbstractFormatter 
+      describes get_unit / iter_units / render_skeleton but has no concept of a 
+      'full_text mode' fast-path. The formatter must either implement this mode 
+      or explicitly exclude it from scope before G-003 T-004 / T-013 are 
+      executed.
+    plan_location: G-003 T-001 AbstractFormatter, G-003 T-004 YamlFormatter, 
+      G-003 T-013 JsonFormatter
+    action_required: 'Design decision: support full_text_threshold in ai_editor formatters
+      (render annotated raw text when file < N lines) or explicitly mark as out-of-scope
+      in T-001 description.'
+    status: resolved
+    resolution: 'Include: when file line count reaches full_text_max_lines threshold,
+      return full subtree/file content with all markers intact. Editing continues
+      via markers unchanged. AbstractFormatter must expose full_text_max_lines: int
+      = 200 and implement fast-path returning annotated full text.'
+  NQ005_yaml_start_line_heuristic:
+    severity: MEDIUM
+    topic: YAML heuristic start_line fallback not specified in plan
+    description: "YamlFileHandler builds annotated full_text by mapping each source
+      line to its longest JSON Pointer. When PyYAML metadata lacks start_line, it
+      falls back to heuristic key-search in source: regex r'^\\s*{last_part}\\s*:'
+      for string keys, r'^\\s*[\\\"\\'][last_part}[\\\"\\']\\s*:' for quoted keys,
+      first '- ' line for numeric last_part. Without this heuristic the full_text
+      annotation is incomplete (many lines get no pointer prefix). ai_editor YamlFormatter
+      plan (G-003 T-004) describes stable_id address but does not specify how stable_ids
+      map to source lines when tree metadata lacks start_line."
+    plan_location: G-003 T-004 YamlFormatter (yaml_address.py, 
+      yaml_formatter.py)
+    action_required: Add heuristic line-search fallback spec to G-003 T-004 
+      description or A-001/A-002 prompt before implementation.
+    status: resolved
+    resolution: "Specified in T-004 yaml_address.py: heuristic key-search fallback
+      when metadata lacks start_line. String keys: regex r'^\\s*{last_part}\\s*:';
+      quoted keys: r'^\\s*[\"\\'][last_part}[\"\\'\\]\\s*:'; numeric last_part (list
+      index): first '- ' line in subtree."
+  NQ006_json_yaml_inline_value_asymmetry:
+    severity: HIGH
+    topic: JSON vs YAML inline scalar value asymmetry — design decision required
+    description: 'In ai_editor: YAML mapping children expose scalar values inline
+      as attributes.value (inline_value_surfacing). JSON mapping children do NOT —
+      caller must drill down. This is a deliberate asymmetry in the current implementation.
+      In ai_editor plan both YamlFormatter and JsonFormatter use unified TreeNode
+      with no mention of this difference. Decision must be made before G-003 T-004
+      / T-013 implementation: (A) replicate asymmetry — YamlFormatter surfaces scalar
+      values inline, JsonFormatter does not; (B) unify both to surface inline; (C)
+      unify both to not surface inline (caller always drills). Choice affects get_unit
+      / list_commands output shape and AI-client prompt patterns.'
+    plan_location: G-003 T-004 YamlFormatter, G-003 T-013 JsonFormatter
+    action_required: Owner must pick A/B/C and document chosen behaviour in 
+      G-003 T-004 and T-013 descriptions before AS execution.
+    status: resolved
+    options:
+      A_replicate_asymmetry: YAML surfaces scalar inline; JSON does not. Matches
+        ai_editor behaviour exactly.
+      B_unify_inline_both: Both formatters surface scalar values inline in 
+        mapping children. Simpler for AI clients.
+      C_unify_no_inline: Neither formatter surfaces inline. Caller always drills
+        to scalar. Symmetric but more round-trips.
+    resolution: 'Option B: unify both formatters to surface scalar values inline in
+      mapping children (attributes.value). JSON formatter to be completed to match
+      YAML inline behaviour. Asymmetry in ai_editor is a historical gap, not a
+      design intent.'
+  NQ008_no_self_content_child:
+    severity: HIGH
+    topic: Transparent parent / no-self-content-child rule not in plan or 
+      viewer_features
+    description: "Rule (verified by test test_tree_temp_no_self_content_child.py,
+      AC-5): when previewing a node whose children have content, the node itself must
+      NOT appear as a synthetic child block duplicating its own body. Specifically:
+      (1) preview of a YAML/JSON mapping root returns only key-children (e.g. /title,
+      /body, /nested) — total_blocks equals key count; (2) no /__content or __content
+      block is injected at the mapping level; (3) when the caller drills into a scalar
+      child (e.g. node_ref='/body'), the focus node is SCALAR with total_blocks=0
+      and blocks=[] — the value is in focus.attributes.value, not in a child block.
+      This rule prevents duplication: a node's body is shown once — either as focus
+      or as children, never both. Applies to JSON and YAML (tree-temp format group).
+      Not documented anywhere in viewer_features.yaml before this entry. Not reflected
+      in ai_editor plan G-003."
+    rule_formal: If focus_node.children is non-empty, return children as 
+      block_set. Do not add a synthetic block whose content mirrors the focus 
+      node body. A scalar focus with no children returns total_blocks=0 and 
+      blocks=[].
+    verified_by: 
+      ai_editor/tests/commands/universal_file_preview/test_tree_temp_no_self_content_child.py
+    plan_location: G-003 T-001 AbstractFormatter (get_unit / render_skeleton), 
+      G-003 T-004 YamlFormatter, G-003 T-013 JsonFormatter
+    action_required: Add no-self-content-child invariant to G-003 T-001 
+      description (AbstractFormatter contract) and to 
+      executor_brief.formatter_backends entries for YamlFormatter and 
+      JsonFormatter. Add test spec to corresponding AS prompts.
+    status: resolved
+    resolution: 'Documented as AbstractFormatter contract in T-001 description and
+      in T-013 description. Rule: if focus has children return children as block_set;
+      scalar focus returns total_blocks=0 and blocks=[]. No synthetic self-content
+      block injected at mapping level.'

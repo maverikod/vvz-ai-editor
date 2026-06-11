@@ -1,0 +1,19 @@
+step_id: T-005
+parent_global_step: G-001
+name: Volume workspace в Docker и Debian
+description: 'Согласовать упаковку Docker/Debian (C-018): volume хоста для workspace_root, логов и конфигурации; путь в container config совпадает с Workspace Root Configuration. Документировать монтирование и права каталога.
+
+  '
+concepts:
+- C-018
+inputs:
+- name: container_config
+  type: object
+  description: Конфигурация контейнера и deb-пакета редактора.
+outputs:
+- name: mounted_workspace_root
+  type: path
+  description: Персистентный путь workspace на хосте/в контейнере.
+atomic_steps:
+- A-001
+status: ready_for_review

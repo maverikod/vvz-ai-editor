@@ -1,0 +1,134 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Existing behavior inventory artifact
+target_file: docs/plans/2026-05-21-paginated-search-results/existing_behavior_inventory.yaml
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+  - C-025
+prompt: |
+  Operation: modify_file
+  Target: docs/plans/2026-05-21-paginated-search-results/existing_behavior_inventory.yaml
+
+  MRS (C-025 ExistingBehaviorInventory):
+  - Identifies which search behaviors already exist.
+  - Identifies which paging/session behaviors are new.
+  - Prevents the implementation plan from duplicating existing search logic.
+  - Helps global steps target migration work instead of greenfield replacement.
+
+  G-008 contract decision (plan README.md section "G-008 contract decision"):
+  - Canonical paging uses job_id, block_position (1-based), and index_url.
+  - Do not document README opaque cursor as G-008 continuation mechanism.
+  - MCP command fs_ggrep is the registered name; legacy prose may say fs_ggrep.
+
+  README excerpt (new_commands lifecycle — draft names mapped to canonical):
+  - search_start returns job_id (draft: search_id), index_url, first_block_position.
+  - search_get_page uses job_id + block_position (draft used cursor/page.items).
+  - search_get_status, search_cancel, search_close use job_id parameter.
+
+  Current full file content (apply edits to this baseline):
+
+  ```yaml
+  meta:
+    plan: paginated-search-results
+    version: "1.0"
+    source_labels:
+      - "{tuj9}"
+      - "{rn07}"
+
+  commands:
+    - name: fs_ggrep
+      existing:
+        - direct payload
+        - inline/queue timeouts
+        - scan_all policy
+        - index-gap filtering
+      new:
+        - SearchSession routing when paginated=true
+        - block paging via job_id and block_position
+        - structural grep_mode default
+
+    - name: fulltext_search
+      existing:
+        - limit/offset-less inline results
+        - inline queue
+      new:
+        - optional paginated mode via search_start bridge
+        - job_id and index_url in paginated handoff
+
+    - name: semantic_search
+      existing:
+        - top_k results inline
+      new:
+        - optional paginated session-backed blocks
+        - JSON-safe findings in SearchResultBlock items
+
+    - name: project_cross_search
+      existing:
+        - merged evidence payload
+        - require_structural_grep
+      new:
+        - paginated merged blocks
+        - job_id handoff with block_position continuation
+
+    - name: search_start
+      existing: []
+      new:
+        - creates SearchSession
+        - returns job_id and index_url
+        - first_block_position sync after first block publication
+
+    - name: search_get_page
+      existing: []
+      new:
+        - fetch SearchResultBlock by job_id and block_position
+        - wait_for_new_results option
+        - progress and warnings in response (no opaque cursor)
+
+    - name: search_get_status
+      existing: []
+      new:
+        - status and progress without result rows
+        - summary warnings and errors
+
+    - name: search_cancel
+      existing: []
+      new:
+        - cancel running search session via job_id
+        - stop underlying queued work when possible
+
+    - name: search_close
+      existing: []
+      new:
+        - release buffer scratch files for job_id
+        - invalidate block_position continuation after close
+
+  infrastructure:
+    existing:
+      - search_inline_execution
+      - search_timeouts
+      - queue_get_job_status
+    new:
+      - search_session package
+      - HTTP job access via index_url
+      - background cleaner
+  ```
+
+  Required edits:
+  1. Ensure command entry name is fs_ggrep (registered MCP command; not fs_ggrep alias-only prose).
+  2. Replace cursor/search_id wording in new behavior lists with job_id, block_position, index_url per contract table.
+  3. Expand existing behavior bullets using server help() baselines for fs_ggrep, fulltext_search, semantic_search, project_cross_search
+     (required fields, timeout/queue flags, direct payload shape, structural grep defaults).
+  4. Add contract_decision block under meta documenting canonical field mapping (job_id, block_position, index_url; cursor not used).
+  5. No TBD, TODO, or placeholder entries.
+
+verification:
+  type: pytest
+  target: tests/unit/test_existing_behavior_inventory.py
+  expected: >
+    Pytest loads the inventory YAML and asserts all nine required command names are present;
+    legacy search commands have non-empty existing lists; lifecycle commands and search_start
+    document session-backed new behaviors using job_id, block_position, and index_url;
+    meta.contract_decision rejects opaque cursor as G-008 continuation; no entry contains TBD or TODO text.
+status: ready_for_review

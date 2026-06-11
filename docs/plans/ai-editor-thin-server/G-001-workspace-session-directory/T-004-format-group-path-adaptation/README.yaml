@@ -1,0 +1,27 @@
+step_id: T-004
+parent_global_step: G-001
+name: Пути format group в edit subdir
+description: 'Адаптировать сущность FormatGroup/DraftFile path model (C-019): draft_path и lockfile_path вычисляются относительно Edit Subdirectory (C-008) внутри File Subtree (C-006), не относительно файла на диске проекта СА. Правила sidecar и tree-temp — в T-006.
+
+  '
+concepts:
+- C-006
+- C-008
+- C-019
+inputs:
+- name: edit_subdirectory_root
+  type: path
+  description: Корень подкаталога редактирования.
+- name: format_descriptor
+  type: FormatDescriptor
+  description: Группа формата файла для адаптации путей draft и lockfile.
+outputs:
+- name: draft_path
+  type: path
+  description: Путь рабочей копии внутри workspace.
+- name: lockfile_path
+  type: path
+  description: Путь lockfile внутри workspace при сохранении двухфазного write.
+atomic_steps:
+- A-001
+status: ready_for_review

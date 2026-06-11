@@ -1,0 +1,33 @@
+step_id: T-002
+parent_global_step: G-003
+name: SessionRepo Definition
+description: 'Define the SessionRepo entity (C-013) as the git repository backed by
+  a git library declared as a required project dependency that lives inside the session
+  directory and records one commit per tree edit. Establish that the SessionRepo exists
+  only while the EditSession is open and is destroyed with the session directory on
+  close; history is ephemeral. Establish that history is accessible for inspection
+  with commit identity and timestamp per edit. Establish the one-commit-per-edit invariant:
+  every tree modification produces exactly one commit in the SessionRepo; batching
+  multiple modifications into one commit is forbidden. Establish that the initial
+  commit is created at session open time to provide a clean baseline for diffs and
+  reverts.'
+concepts:
+- C-013
+- C-012
+inputs:
+- name: EditSession entity definition
+  type: domain entity definition (C-012)
+  description: The owning context within which the SessionRepo lives; its 
+    lifecycle determines when SessionRepo is created and destroyed.
+outputs:
+- name: SessionRepo entity definition
+  type: domain entity definition
+  description: Git repository inside the session directory backed by a git 
+    library declared as a required project dependency; one commit per tree edit;
+    history accessible for inspection; destroyed on session close.
+- name: One-commit-per-edit invariant
+  type: domain constraint definition
+  description: Every tree modification produces exactly one SessionRepo commit; 
+    batching is forbidden; initial commit created at open time.
+atomic_steps: []
+status: draft

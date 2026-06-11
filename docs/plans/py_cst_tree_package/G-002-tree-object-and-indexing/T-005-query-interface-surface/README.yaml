@@ -1,0 +1,28 @@
+step_id: T-005
+parent_global_step: G-002
+name: QueryInterface Surface Ownership
+description: "Define the ownership contract by which the Tree entity (C-004) owns
+  and exposes the QueryInterface (C-008) as its encapsulated query surface. The Tree
+  object is the sole access point for callers: all in-tree lookups are performed through
+  the QueryInterface it owns. The QueryInterface is part of the Tree's state and travels
+  with it through persistence. This step realizes the C-004 owns C-008 relation declared
+  in G-002. It defines the surface boundary only — the internal evaluation logic of
+  the three lookup kinds (by identity, by attribute, by path-style selector) is defined
+  in G-006.\n"
+concepts:
+- C-008
+- C-004
+inputs:
+- name: Tree with populated indexes
+  type: C-004 instance
+  description: A Tree that already owns IdIndex (C-005), AttributeIndex (C-006),
+    and ParentRelation (C-007); the QueryInterface surface is exposed over these
+    owned indexes.
+outputs:
+- name: QueryInterface surface contract
+  type: domain entity definition
+  description: The defined contract that C-008 is owned by C-004, is the sole 
+    caller access point for all in-tree lookups, and travels with the Tree 
+    through persistence.
+atomic_steps: []
+status: draft

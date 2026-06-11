@@ -1,0 +1,56 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: SearchSessionDirectory provisioning
+target_file: ai_editor/core/search_session/directory.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-002
+prompt: "Operation: create_file\nTarget: ai_editor/core/search_session/directory.py\n\
+  \nDepends on: ai_editor/core/search_session/__init__.py (package exists).\n\n\
+  MRS excerpt (C-002 SearchSessionDirectory):\n- Created before search execution begins.\n\
+  - Contains immutable result blocks, directory index, manifest, service metadata.\n\
+  - Removed by background cleanup when expired or dead.\n\nRequired imports:\n```python\n\
+  from __future__ import annotations\n\nfrom dataclasses import dataclass\nfrom pathlib
+  import Path\n\nfrom ai_editor.core.search_session.session import SearchSession\n\
+  ```\n\nOwnership rules (module docstring section DIRECTORY_OWNERSHIP_RULES):\n-
+  One SearchSession owns exactly one session root directory named by search_id.\n\
+  - All manifest, index, blocks, and service metadata paths are derived from that
+  root.\n- Only the session worker and authorized lifecycle commands write under the
+  tree.\n- bind_session_directory attaches layout.root to session.directory_path after
+  provision.\n\nTask:\nCreate directory.py with:\n\n1. Constants (relative segment
+  names only):\n   MANIFEST_FILENAME = \"manifest.json\"\n   INDEX_FILENAME = \"index.json\"\
+  \n   SERVICE_METADATA_FILENAME = \"service_metadata.json\"\n   BLOCKS_DIRNAME =
+  \"blocks\"\n   SEARCH_SESSIONS_DIRNAME = \"data/search_sessions\"\n\n2. @dataclass(frozen=True)
+  SearchSessionDirectoryLayout:\n     root: Path\n     manifest_path: Path\n     index_path:
+  Path\n     service_metadata_path: Path\n     blocks_dir: Path\n   Docstring lists
+  each field.\n   Do NOT include buffer_dir — the raw finding buffer subdirectory
+  is provisioned\n   by the result production step, not here.\n\n3. def resolve_search_sessions_root(config_dir:
+  Path) -> Path:\n     Returns absolute Path to data/search_sessions under config_dir.\n\
+  \     Does not mkdir. Implemented in this module only — do not modify storage_paths.py.\n\
+  \n4. def provision_search_session_directory(\n       *,\n       config_dir: Path,\n\
+  \       search_id: str,\n   ) -> SearchSessionDirectoryLayout:\n     - root = resolve_search_sessions_root(config_dir)
+  / search_id\n     - Creates root and blocks_dir with mkdir(parents=True, exist_ok=False)\n\
+  \     - Does NOT create manifest/index/service_metadata files (those are created
+  by\n       separate steps that write the manifest and service metadata)\n     -
+  Does NOT create a raw finding buffer subdirectory (provisioned by result production)\n\
+  \     - Raises FileExistsError if root already exists\n     Returns layout dataclass
+  with all paths populated.\n\n5. def bind_session_directory(\n       session: SearchSession,\n\
+  \       layout: SearchSessionDirectoryLayout,\n   ) -> SearchSession:\n     - Validates
+  layout.root.name == session.search_id\n     - Returns dataclass replace(session,
+  directory_path=layout.root.resolve())\n     - Raises ValueError with code DIRECTORY_SESSION_MISMATCH
+  when names differ\n     - Accepts session with directory_path=None (unbound session
+  from create_search_session)\n\nModule docstring with author header (Author: Vasiliy
+  Zdanovskiy, email: vasilyvz@gmail.com).\nFull typing and docstrings.\n\nConstraints:\n\
+  - One-file rule: all logic in directory.py; no edits to storage_paths.py or other
+  modules.\n- No manifest or HTTP logic.\n- Under 250 lines.\n"
+verification:
+  type: pytest
+  target: tests/unit/test_search_session_directory.py
+  expected: "provision_search_session_directory creates root and blocks/ under temp
+    config_dir; layout paths match constants; no buffer/ directory created; second
+    provision with same search_id raises FileExistsError; bind_session_directory sets
+    directory_path and rejects search_id/layout name mismatch.\n"
+status: ready_for_review

@@ -1,0 +1,79 @@
+step_id: A-002
+parent_tactical_step: T-004
+name: tree_temp package exports
+target_file: ai_editor/core/tree_temp/__init__.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-002
+prompt: |
+  Technical reference: docs/plans/2026-05-18-tree-sidecar/spec.yaml (concept C-002 Sidecar storage binding under `.trees/`).
+  Parent scope: docs/plans/2026-05-18-tree-sidecar/G-001-tree-node-and-sidecar/README.yaml (SidecarDirectory layout for downstream integration).
+  Tactical scope: docs/plans/2026-05-18-tree-sidecar/G-001-tree-node-and-sidecar/T-004-sidecar-directory-resolver/README.yaml.
+
+  ## Operation
+  create_file — create `ai_editor/core/tree_temp/__init__.py`.
+
+  ## Deliverable (exact file body)
+  Create the file with exactly the following Python source. Run Black only during validation; docstrings below must remain letter-identical after formatting.
+
+  ```python
+  """Tree-temp Sidecar domain package: TreeNode entity, Sidecar JSON helpers, `.trees/` path resolver.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from ai_editor.core.tree_temp.sidecar_paths import (
+      TREES_DIRECTORY_NAME,
+      SidecarPathError,
+      resolve_trees_sidecar_path,
+  )
+  from ai_editor.core.tree_temp.sidecar_payload import (
+      SidecarParseError,
+      parse_sidecar_json_bytes,
+      parse_sidecar_json_text,
+      serialize_sidecar_to_json_text,
+      validate_sidecar_source_sha256_field,
+  )
+  from ai_editor.core.tree_temp.tree_node import (
+      TreeNode,
+      tree_node_from_json_dict,
+      tree_node_to_json_dict,
+      validate_node_constraints,
+  )
+
+  __all__ = [
+      "TreeNode",
+      "SidecarParseError",
+      "SidecarPathError",
+      "TREES_DIRECTORY_NAME",
+      "parse_sidecar_json_bytes",
+      "parse_sidecar_json_text",
+      "serialize_sidecar_to_json_text",
+      "resolve_trees_sidecar_path",
+      "tree_node_from_json_dict",
+      "tree_node_to_json_dict",
+      "validate_node_constraints",
+      "validate_sidecar_source_sha256_field",
+  ]
+  ```
+
+  ## Preconditions
+  The modules `ai_editor.core.tree_temp.tree_node`, `ai_editor.core.tree_temp.sidecar_payload`, and `ai_editor.core.tree_temp.sidecar_paths` already exist on disk and export every symbol imported above.
+
+  ## Forbidden
+  - Do not add package-level side effects (logging, env reads, disk writes).
+  - Do not reference `.cst/` or CST sidecars.
+
+  ## Size
+  Keep the file at or below 55 lines after Black.
+verification:
+  type: import
+  target: ai_editor.core.tree_temp
+  expected: Python package import of ai_editor.core.tree_temp completes without ImportError when sibling modules define all imported names.
+status: done

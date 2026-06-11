@@ -1,0 +1,249 @@
+step_id: A-004
+parent_tactical_step: T-001
+name: Create marker hide/restore cycle helpers for EditSession
+target_file: ai_editor/core/edit_session/marker_cycle.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-012
+- C-001
+- C-007
+- C-025
+- C-003
+status: ready_for_review
+prompt: |
+  > Cross-TS and within-TS execution ordering is expressed ONLY via the standard depends_on field plus parallel-waves.yaml. Do not add non-standard cross-TS ordering fields. Cross-TS FILE dependencies must be satisfied by INLINING full post-prior-AS file state into the prompt (a8), NOT by referencing other steps. No atomic, tactical, or global step identifiers may appear in any prompt: prose.
+
+  Create `ai_editor/core/edit_session/marker_cycle.py`.
+  Operation: create_file.
+
+  Implements the EditSession (C-012) short_id marker hide/unhide cycle on the TREE
+  section of a three-section TreeFile (C-003). CHECKSUMS and MAP sections are
+  preserved byte-for-byte across hide/unhide; TreeNodeUuid (C-024) entries in MAP
+  are not altered. Hide/unhide is NOT a FormatHandler responsibility (MRS C-007).
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-012, C-001, C-007, C-025, C-003)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/README.yaml`
+
+  ## MRS excerpt
+
+  C-012 EditSession — when tree is valid, before each mutation hide short_id markers
+  in the TREE section into format-native comments (or equivalent inline marker form),
+  apply mutation on denuded representation, restore short_id markers to canonical
+  positions; CHECKSUMS and MAP preserved; UUID4 in MAP not altered by hide/unhide.
+
+  C-001 MarkerContract: FormatHandler.unmark(marked) reproduces plain source;
+  FormatHandler.mark(content) embeds integer short_id markers in TREE body only.
+
+  C-025 NodeIdMap: build refreshes short_id↔UUID map; validate_and_repair preserves
+  UUID4 for unchanged nodes per {a007}.
+
+  Locked marker syntax (integer short_id only, NO UUID in TREE):
+  - TEXT: `<short_id>:` line prefix (HRS {b001})
+  - Markdown: `<!-- id:<short_id> -->` before block (HRS {b002})
+  - YAML: `___id___: <int>` first key (HRS {b003})
+  - JSON: `{"___id___": <int>, "v": ...}` wrappers (HRS {b004})
+  - Python: metadata `___id___` key or trailing `# ___id___:<short_id>` (HRS {b005})
+
+  ## Inlined dependency — parse_tree_file / serialize_tree_file (C-025)
+
+  Module: `ai_editor/core/tree_lifecycle/node_id_map.py`
+
+  Delimiters (exact strings):
+  - `CHECKSUMS_DELIM = "---CHECKSUMS---"`
+  - `MAP_DELIM = "---MAP---"`
+  - `TREE_DELIM = "---TREE---"`
+
+  ```python
+  @dataclass
+  class TreeSections:
+      checksums: ChecksumsSection
+      map: MapSection
+      tree: str  # marked TREE body only (no delimiter line)
+
+  def parse_tree_file(text: str) -> TreeSections: ...
+
+  def serialize_tree_file(sections: TreeSections) -> str: ...
+  ```
+
+  `parse_tree_file` splits on the three delimiters in order; raises `ValueError`
+  if structure invalid.
+
+  ## Inlined dependency — FormatHandler (C-007)
+
+  Module: `ai_editor/tree/handler_registry.py`
+
+  ```python
+  handler = HandlerRegistry.default_registry().resolve(source_abs)
+  denuded = handler.unmark(marked_tree_body)
+  candidate_marked = handler.mark(denuded_text)
+  nodes = handler.parse_content(file_path, denuded_text)
+  ```
+
+  ## Inlined dependency — NodeIdMap.build (C-025)
+
+  ```python
+  sections, id_map = NodeIdMap.build(
+      *,
+      tree_marked_text: str,
+      discovered_nodes: list[DiscoveredNode],
+      source_sha256: str,
+      prior_map: MapSection | None = None,
+  ) -> tuple[TreeSections, NodeIdMap]
+  ```
+
+  When `prior_map` is supplied, preserve TreeNodeUuid entries and next_free for
+  nodes whose content fingerprint matches per {a007}.
+
+  ## Module docstring (exact)
+
+  """
+  Marker hide/restore cycle for EditSession valid-tree mutations (C-012).
+
+  Denudes the TREE section via FormatHandler.unmark, preserves CHECKSUMS/MAP,
+  restores markers via handler.mark + NodeIdMap.build with prior_map.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact list)
+
+  ```python
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from pathlib import Path
+
+  from ai_editor.core.tree_lifecycle.node_id_map import (
+      DiscoveredNode,
+      MapSection,
+      NodeIdMap,
+      TreeSections,
+      parse_tree_file,
+      serialize_tree_file,
+  )
+  from ai_editor.tree.handler_registry import HandlerRegistry
+  ```
+
+  ## Constants
+
+  - `MARKER_CYCLE_ERROR = "MARKER_CYCLE_ERROR"` — error code string for ValueError messages.
+
+  ## Types
+
+  ```python
+  @dataclass(frozen=True)
+  class MarkerEditState:
+      """Preserved CHECKSUMS and MAP sections during hide/unhide (C-012)."""
+
+      checksums_section: ChecksumsSection  # from node_id_map module
+      map_section: MapSection
+  ```
+
+  Import `ChecksumsSection` from `ai_editor.core.tree_lifecycle.node_id_map`.
+
+  ## Function: denude_marked_tree
+
+  ```python
+  def denude_marked_tree(
+      *,
+      source_abs: Path,
+      marked_tree: str,
+  ) -> tuple[str, MarkerEditState]:
+      """Strip short_id markers from TREE section; preserve CHECKSUMS and MAP."""
+  ```
+
+  Algorithm:
+  1. `sections = parse_tree_file(marked_tree)`.
+  2. `handler = HandlerRegistry.default_registry().resolve(source_abs)`.
+  3. `denuded = handler.unmark(sections.tree)`.
+  4. `state = MarkerEditState(checksums_section=sections.checksums, map_section=sections.map)`.
+  5. Return `(denuded, state)`.
+
+  Error handling:
+  - `ValueError` from `parse_tree_file` — re-raise unchanged.
+  - `HandlerNotFoundError` from registry — propagate unchanged.
+  - Empty TREE after unmark is valid (return `""`).
+
+  Edge cases:
+  - Tree file with only CHECKSUMS+MAP and empty TREE → denuded `""`, state preserved.
+  - Invalid three-section layout → ValueError from parse_tree_file.
+
+  ## Function: restore_marked_tree
+
+  ```python
+  def restore_marked_tree(
+      *,
+      source_abs: Path,
+      denuded_after_mutation: str,
+      state: MarkerEditState,
+  ) -> str:
+      """Re-embed short_id markers; preserve MAP bytes and UUID4 entries (C-012)."""
+  ```
+
+  Algorithm:
+  1. `handler = HandlerRegistry.default_registry().resolve(source_abs)`.
+  2. `file_path = source_abs.name`.
+  3. `candidate_marked = handler.mark(denuded_after_mutation)`.
+  4. `parsed_nodes = handler.parse_content(file_path, denuded_after_mutation)`.
+  5. Build `discovered_nodes: list[DiscoveredNode]` from each parsed TreeNode:
+     - `short_id=int(node.short_id)`, `kind=node.kind`, `content=node.content`,
+       `attributes=dict(node.attributes)`, `content_fingerprint=compute_content_fingerprint(node.content)`
+     - Import `compute_content_fingerprint` from `ai_editor.core.tree_lifecycle.node_id_map`.
+  6. `source_sha256 = state.checksums_section.source_sha256` (field on ChecksumsSection).
+  7. `built_sections, _id_map = NodeIdMap.build(
+         tree_marked_text=candidate_marked,
+         discovered_nodes=discovered_nodes,
+         source_sha256=source_sha256,
+         prior_map=state.map_section,
+     )`.
+  8. Force preserved MAP: `built_sections.map = state.map_section` (exact object from state;
+     CHECKSUMS and MAP not regenerated by build for hide/unhide cycle).
+  9. Force preserved CHECKSUMS: `built_sections.checksums = state.checksums_section`.
+  10. Return `serialize_tree_file(built_sections)`.
+
+  Error handling:
+  - NodeIdMap.build ValueError — wrap as `ValueError(f"{MARKER_CYCLE_ERROR}: {exc}") from exc`.
+  - Handler errors — propagate unchanged.
+
+  Edge cases:
+  - Empty denuded_after_mutation → handler.mark("") returns ""; build with empty discovered_nodes.
+  - Mutation changed block count → NodeIdMap.build with prior_map assigns fresh short_ids per {a007}
+    for new blocks while preserving UUID4 for unchanged fingerprints.
+
+  ## Forbidden patterns
+
+  - Do NOT import dulwich or EditSession.
+  - Do NOT mutate MAP UUID4 entries during hide/unhide.
+  - Do NOT embed UUID in TREE markers.
+  - Do NOT use universal-id, {l001}-{l003}, {m001}, {m002}, G-007, NODE_ID_PREFIX_WIDTH=40.
+  - Do NOT implement FormatHandler.mark/unmark (use HandlerRegistry only).
+  - Do NOT create `__init__.py` in this step.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/marker_cycle.py
+  flake8 ai_editor/core/edit_session/marker_cycle.py
+  mypy ai_editor/core/edit_session/marker_cycle.py
+  python -c "from ai_editor.core.edit_session.marker_cycle import denude_marked_tree, restore_marked_tree, MarkerEditState"
+  pytest -q
+  ```
+
+  All tests must pass. Estimated post-implementation lines: 120–180 (≤400).
+
+verification:
+  type: import
+  target: ai_editor/core/edit_session/marker_cycle.py
+  expected: |
+    Module defines MarkerEditState frozen dataclass, denude_marked_tree returning
+    (str, MarkerEditState), and restore_marked_tree returning full three-section
+    serialized tree text. denude uses parse_tree_file and HandlerRegistry.unmark on
+    TREE only. restore uses handler.mark, NodeIdMap.build with prior_map from state,
+    preserves checksums_section and map_section from MarkerEditState, serializes via
+    serialize_tree_file. No dulwich import. All tests pass.

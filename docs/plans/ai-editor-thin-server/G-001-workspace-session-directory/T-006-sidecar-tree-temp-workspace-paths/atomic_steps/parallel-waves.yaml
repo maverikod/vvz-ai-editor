@@ -1,0 +1,10 @@
+# T-006 atomic execution waves — sidecar and tree-temp only (F-026/F-036 boundary)
+waves:
+  - wave: 1
+    parallel: true
+    steps:
+      - A-001
+      - A-002
+    note: >
+      Independent target files (edit_session_impl.py vs tree_temp_open_support.py).
+      Both require T-003 A-004 complete. Neither touches draft_path or lockfile_path (T-004).

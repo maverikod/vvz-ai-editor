@@ -1,0 +1,58 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Create edit_session package __init__ with public API exports
+target_file: ai_editor/core/edit_session/__init__.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+- A-003
+concepts:
+- C-012
+status: ready_for_review
+prompt: |
+  Create `ai_editor/core/edit_session/__init__.py`.
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-012)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/README.yaml`
+
+  Export the public C-012 API including dual-mode types:
+
+  ```python
+  # Author: Vasiliy Zdanovskiy -- vasilyvz@gmail.com
+
+  """EditSession package (C-012): bounded editing context and active-session registry."""
+
+  from ai_editor.core.edit_session.edit_session import (
+      CONTENT_NOT_ALLOWED_FOR_VALID_FILE,
+      EditSession,
+      EditSessionError,
+      SESSION_INVALID_TRUTH_INVARIANT,
+      SESSION_VALID_TRUTH_INVARIANT,
+      SessionTreeValidity,
+      get_active_session,
+  )
+
+  __all__ = [
+      "EditSession",
+      "EditSessionError",
+      "SessionTreeValidity",
+      "get_active_session",
+      "CONTENT_NOT_ALLOWED_FOR_VALID_FILE",
+      "SESSION_VALID_TRUTH_INVARIANT",
+      "SESSION_INVALID_TRUTH_INVARIANT",
+  ]
+  ```
+
+  Do not export marker_cycle symbols (internal).
+
+verification:
+  type: import
+  target: ai_editor/core/edit_session/__init__.py
+  expected: |
+    All names in __all__ import from package root without error.
+    Exports include EditSession, SessionTreeValidity, get_active_session,
+    CONTENT_NOT_ALLOWED_FOR_VALID_FILE, SESSION_VALID_TRUTH_INVARIANT,
+    SESSION_INVALID_TRUTH_INVARIANT. All tests pass.

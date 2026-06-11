@@ -1,0 +1,75 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Create HandlerRegistry
+target_file: ai_editor/tree/handler_registry.py
+operation: create_file
+priority: 1
+depends_on: []
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-001-format-handler-base.yaml
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml
+concepts:
+- C-008
+- C-007
+- C-003
+- C-002
+status: draft
+prompt: "Create the file `ai_editor/tree/handler_registry.py`.\nOperation: create_file
+  (the file does not exist yet).\n\nThis file defines `HandlerRegistry` (C-008) —
+  the central registry that\nresolves a file to its FormatHandler (C-007) by file
+  extension.\n\n## MRS excerpt\n\nC-002 NodeId: format-specific identifier embedded
+  in the TreeFile.\n  - an unrecognised node id yields an input error, never silent
+  ignore\n\nC-003 TreeFile: on-disk artifact; its extension determines which handler
+  to use.\n\nC-007 FormatHandler: per-format component.\n  - one handler per format:
+  text (.txt, .rst), markdown (.md),\n    yaml (.yaml, .yml), json (.json), python
+  (.py)\n  - the common contract is the only coupling between handlers\n\nC-008 HandlerRegistry:
+  the central registry.\n  properties:\n    - keyed by file extension (including the
+  leading dot, e.g. \".py\")\n    - owns the set of registered handlers\n    - sole
+  resolution path from a file path to its FormatHandler\n    - no caller may bypass
+  it to select a handler directly\n\n## Required file content\n\n```python\nfrom __future__
+  import annotations\n\nfrom pathlib import Path\nfrom typing import Dict\n\nfrom
+  ai_editor.tree.format_handler import FormatHandler\n\n\nclass HandlerNotFoundError(KeyError):\n\
+  \    \"\"\"Raised when no FormatHandler is registered for a file extension.\"\"\"\
+  \n\n    def __init__(self, extension: str) -> None:\n        super().__init__(\n\
+  \            f\"No FormatHandler registered for extension {extension!r}\"\n    \
+  \    )\n        self.extension = extension\n\n\nclass HandlerRegistry:\n    \"\"\
+  \"Central registry resolving a file to its FormatHandler by extension (C-008).\n\
+  \n    Sole resolution path from a source file path to its FormatHandler.\n    No
+  caller may bypass the registry to select a handler directly.\n\n    Usage::\n\n\
+  \        registry = HandlerRegistry()\n        registry.register(\".py\", python_handler)\n\
+  \        handler = registry.resolve(Path(\"src/foo.py\"))\n    \"\"\"\n\n    def
+  __init__(self) -> None:\n        \"\"\"Initialise with an empty handler map.\"\"\
+  \"\n        self._handlers: Dict[str, FormatHandler] = {}\n\n    def register(self,
+  extension: str, handler: FormatHandler) -> None:\n        \"\"\"Register a FormatHandler
+  for a file extension.\n\n        Args:\n            extension: File extension including
+  the leading dot (e.g. \".py\").\n                Must start with a dot.\n      \
+  \      handler: The FormatHandler instance to register.\n\n        Raises:\n   \
+  \         ValueError: If extension does not start with a dot.\n        \"\"\"\n\
+  \        if not extension.startswith(\".\"):\n            raise ValueError(\n  \
+  \              f\"Extension must start with a dot; got {extension!r}\"\n       \
+  \     )\n        self._handlers[extension] = handler\n\n    def resolve(self, file_path:
+  Path) -> FormatHandler:\n        \"\"\"Return the FormatHandler registered for the
+  file's extension.\n\n        Args:\n            file_path: Path to the source or
+  tree file whose extension\n                determines which handler to return.\n\
+  \n        Returns:\n            The registered FormatHandler for this extension.\n\
+  \n        Raises:\n            HandlerNotFoundError: If no handler is registered
+  for the\n                extension of file_path.\n        \"\"\"\n        ext =
+  file_path.suffix\n        if ext not in self._handlers:\n            raise HandlerNotFoundError(ext)\n\
+  \        return self._handlers[ext]\n\n    def extensions(self) -> list[str]:\n\
+  \        \"\"\"Return sorted list of registered file extensions.\"\"\"\n       \
+  \ return sorted(self._handlers.keys())\n\n    def __contains__(self, extension:
+  str) -> bool:\n        \"\"\"Return True if a handler is registered for the extension.\"\
+  \"\"\n        return extension in self._handlers\n```\n\n## Constraints\n- Imports:
+  `from __future__ import annotations`, `pathlib.Path`,\n  `typing.Dict`, `ai_editor.tree.format_handler.FormatHandler`.\n\
+  \  No other imports.\n- `HandlerNotFoundError` is a subclass of `KeyError`.\n- `_handlers`
+  is a private instance dict, not a class attribute.\n- `resolve` raises `HandlerNotFoundError`
+  (not KeyError directly).\n- `register` validates the extension starts with a dot.\n\
+  - Estimated line count: ~65 lines.\n"
+verification:
+  type: import
+  target: ai_editor/tree/handler_registry.py
+  expected: >
+    Import of HandlerRegistry and HandlerNotFoundError succeeds.
+    A newly constructed registry reports no registered extensions.
+    Resolving a path whose suffix has no registered handler raises
+    HandlerNotFoundError rather than returning a handler.

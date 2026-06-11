@@ -1,0 +1,17 @@
+step_id: A-004
+parent_tactical_step: T-003
+name: Удалить monolith server_manager_cli
+target_file: ai_editor/cli/server_manager_cli.py
+operation: delete_file
+priority: 3
+depends_on:
+- A-002
+concepts:
+- C-021
+prompt: |
+  Delete `ai_editor/cli/server_manager_cli.py` after daemon logic extracted to daemon_cli_commands.py.
+verification:
+  type: manual
+  target: ai_editor/cli/server_manager_cli.py
+  expected: File absent until slim facade AS.
+status: draft

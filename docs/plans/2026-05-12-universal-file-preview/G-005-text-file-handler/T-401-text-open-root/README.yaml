@@ -1,0 +1,34 @@
+step_id: T-401
+parent_global_step: G-005
+name: Text file handler — open and produce lines root
+status: frozen
+concepts:
+- C-003
+- C-004
+- C-017
+description: "Define the opening behaviour of TextFileHandler (C-017), which extends\
+  \ FileHandler (C-003), for .md, .txt, .rst, and .adoc files. When invoked to open\
+  \ a text file, TextFileHandler reads the file line by line and produces a lines\
+  \ root Node.\nRoot Node: - NodeKind (C-004): lines. - Type label: absent (lines\
+  \ root carries no type label). - Name: absent. - Block set: the ordered sequence\
+  \ of all text lines in the file,\n  in file order. Each line is one Block.\n\nLine\
+  \ Block properties: - NodeKind: scalar. - Value: the full text of the line, without\
+  \ the trailing newline character. - Block set: empty (scalar nodes have no children).\
+  \ - node_ref: the zero-based index of the line (0 = first line).\nLazy materialisation:\
+  \ TextFileHandler does not read the entire file on open. It materialises only the\
+  \ lines needed by the current NavigationProcedure request (the lines within the\
+  \ selected range or those addressed by the Selector).\nFile-structure errors: text\
+  \ files are never structurally invalid; TextFileHandler does not produce FILE_STRUCTURE_ERROR.\
+  \ Any readable file is accepted as a valid lines document, including empty files\
+  \ (which produce a lines root with an empty block set).\n"
+inputs:
+- name: file_path
+  type: string
+  description: Project-relative path to the .md, .txt, .rst, or .adoc file to open.
+outputs:
+- name: root_node
+  type: Node with NodeKind lines (C-004)
+  description: The lines root Node. Its block set is the ordered sequence of scalar
+    line Nodes, each carrying one text line and its zero-based index as node_ref.
+atomic_steps:
+- A-001

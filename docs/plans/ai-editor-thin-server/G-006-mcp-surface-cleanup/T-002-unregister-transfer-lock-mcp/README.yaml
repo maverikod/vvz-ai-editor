@@ -1,0 +1,22 @@
+step_id: T-002
+parent_global_step: G-006
+name: Снять transfer и lock MCP
+description: 'Снять с MCP-регистрации команды transfer и advisory lock (C-020); оставить вызовы transfer только внутри Upstream Client (C-017) для universal_file_* (C-016).
+
+  '
+concepts:
+- C-016
+- C-017
+- C-020
+inputs:
+- name: registration_module
+  type: object
+  description: Модуль регистрации MCP-команд редактора.
+outputs:
+- name: internal_only_transfer
+  type: boolean
+  description: Transfer доступен только через upstream, не MCP.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

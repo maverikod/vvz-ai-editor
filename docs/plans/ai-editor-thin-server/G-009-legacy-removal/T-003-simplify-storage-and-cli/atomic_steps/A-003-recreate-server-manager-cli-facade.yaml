@@ -1,0 +1,18 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: Slim server_manager_cli facade
+target_file: ai_editor/cli/server_manager_cli.py
+operation: create_file
+priority: 4
+depends_on:
+- A-004
+concepts:
+- C-001
+- C-021
+prompt: "Create argparse facade (≤150 lines).\n\n```py\n\"\"\"AI Editor daemon CLI — thin entry (C-001).\"\"\"\nfrom __future__ import annotations\n\nimport argparse\nfrom typing import Optional\n\nfrom .daemon_cli_commands import (\n    cmd_restart,\n    cmd_start,\n    cmd_status,\n    cmd_stop,\n)\n\ndef server(argv: Optional[list[str]] = None) -> int:\n    parser = argparse.ArgumentParser(prog=\"casmgr\")\n    parser.add_argument(\"--config\", default=None)\n    sub = parser.add_subparsers(dest=\"command\", required=True)\n    sub.add_parser(\"status\")\n    sub.add_parser(\"start\")\n    sub.add_parser(\"stop\")\n    sub.add_parser(\"restart\")\n    args = parser.parse_args(argv)\n    handlers = {\n        \"status\": cmd_status,\n        \"start\": cmd_start,\n        \"stop\": cmd_stop,\n        \"restart\": cmd_restart,\n    }\n    return handlers[args.command](args.config)\n```\n\nRemove sessions/locks subcommands and all worker PID logic from this file.\nConfig resolution helpers\
+  \ may stay here if under 150 lines total, else move to\n`daemon_cli_commands.py`.\n"
+verification:
+  type: import
+  target: ai_editor.cli.server_manager_cli.server
+  expected: Entrypoint importable; module under 150 lines.
+status: draft

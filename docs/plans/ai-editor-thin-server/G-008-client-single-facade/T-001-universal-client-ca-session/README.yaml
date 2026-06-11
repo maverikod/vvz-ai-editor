@@ -1,0 +1,22 @@
+step_id: T-001
+parent_global_step: G-008
+name: UniversalFileClient с CA session_id
+description: 'Расширить единый файловый фасад (C-016): обязательный контекст CA Session (C-004) с session_id, project_id и file_path на open/edit/write/close/preview; file_path на write/close при multi-file; методы отражают MCP Workflow Surface (C-016) один к одному в согласовании с моделью агента (C-003).
+
+  '
+concepts:
+- C-003
+- C-004
+- C-009
+- C-016
+inputs:
+- name: async_client
+  type: object
+  description: Async transport для MCP Workflow Surface (C-016).
+outputs:
+- name: universal_file_client_api
+  type: object
+  description: Единый файловый фасад (C-016), реализующий File Workflow (C-009) с обязательным контекстом CA Session (C-004).
+atomic_steps:
+- A-001
+status: ready_for_review

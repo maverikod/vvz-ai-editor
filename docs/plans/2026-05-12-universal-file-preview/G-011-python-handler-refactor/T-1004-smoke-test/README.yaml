@@ -1,0 +1,25 @@
+step_id: T-1004
+parent_global_step: G-011
+name: Smoke test full round-trip
+description: 'Call universal_file_preview on three test cases and verify output: (1)
+  budget.py (<200 lines) — full text fallback; (2) python_visualizer.py (>200 lines;
+  not handlers/python_handler.py) without node_ref — module overview; (3) same large
+  file with node_ref to a top-level FunctionDef (stable_id from preview blocks or
+  metadata). project_id from repository root projectid. After code changes, restart
+  the server before MCP smoke. Fix any issues found before marking G-011 done.
+
+  '
+concepts:
+- C-001
+- C-016
+inputs:
+- name: server
+  type: runtime
+  description: MCP server running with updated code
+outputs:
+- name: test_results
+  type: verification
+  description: all three cases produce expected text preview
+atomic_steps:
+- A-001
+status: done

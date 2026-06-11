@@ -1,0 +1,33 @@
+step_id: T-002
+parent_global_step: G-003
+name: Оркестрация universal_file_open
+description: 'Реализовать Open Stage (C-010) для одного файла за вызов в команде universal_file_open (C-016): Session Guard (C-024) и Session Validation (C-014); при первом open в CA Session — создание Editor Session Directory (C-005) по Workspace Root Configuration (C-018); вызов Upstream Client (C-017) для lock и download по контракту C-023; запись Origin Snapshot (C-007) в File Subtree (C-006); создание Edit Subdirectory (C-008) и привязка Internal Edit Engine (C-019). Scope: один file_path на invocation; повторный open с другим file_path в существующей CA Session — вне scope этого шага и относится к тактическому шагу мультифайловой сессии в рамках этого global step. Не читать и не создавать файл на диске проекта СА напрямую.
+
+  '
+concepts:
+- C-004
+- C-005
+- C-006
+- C-007
+- C-008
+- C-010
+- C-014
+- C-016
+- C-017
+- C-018
+- C-019
+- C-023
+- C-024
+- C-009
+inputs:
+- name: open_params
+  type: object
+  description: session_id (CA, C-004), project_id, file_path; опционально create=true для ветки upload+lock.
+outputs:
+- name: open_response
+  type: object
+  description: session_id (CA), file_path, session_dir (C-005), draft_path в Edit Subdirectory (C-008); при первом файле в сессии — создание Editor Session Directory.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

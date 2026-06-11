@@ -1,0 +1,47 @@
+step_id: T-001
+parent_global_step: G-001
+name: Input schema of PreviewCommand
+status: frozen
+concepts:
+- C-001
+- C-014
+description: "Define the input schema of PreviewCommand (C-001) as the complete set\
+  \ of caller-visible parameters with their types, optionality, and validation rules.\
+  \ The schema is fixed: adding a new file handler does not change it. Parameters:\
+  \ - file_path (string, required): project-relative path to one file; no wildcards\n\
+  \  or globs allowed; exactly one file per call.\n- node_ref (string, optional):\
+  \ StableIdentifier in the file handler's native\n  format; when omitted the focus\
+  \ is the file root.\n- selector (string | list[int] | list[string], optional): picks\
+  \ a subset of\n  the focus node's block set; when omitted returns the first preview_lines\n\
+  \  blocks in natural order.\n- preview_lines (integer, optional, default implementation-defined):\
+  \ caps the\n  number of blocks returned when selector is omitted.\n- value_preview_len\
+  \ (integer, optional, default implementation-defined): caps\n  the length of any\
+  \ scalar value or name shown inline.\n- tree_id (string/UUID, optional): identifies\
+  \ an existing in-memory TreeSession\n  to read from; when omitted the command opens\
+  \ a transient session internally.\nValidation rules baked into the schema: - selector\
+  \ as string must contain ':' or start with '-'; any other string is\n  an input\
+  \ error.\n- selector as list must be homogeneous: all int or all string; mixed list\
+  \ is\n  an input error.\n- duplicate entries in a selector list are an input error.\
+  \ - file_path containing '*', '?', or '[' is an input error. - conflicting parameters\
+  \ (e.g. tree_id referencing a session for a different\n  file than file_path) are\
+  \ an input error.\n"
+inputs:
+- name: caller_request
+  type: JSON object
+  description: raw MCP call parameters before schema validation
+outputs:
+- name: validated_input
+  type: structured parameter set
+  description: 'Parsed and validated parameter set ready for dispatch: file_path,
+    optional node_ref, optional selector (typed by form), optional preview_lines,
+    optional value_preview_len, optional tree_id.'
+- name: input_error
+  type: ErrorClassification input-class error
+  description: Returned instead of validated_input when any validation rule is violated;
+    carries a deterministic error code identifying the violated rule.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005

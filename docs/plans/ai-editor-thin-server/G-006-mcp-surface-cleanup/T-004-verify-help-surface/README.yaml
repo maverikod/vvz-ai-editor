@@ -1,0 +1,20 @@
+step_id: T-004
+parent_global_step: G-006
+name: Проверка help после сужения MCP
+description: 'Верифицировать MCP Workflow Surface (C-016): help содержит universal_file_* и health; queue_health отсутствует. Снятые семейства не регистрируются. Критерий C-022 п.6.
+
+  '
+concepts:
+- C-016
+- C-022
+inputs:
+- name: running_server
+  type: object
+  description: ai-editor-server после restart.
+outputs:
+- name: help_command_list
+  type: array
+  description: Список команд соответствует целевому набору.
+atomic_steps:
+- A-001
+status: ready_for_review

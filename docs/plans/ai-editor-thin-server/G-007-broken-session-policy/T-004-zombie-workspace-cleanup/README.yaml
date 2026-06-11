@@ -1,0 +1,23 @@
+step_id: T-004
+parent_global_step: G-007
+name: Очистка зомби workspace
+description: 'При подтверждённом отсутствии сессии на СА ({4c2d}): удалить Editor Session Directory (C-005), очистить bundle registry и file index; не оставлять каталоги workspace_root/session_id без валидной CA Session.
+
+  '
+concepts:
+- C-005
+- C-015
+- C-024
+- C-025
+inputs:
+- name: ca_session_id
+  type: string
+  description: Сессия, признанная отсутствующей на СА.
+outputs:
+- name: cleanup_complete
+  type: boolean
+  description: Локальное состояние сброшено.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

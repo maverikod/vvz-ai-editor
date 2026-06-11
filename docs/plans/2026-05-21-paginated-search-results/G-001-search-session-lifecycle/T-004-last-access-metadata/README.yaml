@@ -1,0 +1,29 @@
+step_id: T-004
+parent_global_step: G-001
+name: LastAccessTimestamp service metadata
+description: >
+  Creates the service metadata artefact inside SearchSessionDirectory that
+  records LastAccessTimestamp for the session. Initializes last_access_at at
+  session creation and defines the metadata schema that later HTTP readers
+  will refresh on every successful index, block, or status access. Separates
+  last-access semantics from writer heartbeat semantics so TTL cleanup can
+  use inactivity independently of search liveness.
+concepts:
+  - C-006
+inputs:
+  - name: search_session_directory
+    type: SearchSessionDirectory
+    description: Session directory containing the service metadata location.
+  - name: session_creation_time
+    type: Timestamp
+    description: Creation instant used as the initial last_access_at value.
+outputs:
+  - name: session_service_metadata
+    type: SessionServiceMetadata
+    description: Metadata file recording last_access_at for TTL-driven cleanup.
+  - name: initial_last_access_timestamp
+    type: LastAccessTimestamp
+    description: Baseline inactivity timestamp established at session creation.
+atomic_steps:
+- A-001
+status: ready_for_review

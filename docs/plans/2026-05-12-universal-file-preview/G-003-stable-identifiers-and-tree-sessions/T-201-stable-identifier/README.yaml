@@ -1,0 +1,35 @@
+step_id: T-201
+parent_global_step: G-003
+name: Stable identifier — per-handler formats
+status: frozen
+concepts:
+- C-009
+description: "Define the StableIdentifier (C-009) as the identifier of a node inside\
+  \ a tree-structured file. The command reuses identifiers produced by the project's\
+  \ existing tree infrastructure; it does not invent a new scheme.\nIdentifier formats\
+  \ by file handler: - Python files (.py, .pyi, .pyw): the identifier is the stable_id\
+  \ UUID\n  field returned by cst_load_file in its outline_nodes array. This UUID\n\
+  \  is produced and persisted by the project's CST infrastructure.\n- JSON files\
+  \ (.json): the identifier is the node_id string returned by\n  list_json_blocks,\
+  \ OR a JSON Pointer string of the form '/foo/bar'.\n  Both spellings are accepted\
+  \ interchangeably because the same project\n  infrastructure produces them.\n- YAML\
+  \ files (.yaml, .yml): the identifier is reused from the project\n  YAML tree infrastructure\
+  \ when that infrastructure is present. When it\n  is absent, the YAML file handler\
+  \ accepts JSON-Pointer-style paths\n  derived from the loaded YAML document.\n-\
+  \ Text files (.md, .txt, .rst, .adoc) and JSON Lines files (.jsonl,\n  .ndjson):\
+  \ children are addressed by their zero-based line index\n  (an integer). No separate\
+  \ identifier scheme is introduced.\n\nOpaqueness invariant: the identifier format\
+  \ is specific to each file handler. The HandlerDispatcher does not inspect or interpret\
+  \ identifier values; it passes them to the selected FileHandler for resolution.\n"
+inputs:
+- name: node_ref_value
+  type: string or integer
+  description: A raw node_ref value supplied by the caller. Its format is determined
+    by the file type of the target file.
+outputs:
+- name: stable_identifier
+  type: StableIdentifier (C-009)
+  description: The validated identifier in the file handler's native format, ready
+    to be passed to the FileHandler for node resolution.
+atomic_steps:
+- A-001

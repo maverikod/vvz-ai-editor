@@ -1,0 +1,20 @@
+step_id: T-005
+parent_global_step: G-006
+name: Снять queue_health с MCP
+description: 'Убрать регистрацию queue_health ({8g7f}, C-016). Thin editor не ведёт фоновых очередей; остаётся только health.
+
+  '
+concepts:
+- C-016
+- C-020
+inputs:
+- name: mcp_registration_surface
+  type: object
+  description: MCP registration surface (C-016) — регистрация health-команд.
+outputs:
+- name: health_only
+  type: boolean
+  description: queue_health не в help.
+atomic_steps:
+- A-001
+status: ready_for_review

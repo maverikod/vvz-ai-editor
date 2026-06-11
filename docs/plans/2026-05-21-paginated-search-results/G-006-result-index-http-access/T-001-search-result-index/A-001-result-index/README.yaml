@@ -1,0 +1,107 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: SearchResultIndex model
+target_file: ai_editor/core/search_session/result_index.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-027
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/result_index.py
+
+  MRS (C-027 SearchResultIndex): ordered block entries by position; completeness marker
+  running|finished; single mutable artefact; atomic append.
+
+  Imports:
+  - from __future__ import annotations
+  - import json
+  - from dataclasses import dataclass
+  - from pathlib import Path
+  - from typing import Any
+  - from ai_editor.core.search_session.atomic_publication import atomic_write_json
+
+  Dependency excerpt — full atomic publication chain
+  (ai_editor/core/search_session/atomic_publication.py):
+
+  ```python
+  import json
+  import os
+  from pathlib import Path
+  from typing import Any
+
+
+  def _staging_path(target: Path) -> Path:
+      return target.with_suffix(target.suffix + ".tmp")
+
+
+  def atomic_write_bytes(target: Path, data: bytes) -> None:
+      """Write bytes via a same-directory temporary file and atomic replace."""
+      target.parent.mkdir(parents=True, exist_ok=True)
+      staging = _staging_path(target)
+      with open(staging, "wb") as handle:
+          handle.write(data)
+          handle.flush()
+          os.fsync(handle.fileno())
+      atomic_publish_rename(staging, target)
+
+
+  def atomic_write_json(target: Path, obj: Any) -> None:
+      """Write JSON via a same-directory temporary file and atomic replace."""
+      payload = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
+      atomic_write_bytes(target, payload)
+
+
+  def atomic_publish_rename(staging_path: Path, final_path: Path) -> None:
+      """Atomically publish staged content at ``final_path``."""
+      final_path.parent.mkdir(parents=True, exist_ok=True)
+      os.replace(staging_path, final_path)
+  ```
+
+  Index JSON on-disk schema (index.json):
+  - Root: JSON object with exactly two top-level keys: ``blocks`` and ``completeness``.
+  - ``blocks``: array (may be empty). Each element is an object with:
+      - ``position``: non-negative integer block position number.
+      - ``size_bytes``: positive integer serialized block payload size in bytes.
+    Non-dict block entries are skipped on read; missing keys coerce via int(...).
+  - ``completeness``: string enum with exactly two allowed values:
+      - ``search_still_running`` (module constant COMPLETENESS_RUNNING)
+      - ``search_finished`` (module constant COMPLETENESS_FINISHED)
+  - When ``completeness`` is absent on read, default to COMPLETENESS_RUNNING.
+  - Example:
+      {"blocks": [{"position": 0, "size_bytes": 4096}], "completeness": "search_still_running"}
+
+  Implement:
+  - COMPLETENESS_RUNNING = "search_still_running"
+  - COMPLETENESS_FINISHED = "search_finished"
+  - @dataclass SearchResultIndex: blocks: list[dict[str, Any]]; completeness: str
+  - def _index_to_dict(index: SearchResultIndex) -> dict[str, Any]
+      Return {"blocks": list(index.blocks), "completeness": index.completeness}.
+  - def _index_from_dict(data: dict[str, Any]) -> SearchResultIndex
+      Iterate data["blocks"] or []; skip non-dict entries; coerce position and size_bytes to int.
+      Default completeness to COMPLETENESS_RUNNING when absent.
+  - def read_index(index_path: Path) -> SearchResultIndex
+      Open index_path with encoding utf-8; json.load; require root dict or raise ValueError
+      with index_path in message; return _index_from_dict(data).
+  - def append_block_entry(index_path: Path, *, position: int, size_bytes: int, completeness: str) -> SearchResultIndex
+      When index_path exists, load via read_index; else start with empty blocks list.
+      Append {"position": position, "size_bytes": size_bytes}; publish via atomic_write_json.
+  - def mark_index_finished(index_path: Path) -> SearchResultIndex
+      Load current index; set completeness to COMPLETENESS_FINISHED; atomic_write_json.
+
+  read_index error contract (do not swallow):
+  - FileNotFoundError: propagates when index_path does not exist (HTTP layer maps to 404 semantics).
+  - ValueError: raised when JSON root is not a dict; message must include index_path string.
+  - json.JSONDecodeError: propagates from json.load on corrupt or truncated JSON.
+
+  Under 180 lines. Author header.
+verification:
+  type: pytest
+  target: tests/unit/test_result_index.py
+  expected: >
+    Append preserves block order and publishes via atomic_write_json.
+    mark_index_finished sets completeness to search_finished atomically.
+    read_index raises FileNotFoundError when missing, ValueError when root is not a dict,
+    and JSONDecodeError on corrupt JSON.
+status: ready_for_review

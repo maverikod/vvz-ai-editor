@@ -1,0 +1,18 @@
+step_id: A-003
+parent_tactical_step: T-001
+name: Удалить runtime_lock_sessions
+target_file: ai_editor/core/runtime_lock_sessions.py
+operation: delete_file
+priority: 3
+depends_on:
+- A-001
+concepts:
+- C-020
+prompt: |
+  Delete `ai_editor/core/runtime_lock_sessions.py`. Remove advisory lock usage from
+  universal_file_open if still present.
+verification:
+  type: static_analysis
+  target: ai_editor/core/runtime_lock_sessions.py
+  expected: File absent.
+status: draft

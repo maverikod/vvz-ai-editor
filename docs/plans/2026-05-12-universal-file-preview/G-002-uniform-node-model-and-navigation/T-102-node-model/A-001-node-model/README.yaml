@@ -1,0 +1,60 @@
+step_id: A-001
+parent_tactical_step: T-102
+name: Create models — NodeKind, Block, Node, NavigationResult
+target_file: ai_editor/commands/universal_file_preview/models.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-005
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/models.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  Domain models for universal_file_preview.\n\n  Defines\
+  \ the closed NodeKind enumeration (C-004), the Block (C-005),\n  the Node (uniform\
+  \ in-memory representation), and NavigationResult\n  (output of the navigation procedure).\n\
+  \n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n\
+  \  from __future__ import annotations\n  import enum\n  from dataclasses import\
+  \ dataclass, field\n  from typing import Any\n\nEnum: NodeKind(str, enum.Enum)\n\
+  Docstring:\n  \"\"\"\n  Closed enumeration of node classifications (C-004).\n\n\
+  \  Exactly five values. The kind is intrinsic to the node;\n  it does not depend\
+  \ on the parent or on the file type.\n  \"\"\"\nMembers:\n  SCALAR = \"scalar\"\n\
+  \  LINES = \"lines\"\n  MAPPING = \"mapping\"\n  SEQUENCE = \"sequence\"\n  TREE_NODE\
+  \ = \"tree_node\"\n\nDataclass: Node\nDocstring:\n  \"\"\"\n  Uniform in-memory\
+  \ representation of any file node.\n\n  Produced by a FileHandler (C-003); consumed\
+  \ by NavigationProcedure (C-006).\n\n  Attributes:\n      node_kind: Classification\
+  \ of this node (C-004).\n      node_ref: StableIdentifier string (opaque to dispatcher).\n\
+  \      type_label: Optional type label (e.g. 'FunctionDef' for tree_node).\n   \
+  \   name: Optional name carried by the node.\n      attributes: Optional compact\
+  \ metadata dict (e.g. params, returns).\n      _children_loader: Callable that lazily\
+  \ loads children; None if already loaded.\n      _children: Loaded children list;\
+  \ empty list means no children.\n  \"\"\"\nFields:\n  node_kind: NodeKind\n  node_ref:\
+  \ str\n  type_label: str | None = None\n  name: str | None = None\n  attributes:\
+  \ dict[str, Any] = field(default_factory=dict)\n  _children_loader: Any = field(default=None,\
+  \ repr=False, compare=False)\n  _children: list[Node] = field(default_factory=list,\
+  \ repr=False, compare=False)\n\nMethod on Node: children(self) -> list[Node]\n \
+  \ Decorator: @property\n  Docstring: \"Return children lazily, calling _children_loader\
+  \ on first access.\"\n  Body: if self._children_loader is not None:\n          \
+  \  self._children = self._children_loader()\n            self._children_loader =\
+  \ None\n        return self._children\n\nDataclass: Block\nDocstring:\n  \"\"\"\n\
+  \  Self-contained unit of a focus node's ordered block set (C-005).\n\n  A Block\
+  \ is exactly one element of the block set. It carries its own\n  NodeKind, node_ref,\
+  \ and rendered summary (after BlockHandler runs).\n  For a mapping focus, a Block\
+  \ is one complete key-value pair.\n\n  Attributes:\n      node_kind: NodeKind of\
+  \ this block.\n      node_ref: StableIdentifier for drill-down.\n      summary:\
+  \ Rendered compact summary from BlockHandler.\n  \"\"\"\nFields:\n  node_kind: NodeKind\n\
+  \  node_ref: str\n  summary: dict[str, Any] = field(default_factory=dict)\n\nDataclass:\
+  \ NavigationResult\nDocstring:\n  \"\"\"\n  Output of the NavigationProcedure (C-006)\
+  \ for one request.\n\n  Attributes:\n      focus_node: The focus Node (file root\
+  \ or resolved node_ref).\n      total_blocks: Total count of blocks in the focus\
+  \ node's block set.\n      selected_blocks: Ordered list of rendered Blocks after\
+  \ selector applied.\n      tree_id: tree_id of an internally-created TreeSession,\
+  \ or None.\n  \"\"\"\nFields:\n  focus_node: Node\n  total_blocks: int\n  selected_blocks:\
+  \ list[Block]\n  tree_id: str | None = None\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.models
+  expected: Module imports without error; NodeKind has exactly five members; Node
+    and Block are dataclasses; NavigationResult is a dataclass with focus_node, total_blocks,
+    selected_blocks, tree_id fields.

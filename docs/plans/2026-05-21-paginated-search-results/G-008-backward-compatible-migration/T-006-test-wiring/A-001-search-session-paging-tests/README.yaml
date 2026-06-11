@@ -1,0 +1,77 @@
+step_id: A-001
+parent_tactical_step: T-006
+name: Search session paging unit tests
+target_file: tests/unit/test_search_session_paging.py
+operation: create_file
+priority: 1
+depends_on:
+  - T-004
+  - T-005
+concepts:
+  - C-001
+  - C-005
+  - C-022
+prompt: |
+  Operation: create_file
+  Target: tests/unit/test_search_session_paging.py
+
+  Author header: Vasiliy Zdanovskiy, vasilyvz@gmail.com.
+  Module docstring cites plan tests_required IDs:
+  search_session_create_and_page, search_session_cursor_stability, search_session_page_size_override.
+
+  G-008 contract (plan README.md): use job_id + block_position + index_url — not README opaque cursor.
+  Rename test_search_session_cursor_stability to test_search_session_block_position_stability in implementation.
+
+  MRS excerpts:
+  - C-001 SearchSession: owns session directory, search_id exposed as job_id, status, result blocks.
+  - C-005 HTTPResultAccess: index and block reads refresh last_access; block-not-ready when unpublished.
+  - C-022 stable_order_requirement — visible results in an earlier block_position must not move to a lower position.
+
+  STANDARD IMPORTS:
+    from __future__ import annotations
+    import json, uuid
+    from pathlib import Path
+    from unittest.mock import patch
+    import pytest
+    from ai_editor.commands.search_get_page_command import SearchGetPageCommand
+    from ai_editor.core.search_session.directory import provision_search_session_directory
+    from ai_editor.core.search_session.result_block import SearchResultBlock, serialize_block
+    from ai_editor.core.search_session.result_index import COMPLETENESS_RUNNING, append_block_entry
+    from ai_editor.core.search_session.atomic_publication import atomic_write_bytes
+    from ai_editor.core.search_session.service_metadata import initialize_service_metadata
+
+  FIXTURES:
+  - tmp_config_dir (pytest tmp_path)
+  - session_layout: provision_search_session_directory with random job_id (search_id)
+  - published_blocks(session_layout, items: list[dict], block_size: int): writes SearchResultBlock JSON files
+    at positions 1..k using atomic_write_bytes; updates index via append_block_entry.
+
+  TEST test_search_session_create_and_page:
+  - Provision session, publish block_position=1 with three normalized items (each has result_id, rank, file_path).
+  - Invoke SearchGetPageCommand.run with job_id and block_position=1 (default).
+  - Assert SuccessResult: job_id matches, status in {running, completed}, len(items)==3,
+    each item has result_id, progress.produced_results >= 3.
+
+  TEST test_search_session_block_position_stability:
+  - Publish block_position 1 and 2 totaling five items with monotonic rank 1..5.
+  - Fetch block_position=1; record item result_ids and has_more.
+  - Re-fetch block_position=1; assert identical result_id sequence.
+  - Fetch block_position=2; assert no result_id from block 1 reappears.
+  - Publish block 3 with higher-ranked item; re-fetch block_position=1; result_ids unchanged (stable_order).
+
+  TEST test_search_session_page_size_override:
+  - Publish one block with ten items (block JSON holds all ten; block_size metadata recorded).
+  - Fetch block_position=1 via search_get_page; assert all items in block returned (block is atomic unit).
+  - When multiple blocks exist with page_size param on search_start only, assert block_position selects whole block,
+    not cursor slices within a block.
+  - Invalid block_position=0 must fail validation (ErrorResult or ValueError per command schema).
+
+  Use @pytest.mark.asyncio when invoking async Command.run. Keep file under 350 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_session_paging.py
+  expected: >
+    All three tests_required IDs pass using job_id and block_position; block_position reuse is stable;
+    invalid block_position rejected; stable_order_requirement holds when a later block adds higher-ranked results.
+status: ready_for_review

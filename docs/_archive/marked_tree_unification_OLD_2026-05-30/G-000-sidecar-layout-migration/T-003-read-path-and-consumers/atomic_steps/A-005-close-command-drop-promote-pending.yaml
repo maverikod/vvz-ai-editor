@@ -1,0 +1,144 @@
+step_id: A-005
+parent_tactical_step: T-003
+name: Remove promote_pending_sidecar_to_final from close_command _close_sidecar
+target_file: ai_editor/commands/universal_file_edit/close_command.py
+operation: modify_file
+priority: 5
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/commands/universal_file_edit/close_command.py\n\
+  \n## Goal\nRemove the dependency on promote_pending_sidecar_to_final, which is deleted
+  in\nT-001/A-001 together with the entire pending-sidecar mechanism. After the sibling\n\
+  cutover there is no pending sidecar to promote: write_sidecar_atomic writes the\n\
+  sibling tree file directly. This change touches ONLY the _close_sidecar method's\n\
+  local tree_sidecar import and its mismatch-rebuild branch; nothing else changes.\n\
+  \n## Context\nIn _close_sidecar, after the checksum mismatch path, there is a local
+  import from\nai_editor.core.cst_tree.tree_sidecar that pulls promote_pending_sidecar_to_final\n\
+  alongside read_sidecar_payload, verify_sidecar_against_source, and\nwrite_sidecar_atomic.
+  promote_pending_sidecar_to_final no longer exists after\nT-001; write_sidecar_atomic
+  remains and already writes to the sibling path with\nthe signature write_sidecar_atomic(py_path,
+  tree).\n\n## Required edits (migration-relevant ONLY; do not refactor anything else)\n\
+  1. In the local import inside _close_sidecar, drop promote_pending_sidecar_to_final,\n\
+  \   keeping the other three names in place:\n       from ai_editor.core.cst_tree.tree_sidecar
+  import (\n           read_sidecar_payload,\n           verify_sidecar_against_source,\n\
+  \           write_sidecar_atomic,\n       )\n\n2. Delete the call line ``promote_pending_sidecar_to_final(session.abs_path)``
+  so\n   the mismatch-rebuild tail becomes:\n       write_sidecar_atomic(session.abs_path,
+  tree)\n       return {\"success\": True, \"draft_rebuilt\": True}\n\n## Forbidden\n\
+  - Do not change any other method, import, or return field. The checksum verify\n\
+  \  path, the load_file_to_tree call, read_sidecar_payload / verify_sidecar_against_source\n\
+  \  usage, write_sidecar_atomic call, lockfile/release logic, and the\n  tree-temp/text
+  branch stay exactly as they are.\n- No backward-compatibility shim for pending sidecars.\n\
+  - Do not touch other files.\n\n## Full current file content (verbatim, 237 lines)\n\
+  ```python\n\"\"\"\nUniversalFileCloseCommand: ends an editing session with group-specific
+  cleanup.\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom
+  __future__ import annotations\n\nimport hashlib\nfrom typing import Any, Dict, Type,
+  cast\n\nfrom mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult\n\
+  \nfrom ai_editor.commands.base_mcp_command import BaseMCPCommand\nfrom ai_editor.commands.universal_file_edit.errors
+  import (\n    SESSION_NOT_FOUND,\n    error_result_from_make_error,\n    make_error,\n\
+  )\nfrom ai_editor.commands.universal_file_edit.format_group import (\n    FORMAT_SIDECAR,\n\
+  \    FORMAT_TEXT,\n    FORMAT_TREE_TEMP,\n    delete_lockfile,\n    read_lockfile_pid,\n\
+  )\nfrom ai_editor.commands.universal_file_edit.session import (\n    EditSession,\n\
+  \    get_session,\n    release_session,\n)\nfrom ai_editor.commands.universal_file_edit.close_command_metadata
+  import (\n    get_universal_file_close_metadata,\n)\n\n\nclass UniversalFileCloseCommand(BaseMCPCommand):\n\
+  \    \"\"\"MCP command that ends a session with format-group-specific cleanup.\n\
+  \n    Sidecar: verify checksum; rebuild on mismatch; never delete sidecar.\n   \
+  \ Tree-temp: sha256 compare draft vs original; delete or rebuild draft; free tree.\n\
+  \    Text: delete draft unconditionally.\n    Lockfile deleted in all cases.\n \
+  \   \"\"\"\n\n    name = \"universal_file_close\"\n\n    version = \"1.0.0\"\n\n\
+  \    descr = \"End a universal file edit session with format-group-specific cleanup.\"\
+  \n\n    category = \"file_management\"\n\n    author = \"Vasiliy Zdanovskiy\"\n\n\
+  \    email = \"vasilyvz@gmail.com\"\n\n    use_queue = False\n\n    @staticmethod\n\
+  \    def get_name() -> str:\n        \"\"\"Return the MCP command name.\n\n    \
+  \    Returns:\n            MCP command name string.\n        \"\"\"\n        return
+  \"universal_file_close\"\n\n    @classmethod\n    def get_schema(cls) -> Dict[str,
+  Any]:\n        \"\"\"Return the JSON schema for command parameters.\n\n        Returns:\n\
+  \            JSON schema dict describing project_id and session_id.\n        \"\"\
+  \"\n        return {\n            \"type\": \"object\",\n            \"properties\"\
+  : {\n                \"project_id\": {\"type\": \"string\"},\n                \"\
+  session_id\": {\"type\": \"string\"},\n            },\n            \"required\"\
+  : [\"project_id\", \"session_id\"],\n            \"additionalProperties\": False,\n\
+  \        }\n\n    @classmethod\n    def metadata(cls: Type[\"UniversalFileCloseCommand\"\
+  ]) -> Dict[str, Any]:\n        \"\"\"Return extended AI/docs metadata for universal_file_close.\n\
+  \n        Returns:\n            Metadata dict with description, parameters, examples,
+  errors.\n        \"\"\"\n        return cast(Dict[str, Any], get_universal_file_close_metadata(cls))\n\
+  \n    async def execute(  # type: ignore[override]\n        self,\n        project_id:
+  str,\n        session_id: str,\n        **kwargs: Any,\n    ) -> SuccessResult |
+  ErrorResult:\n        \"\"\"Execute the close command.\n\n        Args:\n      \
+  \      project_id: Required by schema; session record is authoritative for paths.\n\
+  \            session_id: Active session identifier.\n            **kwargs: Unused;
+  accepted for adapter compatibility.\n\n        Returns:\n            SuccessResult
+  with cleanup details, or ErrorResult on session not found.\n        \"\"\"\n   \
+  \     _ = project_id  # required by schema; session record is authoritative for
+  paths\n        _ = kwargs\n        try:\n            session = get_session(session_id)\n\
+  \        except ValueError:\n            return error_result_from_make_error(\n\
+  \                make_error(SESSION_NOT_FOUND, f\"Unknown session: {session_id}\"\
+  )\n            )\n        payload: Dict[str, Any] = {\"success\": True}\n      \
+  \  fg = session.format_group\n        if fg == FORMAT_SIDECAR:\n            payload
+  = self._close_sidecar(session)\n        else:\n            payload = self._close_tree_temp_or_text(session)\n\
+  \        # Delete lockfile only if it belongs to this session.\n        lock = read_lockfile_pid(session.abs_path)\n\
+  \        if lock is None or lock[1] == session.session_id:\n            delete_lockfile(session.abs_path)\n\
+  \        release_session(session_id)\n        return SuccessResult(data=payload)\n\
+  \n    def _close_sidecar(self, session: EditSession) -> Dict[str, Any]:\n      \
+  \  \"\"\"Close a sidecar group session.\n\n        Verifies sidecar checksum. On
+  mismatch rebuilds sidecar from source.\n        Sidecar is never deleted.\n\n  \
+  \      Args:\n            session: Active sidecar group EditSession.\n\n       \
+  \ Returns:\n            Dict with success=True and draft_rebuilt flag.\n       \
+  \ \"\"\"\n        from ai_editor.core.cst_tree import tree_builder as cst_builder\n\
+  \        from ai_editor.core.cst_tree.tree_sidecar import (\n            promote_pending_sidecar_to_final,\n\
+  \            read_sidecar_payload,\n            verify_sidecar_against_source,\n\
+  \            write_sidecar_atomic,\n        )\n\n        tree = cst_builder.load_file_to_tree(str(session.abs_path))\n\
+  \        payload = read_sidecar_payload(session.abs_path)\n        if payload is
+  not None and verify_sidecar_against_source(\n            tree.module.code, payload\n\
+  \        ):\n            return {\"success\": True, \"draft_rebuilt\": False}\n\
+  \        promote_pending_sidecar_to_final(session.abs_path)\n        write_sidecar_atomic(session.abs_path,
+  tree)\n        return {\"success\": True, \"draft_rebuilt\": True}\n\n    def _close_tree_temp_or_text(self,
+  session: EditSession) -> Dict[str, Any]:\n        \"\"\"Close a tree-temp or text
+  group session.\n\n        Args:\n            session: Active tree-temp or text group
+  EditSession.\n\n        Returns:\n            Dict with success=True and draft_rebuilt
+  flag.\n        \"\"\"\n        fg = session.format_group\n        abs_path = session.abs_path\n\
+  \n        if fg == FORMAT_TEXT:\n            session.draft_path.unlink(missing_ok=True)\n\
+  \            return {\"success\": True, \"draft_rebuilt\": False}\n\n        if
+  fg == FORMAT_TREE_TEMP and session.tree_temp_roots is not None:\n            session.draft_path.unlink(missing_ok=True)\n\
+  \            session.tree_temp_roots = None\n            draft_rebuilt = False\n\
+  \        else:\n            draft_rebuilt = False\n            if session.draft_path.exists():\n\
+  \                draft_sha = hashlib.sha256(session.draft_path.read_bytes()).hexdigest()\n\
+  \                orig_sha = hashlib.sha256(abs_path.read_bytes()).hexdigest()\n\
+  \                if draft_sha == orig_sha:\n                    session.draft_path.unlink(missing_ok=True)\n\
+  \                else:\n                    if session.handler_id == \"json\":\n\
+  \                        import json\n\n                        from ai_editor.core.json_tree
+  import (\n                            tree_builder as json_builder,\n          \
+  \              )\n\n                        loaded_json = json_builder.load_file_to_tree(str(abs_path))\n\
+  \                        draft_text = (\n                            json.dumps(\n\
+  \                                loaded_json.root_data,\n                      \
+  \          indent=2,\n                                ensure_ascii=False,\n    \
+  \                        )\n                            + \"\\n\"\n            \
+  \            )\n                        session.draft_path.write_text(draft_text,
+  encoding=\"utf-8\")\n                        json_builder.remove_tree(loaded_json.tree_id)\n\
+  \                    else:\n                        import yaml\n\n            \
+  \            from ai_editor.core.yaml_tree import (\n                      \
+  \      tree_builder as yaml_builder,\n                        )\n\n            \
+  \            loaded_yaml = yaml_builder.load_file_to_tree(str(abs_path))\n     \
+  \                   draft_text = yaml.safe_dump(\n                            loaded_yaml.root_data,\n\
+  \                            default_flow_style=False,\n                       \
+  \     allow_unicode=True,\n                            sort_keys=False,\n      \
+  \                  )\n                        session.draft_path.write_text(draft_text,
+  encoding=\"utf-8\")\n                        yaml_builder.remove_tree(loaded_yaml.tree_id)\n\
+  \                    draft_rebuilt = True\n\n        if session.tree_id:\n     \
+  \       if session.handler_id == \"json\":\n                from ai_editor.core.json_tree
+  import tree_builder as json_builder\n\n                json_builder.remove_tree(session.tree_id)\n\
+  \            else:\n                from ai_editor.core.yaml_tree import tree_builder
+  as yaml_builder\n\n                yaml_builder.remove_tree(session.tree_id)\n\n\
+  \        return {\"success\": True, \"draft_rebuilt\": draft_rebuilt}\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/close_command.py
+  expected: black, flake8, mypy exit 0; _close_sidecar no longer imports or 
+    calls promote_pending_sidecar_to_final; the mismatch-rebuild branch still 
+    calls write_sidecar_atomic(session.abs_path, tree) and returns draft_rebuilt
+    True; the checksum verify path, read_sidecar_payload / 
+    verify_sidecar_against_source usage, and the tree-temp/text branch are 
+    unchanged; grep for 'promote_pending_sidecar_to_final' in this file returns 
+    nothing.

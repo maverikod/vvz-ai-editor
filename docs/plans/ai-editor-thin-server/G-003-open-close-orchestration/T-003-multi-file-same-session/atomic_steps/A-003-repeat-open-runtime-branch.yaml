@@ -1,0 +1,394 @@
+step_id: A-003
+parent_tactical_step: T-003
+parent_global_step: G-003
+name: Повторный open в существующей CA Session
+target_file: ai_editor/commands/universal_file_edit/open_command_runtime.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-002
+concepts:
+- C-004
+- C-005
+- C-006
+- C-007
+- C-008
+- C-010
+- C-016
+- C-017
+- C-023
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/open_command_runtime.py` (operation: modify_file).
+
+  ## Parent links (mandatory)
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-003-open-close-orchestration/README.yaml` (G-003)
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-003-open-close-orchestration/T-003-multi-file-same-session/README.yaml` (T-003)
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml`
+  - First-file open orchestration baseline: `open_command_runtime.py` already implements full
+    Open Stage for one file (upstream lock, workspace paths, draft, bundle registration).
+  - Session helpers available from `ai_editor.commands.universal_file_edit.session`:
+    `bundle_file_count`, `build_multi_file_bundle_payload`, `lookup_ca_session_id`.
+
+  ## MRS excerpt (concepts for this step only)
+
+  - **C-004 CA Session**: один `ca_session_id` удерживает N файлов; повторный open — тот же `session_id`, новый `file_path`.
+  - **C-005 Editor Session Directory**: `workspace_root/{ca_session_id}/`; создаётся **только при первом** open (`bundle_file_count==0`).
+  - **C-006 File Subtree**: новое поддерево для каждого `(project_id, file_path)` внутри существующего Editor Session Directory.
+  - **C-007 Origin Snapshot**: байты с СА в File Subtree (без изменений от T-002).
+  - **C-008 Edit Subdirectory**: `allocate_edit_subdir` → `paths.edit_subdir`; draft через `resolve_and_create_draft(..., paths.edit_subdir, ...)`.
+  - **C-010 Open Stage**: per-file upstream lock; при repeat-open пропустить `ensure_session_directory`.
+  - **C-016 MCP Workflow Surface**: runtime-делегат; **синхронный** `def run_open_execute`.
+  - **C-017 Upstream Client**: `get_code_analysis_client()` из `ai_editor.core.upstream.code_analysis_client`.
+  - **C-023 CA API Contract**: `lock_file_and_download` / `upload_create_and_lock` (без изменений от T-002).
+
+  ## Scope (T-003 repeat-open only)
+
+  Extend T-002 first-file orchestration — **do NOT replace or simplify it**.
+
+  Additions in this AS only:
+  1. Early duplicate-file guard via `lookup_ca_session_id`.
+  2. `bundle_file_count(ca_session_id) >= 1` → skip `ensure_session_directory` (repeat-open branch).
+  3. Success payload keys `multi_file_bundle` and `repeat_open`.
+
+  Preserve unchanged from first-file open orchestration baseline:
+  - synchronous `def run_open_execute`
+  - full import list (plus three new session symbols)
+  - `allocate_edit_subdir` + `paths.edit_subdir` for draft
+  - `write_lockfile_pid(paths.session_source_path, ...)` — **not** `layout.origin_path`
+  - tree-temp branch (`serialize_tree_temp_roots`, `apply_source_mutation`)
+  - fallback branch (`mode_notice`, `open_fallback_warning`)
+  - `create_session` kwargs including `workspace_session_root`, `workspace_file_subtree_root`, `workspace_origin_path`, `workspace_edit_subdir`
+  - upstream keyword args: `upload_create_and_lock(session_id=..., project_id=..., file_path=..., content=...)`
+  - `ErrorResult(message=..., code=cast(Any, "OPEN_ERROR"))` on upstream `RuntimeError`
+
+  ## CURRENT FILE CONTENT (first-file open orchestration baseline — exact cumulative state; extend, do not replace)
+
+  ```python
+  """Runtime orchestration for universal_file_open (C-016).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import os
+  from typing import Any, Dict, Optional, Union, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      PARSE_ERROR,
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FormatDescriptor,
+      write_lockfile_pid,
+  )
+  from ai_editor.commands.universal_file_edit.invalid_write_support import (
+      mode_notice_text,
+      open_fallback_warning,
+  )
+  from ai_editor.commands.universal_file_edit.open_command_draft import (
+      resolve_and_create_draft,
+  )
+  from ai_editor.commands.universal_file_edit.session import (
+      apply_source_mutation,
+      create_session,
+  )
+  from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (
+      serialize_tree_temp_roots,
+  )
+  from ai_editor.core.editor_workspace_paths import (
+      ensure_file_subtree,
+      ensure_session_directory,
+      file_workspace_layout,
+      resolve_workspace_root,
+  )
+  from ai_editor.core.edit_session.workspace_layout import allocate_edit_subdir
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+
+
+  def run_open_execute(
+      command: Any,
+      **kwargs: Any,
+  ) -> Union[SuccessResult, ErrorResult]:
+      """Execute Open Stage (C-010) for one file in workspace mode."""
+      ca_session_id = str(kwargs.get("session_id", "")).strip()
+      project_id = str(kwargs.get("project_id", "")).strip()
+      file_path = str(kwargs.get("file_path", "")).strip()
+      create = bool(kwargs.get("create", False))
+      initial_content = str(kwargs.get("initial_content", "") or "")
+
+      client = get_code_analysis_client()
+      try:
+          if create:
+              raw_bytes = client.upload_create_and_lock(
+                  session_id=ca_session_id,
+                  project_id=project_id,
+                  file_path=file_path,
+                  content=initial_content.encode("utf-8"),
+              )
+          else:
+              raw_bytes = client.lock_file_and_download(
+                  ca_session_id, project_id, file_path
+              )
+      except RuntimeError as exc:
+          return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
+
+      workspace_root = resolve_workspace_root()
+      ensure_session_directory(workspace_root, ca_session_id)
+      layout = file_workspace_layout(
+          workspace_root, ca_session_id, project_id, file_path
+      )
+      ensure_file_subtree(layout)
+
+      paths = allocate_edit_subdir(
+          file_subtree_dir=layout.file_subtree_dir,
+          origin_filename=layout.origin_path.name,
+      )
+
+      layout.origin_path.parent.mkdir(parents=True, exist_ok=True)
+      layout.origin_path.write_bytes(raw_bytes)
+
+      descriptor_result = resolve_and_create_draft(
+          layout.origin_path, paths.edit_subdir, project_id
+      )
+      if isinstance(descriptor_result, dict):
+          return error_result_from_make_error(descriptor_result)
+
+      descriptor = descriptor_result
+      fallback_info = descriptor.__dict__.pop("_fallback_info", None)
+      tree_temp_kwargs = descriptor.__dict__.pop("_tree_temp_session_kwargs", None)
+      tree_id: Optional[str] = getattr(descriptor, "tree_id", None)
+
+      session_extra: Dict[str, Any] = {}
+      if fallback_info is not None:
+          session_extra["is_invalid"] = True
+          session_extra["fallback_reason"] = fallback_info.get("reason")
+          session_extra["original_format_group"] = fallback_info.get(
+              "original_format_group"
+          )
+
+      try:
+          if tree_temp_kwargs is not None:
+              session = create_session(
+                  abs_path=paths.origin_path,
+                  descriptor=descriptor,
+                  file_path=file_path,
+                  project_id=project_id,
+                  ca_session_id=ca_session_id,
+                  project_root=paths.edit_subdir,
+                  tree_id=None,
+                  workspace_session_root=layout.session_dir,
+                  workspace_file_subtree_root=layout.file_subtree_dir,
+                  workspace_origin_path=paths.origin_path,
+                  workspace_edit_subdir=paths.edit_subdir,
+                  **tree_temp_kwargs,
+                  **session_extra,
+              )
+              if session.tree_temp_roots is not None:
+                  draft_text = serialize_tree_temp_roots(
+                      session.handler_id, session.tree_temp_roots
+                  )
+                  apply_source_mutation(session, draft_text)
+          else:
+              session = create_session(
+                  abs_path=paths.origin_path,
+                  descriptor=descriptor,
+                  file_path=file_path,
+                  project_id=project_id,
+                  ca_session_id=ca_session_id,
+                  project_root=paths.edit_subdir,
+                  tree_id=tree_id,
+                  workspace_session_root=layout.session_dir,
+                  workspace_file_subtree_root=layout.file_subtree_dir,
+                  workspace_origin_path=paths.origin_path,
+                  workspace_edit_subdir=paths.edit_subdir,
+                  **session_extra,
+              )
+      except ValueError as exc:
+          if str(exc) == "FILE_ALREADY_IN_SESSION":
+              return error_result_from_make_error(
+                  make_error(
+                      PARSE_ERROR,
+                      f"File already open in session {ca_session_id}: {file_path}",
+                  )
+              )
+          if str(exc) == "SESSION_NOT_FOUND":
+              return error_result_from_make_error(
+                  make_error(
+                      SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}"
+                  )
+              )
+          raise
+
+      write_lockfile_pid(paths.session_source_path, os.getpid(), ca_session_id)
+
+      data: Dict[str, Any] = {
+          "success": True,
+          "session_id": ca_session_id,
+          "file_path": file_path,
+          "session_dir": str(layout.session_dir),
+          "draft_path": str(session.draft_path),
+          "available_operations": list(descriptor.available_operations),
+      }
+      if create:
+          data["created"] = True
+      if fallback_info is not None:
+          reason = fallback_info.get("reason", "")
+          data["is_invalid"] = True
+          data["fallback_reason"] = reason
+          data["warning"] = open_fallback_warning(reason)
+          data["mode_notice"] = mode_notice_text(True, reason)
+      else:
+          data["mode_notice"] = mode_notice_text(False)
+
+      return SuccessResult(data=data)
+  ```
+
+  ## Target file
+
+  - Path: `ai_editor/commands/universal_file_edit/open_command_runtime.py`
+  - Action: modify_file (minimal diff on first-file orchestration baseline above)
+
+  ## Imports — add to existing session import block
+
+  Extend the `from ai_editor.commands.universal_file_edit.session import (...)` block to include **exactly these three additional symbols** (keep `apply_source_mutation`, `create_session`):
+
+  ```python
+  from ai_editor.commands.universal_file_edit.session import (
+      apply_source_mutation,
+      build_multi_file_bundle_payload,
+      bundle_file_count,
+      create_session,
+      lookup_ca_session_id,
+  )
+  ```
+
+  Do **not** remove any other imports from the baseline module.
+  Do **not** add `async`.
+  Do **not** import `get_code_analysis_client` from `ai_editor.core.code_analysis_client` — keep `ai_editor.core.upstream.code_analysis_client`.
+
+  ## Function skeleton (unchanged signature)
+
+  ### `def run_open_execute(command: Any, **kwargs: Any) -> Union[SuccessResult, ErrorResult]:`
+
+  Docstring unchanged: `Execute Open Stage (C-010) for one file in workspace mode.`
+
+  Do **not** add other module-level functions.
+
+  ## Method logic — step-by-step algorithm (delta on first-file orchestration baseline)
+
+  Apply these changes to `run_open_execute` only. All steps not listed here remain **identical** to CURRENT FILE above.
+
+  ### Insert after step 1 (param parse), before upstream client call
+
+  **Step 1a — duplicate-file guard (C-004, C-006)**
+
+  1. If `project_id` is non-empty:
+     - `existing_sid = lookup_ca_session_id(project_id, file_path)`
+  2. Else:
+     - `existing_sid = None`
+  3. If `existing_sid is not None`:
+     - Return `error_result_from_make_error(make_error(PARSE_ERROR, f"File already open in session {existing_sid}: {file_path}"))`
+     - (Covers same-session and cross-session duplicate.)
+
+  ### Replace unconditional `ensure_session_directory` (step 4 in baseline)
+
+  **Step 4 — session directory policy ({8b1h}, C-005)**
+
+  After `workspace_root = resolve_workspace_root()`:
+
+  1. `is_repeat_open = bundle_file_count(ca_session_id) >= 1`
+  2. If **not** `is_repeat_open`:
+     - `ensure_session_directory(workspace_root, ca_session_id)` — first file (initial open path).
+  3. If `is_repeat_open`:
+     - **Do not** call `ensure_session_directory` (Editor Session Directory already exists).
+     - Proceed directly to `file_workspace_layout` / new File Subtree (C-006).
+
+  All subsequent steps (`layout`, `ensure_file_subtree`, `allocate_edit_subdir`, `resolve_and_create_draft` with `paths.edit_subdir`, `create_session`, `write_lockfile_pid` with `paths.session_source_path`, tree-temp/fallback branches) — **unchanged** from CURRENT FILE.
+
+  ### Extend success payload (step 11 in baseline)
+
+  After building `data` dict and before `return SuccessResult(data=data)`:
+
+  1. `data["multi_file_bundle"] = build_multi_file_bundle_payload(ca_session_id)`
+  2. `data["repeat_open"] = is_repeat_open`
+
+  `is_repeat_open` was computed in step 4 **before** `create_session` registers the new file (so first open → `False`; second+ open → `True`).
+
+  ## Error handling per method
+
+  | Condition | Action |
+  |-----------|--------|
+  | `lookup_ca_session_id` returns non-None | `PARSE_ERROR` via `make_error` (step 1a) |
+  | `bundle_file_count` on unknown session | returns `0` — treat as first open (session helper contract) |
+  | All first-file orchestration error paths | unchanged |
+
+  ## Edge cases
+
+  - First open (`bundle_file_count==0`): `ensure_session_directory` runs; `repeat_open=False`; `multi_file_bundle.open_file_count==1` after success.
+  - Second open same `ca_session_id`, different `file_path`: skip `ensure_session_directory`; new File Subtree only; `repeat_open=True`; `multi_file_bundle.open_file_count==2`.
+  - Same `file_path` already in bundle: blocked at step 1a (`lookup_ca_session_id`) or `create_session` `FILE_ALREADY_IN_SESSION` (baseline handler unchanged).
+  - `session_dir` in response unchanged across files in bundle (`str(layout.session_dir)`).
+  - Tree-temp and fallback opens: repeat-open policy applies identically; payload still includes `multi_file_bundle`.
+
+  ## Constants and literals
+
+  - New response keys: `"multi_file_bundle"`, `"repeat_open"` (boolean).
+  - `is_repeat_open` threshold: `bundle_file_count(ca_session_id) >= 1`.
+  - All baseline literals unchanged (`"OPEN_ERROR"`, `PARSE_ERROR`, `SESSION_NOT_FOUND`, UTF-8 encode, etc.).
+
+  ## Forbidden patterns
+
+  - Do NOT make `run_open_execute` async.
+  - Do NOT revert first-file orchestration (tree-temp, fallback, `paths.edit_subdir`, `paths.session_source_path`).
+  - Do NOT pass `layout.file_subtree_dir` to `resolve_and_create_draft` — use `paths.edit_subdir`.
+  - Do NOT call `write_lockfile_pid(layout.origin_path, ...)` — use `paths.session_source_path`.
+  - Do NOT import `get_code_analysis_client` from `ai_editor.core.code_analysis_client`.
+  - Do NOT use `layout.edit_subdir` — field does not exist on `FileWorkspaceLayout`.
+  - Do NOT call `get_project_root` or write outside `{workspace_root}/{ca_session_id}/`.
+  - Do NOT implement SessionGuard here (facade only).
+  - Do NOT return `core_session_id`.
+  - Do NOT modify `session.py` in this AS.
+  - Do NOT add module-level helper functions — inline changes only.
+  - Do NOT modify files other than the target file.
+  - Do NOT use bare `except:`.
+
+  ## Validation commands (from project root, `.venv` active)
+
+  ```bash
+  source .venv/bin/activate
+  python -c "import ast; ast.parse(open('ai_editor/commands/universal_file_edit/open_command_runtime.py').read()); print('syntax ok')"
+  black ai_editor/commands/universal_file_edit/open_command_runtime.py
+  flake8 ai_editor/commands/universal_file_edit/open_command_runtime.py
+  mypy ai_editor/commands/universal_file_edit/open_command_runtime.py
+  pytest tests/unit/test_universal_file_open_orchestration.py tests/unit/test_ca_session_bundle.py -v
+  pytest tests/ -q --tb=no -x
+  ```
+
+  Expected:
+  - `ast.parse` → prints `syntax ok`, exit 0
+  - black → "reformatted" or "All done!"
+  - flake8 → no output, exit 0
+  - mypy → "Success: no issues found"
+  - pytest → all PASSED; second open same `ca_session_id` adds second subtree, same `session_dir`, `multi_file_bundle.open_file_count==2`, `repeat_open=True`; per-file upstream lock invoked
+
+  **Mandatory:** all project tests must pass before handoff.
+
+  Embedded CURRENT FILE in this AS must parse with `ast.parse` (verified at authoring).
+verification:
+  type: pytest
+  target: tests/unit/test_universal_file_open_orchestration.py
+  expected: |
+    Repeat open same ca_session_id with different file_path registers second File Subtree
+    without recreating Editor Session Directory; multi_file_bundle lists both files with
+    open_file_count==2; repeat_open=True on second call; session_dir unchanged; per-file
+    upstream lock invoked; first-file orchestration paths preserved (paths.edit_subdir draft,
+    paths.session_source_path lockfile); sync run_open_execute; embedded CURRENT FILE parses
+    with ast.parse.
+status: draft

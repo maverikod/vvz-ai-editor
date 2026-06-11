@@ -1,0 +1,103 @@
+step_id: A-001
+parent_tactical_step: T-005
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: SHASyncPolicy branch tests
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_sha_sync_policy.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-005-sha-sync-policy/README.yaml
+concepts:
+- C-003
+- C-002
+- C-007
+
+mrs_excerpt_this_step_only: >
+  SHASyncPolicy C-003 enumerates behaviours: no_sidecar -> build TreeNode from SourceParser and write Sidecar capturing sha digest; sha_match -> load persisted TreeNode unchanged; sha_mismatch_no_session -> discard recorded tree, rebuild from source, overwrite sidecar + digest; sha_mismatch_active_session -> treat sidecar as authoritative, forbid rebuild honoring EditSession coupling C-007.
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_sha_sync_policy.py
+  expected: Pytest exits 0 on module path isolation.
+
+prompt: |-
+  EXECUTOR coder_auto CREATE tests/test_tree_temp_sha_sync_policy.py (≤400 lines). Module doc Author Vasiliy Zdanovskiy vasilyvz@gmail.com.
+
+
+  IMPORTS EXACT TOP:
+    from __future__ import annotations
+
+    from dataclasses import dataclass
+    from pathlib import Path
+
+    import hashlib
+    import json
+
+    import pytest
+
+    from ai_editor.core.tree_temp.sha_policy import ShaSyncDecision, resolve_sha_sync
+
+  SYMBOL CONTRACT AFTER G-003:
+    enum OR Literal string decision values EXACT casing UPPER_SNAKE optional but tests compare against class attributes FORCE_LOAD_SIDECAR, REBUILD_FROM_SOURCE, MATERIALIZE_SIDE_CAR_MISSING.
+
+    Canonical attribute names mandated for tests IMPORT:
+      class ShaSyncDecision:
+          NO_SIDE_CAR_MATERIALIZE
+          SIDE_CAR_DIGEST_MATCH_LOAD
+          SHA_MISMATCH_REBUILD_NO_SESSION
+          SHA_MISMATCH_HOLD_SESSION_SIDE
+
+    FUNCTION resolve_sha_sync(
+        *,
+        sidecar_present: bool,
+        sidecar_digest: str | None,
+        current_digest: str,
+        session_active_for_path: bool,
+    ) -> ShaSyncDecision
+
+      Rules deterministic:
+        1. If not sidecar_present -> NO_SIDE_CAR_MATERIALIZE regardless other flags.
+
+        2. Else if sidecar_digest equals current_digest string equality hex lower -> SIDE_CAR_DIGEST_MATCH_LOAD.
+
+        3. Else if mismatch AND NOT session_active -> SHA_MISMATCH_REBUILD_NO_SESSION.
+
+        4. Else mismatch AND session_active -> SHA_MISMATCH_HOLD_SESSION_SIDE.
+
+      Never raise for valid hex strings lengths 64 lowercase; validate inputs raise ValueError substring `digest` when lengths invalid but tests only supply valid SHA except one negative test validating exception.
+
+      Digest strings always length 64 lower hex `[0-9a-f]`; generate helper:
+
+        def sha_of(text:str)->str:
+            return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+  TEST NAMES:
+    test_no_sidecar_branch_constant
+      sidecar_present False random digest nonzero -> expectation NO_SIDE_CAR_MATERIALIZE irrespective session flag variation both True/False parametrize expecting same.
+
+    test_sha_match_returns_load_even_if_session_true
+      present True equality digests differing session booleans yields SIDE_CAR_DIGEST_MATCH_LOAD.
+
+    test_sha_mismatch_no_session_returns_rebuild
+      present mismatch session False expects SHA_MISMATCH_REBUILD_NO_SESSION.
+
+    test_sha_mismatch_active_session_prefers_hold
+      present mismatch session True expects SHA_MISMATCH_HOLD_SESSION_SIDE.
+
+    test_invalid_digest_length_raises_value_error_with_digest_token
+      call resolve_sha_sync with sidecar_digest '00'*31 length 62 expecting ValueError message contains `digest`.
+
+
+  EDGE digest equality CASE SENSITIVE? enforce lower only; uppercase input must trigger validation error converting to lowercase NOT allowed.
+
+
+  QUALITY GATE black flake8 pytest q mypy.
+
+  FORBIDDEN touching filesystem besides Path import unused allowed? Do not instantiate Path actual IO.

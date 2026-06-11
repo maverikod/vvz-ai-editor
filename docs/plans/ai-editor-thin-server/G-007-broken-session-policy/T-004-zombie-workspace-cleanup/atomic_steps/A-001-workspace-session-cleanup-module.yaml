@@ -1,0 +1,18 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Workspace session cleanup модуль
+target_file: ai_editor/core/workspace_session_cleanup.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-005
+- C-015
+- C-025
+prompt: "Create `ai_editor/core/workspace_session_cleanup.py` (operation: create_file).\n\n```py\n\"\"\"Zombie CA session workspace cleanup (C-025).\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__ import annotations\n\nimport logging\nimport shutil\nfrom pathlib import Path\n\nlogger = logging.getLogger(__name__)\n\ndef _purge_bundle(ca_session_id: str) -> None:\n    \"\"\"Drop all command-layer facades for a CA session id.\"\"\"\n    from ai_editor.commands.universal_file_edit.session import get_session, release_session\n\n    while True:\n        try:\n            session = get_session(ca_session_id)\n        except ValueError:\n            break\n        release_session(ca_session_id, session.file_path)\n\ndef cleanup_zombie_ca_session(\n    ca_session_id: str,\n    *,\n    workspace_root: Path,\n) -> bool:\n    \"\"\"Remove ``{workspace_root}/{ca_session_id}/`` and in-memory bundle (C-025).\"\"\"\n    sid = str(ca_session_id or \"\").strip()\n    if\
+  \ not sid:\n        return False\n    root = workspace_root.resolve()\n    session_dir = (root / sid).resolve()\n    try:\n        session_dir.relative_to(root)\n    except ValueError:\n        logger.warning(\"cleanup path outside workspace: %s\", session_dir)\n        return False\n    _purge_bundle(sid)\n    if session_dir.is_dir():\n        shutil.rmtree(session_dir)\n    return True\n```\n\nC-025: SessionGuard calls cleanup_zombie_ca_session; uses public session.release_session API.\n"
+verification:
+  type: pytest
+  target: tests/unit/test_workspace_session_cleanup.py
+  expected: Zombie dir and bundle cleared.
+status: draft

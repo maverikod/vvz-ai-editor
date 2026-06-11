@@ -1,0 +1,182 @@
+step_id: A-003
+parent_tactical_step: T-001
+name: Implement six edit operations on TextHandler
+target_file: ai_editor/tree/handlers/text_handler.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-001
+concepts:
+- C-015
+- C-007
+- C-002
+- C-009
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-015, C-007, C-002, C-009)
+
+  Modify `ai_editor/tree/handlers/text_handler.py`.
+  Operation: modify_file.
+
+  Implement six EditOperation methods on TextHandler using integer short_id markers
+  (`<int>:` line prefix per TEXT format). Three-part shape: parse marked TREE to
+  TreeNode list, mutate by short_id, serialize back to marked text.
+
+  ## MRS excerpt (C-015, C-002, C-007)
+
+  All targets by short_id int. insert uses next_free ({a007}). delete never reuses ids.
+  edit-content rejects nodes with child lines in same paragraph block.
+
+  ## Full current file content (a8 — pre-edit baseline inlined)
+
+  COMPLETE expected module BEFORE this edit. Baseline from G-001 create_file spec (79 lines).
+  File may not exist on disk yet; treat this block as the exact pre-edit state.
+
+  ```python
+  """
+  Text FormatHandler (.txt, .rst) — integer short_id line prefixes (C-007).
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  from __future__ import annotations
+  
+  import re
+  from pathlib import Path
+  from typing import List
+  
+  from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  from ai_editor.tree.tree_node import TreeNode
+  
+  _MARKER_LINE_RE = re.compile(r"^(\d+):", re.MULTILINE)
+  _MARKER_PREFIX_RE = re.compile(r"^\d+:")
+  
+  
+  class TextHandler(FormatHandler):
+      def parse_content(self, file_path: Path, content: str) -> List[TreeNode]:
+          if content == "":
+              return []
+          allocator = ShortIdAllocator(start=1)
+          nodes: List[TreeNode] = []
+          in_paragraph = False
+          for i, line in enumerate(content.splitlines(keepends=True), start=1):
+              stripped = line.rstrip("\n")
+              if stripped == "":
+                  in_paragraph = False
+                  continue
+              kind = "paragraph" if not in_paragraph else "line"
+              sid = allocator.allocate()
+              attributes = {"line_no": i, "block_level": kind}
+              if kind == "paragraph":
+                  attributes["is_paragraph_start"] = True
+              nodes.append(
+                  TreeNode(
+                      short_id=sid,
+                      kind=kind,
+                      content=stripped,
+                      attributes=attributes,
+                  )
+              )
+              in_paragraph = True
+          return nodes
+  
+      def mark(self, content: str) -> str:
+          allocator = ShortIdAllocator(1)
+          in_paragraph = False
+          result: List[str] = []
+          for line in content.splitlines(keepends=True):
+              stripped = line.rstrip("\n")
+              if stripped == "":
+                  in_paragraph = False
+                  result.append(line)
+                  continue
+              sid = allocator.allocate()
+              prefix = f"{sid}:"
+              if line.endswith("\n"):
+                  result.append(f"{prefix}{stripped}\n")
+              else:
+                  result.append(f"{prefix}{stripped}")
+              in_paragraph = True
+          return "".join(result)
+  
+      def unmark(self, marked_text: str) -> str:
+          out: List[str] = []
+          for line in marked_text.splitlines(keepends=True):
+              body = line.rstrip("\n")
+              suffix = line[len(body) :]
+              if _MARKER_PREFIX_RE.match(body):
+                  body = _MARKER_PREFIX_RE.sub("", body, count=1)
+              out.append(body + suffix)
+          return "".join(out)
+  
+      def sidecar_path(self, source_abs: Path) -> Path:
+          return source_abs.parent / (source_abs.name + ".tree")
+  ```
+
+  ## Required additions
+
+  ### New imports
+  - from typing import Any, Dict, Optional
+  - from ai_editor.tree.contracts import NodeId, UnknownNodeIdError
+
+  ### Private helpers
+
+  **_parse_marked(marked_text: str) -> List[TreeNode]**
+  1. Split lines keepends; allocator not used — read sid from ^(\d+): on each marked line.
+  2. Build TreeNode per non-blank marked line preserving order; attributes include line_no, block_level.
+  3. Blank lines stored as synthetic nodes with short_id=None in internal list OR track separately in serializer — choose: keep parallel unmarked blank line list from split; nodes only for marked lines.
+
+  **_serialize_marked(nodes: List[TreeNode], blank_lines: List[tuple[int,str]]) -> str**
+  Reconstruct marked text: interleave blank lines at original indices; marked lines as f"{short_id}:{content}\n".
+
+  **_find_node(nodes, short_id: NodeId) -> TreeNode**
+  Linear search; missing → UnknownNodeIdError(short_id).
+
+  **_is_leaf_line_node(node, nodes) -> bool**
+  True when kind=="line" OR kind=="paragraph" with no following line nodes until blank.
+
+  ### op_insert(marked_text, anchor_short_id, position, new_content, next_free) -> str
+  1. Parse to nodes.
+  2. Find anchor index; UnknownNodeIdError if missing.
+  3. new_sid = NodeId(next_free); validate next_free >= 1.
+  4. position before/after: insert new TreeNode(short_id=new_sid, kind="paragraph", content=new_content.strip(), attributes={}) at index.
+  5. first_child/last_child: for text format treat as after/before same level (no nesting) — after anchor if last_child else before if first_child.
+  6. Serialize; return marked string.
+
+  ### op_delete, op_replace, op_move, op_edit_attributes, op_edit_content
+  Standard tree list mutations by short_id; move preserves short_id; replace/edit_content update content;
+  edit_attributes merge attributes dict (no content change); delete removes node and any contiguous line children sharing paragraph.
+
+  op_edit_content: if not leaf → ValueError("edit-content requires leaf block").
+
+  ## Forbidden
+
+  - NO uuid.uuid4 or str UUID markers
+  - NO node_id / parent_id field names
+  - NO {l*}/{m*} syntax
+  - Do NOT modify mark/unmark/sidecar_path logic except if required for shared helpers
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/handlers/text_handler.py
+  flake8 ai_editor/tree/handlers/text_handler.py
+  mypy ai_editor/tree/handlers/text_handler.py
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/handlers/text_handler.py
+  expected: >
+    TextHandler implements all six op_* methods with NodeId int addressing; op_insert
+    assigns next_free as new short_id; _find raises UnknownNodeIdError; mark/unmark
+    unchanged integer prefix contract; no uuid usage; estimated ~320 lines (≤400).

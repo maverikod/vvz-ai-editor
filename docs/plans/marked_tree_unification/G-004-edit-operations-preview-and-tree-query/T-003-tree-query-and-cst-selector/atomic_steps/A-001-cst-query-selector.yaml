@@ -1,0 +1,115 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: CstQuerySelector module
+target_file: ai_editor/tree/cst_query_selector.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-019
+- C-002
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-003-tree-query-and-cst-selector/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-019, C-002)
+
+  Create `ai_editor/tree/cst_query_selector.py`.
+  Operation: create_file.
+
+  CstQuerySelector (C-019): XPath-compatible selector string for TreeQuery XPath mode.
+  Evaluate via existing CST query engine; return integer short_id list at API boundary.
+  NodeIdMap.resolve is server-internal — engine may use UUID internally; this module
+  maps results to short_id ints before return.
+
+  ## MRS excerpt
+
+  C-019 features (exact surface):
+  - double-slash recursive descendant traversal
+  - @attribute predicates (e.g. [@name='foo'])
+  - numeric operators ge, le, gt, lt on start_line, end_line, children_count
+  - not pseudo-class negation
+
+  C-002: matches returned as short_id integers usable in preview/edit APIs.
+
+  ## Module docstring
+
+  """
+  CstQuerySelector — XPath-compatible tree query selector (C-019).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports
+
+  - from __future__ import annotations
+  - import re
+  - from dataclasses import dataclass
+  - from typing import Any, Callable, List, Sequence
+  - from ai_editor.tree.contracts import NodeId
+
+  ## Exception
+
+  CstQuerySelectorError(ValueError): malformed or unsupported selector string.
+
+  ## @dataclass(frozen=True) CstQuerySelector
+
+  selector: str
+
+  ## @classmethod parse(cls, raw: str) -> CstQuerySelector
+
+  Validate raw against C-019 surface using regex/heuristics:
+  - Must be non-empty str after strip
+  - Reject if contains UUID pattern [0-9a-f-]{36} as node reference
+  - Accept if contains // descendant OR @name OR @start_line OR @end_line OR @children_count
+    with ge/le/gt/lt OR :not(
+  - Unsupported → CstQuerySelectorError with precise message
+
+  ## evaluate(self, tree: Any, *, short_id_mapper: Callable[[Any], NodeId]) -> List[NodeId]
+
+  Delegate to existing CST query engine — exact import paths (do NOT reimplement):
+
+  - Primary: `from ai_editor.core.cst_tree.tree_finder import find_nodes`
+    Call: `find_nodes(tree.tree_id, query=self.selector, search_type="xpath")`
+    when `tree` exposes `.tree_id` and is a loaded CSTTree handle.
+  - Fallback for module-only context: `from ai_editor.cst_query.executor import query_source`
+    Call: `query_source(tree.module.code, self.selector, include_code=False,
+    node_ids_by_exact_key=tree.node_ids_by_exact_key)` when tree exposes those attributes.
+
+  Algorithm:
+  1. Resolve engine_matches via find_nodes or query_source per tree shape above.
+  2. For each metadata/handle in engine_matches: sid = short_id_mapper(node_or_metadata)
+  3. Return list of NodeId ints in engine order (dedupe preserving first occurrence).
+  4. Propagate engine ValueError unchanged; wrap only parse-time failures as CstQuerySelectorError.
+
+  short_id_mapper contract: given engine node metadata, return integer short_id from
+  MAP/metadata `___id___` int — never return UUID strings.
+
+  ## Forbidden
+
+  - Do NOT reimplement full XPath engine
+  - Do NOT return UUID or str node ids from evaluate()
+  - Do NOT modify CST query engine source
+  - NO G-007, non-standard cross-TS ordering fields, {l*}/{m*}
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/cst_query_selector.py
+  flake8 ai_editor/tree/cst_query_selector.py
+  mypy ai_editor/tree/cst_query_selector.py
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/cst_query_selector.py
+  expected: >
+    CstQuerySelector.parse validates C-019 surface; evaluate returns List[NodeId] int
+    via short_id_mapper; does not reimplement engine; estimated ~130 lines (≤400).

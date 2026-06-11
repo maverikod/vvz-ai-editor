@@ -1,0 +1,47 @@
+step_id: T-005
+parent_global_step: G-004
+name: universal_file_preview drill-down by stable_id
+description: 'Extend the universal_file_preview operation so that PreviewNavigation
+  (C-009) is satisfied for tree-temp files: accept an optional node_ref carrying a
+  stable_id from the Sidecar-backed TreeNode graph (C-001, C-002). When node_ref is
+  absent, return the root-level block list (root_view). When node_ref identifies a
+  container node of type object or array, return that node''s ordered children as the
+  block list (container_drill_down). When node_ref identifies a scalar node (type
+  string, number, boolean, or null), resolve it in the sidecar tree, walk up the parent
+  chain to the nearest ancestor whose type is object or array, and return that
+  container''s ordered children as the block list (scalar_node_ref_effective_focus); if
+  no such ancestor exists (e.g. the document root is scalar), treat node_ref as absent and
+  return root_view. stable_id values remain valid across separate sessions and restarts on
+  the same file because they are read from the persisted Sidecar tree. Unknown or
+  unresolvable stable_id remains an input/resolve error. The integration is read-only with
+  respect to EditSession state and does not perform batched tree edits.'
+concepts:
+- C-001
+- C-002
+- C-009
+inputs:
+- name: requested_target
+  type: project-bound file reference
+  description: Client-supplied identity of the JSON or YAML file whose tree structure
+    is being navigated.
+- name: node_ref
+  type: stable_id or null
+  description: Optional UUID selecting drill-down focus; null selects root_view per C-009.
+    When present, may refer to a container or scalar TreeNode; scalar refs use
+    scalar_node_ref_effective_focus (nearest object/array ancestor, else root_view).
+outputs:
+- name: block_list
+  type: ordered preview blocks
+  description: Ordered children of the effective container focus—direct container children
+    for object/array node_ref, nearest container ancestor''s children for scalar node_ref,
+    or root_view blocks when node_ref is null or remapped to root_view per C-009.
+- name: navigation_context
+  type: structured metadata
+  description: Echo of the resolved node kind, effective focus when scalar_node_ref was
+    applied, and depth hints so clients can issue follow-up preview calls with a new node_ref.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+status: done

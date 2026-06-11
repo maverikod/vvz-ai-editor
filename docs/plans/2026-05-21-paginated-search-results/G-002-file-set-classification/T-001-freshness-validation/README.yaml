@@ -1,0 +1,30 @@
+step_id: T-001
+parent_global_step: G-002
+name: FreshnessValidation rules
+description: >
+  Creates the FreshnessValidation decision step that compares indexed file
+  representation against current on-disk content using checksums and/or
+  modification metadata. Defines pass and fail outcomes: files whose indexed
+  checksum or modification state does not match current content are rejected
+  from the indexed path and routed toward dynamic processing. Applies the same
+  freshness principle used for tree sidecar validation.
+concepts:
+  - C-014
+inputs:
+  - name: database_file_record
+    type: IndexedFileRecord
+    description: File metadata known to the database or index for one project file.
+  - name: disk_file_metadata
+    type: DiskFileMetadata
+    description: Current checksum and modification metadata read from the on-disk file.
+outputs:
+  - name: freshness_verdict
+    type: FreshnessVerdict
+    description: >
+      Pass when indexed state matches disk (FRESH); fail when stale or changed
+      (STALE, MISSING_INDEX, UNAVAILABLE_INDEX). Any non-FRESH verdict routes the
+      file away from indexed search toward dynamic processing (see is_stale_for_dynamic_routing).
+atomic_steps:
+- A-001
+- A-002
+status: frozen

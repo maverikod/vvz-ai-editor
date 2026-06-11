@@ -1,0 +1,20 @@
+step_id: T-001
+parent_global_step: G-001
+name: Схема конфигурации workspace_root
+description: 'AI Editor Server (C-001) персистирует корень workspace через Workspace Root Configuration (C-018). Добавить в конфигурацию редактора секцию C-018: обязательный путь workspace_root. Документировать в примерах конфигурации редактора. Резолвер читает значение относительно каталога config; при отсутствии — явная ошибка при первом open, не silent fallback на cwd проекта СА.
+
+  '
+concepts:
+- C-001
+- C-018
+inputs:
+- name: raw_config
+  type: object
+  description: Загруженная конфигурация редактора.
+outputs:
+- name: workspace_root_path
+  type: path
+  description: Абсолютный путь корня каталогов сессий на диске редактора.
+atomic_steps:
+- A-001
+status: ready_for_review

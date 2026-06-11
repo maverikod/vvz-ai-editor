@@ -1,0 +1,158 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: Cut grep_block_resolver Python sidecar lookup over to sibling convention
+target_file: ai_editor/commands/grep_block_resolver.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-001 (T-001)
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/commands/grep_block_resolver.py\n\
+  \n## Goal\nCut the Python sidecar path resolution over to the sibling convention
+  (C-003).\nsidecar_path_for_py (which produced <parent>/.cst/<stem>.tree) is removed
+  in\nT-001/A-001. This module resolves the sidecar path in _load_python_sidecar_index\n\
+  to read cached CST metadata_map; replace that single resolver call with\nsibling_tree_path.
+  No logic changes beyond the path source.\n\n## Dependency (already exists from G-002)\n\
+  ai_editor/tree/sibling_convention.py provides:\n    def sibling_tree_path(source_abs:
+  Path) -> Path\nmapping <dir>/<stem>.<ext> -> <dir>/<stem>.<ext>.tree (full filename
+  plus \".tree\").\n\n## Required edits (migration-relevant ONLY; do not refactor
+  anything else)\n1. In the cst_tree.tree_sidecar import block, drop sidecar_path_for_py
+  (keep\n   metadata_map_from_payload and read_sidecar_payload):\n       from ai_editor.core.cst_tree.tree_sidecar
+  import (\n           metadata_map_from_payload,\n           read_sidecar_payload,\n\
+  \       )\n\n2. Add the sibling import after the yaml_tree builder import:\n   \
+  \    from ai_editor.tree.sibling_convention import sibling_tree_path\n\n3. In
+  _load_python_sidecar_index, replace the resolver call:\n       sidecar_path = sidecar_path_for_py(abs_path)\n\
+  \   with:\n       sidecar_path = sibling_tree_path(abs_path.resolve())\n   Leave
+  the rest of the function (mtime freshness check, read_sidecar_payload,\n   metadata_map_from_payload)
+  unchanged.\n\n4. Update the _SidecarPythonLineBlockIndex docstring path form from\n\
+  \   ``.cst/{stem}.tree`` to sibling ``<source>.tree``:\n       \"\"\"Lookup via
+  sibling ``<source>.tree`` metadata_map (no in-memory CST session).\"\"\"\n\n## Forbidden\n\
+  - No backward-compatibility fallback to .cst/ paths.\n- Do not change the sidecar
+  payload parsing, the JSON/YAML/markdown index\n  builders, or any other function.\n\
+  - Do not touch other files.\n\n## Full current file content (verbatim, 289 lines)\n\
+  ```python\n\"\"\"\nResolve grep match lines to preview/edit block identifiers.\n\
+  \nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__
+  import annotations\n\nfrom pathlib import Path\nfrom typing import Any, TYPE_CHECKING\n\
+  \nif TYPE_CHECKING:\n    from ai_editor.core.structure_extraction.models import
+  StructureDocument\n\nfrom ai_editor.commands.universal_file_preview.handlers.json_handler
+  import (\n    _line_for_json_pointer,\n)\nfrom ai_editor.commands.universal_file_preview.handlers.markdown_handler
+  import (\n    _iter_md_block_tokens,\n    _md_block_node_ref,\n)\nfrom ai_editor.commands.universal_file_preview.handlers.yaml_handler
+  import (\n    _line_for_yaml_pointer,\n)\nfrom ai_editor.core.cst_tree.models
+  import TreeNodeMetadata\nfrom ai_editor.core.cst_tree.tree_sidecar import (\n\
+  \    metadata_map_from_payload,\n    read_sidecar_payload,\n    sidecar_path_for_py,\n\
+  )\nfrom ai_editor.core.json_tree.tree_builder import build_tree_from_data\n\
+  from ai_editor.core.yaml_tree.tree_builder import build_yaml_tree_from_data\n\
+  \n_PY_SUFFIXES = frozenset({\".py\", \".pyi\", \".pyw\"})\n_JSON_SUFFIX = \".json\"\
+  \n_YAML_SUFFIXES = frozenset({\".yaml\", \".yml\"})\n_MD_SUFFIX = \".md\"\n\n_TRIVIAL_NODE_TYPES
+  = frozenset(\n    {\n        \"SimpleWhitespace\",\n        \"TrailingWhitespace\"\
+  ,\n        \"Newline\",\n        \"EmptyLine\",\n        \"Comment\",\n        \"\
+  Whitespace\",\n    }\n)\n\n_PREFERRED_SIDECAR_KINDS = frozenset(\n    {\"method\"\
+  , \"function\", \"class\", \"stmt\", \"smallstmt\", \"module\"}\n)\n\n_CacheKey
+  = tuple[str, float]\n\n\nclass GrepBlockResolver:\n    \"\"\"Per-file cached lookup
+  from 1-based line number to block id/type.\n\n    Prefer :func:`ai_editor.core.structure_extraction.extract_structure`
+  for\n    new code; this class remains for legacy callers.\n    \"\"\"\n\n    def
+  __init__(self) -> None:\n        self._indexes: dict[_CacheKey, _LineBlockIndex
+  | None] = {}\n        self._documents: dict[_CacheKey, \"StructureDocument | None\"\
+  ] = {}\n\n    def resolve(\n        self, abs_path: Path, line_number: int\n   \
+  \ ) -> tuple[str | None, str | None]:\n        from ai_editor.core.structure_extraction.extractor
+  import (\n            extract_structure,\n            find_smallest_block_containing_line,\n\
+  \        )\n\n        cache_key = _cache_key(abs_path)\n        if cache_key not
+  in self._documents:\n            try:\n                content = abs_path.read_text(encoding=\"\
+  utf-8\", errors=\"replace\")\n            except OSError:\n                self._documents[cache_key]
+  = None\n            else:\n                self._documents[cache_key] = extract_structure(\n\
+  \                    file_path=str(abs_path),\n                    content=content,\n\
+  \                    source=\"disk\",\n                )\n        document = self._documents.get(cache_key)\n\
+  \        if document is None:\n            return None, None\n        block = find_smallest_block_containing_line(document,
+  line_number)\n        if block is None:\n            return None, None\n       \
+  \ return block.block_id, block.node_type\n\n    def cleanup(self) -> None:\n   \
+  \     self._indexes.clear()\n        self._documents.clear()\n\n\nclass _LineBlockIndex:\n\
+  \    def lookup(self, line_number: int) -> tuple[str | None, str | None]:\n    \
+  \    raise NotImplementedError\n\n\nclass _SidecarPythonLineBlockIndex(_LineBlockIndex):\n\
+  \    \"\"\"Lookup via ``.cst/{stem}.tree`` metadata_map (no in-memory CST session).\"\
+  \"\"\n\n    def __init__(self, metadata_map: dict[str, TreeNodeMetadata]) -> None:\n\
+  \        self._metadata = list(metadata_map.values())\n        self._cache: dict[int,
+  tuple[str | None, str | None]] = {}\n\n    def lookup(self, line_number: int) ->
+  tuple[str | None, str | None]:\n        if line_number in self._cache:\n       \
+  \     return self._cache[line_number]\n        candidates = [\n            meta\n\
+  \            for meta in self._metadata\n            if meta.start_line <= line_number
+  <= meta.end_line\n            and meta.type not in _TRIVIAL_NODE_TYPES\n       \
+  \     and meta.kind in _PREFERRED_SIDECAR_KINDS\n        ]\n        if not candidates:\n\
+  \            result = (None, None)\n        else:\n            best = min(\n   \
+  \             candidates,\n                key=lambda meta: (\n                \
+  \    meta.end_line - meta.start_line,\n                    meta.start_line,\n  \
+  \              ),\n            )\n            result = (best.stable_id, best.type)\n\
+  \        self._cache[line_number] = result\n        return result\n\n\nclass _StructuredLineBlockIndex(_LineBlockIndex):\n\
+  \    def __init__(self, line_map: dict[int, tuple[str, str]]) -> None:\n       \
+  \ self._line_map = line_map\n\n    def lookup(self, line_number: int) -> tuple[str
+  | None, str | None]:\n        hit = self._line_map.get(line_number)\n        if
+  hit is None:\n            return None, None\n        return hit[0], hit[1]\n\n\n\
+  class _MarkdownLineBlockIndex(_LineBlockIndex):\n    def __init__(self, abs_path:
+  Path, tokens: list[Any]) -> None:\n        self._file_path = str(abs_path.resolve())\n\
+  \        self._tokens = tokens\n        self._cache: dict[int, tuple[str | None,
+  str | None]] = {}\n\n    def lookup(self, line_number: int) -> tuple[str | None,
+  str | None]:\n        if line_number in self._cache:\n            return self._cache[line_number]\n\
+  \        zero_line = line_number - 1\n        best = None\n        best_span: int
+  | None = None\n        for token in self._tokens:\n            if token.map is None:\n\
+  \                continue\n            start, end = token.map\n            if start
+  <= zero_line < end:\n                span = end - start\n                if best
+  is None or span <= best_span:\n                    best = token\n              \
+  \      best_span = span\n        if best is None:\n            result = (None, None)\n\
+  \        else:\n            result = (_md_block_node_ref(self._file_path, best),
+  best.type)\n        self._cache[line_number] = result\n        return result\n\n\
+  \ndef _cache_key(abs_path: Path) -> _CacheKey:\n    resolved = abs_path.resolve()\n\
+  \    try:\n        mtime = resolved.stat().st_mtime\n    except OSError:\n     \
+  \   mtime = 0.0\n    return (str(resolved), mtime)\n\n\ndef _build_line_to_node_id_map(\n\
+  \    source: str,\n    metadata_map: dict[str, Any],\n    line_for_pointer,\n  \
+  \  pointer_attr: str,\n) -> dict[int, tuple[str, str]]:\n    \"\"\"\n    Expand
+  annotated start-line refs to every source line (nearest ancestor node).\n\n    Same
+  strategy as universal_file_preview annotated_full_text: map each node's\n    start
+  line via pointer heuristics, then assign each file line the deepest\n    node whose
+  start line is still on or above that line.\n    \"\"\"\n    lines = source.splitlines()\n\
+  \    if not lines:\n        return {}\n    starts: list[tuple[int, str, str]] =
+  []\n    for meta in metadata_map.values():\n        pointer = getattr(meta, pointer_attr,
+  \"\")\n        start = getattr(meta, \"start_line\", None)\n        if start is
+  None:\n            start = line_for_pointer(lines, pointer)\n        if start is
+  None:\n            continue\n        starts.append((start, meta.node_id, meta.kind))\n\
+  \    starts.sort(key=lambda item: item[0])\n    if not starts:\n        return {}\n\
+  \    line_map: dict[int, tuple[str, str]] = {}\n    for line_num in range(1, len(lines)
+  + 1):\n        best: tuple[str, str] | None = None\n        best_start = -1\n  \
+  \      for start, node_id, kind in starts:\n            if start <= line_num and
+  start >= best_start:\n                best_start = start\n                best =
+  (node_id, kind)\n        if best is not None:\n            line_map[line_num] =
+  best\n    return line_map\n\n\ndef _load_python_sidecar_index(abs_path: Path) ->
+  _SidecarPythonLineBlockIndex | None:\n    sidecar_path = sidecar_path_for_py(abs_path)\n\
+  \    if not sidecar_path.is_file():\n        return None\n    try:\n        py_mtime
+  = abs_path.stat().st_mtime\n        sidecar_mtime = sidecar_path.stat().st_mtime\n\
+  \    except OSError:\n        return None\n    if py_mtime > sidecar_mtime:\n  \
+  \      return None\n    payload = read_sidecar_payload(abs_path)\n    if payload
+  is None:\n        return None\n    meta_blob = payload.get(\"metadata_map\")\n \
+  \   order_raw = payload.get(\"metadata_node_order\")\n    order = [str(x) for x
+  in order_raw] if isinstance(order_raw, list) else None\n    metadata_map = metadata_map_from_payload(meta_blob,
+  order)\n    if not metadata_map:\n        return None\n    return _SidecarPythonLineBlockIndex(metadata_map)\n\
+  \n\ndef _build_index(abs_path: Path) -> _LineBlockIndex | None:\n    suffix = abs_path.suffix.lower()\n\
+  \    try:\n        if suffix in _PY_SUFFIXES:\n            return _load_python_sidecar_index(abs_path)\n\
+  \        source = abs_path.read_text(encoding=\"utf-8\", errors=\"replace\")\n \
+  \       if suffix == _JSON_SUFFIX:\n            import json\n\n            data
+  = json.loads(source)\n            tree = build_tree_from_data(str(abs_path.resolve()),
+  data)\n            line_map = _build_line_to_node_id_map(\n                source,\n\
+  \                tree.metadata_map,\n                _line_for_json_pointer,\n \
+  \               \"json_pointer\",\n            )\n            return _StructuredLineBlockIndex(line_map)\n\
+  \        if suffix in _YAML_SUFFIXES:\n            import yaml\n\n            data
+  = yaml.safe_load(source)\n            tree = build_yaml_tree_from_data(str(abs_path.resolve()),
+  data)\n            line_map = _build_line_to_node_id_map(\n                source,\n\
+  \                tree.metadata_map,\n                _line_for_yaml_pointer,\n \
+  \               \"yaml_pointer\",\n            )\n            return _StructuredLineBlockIndex(line_map)\n\
+  \        if suffix == _MD_SUFFIX:\n            from markdown_it import MarkdownIt\n\
+  \n            tokens = list(_iter_md_block_tokens(MarkdownIt().parse(source)))\n\
+  \            return _MarkdownLineBlockIndex(abs_path, tokens)\n    except Exception:\n\
+  \        return None\n    return None\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/grep_block_resolver.py
+  expected: black, flake8, mypy exit 0; module no longer imports or calls 
+    sidecar_path_for_py; _load_python_sidecar_index resolves via 
+    sibling_tree_path(abs_path.resolve()); grep for 'sidecar_path_for_py' and 
+    '.cst' in this file returns nothing; index-build logic otherwise unchanged.

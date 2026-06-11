@@ -1,0 +1,43 @@
+step_id: T-001
+parent_global_step: G-001
+name: MarkerContract and NodeId Definition
+description: "Define the MarkerContract entity (C-001) as the three-operation interface
+  mark(content), parse(marked_text), unmark(marked_text) that every FormatHandler
+  must implement. Establish the round-trip invariant: unmark(mark(source)) equals
+  source, verified by SHA-256 checksum. Define NodeId (C-002) as the format-specific
+  identifier that names exactly one AddressableBlock (C-005); the marker string is
+  the identifier, not a pointer to one stored elsewhere. Establish the minimally-addressable
+  granularity rule for AddressableBlock (C-005): a marker must never split a lexeme,
+  never be inserted inside a literal or token, and the per-format minimal block is
+  defined (line for text, md block for markdown, yaml block for YAML, json element
+  for JSON, py logical statement for Python). Establish that markers live only in
+  TreeFiles (C-003), never in SourceFiles (C-004). An unrecognised NodeId yields an
+  input error, never a silent ignore.\n"
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+inputs:
+- name: source_spec_sections
+  type: list of source_spec binding paragraph labels
+  description: "Source-spec requirements covering the marker contract operations,
+    round-trip invariant, NodeId format, and AddressableBlock granularity rule.\n"
+outputs:
+- name: MarkerContract entity definition
+  type: domain entity definition
+  description: "The three-operation contract (mark, parse, unmark) with round-trip
+    invariant and the rule that markers live only in TreeFiles, never in SourceFiles.\n"
+- name: NodeId entity definition
+  type: domain entity definition
+  description: "Format-specific identifier naming exactly one AddressableBlock; unrecognised
+    NodeId yields input error, never silent ignore.\n"
+- name: AddressableBlock entity definition
+  type: domain entity definition
+  description: "Per-format minimal addressable unit with granularity rules prohibiting
+    lexeme splits and literal interiors; per-format block sizes defined.\n"
+atomic_steps:
+- A-001
+- A-002
+status: draft

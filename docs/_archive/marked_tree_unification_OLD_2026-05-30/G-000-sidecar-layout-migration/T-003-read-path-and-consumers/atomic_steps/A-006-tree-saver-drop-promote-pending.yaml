@@ -1,0 +1,250 @@
+step_id: A-006
+parent_tactical_step: T-003
+name: Remove promote_pending_sidecar_to_final from tree_saver save_tree_to_file
+target_file: ai_editor/core/cst_tree/tree_saver.py
+operation: modify_file
+priority: 6
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/core/cst_tree/tree_saver.py\n\
+  \n## Goal\nRemove the dependency on promote_pending_sidecar_to_final, which is deleted
+  in\nT-001/A-001 together with the entire pending-sidecar mechanism. After the sibling\n\
+  cutover there is no pending sidecar to promote: write_sidecar_atomic writes the\n\
+  sibling tree file directly. This change touches ONLY the module-level tree_sidecar\n\
+  import and the post-sync sidecar-write block in save_tree_to_file; nothing else\n\
+  changes.\n\n## Context\nAt module level, tree_saver imports two names from .tree_sidecar:\n\
+  \    from .tree_sidecar import promote_pending_sidecar_to_final, write_sidecar_atomic\n\
+  In save_tree_to_file Step 8, after sync_file_to_db_atomic succeeds, a guarded block\n\
+  calls promote_pending_sidecar_to_final(target_path) then write_sidecar_atomic(target_path,\n\
+  tree) inside try/except OSError. promote_pending_sidecar_to_final no longer exists\n\
+  after T-001; write_sidecar_atomic remains and already writes to the sibling path\n\
+  with the signature write_sidecar_atomic(py_path, tree).\n\n## Required edits (migration-relevant
+  ONLY; do not refactor anything else)\n1. Change the module-level import (currently
+  a single line importing both names) to\n   import only write_sidecar_atomic:\n \
+  \      from .tree_sidecar import write_sidecar_atomic\n\n2. Delete the call line
+  ``promote_pending_sidecar_to_final(target_path)`` inside the\n   post-sync try block,
+  leaving the write and its OSError handler intact:\n       if sync_result.get(\"\
+  success\") and prebuilt_cst_tree_for_sync is not None:\n           try:\n      \
+  \         write_sidecar_atomic(target_path, tree)\n           except OSError as
+  exc:\n               logger.warning(\n                   \"CST sidecar write after
+  save failed for %s: %s\",\n                   target_path,\n                   exc,\n\
+  \               )\n\n## Forbidden\n- Do not change any other import, statement,
+  or block. All other steps (disk\n  snapshot check, backup, code generation, replay
+  verification, temp write,\n  validation, os.replace, byte verification, DB file
+  record, sync_file_to_db_atomic\n  call, git commit, return payload, exception handling,
+  finally cleanup) stay exactly\n  as they are.\n- Keep the write_sidecar_atomic(target_path,
+  tree) call and its surrounding\n  try/except OSError unchanged except for removing
+  the promote line.\n- No backward-compatibility shim for pending sidecars.\n- Do
+  not touch other files.\n\n## Full current file content (verbatim, 403 lines)\n```python\n\
+  \"\"\"\nCST tree saver - save tree to file with atomic operations.\n\nAuthor: Vasiliy
+  Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__ import annotations\n\
+  \nimport logging\nimport os\nimport time\nfrom datetime import datetime\nfrom pathlib
+  import Path\nfrom typing import Any, Dict, Optional, Sequence\n\nfrom ..backup_manager
+  import BackupManager\nfrom ..file_lock import file_lock\nfrom .models import CSTTree,
+  TreeNodeMetadata, TreeOperation\nfrom .tree_builder import (\n    _attach_disk_snapshot,\n\
+  \    _read_logical_py_source_sync_disk,\n    create_tree_from_code,\n    get_tree,\n\
+  \    reload_tree_from_file,\n    remove_tree,\n)\nfrom .node_stable_id import strip_inline_node_id_lines_from_source\n\
+  from .tree_sidecar import promote_pending_sidecar_to_final, write_sidecar_atomic\n\
+  from .tree_save_verification import (\n    FILE_CHANGED_SINCE_LOAD,\n    WRITE_VERIFY_FAILED,\n\
+  \    SaveVerificationError,\n    assert_file_bytes_match,\n    assert_replay_matches,\n\
+  \    assert_tree_module_integrity,\n    disk_matches_tree_snapshot,\n)\n\nlogger
+  = logging.getLogger(__name__)\n\n\ndef save_tree_to_file(\n    tree_id: str,\n \
+  \   file_path: str,\n    root_dir: Path,\n    project_id: str,\n    database,\n\
+  \    validate: bool = True,\n    backup: bool = True,\n    commit_message: Optional[str]
+  = None,\n    tree_operations: Optional[Sequence[TreeOperation]] = None,\n    pre_modify_metadata_map:
+  Optional[Dict[str, TreeNodeMetadata]] = None,\n) -> Dict[str, Any]:\n    \"\"\"\n\
+  \    Save tree to file with atomic operations.\n\n    Process:\n    1. Validate
+  entire file through compile() (before any changes)\n    2. Create backup via BackupManager
+  (mandatory if file exists)\n    3. Generate source code from CST tree (clean ``.py``;
+  sidecar ``.cst/<name>.tree``\n       holds node ids.)\n    4. Write to temporary
+  file\n    5. Validate temporary file (compile, linter, type checker)\n    6. Atomically
+  replace file via os.replace()\n    7. Ensure file record exists (create or update
+  in files table)\n    8. Sync file to DB via shared file-level pipeline (sync_file_to_db_atomic)\n\
+  \    9. Git commit (if commit_message provided)\n    10. On any error: restore from
+  backup and re-raise\n\n    Args:\n        tree_id: Tree ID\n        file_path: Target
+  file path (absolute or relative to root_dir)\n        root_dir: Project root directory\n\
+  \        project_id: Project ID\n        database: Database instance\n        validate:
+  Whether to validate file before saving\n        backup: Whether to create backup\n\
+  \        commit_message: Optional git commit message\n        tree_operations: When
+  non-empty and not None, run replay verification before writing.\n        pre_modify_metadata_map:
+  Snapshot of ``metadata_map`` before ``modify_tree`` (combined\n            save).
+  Used so replay can remap operation ``node_id`` values removed from the\n       \
+  \     post-modify tree.\n\n    Returns:\n        Dictionary with result:\n     \
+  \   {\n            \"success\": bool,\n            \"file_path\": str,\n       \
+  \     \"backup_uuid\": Optional[str],\n            \"error\": Optional[str]\n  \
+  \      }\n\n    Raises:\n        ValueError: If tree not found or validation fails\n\
+  \        RuntimeError: If file operations fail\n        SaveVerificationError: If
+  disk snapshot, replay, or post-write verification fails\n    \"\"\"\n    timings:
+  Dict[str, float] = {}\n    t0 = time.perf_counter()\n    tree = get_tree(tree_id)\n\
+  \    if not tree:\n        raise ValueError(f\"Tree not found: {tree_id}\")\n  \
+  \  assert_tree_module_integrity(tree)\n    timings[\"get_tree\"] = time.perf_counter()
+  - t0\n\n    # Resolve file path\n    t0 = time.perf_counter()\n    target_path =
+  Path(file_path)\n    if not target_path.is_absolute():\n        target_path = (root_dir
+  / target_path).resolve()\n    else:\n        target_path = target_path.resolve()\n\
+  \n    # Ensure directory exists\n    target_path.parent.mkdir(parents=True, exist_ok=True)\n\
+  \    timings[\"resolve_path\"] = time.perf_counter() - t0\n\n    backup_uuid: Optional[str]
+  = None\n    backup_manager: Optional[BackupManager] = None\n    temp_file: Optional[Path]
+  = None\n\n    rel_lock_path = (\n        str(target_path.relative_to(root_dir))\n\
+  \        if target_path.is_relative_to(root_dir)\n        else file_path\n    )\n\
+  \    with file_lock(\n        target_path,\n        mode=\"full\",\n        database=database,\n\
+  \        project_id=project_id,\n        file_path=rel_lock_path,\n    ):\n    \
+  \    if target_path.exists():\n            suf = target_path.suffix\n          \
+  \  if suf == \".py\" or (suf == \".tmp\" and target_path.stem.endswith(\".py\")):\n\
+  \                _read_logical_py_source_sync_disk(target_path)\n\n        def try_restore_from_backup()
+  -> None:\n            if backup_uuid and backup_manager and target_path.exists():\n\
+  \                try:\n                    rel_path = str(target_path.relative_to(root_dir))\n\
+  \                except ValueError:\n                    rel_path = str(target_path)\n\
+  \                restore_success, restore_message = backup_manager.restore_file(\n\
+  \                    rel_path, backup_uuid\n                )\n                if
+  restore_success:\n                    logger.info(\"File restored from backup: %s\"\
+  , restore_message)\n                    try:\n                        logical_disk,
+  _ = _read_logical_py_source_sync_disk(target_path)\n                        _attach_disk_snapshot(tree,
+  logical_disk)\n                    except OSError:\n                        logger.warning(\n\
+  \                            \"Could not refresh disk snapshot after backup restore
+  (%s)\",\n                            target_path,\n                        )\n \
+  \               else:\n                    logger.error(\n                     \
+  \   \"Failed to restore file from backup: %s\",\n                        restore_message,\n\
+  \                    )\n\n        try:\n            # Step 1: Disk snapshot vs on-disk
+  UTF-8 (before backup); capture text for replay\n            t0 = time.perf_counter()\n\
+  \            disk_source_for_replay = \"\"\n            if target_path.exists():\n\
+  \                if tree.disk_source_sha256_hex is not None:\n                 \
+  \   if not disk_matches_tree_snapshot(target_path, tree):\n                    \
+  \    logger.warning(\n                            \"CST save: %s no longer matches
+  snapshot on tree %s; \"\n                            \"reloading from disk and aborting
+  save.\",\n                            target_path,\n                           \
+  \ tree_id,\n                        )\n                        if reload_tree_from_file(tree_id)
+  is None:\n                            raise SaveVerificationError(\n           \
+  \                     code=FILE_CHANGED_SINCE_LOAD,\n                          \
+  \      details={\n                                    \"target_path\": str(target_path),\n\
+  \                                    \"tree_id\": tree_id,\n                   \
+  \                 \"reason\": \"disk_drift_reload_failed_tree_missing\",\n     \
+  \                           },\n                            )\n                \
+  \        raise SaveVerificationError(\n                            code=FILE_CHANGED_SINCE_LOAD,\n\
+  \                            details={\n                                \"target_path\"\
+  : str(target_path),\n                                \"tree_id\": tree_id,\n   \
+  \                             \"resynced_tree_from_disk\": True,\n             \
+  \               },\n                        )\n                disk_source_for_replay
+  = target_path.read_text(encoding=\"utf-8\")\n                if validate:\n    \
+  \                try:\n                        compile(disk_source_for_replay, str(target_path),
+  \"exec\")\n                    except SyntaxError as e:\n                      \
+  \  logger.warning(f\"Original file has syntax errors: {e}\")\n            timings[\"\
+  validate_original\"] = time.perf_counter() - t0\n\n            from ..database_client.objects.file
+  import File\n            from ..path_normalization import normalize_path_simple\n\
+  \n            normalized_path = normalize_path_simple(str(target_path))\n      \
+  \      existing_files_early = database.select(\n                \"files\",\n   \
+  \             where={\n                    \"path\": normalized_path,\n        \
+  \            \"project_id\": project_id,\n                },\n            )\n  \
+  \          # Step 2: Create backup (mandatory before overwriting existing file)\n\
+  \            t0 = time.perf_counter()\n            if target_path.exists():\n  \
+  \              backup_manager = BackupManager(root_dir)\n                try:\n\
+  \                    rel_path = str(target_path.relative_to(root_dir))\n       \
+  \         except ValueError:\n                    rel_path = str(target_path)\n\
+  \                backup_uuid = backup_manager.create_backup(\n                 \
+  \   target_path,\n                    command=\"cst_save_tree\",\n             \
+  \       comment=f\"Before saving CST tree {tree_id}\",\n                )\n    \
+  \            if not backup_uuid:\n                    raise RuntimeError(\n    \
+  \                    \"Backup to old_code (versions) is mandatory before write;
+  \"\n                        \"create_backup failed. Aborting cst_save_tree.\"\n\
+  \                    )\n            timings[\"backup\"] = time.perf_counter() -
+  t0\n\n            # Step 3: Generate source code from CST tree (clean .py; sidecar
+  holds ids).\n            t0 = time.perf_counter()\n            clean_source_code
+  = strip_inline_node_id_lines_from_source(tree.module.code)\n            persisted_source
+  = clean_source_code\n            prebuilt_cst_tree_for_sync = tree\n           \
+  \ timings[\"code_gen\"] = time.perf_counter() - t0\n\n            ops_list = list(tree_operations)
+  if tree_operations is not None else None\n            if ops_list:\n           \
+  \     lookup_stub: Optional[CSTTree] = None\n                if pre_modify_metadata_map
+  is not None:\n                    lookup_stub = create_tree_from_code(\n       \
+  \                 str(target_path),\n                        disk_source_for_replay,\n\
+  \                        persist_sidecar=False,\n                        register_in_memory=True,\n\
+  \                    )\n                    lookup_stub.metadata_map.update(pre_modify_metadata_map)\n\
+  \                try:\n                    assert_replay_matches(\n            \
+  \            original_source=disk_source_for_replay,\n                        target_path=target_path,\n\
+  \                        tree=tree,\n                        tree_operations=ops_list,\n\
+  \                        id_lookup_tree=lookup_stub,\n                    )\n  \
+  \              finally:\n                    if lookup_stub is not None:\n     \
+  \                   remove_tree(lookup_stub.tree_id)\n\n            # Step 4: Write
+  to target.tmp (same directory as target)\n            t0 = time.perf_counter()\n\
+  \            temp_file = Path(str(target_path) + \".tmp\")\n            try:\n \
+  \               temp_file.write_text(persisted_source, encoding=\"utf-8\")\n   \
+  \         except Exception as e:\n                raise RuntimeError(f\"Failed to
+  write temporary file: {e}\") from e\n            timings[\"write_temp\"] = time.perf_counter()
+  - t0\n\n            # Step 5: Validate temporary file\n            t0 = time.perf_counter()\n\
+  \            if validate:\n                try:\n                    compile(persisted_source,
+  str(temp_file), \"exec\")\n                except SyntaxError as e:\n          \
+  \          raise ValueError(f\"Generated code has syntax errors: {e}\") from e\n\
+  \            timings[\"validate_temp\"] = time.perf_counter() - t0\n\n         \
+  \   # Step 6: Atomically replace file\n            t0 = time.perf_counter()\n  \
+  \          os.replace(str(temp_file), str(target_path))\n            temp_file =
+  None  # File was moved, don't delete it\n            timings[\"replace\"] = time.perf_counter()
+  - t0\n\n            assert_file_bytes_match(target_path=target_path, expected=persisted_source)\n\
+  \n            _attach_disk_snapshot(tree, persisted_source)\n\n            # Step
+  7: Ensure file record exists (create or update in files table)\n            t0 =
+  time.perf_counter()\n            lines = clean_source_code.count(\"\\n\") + (1 if
+  clean_source_code else 0)\n            stripped = clean_source_code.lstrip()\n \
+  \           has_docstring = stripped.startswith('\"\"\"') or stripped.startswith(\"\
+  '''\")\n            last_modified_timestamp = target_path.stat().st_mtime\n    \
+  \        last_modified = datetime.fromtimestamp(last_modified_timestamp)\n\n   \
+  \         if existing_files_early:\n                file_record = existing_files_early[0]\n\
+  \                file_obj = File(\n                    id=file_record[\"id\"],\n\
+  \                    project_id=project_id,\n                    path=normalized_path,\n\
+  \                    lines=lines,\n                    last_modified=last_modified,\n\
+  \                    has_docstring=has_docstring,\n                )\n         \
+  \       updated_file = database.update_file(file_obj)\n                file_id =
+  updated_file.id\n            else:\n                file_obj = File(\n         \
+  \           project_id=project_id,\n                    path=normalized_path,\n\
+  \                    lines=lines,\n                    last_modified=last_modified,\n\
+  \                    has_docstring=has_docstring,\n                )\n         \
+  \       created_file = database.create_file(file_obj)\n                file_id =
+  created_file.id\n            timings[\"db_file_record\"] = time.perf_counter() -
+  t0\n\n            # Step 8: Sync file to DB via shared file-level pipeline\n   \
+  \         t0 = time.perf_counter()\n            from ..database.file_tree_sync import
+  sync_file_to_db_atomic\n\n            # When ``prebuilt_cst_tree_for_sync`` is set,
+  DB CST snapshot uses the same\n            # node_ids as the in-memory tree (disk
+  .py is clean; sidecar holds ids).\n            sync_result = sync_file_to_db_atomic(\n\
+  \                database=database,\n                project_id=project_id,\n  \
+  \              absolute_path=normalized_path,\n                source_code=persisted_source,\n\
+  \                file_mtime=last_modified_timestamp,\n                file_id=file_id,\n\
+  \                skip_file_edit_lock=False,\n                prebuilt_cst_tree=prebuilt_cst_tree_for_sync,\n\
+  \            )\n            timings[\"sync_file_to_db\"] = time.perf_counter() -
+  t0\n\n            if sync_result.get(\"success\") and prebuilt_cst_tree_for_sync
+  is not None:\n                try:\n                    promote_pending_sidecar_to_final(target_path)\n\
+  \                    write_sidecar_atomic(target_path, tree)\n                except
+  OSError as exc:\n                    logger.warning(\n                        \"\
+  CST sidecar write after save failed for %s: %s\",\n                        target_path,\n\
+  \                        exc,\n                    )\n\n            if not sync_result.get(\"\
+  success\"):\n                raise RuntimeError(\n                    \"Failed to
+  sync file to DB: \" f\"{sync_result.get('error')}\"\n                )\n\n     \
+  \       # Step 9: Git commit (if requested)\n            if commit_message:\n  \
+  \              from ..git_integration import create_git_commit\n\n             \
+  \   git_success, git_error = create_git_commit(\n                    root_dir, target_path,
+  commit_message\n                )\n                if not git_success:\n       \
+  \             logger.warning(f\"Failed to create git commit: {git_error}\")\n\n\
+  \            return {\n                \"success\": True,\n                \"file_path\"\
+  : str(target_path),\n                \"file_id\": file_id,\n                \"backup_uuid\"\
+  : backup_uuid,\n                \"sync_result\": sync_result,\n                \"\
+  timings\": timings,\n            }\n\n        except SaveVerificationError as exc:\n\
+  \            if exc.code == WRITE_VERIFY_FAILED:\n                logger.critical(\n\
+  \                    \"CST save_tree_to_file post-write byte verification failed:
+  %s\",\n                    exc.details,\n                    exc_info=True,\n  \
+  \              )\n                try_restore_from_backup()\n            raise\n\
+  \n        except Exception as e:\n            try_restore_from_backup()\n      \
+  \      logger.error(f\"Error saving tree to file: {e}\", exc_info=True)\n      \
+  \      return {\n                \"success\": False,\n                \"file_path\"\
+  : str(target_path),\n                \"backup_uuid\": backup_uuid,\n           \
+  \     \"error\": str(e),\n            }\n\n        finally:\n            # Clean
+  up .tmp if we did not replace (e.g. on failure)\n            if temp_file is not
+  None and temp_file.exists():\n                try:\n                    temp_file.unlink(missing_ok=True)\n\
+  \                except Exception as e:\n                    logger.warning(\"Failed
+  to delete temporary file: %s\", e)\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/core/cst_tree/tree_saver.py
+  expected: black, flake8, mypy exit 0; the module-level tree_sidecar import 
+    binds only write_sidecar_atomic; save_tree_to_file no longer calls 
+    promote_pending_sidecar_to_final; the post-sync block still calls 
+    write_sidecar_atomic(target_path, tree) inside try/except OSError with the 
+    same logger.warning; all other steps unchanged; grep for 
+    'promote_pending_sidecar_to_final' in this file returns nothing.

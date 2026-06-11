@@ -1,0 +1,45 @@
+step_id: G-010
+name: Python node visualizer
+description: >
+  Add PythonNodeRenderer (C-022) to PythonFileHandler (C-016). Four rendering
+  modes: module-level overview, class structure, function/method body first-level,
+  and full-text fallback for small files via FullTextThreshold (C-023).
+  Wires full_text_max_lines into UniversalFilePreviewCommand (C-001).
+  Adds optional text field to Block (C-005).
+  BlockHandler update is deferred to G-011.
+concepts:
+- C-001
+- C-003
+- C-005
+- C-009
+- C-016
+- C-022
+- C-023
+relations:
+- from_concept: C-022
+  to_concept: C-016
+  type: extends
+- from_concept: C-022
+  to_concept: C-003
+  type: uses
+- from_concept: C-016
+  to_concept: C-023
+  type: consumes
+- from_concept: C-001
+  to_concept: C-023
+  type: consumes
+source_ranges:
+- start: 259
+  end: 295
+- start: 296
+  end: 307
+depends_on:
+- G-001
+- G-002
+- G-003
+- G-004
+tactical_steps:
+- T-901
+- T-902
+- T-904
+status: done

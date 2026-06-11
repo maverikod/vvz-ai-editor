@@ -1,0 +1,53 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Create error codes module
+target_file: ai_editor/commands/universal_file_preview/errors.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-014
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/errors.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  Error classification constants and helpers for universal_file_preview.\n\
+  \n  Defines three error classes (C-014):\n    Class 1 — input errors (INPUT_ERROR_*\
+  \ constants)\n    Class 2 — file-structure errors (FILE_STRUCTURE_ERROR constant)\n\
+  \    Class 3 — handler-internal errors (HANDLER_ERROR constant)\n\n  Author: Vasiliy\
+  \ Zdanovskiy\n  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from __future__\
+  \ import annotations\n  from dataclasses import dataclass\n  from typing import\
+  \ Any\n\nModule-level constants (all str):\n  # Class 1 — input error codes\n  INPUT_ERROR_INVALID_SELECTOR_FORM\
+  \ = \"INVALID_SELECTOR_FORM\"\n  INPUT_ERROR_MIXED_SELECTOR_LIST = \"MIXED_SELECTOR_LIST\"\
+  \n  INPUT_ERROR_DUPLICATE_SELECTOR_ENTRY = \"DUPLICATE_SELECTOR_ENTRY\"\n  INPUT_ERROR_OUT_OF_RANGE_INDEX\
+  \ = \"OUT_OF_RANGE_INDEX\"\n  INPUT_ERROR_UNKNOWN_IDENTIFIER = \"UNKNOWN_IDENTIFIER\"\
+  \n  INPUT_ERROR_SELECTOR_ON_EMPTY = \"SELECTOR_ON_EMPTY\"\n  INPUT_ERROR_UNKNOWN_EXTENSION\
+  \ = \"UNKNOWN_EXTENSION\"\n  INPUT_ERROR_UNKNOWN_NODE_REF = \"UNKNOWN_NODE_REF\"\
+  \n  INPUT_ERROR_CONFLICTING_PARAMETERS = \"CONFLICTING_PARAMETERS\"\n  INPUT_ERROR_GLOB_IN_FILE_PATH\
+  \ = \"GLOB_IN_FILE_PATH\"\n  # Class 2\n  FILE_STRUCTURE_ERROR = \"FILE_STRUCTURE_ERROR\"\
+  \n  # Class 3\n  HANDLER_ERROR = \"HANDLER_ERROR\"\n\nDataclass: PreviewError\n\
+  Dataclass docstring:\n  \"\"\"\n  Structured error produced by the preview pipeline.\n\
+  \n  Attributes:\n      error_class: One of 'input', 'file_structure', 'handler_internal'.\n\
+  \      code: Deterministic error code string (one of the constants above).\n   \
+  \   message: Human-readable description.\n      details: Optional extra payload\
+  \ (parser name, line range, handler name).\n  \"\"\"\nFields:\n  error_class: str\n\
+  \  code: str\n  message: str\n  details: dict[str, Any] | None = None\n\nFunction:\
+  \ input_error(code: str, message: str,\n                      details: dict[str,\
+  \ Any] | None = None) -> PreviewError\nDocstring: \"Create a Class-1 (input) PreviewError.\"\
+  \nBody: return PreviewError(error_class='input', code=code,\n                  \
+  \        message=message, details=details)\n\nFunction: file_structure_error(parser:\
+  \ str, message: str,\n                                line_start: int | None = None,\n\
+  \                                line_end: int | None = None) -> PreviewError\n\
+  Docstring: \"Create a Class-2 (file-structure) PreviewError.\"\nBody: build details\
+  \ dict {parser, line_start, line_end} (omit None values);\n      return PreviewError(error_class='file_structure',\n\
+  \                          code=FILE_STRUCTURE_ERROR,\n                        \
+  \  message=message, details=details)\n\nFunction: handler_error(handler_name: str,\
+  \ message: str) -> PreviewError\nDocstring: \"Create a Class-3 (handler-internal)\
+  \ PreviewError.\"\nBody: return PreviewError(error_class='handler_internal',\n \
+  \                         code=HANDLER_ERROR, message=message,\n               \
+  \           details={'handler': handler_name})\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.errors
+  expected: Module imports without error; INPUT_ERROR_UNKNOWN_EXTENSION, FILE_STRUCTURE_ERROR,
+    HANDLER_ERROR are defined as strings; input_error() returns a PreviewError with
+    error_class='input'.

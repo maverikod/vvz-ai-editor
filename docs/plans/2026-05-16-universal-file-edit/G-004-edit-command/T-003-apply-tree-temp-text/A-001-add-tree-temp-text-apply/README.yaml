@@ -1,0 +1,284 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Add _apply_tree_temp and _apply_text implementations to UniversalFileEditCommand
+target_file: ai_editor/commands/universal_file_edit/edit_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-003
+- C-006
+- C-007
+- C-012
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/universal_file_edit/edit_command.py
+
+  MRS context:
+  C-006 EditCommand:
+    tree-temp: applies to in-memory tree sequentially; writes draft after each op.
+    text: sorts by start_line descending; applies to buffer; writes draft once.
+  C-007 EditOperation: tree-temp address: parent_node_id (JSON pointer) + position.
+    text address: start_line + end_line (1-based inclusive).
+  C-012: json_tree/yaml_tree builders; text sort utility.
+
+  API needed:
+    from ai_editor.core.json_tree.tree_builder import get_tree, apply_op (json)
+    from ai_editor.core.yaml_tree.tree_builder import get_tree, apply_op (yaml)
+    from ai_editor.commands.universal_file_replace_command import _sort_text_replacements_bottom_up
+
+  Current full file content (after T-001/A-001 and T-002/A-001, 189 lines):
+  """
+  UniversalFileEditCommand: applies a batch of mutations to the draft.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  from typing import Any, Dict, List, Optional
+
+  from mcp_proxy_adapter.commands.base_command import BaseCommand
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      NESTED_BATCH_FORBIDDEN,
+      SESSION_NOT_FOUND,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.session import get_session
+
+
+  class UniversalFileEditCommand(BaseCommand):
+      """MCP command that applies a batch of mutation operations to the draft.
+
+      The original file is never touched. For sidecar group, ancestor-descendant
+      pairs in the batch are rejected atomically with NESTED_BATCH_FORBIDDEN.
+      """
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_edit"
+
+      @staticmethod
+      def get_schema() -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id, session_id, operations.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "session_id": {"type": "string"},
+                  "operations": {"type": "array"},
+              },
+              "required": ["project_id", "session_id", "operations"],
+              "additionalProperties": False,
+          }
+
+      def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          """Execute the edit command.
+
+          Args:
+              params: Dict with project_id, session_id, operations.
+
+          Returns:
+              Dict with success flag and updated state, or error dict.
+          """
+          session_id: str = params["session_id"]
+          operations: List[Dict[str, Any]] = params["operations"]
+          try:
+              session = get_session(session_id)
+          except ValueError:
+              return make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+
+          fg = session.format_group
+          if fg == "sidecar":
+              validation = self._validate_sidecar_batch(operations, session.tree_id)
+              if validation is not None:
+                  return validation
+              return self._apply_sidecar(session, operations)
+          if fg == "tree-temp":
+              return self._apply_tree_temp(session, operations)
+          # text group
+          return self._apply_text(session, operations)
+
+      def _validate_sidecar_batch(
+          self,
+          operations: List[Dict[str, Any]],
+          tree_id: Optional[str],
+      ) -> Optional[Dict[str, Any]]:
+          """Validate that no ancestor-descendant pairs exist in the batch.
+
+          For sidecar group only. Checks every pair of node_ids in the batch.
+          If any node is an ancestor of another, rejects the entire batch.
+
+          Args:
+              operations: List of edit operation dicts with parent_node_id.
+              tree_id: In-memory CST tree UUID for ancestor resolution.
+
+          Returns:
+              None when batch is valid;
+              error dict with NESTED_BATCH_FORBIDDEN when invalid.
+          """
+          node_ids = [op.get("parent_node_id") for op in operations
+                      if op.get("parent_node_id")]
+          if len(node_ids) < 2 or tree_id is None:
+              return None
+          from ai_editor.core.cst_tree.tree_builder import get_tree
+          tree = get_tree(tree_id)
+          if tree is None:
+              return None
+          for i, nid_a in enumerate(node_ids):
+              for nid_b in node_ids[i + 1:]:
+                  if _is_ancestor(tree, nid_a, nid_b) or _is_ancestor(tree, nid_b, nid_a):
+                      return make_error(
+                          NESTED_BATCH_FORBIDDEN,
+                          "Ancestor-descendant pair in batch",
+                      )
+          return None
+
+      def _apply_sidecar(
+          self, session: Any, operations: List[Dict[str, Any]]
+      ) -> Dict[str, Any]:
+          """Apply sidecar group operations to the draft via CST pipeline.
+
+          For each operation in received order, applies it to the in-memory
+          CST tree and persists the updated sidecar after each operation.
+
+          Args:
+              session: Active EditSession with tree_id and abs_path.
+              operations: List of validated edit operation dicts.
+
+          Returns:
+              Dict with success=True and updated=True.
+          """
+          from ai_editor.core.cst_tree.tree_builder import get_tree
+          from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+          from ai_editor.core.file_handlers.python_handler import run_ops_mode
+          tree = get_tree(session.tree_id)
+          for op in operations:
+              tree = run_ops_mode(tree, [op])
+              write_sidecar_atomic(session.abs_path, tree)
+          return {"success": True, "updated": True}
+
+      def _apply_tree_temp(
+          self, session: Any, operations: List[Dict[str, Any]]
+      ) -> Dict[str, Any]:
+          """Apply tree-temp group operations (stub; filled in T-003).
+
+          Args:
+              session: Active EditSession.
+              operations: List of edit operation dicts.
+
+          Returns:
+              Result dict (filled in T-003).
+          """
+          raise NotImplementedError
+
+      def _apply_text(
+          self, session: Any, operations: List[Dict[str, Any]]
+      ) -> Dict[str, Any]:
+          """Apply text group operations (stub; filled in T-003).
+
+          Args:
+              session: Active EditSession.
+              operations: List of edit operation dicts.
+
+          Returns:
+              Result dict (filled in T-003).
+          """
+          raise NotImplementedError
+
+
+  def _is_ancestor(tree: Any, ancestor_id: str, node_id: str) -> bool:
+      """Return True if ancestor_id is an ancestor of node_id in tree.
+
+      Args:
+          tree: In-memory CST tree object.
+          ancestor_id: Stable ID of the potential ancestor node.
+          node_id: Stable ID of the potential descendant node.
+
+      Returns:
+          True if ancestor_id is found in the parent chain of node_id.
+      """
+      current = tree.get_node(node_id)
+      while current is not None:
+          parent = tree.get_parent(current.stable_id)
+          if parent is None:
+              return False
+          if parent.stable_id == ancestor_id:
+              return True
+          current = parent
+      return False
+
+  Task: Replace bodies of _apply_tree_temp and _apply_text
+  (both currently raise NotImplementedError).
+
+  New _apply_tree_temp body (replace the raise NotImplementedError inside the method):
+  ```python
+  if session.handler_id == "json":
+      from ai_editor.core.json_tree import tree_builder as jtb
+      tree = jtb.get_tree(session.tree_id)
+      for op in operations:
+          jtb.apply_op(tree, op)
+          session.draft_path.write_text(jtb.serialize_tree(session.tree_id))
+  else:
+      from ai_editor.core.yaml_tree import tree_builder as ytb
+      tree = ytb.get_tree(session.tree_id)
+      for op in operations:
+          ytb.apply_op(tree, op)
+          session.draft_path.write_text(ytb.serialize_tree(session.tree_id))
+  return {"success": True, "updated": True}
+  ```
+
+  New _apply_text body (replace the raise NotImplementedError inside the method):
+  ```python
+  from ai_editor.commands.universal_file_replace_command import _sort_text_replacements_bottom_up
+  sorted_ops = _sort_text_replacements_bottom_up(operations)
+  buffer = session.draft_path.read_text().splitlines(keepends=True)
+  for op in sorted_ops:
+      start = op.get("start_line", 1) - 1
+      end = op.get("end_line", start + 1)
+      content = op.get("content", "")
+      op_type = op.get("type", "replace")
+      if op_type == "delete":
+          del buffer[start:end]
+      elif op_type == "insert":
+          buffer.insert(start, content if content.endswith("\n") else content + "\n")
+      else:
+          buffer[start:end] = [content if content.endswith("\n") else content + "\n"]
+  session.draft_path.write_text("".join(buffer))
+  return {"success": True, "line_count": len(buffer)}
+  ```
+
+  Implementation:
+  1. cst_load_file(project_id='8772a086-688d-4198-a0c4-f03817cc0e6c',
+     file_path='ai_editor/commands/universal_file_edit/edit_command.py')
+  2. cst_find_node to locate _apply_tree_temp body (the raise NotImplementedError node).
+  3. cst_modify_tree replace that node with new _apply_tree_temp body.
+  4. cst_find_node to locate _apply_text body (the raise NotImplementedError node).
+  5. cst_modify_tree replace that node with new _apply_text body.
+  6. cst_save_tree(validate=true, backup=true).
+  7. lint_code then format_code.
+
+  Constraints:
+  - Do not modify any other method.
+  - Resulting file must be syntactically valid Python.
+  - File line count must not exceed 400.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/edit_command.py
+  expected: >
+    flake8 reports no errors. Neither _apply_tree_temp nor _apply_text contain
+    NotImplementedError. _apply_text calls write_text on draft_path.
+    _apply_tree_temp calls apply_op and serialize_tree.
+status: draft

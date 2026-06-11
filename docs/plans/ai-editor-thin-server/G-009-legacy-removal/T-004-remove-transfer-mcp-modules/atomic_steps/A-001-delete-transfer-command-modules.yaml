@@ -1,0 +1,34 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Удалить transfer MCP модули
+target_file: ai_editor/commands/project_file_transfer_by_id_commands.py
+operation: delete_file
+priority: 1
+depends_on: []
+concepts:
+- C-017
+- C-020
+prompt: |
+  Precondition: execute ONLY after BOTH of the following are complete:
+  - G-002/T-005 (upload transfer wrapper fully implemented in Upstream Client, C-017)
+  - G-006/T-002 (transfer/lock MCP commands unregistered from hooks_register_part2)
+
+  Delete `ai_editor/commands/project_file_transfer_by_id_commands.py`.
+
+  This file implements legacy public MCP transfer commands (C-020):
+  ProjectFileTransferDownloadBeginCommand and ProjectFileTransferUploadSaveCommand.
+  These commands have been superseded by Upstream Client (C-017) chunked upload/download
+  via CA API. After G-006/T-002 these classes are no longer registered as MCP commands;
+  this step removes the module from disk.
+
+  Do not modify any other file in this step.
+  Advisory lock command modules (project_file_advisory_lock_batch_command.py,
+  project_file_lock_status_command.py) are separate files and are not in scope
+  of this step.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/project_file_transfer_by_id_commands.py
+  expected: >
+    File absent from repository; no MCP registration exists for
+    ProjectFileTransferDownloadBeginCommand or ProjectFileTransferUploadSaveCommand.
+status: draft

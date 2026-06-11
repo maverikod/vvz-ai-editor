@@ -1,0 +1,22 @@
+step_id: T-005
+parent_global_step: G-005
+name: Схема write_mode preview/commit
+description: 'Зафиксировать в схеме и metadata команды universal_file_write (C-016) как write stage File Workflow (C-009) в цикле open → edit → write → close; параметр write_mode preview/commit определяет поведение этой стадии Write Stage (C-012): preview формирует только локальный diff (canonical-export comparison vs Origin Snapshot) без upload на СА; commit выполняет compare-and-upload (no-op при равенстве, upload через Upstream Client при отличии, синхронизация Origin Snapshot при успехе).
+
+  '
+concepts:
+- C-007
+- C-009
+- C-012
+- C-016
+inputs:
+- name: write_command_schema
+  type: object
+  description: get_schema и metadata universal_file_write.
+outputs:
+- name: updated_write_contract
+  type: object
+  description: Согласованный write_mode preview/commit с C-012.
+atomic_steps:
+- A-001
+status: ready_for_review

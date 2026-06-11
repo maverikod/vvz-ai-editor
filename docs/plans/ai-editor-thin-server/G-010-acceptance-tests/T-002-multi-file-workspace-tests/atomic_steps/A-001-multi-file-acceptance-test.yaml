@@ -1,0 +1,329 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Multi-file acceptance test
+target_file: tests/integration/test_multi_file_ca_session.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-006
+- C-022
+prompt: |
+  Create `tests/integration/test_multi_file_ca_session.py` (operation: create_file).
+
+  Acceptance verification for **T-002 Multi-file в одной CA Session**: two `file_path`
+  values, one `ca_session_id`, two File Subtrees (C-006) under one Editor Session
+  Directory (C-005), **write and close by explicit `file_path`**, product criterion
+  **C-022(1)** (all session artifacts only under `workspace_root/session_id/`), and
+  source_spec invariant **{8b1h}** (one CA session holds multiple open files; each
+  file has its own subtree inside the shared `{session_id}/` directory).
+
+  Mock Upstream Client in tests by patching `resolve_workspace_root` and
+  `get_code_analysis_client` at the exact module paths below. Do **not** call real
+  CA or read `config.json` workspace paths.
+
+  ## Parent links (mandatory)
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-010-acceptance-tests/README.yaml`
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-010-acceptance-tests/T-002-multi-file-workspace-tests/README.yaml`
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml` (C-004, C-006, C-022)
+  - Source spec: `docs/plans/ai-editor-thin-server/source_spec.md` paragraph `{8b1h}`
+
+  ## MRS concepts (relevant excerpt)
+
+  - **C-004 CA Session**: one `session_id` may hold multiple open files; write/close
+    disambiguate by `file_path` when N>1.
+  - **C-006 File Subtree**: per `(project_id, file_path)` under session; removed on
+    close of that file; sibling subtrees remain.
+  - **C-022 Product Acceptance Criteria (1)**: all files of the session exist only
+    under `workspace_root/session_id/`.
+
+  ## Source invariant {8b1h}
+
+  One CA session may hold locks and open files for **multiple** paths simultaneously.
+  Each file has its own subtree inside the shared `{session_id}/` directory.
+
+  ## Workspace path helpers (read-only assertions)
+
+  From `ai_editor.core.editor_workspace_paths`:
+
+  ```python
+  layout = file_workspace_layout(workspace_root, ca_session_id, project_id, file_path)
+  # layout.session_dir       — Editor Session Directory (C-005), equals workspace_root / ca_session_id
+  # layout.file_subtree_dir  — File Subtree root (C-006)
+  # layout.origin_path       — Origin Snapshot path (C-007)
+  ```
+
+  Edit Subdirectory is discovered after open as `Path(open_res.data["draft_path"]).parent`.
+
+  ## File header (exact module docstring)
+
+  ```python
+  """Multi-file CA session acceptance: open, write, close by file_path (C-004, C-006, C-022, {8b1h}).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list)
+
+  ```python
+  from __future__ import annotations
+
+  from contextlib import contextmanager
+  from pathlib import Path
+  from unittest.mock import MagicMock, patch
+
+  import pytest
+
+  from ai_editor.commands.universal_file_edit.close_command import UniversalFileCloseCommand
+  from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
+  from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+  from ai_editor.commands.universal_file_edit.write_command import UniversalFileWriteCommand
+  from ai_editor.core.editor_workspace_paths import file_workspace_layout
+  ```
+
+  ## Module-level helpers (implement exactly)
+
+  ### `_ORIGIN_BY_PATH: dict[str, bytes]`
+
+  ```python
+  _ORIGIN_BY_PATH = {
+      "pkg/a.py": b"alpha line\n",
+      "other/b.py": b"beta line\n",
+  }
+  ```
+
+  ### `def _mock_upstream() -> MagicMock`
+
+  Algorithm:
+  1. `upstream = MagicMock()`.
+  2. `upstream.validate_ca_session.return_value = MagicMock(name="VALID")`.
+  3. Define inner function `_lock(**kwargs: object) -> bytes`:
+     - Read `file_path = str(kwargs.get("file_path") or kwargs.get("path") or "")`.
+     - If `file_path not in _ORIGIN_BY_PATH`: raise `KeyError(f"unexpected file_path: {file_path}")`.
+     - Return `_ORIGIN_BY_PATH[file_path]`.
+  4. `upstream.lock_file_and_download.side_effect = _lock`.
+  5. `upstream.upload_session_file_content.return_value = None`.
+  6. `upstream.close_session_file.return_value = True`.
+  7. Return `upstream`.
+
+  Error handling: do not catch `KeyError` inside `_lock`; let test fail.
+
+  ### `@contextmanager def _upstream_context(*, workspace: Path, upstream: MagicMock)`
+
+  ```python
+  @contextmanager
+  def _upstream_context(*, workspace: Path, upstream: MagicMock):
+      with patch(
+          "ai_editor.core.editor_workspace_paths.resolve_workspace_root",
+          return_value=workspace,
+      ), patch(
+          "ai_editor.core.upstream.code_analysis_client.get_code_analysis_client",
+          return_value=upstream,
+      ):
+          yield
+  ```
+
+  Patch exactly these module paths (must not vary):
+  `ai_editor.core.editor_workspace_paths.resolve_workspace_root` and
+  `ai_editor.core.upstream.code_analysis_client.get_code_analysis_client`.
+
+  ### `def _assert_c022_all_under_session_dir(workspace: Path, session_dir: Path, *paths: Path) -> None`
+
+  Algorithm (C-022 criterion 1):
+  1. `ws = workspace.resolve()`; `sd = session_dir.resolve()`.
+  2. Assert `sd.is_dir()`.
+  3. Assert `sd.is_relative_to(ws)`.
+  4. For each `item` in `ws.iterdir()`: assert `item.resolve() == sd` — no sibling
+     directories/files beside `session_id/` under workspace root.
+  5. For each `path` in `paths`: assert `path.resolve().is_relative_to(sd)`.
+  6. For each `path` in `sd.rglob("*")`: assert `path.resolve().is_relative_to(sd)`.
+
+  Edge cases:
+  - Empty `paths` tuple is allowed (only checks workspace top-level and rglob).
+  - Pass concrete `file_subtree_dir`, `origin_path`, and `draft_path` values after open.
+
+  ### `async def _open_file(*, sid: str, project_id: str, file_path: str) -> object`
+
+  Algorithm:
+  1. `cmd = UniversalFileOpenCommand()`.
+  2. `res = await cmd.execute(session_id=sid, project_id=project_id, file_path=file_path)`.
+  3. Assert `res.success` is True; on failure pytest shows error payload.
+  4. Return `res`.
+
+  ## Test constants (use in all tests)
+
+  - `workspace = tmp_path / "workspace"`
+  - `sid = "ca-multi"`
+  - `project_id = "proj"`
+  - `file_a = "pkg/a.py"`
+  - `file_b = "other/b.py"`
+
+  ## Test 1: `test_multi_file_open_two_subtrees_share_session_dir`
+
+  Decorator: `@pytest.mark.asyncio`
+
+  Purpose: verify **{8b1h}** and **C-022(1)** at open time — one CA session, two
+  distinct File Subtrees under the same Editor Session Directory; all artifacts under
+  `workspace/sid/`.
+
+  Algorithm:
+
+  1. `upstream = _mock_upstream()`.
+  2. Inside `_upstream_context(workspace=workspace, upstream=upstream)`:
+     - `open_a = await _open_file(sid=sid, project_id=project_id, file_path=file_a)`.
+     - `open_b = await _open_file(sid=sid, project_id=project_id, file_path=file_b)`.
+  3. `layout_a = file_workspace_layout(workspace, sid, project_id, file_a)`.
+  4. `layout_b = file_workspace_layout(workspace, sid, project_id, file_b)`.
+  5. **{8b1h} — one session, multiple subtrees:**
+     - Assert `open_a.data["session_id"] == sid`.
+     - Assert `open_b.data["session_id"] == sid`.
+     - Assert `layout_a.session_dir == layout_b.session_dir`.
+     - Assert `layout_a.file_subtree_dir != layout_b.file_subtree_dir`.
+     - Assert `layout_a.file_subtree_dir.is_dir()`.
+     - Assert `layout_b.file_subtree_dir.is_dir()`.
+  6. **Origin snapshots loaded:**
+     - Assert `layout_a.origin_path.is_file()`.
+     - Assert `layout_b.origin_path.is_file()`.
+     - Assert `layout_a.origin_path.read_bytes() == _ORIGIN_BY_PATH[file_a]`.
+     - Assert `layout_b.origin_path.read_bytes() == _ORIGIN_BY_PATH[file_b]`.
+  7. **Draft paths exist (Edit Subdirectory allocated per file):**
+     - `draft_a = Path(open_a.data["draft_path"])`; assert `draft_a.is_file()`.
+     - `draft_b = Path(open_b.data["draft_path"])`; assert `draft_b.is_file()`.
+     - Assert `draft_a.parent.is_dir()` and `draft_b.parent.is_dir()`.
+     - Assert `draft_a.parent.is_relative_to(layout_a.file_subtree_dir)`.
+     - Assert `draft_b.parent.is_relative_to(layout_b.file_subtree_dir)`.
+  8. **C-022(1) — all artifacts under session_dir:**
+     - `_assert_c022_all_under_session_dir(
+           workspace,
+           layout_a.session_dir,
+           layout_a.file_subtree_dir,
+           layout_b.file_subtree_dir,
+           layout_a.origin_path,
+           layout_b.origin_path,
+           draft_a,
+           draft_b,
+       )`.
+  9. Assert `upstream.lock_file_and_download.call_count == 2`.
+  10. Assert `str(workspace / sid) in open_a.data["session_dir"]`.
+  11. Assert `str(workspace / sid) in open_b.data["session_dir"]`.
+
+  ## Test 2: `test_multi_file_write_and_close_by_file_path`
+
+  Decorator: `@pytest.mark.asyncio`
+
+  Purpose: write by `file_path` for each open file (no-op on A, changed write on B);
+  close first file by `file_path`; assert closed File Subtree removed while sibling
+  subtree and session directory remain; verify upstream close called for closed file only.
+
+  Algorithm:
+
+  1. `upstream = _mock_upstream()`.
+  2. Inside `_upstream_context(workspace=workspace, upstream=upstream)`:
+     - `open_a = await _open_file(sid=sid, project_id=project_id, file_path=file_a)`.
+     - `open_b = await _open_file(sid=sid, project_id=project_id, file_path=file_b)`.
+     - `layout_a = file_workspace_layout(workspace, sid, project_id, file_a)`.
+     - `layout_b = file_workspace_layout(workspace, sid, project_id, file_b)`.
+     - `session_dir = layout_a.session_dir`.
+     - `draft_b = Path(open_b.data["draft_path"])`.
+  3. **Write file_a — no-op (unchanged draft):**
+     - `write_cmd = UniversalFileWriteCommand()`.
+     - `write_a = await write_cmd.execute(session_id=sid, project_id=project_id, file_path=file_a)`.
+     - Assert `write_a.success` is True.
+     - Assert `write_a.data.get("unchanged") is True`.
+     - Assert `upstream.upload_session_file_content.call_count == 0` (no upload yet).
+  4. **Write file_b — with changes (edit then write):**
+     - `edit_cmd = UniversalFileEditCommand()`.
+     - `edit_b = await edit_cmd.execute(
+           session_id=sid,
+           project_id=project_id,
+           file_path=file_b,
+           operations=[
+               {
+                   "type": "replace",
+                   "start_line": 1,
+                   "end_line": 1,
+                   "content": "beta edited\n",
+               }
+           ],
+       )`.
+     - Assert `edit_b.success` is True.
+     - `write_b = await write_cmd.execute(session_id=sid, project_id=project_id, file_path=file_b)`.
+     - Assert `write_b.success` is True.
+     - Assert `write_b.data.get("unchanged") is not True` — changed write path.
+     - Assert `upstream.upload_session_file_content.call_count >= 1`.
+  5. **Close file_a by file_path:**
+     - `close_cmd = UniversalFileCloseCommand()`.
+     - `close_a = await close_cmd.execute(session_id=sid, project_id=project_id, file_path=file_a)`.
+     - Assert `close_a.success` is True.
+     - Assert `upstream.close_session_file.call_count == 1`.
+  6. **Post-close filesystem — closed subtree gone, sibling remains:**
+     - Assert `not layout_a.file_subtree_dir.exists()` — File Subtree for `file_a` removed.
+     - Assert `layout_b.file_subtree_dir.is_dir()` — sibling File Subtree remains.
+     - Assert `layout_b.origin_path.is_file()` — sibling origin still present.
+     - Assert `session_dir.is_dir()` — Editor Session Directory retained ({8b1h} multi-file).
+  7. **C-022(1) after partial close:**
+     - `_assert_c022_all_under_session_dir(
+           workspace,
+           session_dir,
+           layout_b.file_subtree_dir,
+           layout_b.origin_path,
+       )`.
+  8. Assert `upstream.close_session_file.call_args.kwargs.get("file_path") == file_a`
+     OR positional equivalent contains `file_a` — close targeted the first file only.
+
+  ## Error handling expectations
+
+  - If any command returns failure: use plain `assert res.success`; do not catch or skip.
+  - Do not add retry logic.
+  - Do not read or write files outside `tmp_path` workspace.
+
+  ## Edge cases covered
+
+  - Nested relative paths (`pkg/a.py`, `other/b.py`) → distinct File Subtree directories.
+  - Plain-text files (`.py` extension, FORMAT_TEXT pipeline) — no CST sidecar requirement.
+  - Multi-file write requires explicit `file_path` on both write calls.
+  - Multi-file close requires explicit `file_path` when two files open.
+  - Closing one file does not remove sibling subtree or session directory.
+
+  ## Forbidden patterns
+
+  - Do NOT import or call `file_workspace_layout` without also exercising MCP commands
+    (layout-only smoke test alone is insufficient — both tests must call open/write/close).
+  - Do NOT patch modules other than the two listed patch targets.
+  - Do NOT use `print()` for diagnostics.
+  - Do NOT add tests for lock contention between CA sessions (that is T-005 scope).
+  - Do NOT modify any file other than `tests/integration/test_multi_file_ca_session.py`.
+  - Do NOT reference T-001 test modules or duplicate their single-file workflow tests.
+
+  ## Validation commands (run from project root with `.venv` active)
+
+  ```bash
+  black tests/integration/test_multi_file_ca_session.py
+  flake8 tests/integration/test_multi_file_ca_session.py
+  mypy tests/integration/test_multi_file_ca_session.py
+  pytest tests/integration/test_multi_file_ca_session.py -v
+  ```
+
+  Expected:
+  - black → "reformatted" or "left unchanged"
+  - flake8 → no output (exit 0)
+  - mypy → "Success: no issues found"
+  - pytest → `test_multi_file_open_two_subtrees_share_session_dir PASSED` and
+    `test_multi_file_write_and_close_by_file_path PASSED`; exit 0
+
+  **Mandatory completion:** all project tests must pass after implementation
+  (`pytest` exit 0). If other tests fail due to missing upstream dependencies, report
+  blockers — do not weaken assertions in this file.
+
+verification:
+  type: pytest
+  target: tests/integration/test_multi_file_ca_session.py
+  expected: >
+    Two tests pass: multi-file open shares one session_dir with two File Subtrees
+    ({8b1h}, C-022-1); write by file_path (noop + changed) and close by file_path
+    removes only the closed File Subtree while sibling subtree and session_dir remain.
+status: ready_for_review

@@ -1,0 +1,42 @@
+step_id: T-003
+parent_global_step: G-004
+name: TreeQuery and CstQuerySelector
+description: 'Define the TreeQuery entity (C-018) as structural search over the marked
+  tree of a file, operating on tree structure rather than full-text or database, and
+  returning NodeIds directly usable in navigation and edit operations. Define two
+  query modes. Simple mode: filters nodes by type label, name, qualified name, or
+  line range (Python only). XPath mode: uses a CstQuerySelector (C-019) string with
+  double-slash recursive descendant traversal, at-attribute access in filter predicates,
+  numeric operators (ge, le, gt, lt) on start_line, end_line, and children_count,
+  and a not pseudo-class for negation. Establish the require_one modifier: demands
+  a unique match or returns NoMatch or NonUniqueMatch with candidates. Establish include_code:
+  returns the source text of the matched node (Python only). Establish that in-session
+  query runs against the in-memory draft tree; out-of-session query runs against the
+  validated on-disk tree via TreeLifecycle.'
+concepts:
+- C-018
+- C-019
+- C-002
+- C-010
+inputs:
+- name: NodeId entity definition
+  type: domain entity definition (C-002)
+  description: The identifier type that TreeQuery returns and that callers use 
+    to address subsequent navigation and edit operations.
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: Used by out-of-session query to ensure a valid tree before 
+    structural search begins.
+outputs:
+- name: TreeQuery entity definition
+  type: domain entity definition
+  description: Structural search returning NodeIds; two modes (simple and 
+    XPath); require_one and include_code modifiers; in-session query targets 
+    draft tree; out-of-session query validates via TreeLifecycle.
+- name: CstQuerySelector entity definition
+  type: domain entity definition
+  description: XPath-compatible selector string with double-slash recursion, 
+    at-attribute predicates, numeric operators on line and child counts, and not
+    pseudo-class negation.
+atomic_steps: []
+status: draft

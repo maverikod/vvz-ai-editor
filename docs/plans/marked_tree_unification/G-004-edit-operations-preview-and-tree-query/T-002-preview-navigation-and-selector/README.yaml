@@ -1,0 +1,76 @@
+step_id: T-002
+parent_global_step: G-004
+name: PreviewNavigation and PreviewSelector
+description: 'Define the PreviewNavigation entity (C-016) as the three-phase procedure
+  for producing a structured preview of a tree node. Phase 1 enumerate: resolve the
+  focus node from node_ref (always a short_id integer for the requested file''s tree,
+  never a line number); list ordered child blocks; IndentedBlock wrapper nodes are
+  transparent in enumeration — direct statement children appear in place of the block
+  container; JSON and YAML short_id locates the node via NodeIdMap (C-025) MAP resolution
+  and walks up to the nearest object or array ancestor when needed ({i004}). Phase
+  2 select: apply the PreviewSelector (C-017) to choose a subset of child blocks. Phase
+  3 render: produce short_id, type label, attribute summary, and text excerpt per
+  selected block; in annotated and full-text modes every associated physical line is
+  prefixed at line start with `[<short_id>] ` (decimal integer) followed by original
+  content; lines without an associated short_id use blank padding whose width is the
+  minimal digit count needed for the maximum short_id in the tree ({i007}), not a fixed
+  cap; before rendering Python source text, legacy identity comments including whole-line
+  `# @node-id:` markers and the trailing `# cst-node-ids:` block are stripped from the
+  logical source used for display ({i008}) — preview ids come from TREE markers and
+  MAP via NodeIdMap, not from preserved inline comment markers. Establish that PreviewNavigation
+  is identical for all five formats and for both in-session (draft tree) and out-of-session
+  (validated on-disk tree) access; session_id switches navigation to the in-session
+  draft ({i003}). Establish that the preview command validates or builds the tree via
+  TreeLifecycle before returning results when the tree is absent or invalid ({f001}).
+  Establish that node_ref is short_id integer only; internal UUID resolution is confined
+  to NodeIdMap ({n003}, {f002}). Define the PreviewSelector entity (C-017): slice string
+  start:end (zero-based, exclusive end); list of short_id integers cherry-picks blocks;
+  per-format full_text_max_lines (default 200 source lines, zero disables inline rendering);
+  inline versus drilldown by node line span versus format threshold measured in source
+  lines not bytes; JSON content normalized to pretty-printed form BEFORE line counting;
+  max_chars paginates the serialized preview envelope only.'
+concepts:
+- C-016
+- C-017
+- C-002
+- C-010
+- C-009
+- C-025
+source_labels:
+- '{f001}'
+- '{f002}'
+- '{i001}'
+- '{i002}'
+- '{i003}'
+- '{i004}'
+- '{i005}'
+- '{i006}'
+- '{i007}'
+- '{i008}'
+- '{n003}'
+inputs:
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: Used by the preview command to ensure a valid tree exists before
+    navigation begins ({f001}).
+- name: short_id and NodeIdMap contract
+  type: domain entity definitions (C-002, C-025, {n003})
+  description: node_ref is short_id integer; NodeIdMap resolves to internal identity
+    inside the server only.
+outputs:
+- name: PreviewNavigation entity definition
+  type: domain entity definition
+  description: Three-phase procedure (enumerate, select, render) identical for all
+    formats and session modes; node_ref is short_id integer; IndentedBlock transparent;
+    annotated/full-text line prefixes `[short_id]` with minimal digit-width padding;
+    legacy Python identity comments stripped before render; JSON/YAML MAP walk-up;
+    TreeLifecycle validates or builds tree before navigation.
+- name: PreviewSelector entity definition
+  type: domain entity definition
+  description: Slice or short_id-list selector; per-format full_text_max_lines (default
+    200, zero = drilldown only); inline versus drilldown by line span; JSON pretty-print
+    before line counting; max_chars paginates envelope only.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

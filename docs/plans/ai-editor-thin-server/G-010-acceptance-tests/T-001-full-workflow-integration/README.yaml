@@ -1,0 +1,38 @@
+step_id: T-001
+parent_global_step: G-010
+name: Интеграционный workflow с mock CA
+description: >
+  Приёмочная верификация критериев C-022 и File Workflow (C-009) через два
+  интеграционных pytest-модуля с mock Upstream Client: модуль полного цикла
+  open → write no-op (unchanged) → edit → write (changed, upload + origin sync)
+  → close с артефактами только под workspace_root/{ca_session_id}/ (C-022
+  (1)–(4)); отдельный модуль глубинной проверки Open Stage (C-010) и Edit
+  Stage (C-011) — создание Edit Subdirectory (C-008), неизменность Origin
+  Snapshot (C-007), мутации только в Edit Subdirectory, read-only preview на
+  сегменте open→edit.
+concepts:
+- C-001
+- C-005
+- C-007
+- C-008
+- C-009
+- C-010
+- C-011
+- C-012
+- C-013
+- C-022
+inputs:
+- name: mock_upstream
+  type: object
+  description: Фикстура подмены CodeAnalysisClient.
+outputs:
+- name: workflow_acceptance_test_suite
+  type: object
+  description: >
+    Два проходящих интеграционных pytest-модуля: полный workflow C-022 (1)–(4)
+    с no-op/changed write и close; углублённая верификация C-022 (2) с C-007–C-011
+    на open→edit сегменте.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

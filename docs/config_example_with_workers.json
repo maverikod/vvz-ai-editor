@@ -1,0 +1,119 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "protocol": "http",
+    "servername": "localhost",
+    "ssl": null,
+    "rules": null,
+    "log_dir": "./logs",
+    "debug": false,
+    "log_level": "INFO",
+    "advertised_host": null
+  },
+  "client": {
+    "enabled": false,
+    "protocol": "http",
+    "ssl": null
+  },
+  "registration": {
+    "enabled": false,
+    "protocol": "http",
+    "register_url": "http://localhost:3005/register",
+    "unregister_url": "http://localhost:3005/unregister",
+    "heartbeat_interval": 30,
+    "ssl": null,
+    "server_id": null,
+    "server_name": null,
+    "instance_uuid": null,
+    "auto_on_startup": true,
+    "auto_on_shutdown": true,
+    "heartbeat": {
+      "url": "http://localhost:3005/proxy/heartbeat",
+      "interval": 30
+    }
+  },
+  "server_validation": {
+    "enabled": false,
+    "protocol": "http",
+    "ssl": null,
+    "timeout": 10,
+    "use_token": false,
+    "use_roles": false,
+    "tokens": {},
+    "roles": {},
+    "auth_header": "X-API-Key",
+    "roles_header": "X-Roles",
+    "health_path": "/health",
+    "check_hostname": false
+  },
+  "auth": {
+    "use_token": false,
+    "use_roles": false,
+    "tokens": {},
+    "roles": {}
+  },
+  "queue_manager": {
+    "enabled": true,
+    "in_memory": true,
+    "registry_path": null,
+    "shutdown_timeout": 30.0,
+    "max_concurrent_jobs": 10,
+    "max_queue_size": null,
+    "per_job_type_limits": null,
+    "completed_job_retention_seconds": 21600,
+    "default_poll_interval": 0.0,
+    "default_max_wait_time": null
+  },
+  "ai_editor": {
+    "git_commit_on_write": false,
+    "db_path": "data/ai_editor.db",
+    "database": {
+      "driver": {
+        "type": "sqlite_proxy",
+        "config": {
+          "path": "data/ai_editor.db",
+          "worker_config": {
+            "command_timeout": 30.0,
+            "poll_interval": 0.01
+          }
+        }
+      }
+    },
+    "host": "0.0.0.0",
+    "port": 15000,
+    "log": "logs/ai_editor.log",
+    "faiss_index_path": "data/faiss_index.bin",
+    "vector_dim": 384,
+    "min_chunk_length": 30,
+    "vectorization_retry_attempts": 3,
+    "vectorization_retry_delay": 1.0,
+    "indexing_worker": {
+      "enabled": true,
+      "poll_interval": 30,
+      "batch_size": 5,
+      "log_path": "logs/indexing_worker.log"
+    },
+    "file_watcher": {
+      "enabled": true,
+      "scan_interval": 60,
+      "log_path": "logs/file_watcher.log",
+      "version_dir": "data/versions"
+    },
+    "worker": {
+      "enabled": true,
+      "poll_interval": 30,
+      "batch_size": 5,
+      "watch_dirs": [
+        {"id": "example-uuid-here", "path": "/absolute/path/to/watch"}
+      ],
+      "log_path": "logs/vectorization_worker.log"
+    },
+    "chunker": {
+      "enabled": false,
+      "url": "localhost",
+      "port": 8009,
+      "protocol": "http"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+step_id: T-801
+parent_global_step: G-009
+name: Verify command and handlers are stable
+status: done
+concepts:
+- C-001
+- C-015
+description: "Define the precondition check that must pass before ReadOnlyBatchIntegration\n\
+  (C-015) is executed. The whitelist edit is a contract change for the\nread_only_batch\
+  \ command; it must not happen before PreviewCommand (C-001)\nand all its file handlers\
+  \ are stable.\n\nStability criteria (all must be true):\n1. PreviewCommand (C-001)\
+  \ implementation is complete and all its\n   tests pass.\n2. All registered FileHandlers\
+  \ (PythonFileHandler, TextFileHandler,\n   JsonFileHandler, JsonLinesFileHandler,\
+  \ YamlFileHandler) are\n   implemented and their tests pass.\n3. The public command\
+  \ schema (input schema and ResponseEnvelope) is\n   frozen: no further breaking\
+  \ changes are anticipated.\n\nVerification action:\nBefore performing the whitelist\
+  \ edit, confirm that all stability criteria\nare met. This confirmation is recorded\
+  \ as a review decision (code review,\ntest results, or similar artefact in the project's\
+  \ review process).\n\nIf any criterion is not met, the whitelist edit must not proceed.\n\
+  Stability is not inferred; it requires explicit confirmation.\n"
+inputs:
+- name: test_results
+  type: test suite outcome
+  description: Passing test results for PreviewCommand and all file handlers.
+- name: schema_freeze_confirmation
+  type: review decision
+  description: Explicit confirmation that the command schema is frozen and no further
+    breaking changes are planned.
+outputs:
+- name: stability_confirmed
+  type: boolean
+  description: True when all stability criteria are met and the whitelist edit may
+    proceed. False halts the integration step.
+atomic_steps:
+- A-001

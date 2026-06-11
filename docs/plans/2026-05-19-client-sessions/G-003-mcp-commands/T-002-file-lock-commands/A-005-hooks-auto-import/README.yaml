@@ -1,0 +1,27 @@
+concepts:
+- C-005
+depends_on:
+- A-004
+name: Add register_auto_import_module for file lock commands in hooks.py
+operation: modify_file
+parent_tactical_step: T-002
+priority: 5
+prompt: "Modify the existing file at the exact path:\n  ai_editor/hooks.py\n\n\
+  Operation: modify_file. The file already has three register_auto_import_module calls\n\
+  added by T-001 for session_create, session_delete, session_list commands:\n  register_auto_import_module(\"\
+  ai_editor.commands.sessions.session_create_command\")\n  register_auto_import_module(\"\
+  ai_editor.commands.sessions.session_delete_command\")\n  register_auto_import_module(\"\
+  ai_editor.commands.sessions.session_list_command\")\n\nRequired change: append
+  three more register_auto_import_module calls at the END\nof the file, AFTER the
+  existing three session calls:\n\n  register_auto_import_module(\"ai_editor.commands.sessions.session_open_file_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.sessions.session_close_file_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.sessions.session_list_file_locks_command\"\
+  )\n\nDo not modify any other part of the file. Do not reformat existing code."
+status: done
+step_id: A-005
+target_file: ai_editor/hooks.py
+verification:
+  expected: hooks.py ends with six register_auto_import_module calls for all 
+    session commands. All existing lines are unchanged.
+  target: ai_editor/hooks.py
+  type: static_analysis

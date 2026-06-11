@@ -1,0 +1,164 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Create indexer checksum skip guard module
+target_file: ai_editor/core/database/files/update_checksum_guard.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-022
+- C-006
+status: ready_for_review
+prompt: |
+  # Split justification: extract checksum skip guard from 402-line update.py to satisfy 400-line AS cap (a3).
+
+  Create the indexer checksum skip guard module (C-022 / C-006). This module owns
+  the checksum-based skip decision for update_file_data. update.py will delegate
+  to it in the next atomic step.
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-003-indexer-checksum-guard/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-022, C-006)
+
+  Operation: create_file
+  Target: ai_editor/core/database/files/update_checksum_guard.py
+
+  ## MRS excerpt
+
+  **C-022 Indexer**
+  - definition: The indexer that decides reindexing by comparing the current source checksum against the stored tree checksum.
+  - properties:
+    - replaces the mtime-based skip guard with a checksum-based guard
+    - equal checksum skips reindex, differing checksum triggers reindex
+    - reindexing is content-driven, not mtime-driven
+
+  **C-006 ChecksumSyncPolicy**
+  - definition: The single mechanism that decides tree-vs-source truth by SHA-256 checksum comparison; the checksum comparison is the synchronization trigger.
+  - properties:
+    - SHA-256 checksum of source content is the synchronization trigger
+    - on mismatch outside a session the tree is rebuilt from source
+    - applies uniformly to all formats
+
+  ## Module docstring (exact)
+
+  """
+  Indexer checksum skip guard for update_file_data.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact list)
+
+  - import hashlib
+  - import logging
+  - from pathlib import Path
+  - from typing import Any, Dict, Optional
+
+  ## Module-level logger
+
+  - logger = logging.getLogger(__name__)
+
+  ## Function: _is_fk_or_integrity_error
+
+  Signature:
+      def _is_fk_or_integrity_error(exc: Exception) -> bool:
+
+  Docstring (exact one line):
+      """True if the exception is FK or integrity-related (no silent swallow)."""
+
+  Algorithm:
+  1. Set s = str(exc).lower().
+  2. Return True if "foreign key" in s or "integrity" in s; else False.
+
+  Error handling: none (pure predicate).
+
+  Edge cases:
+  - Empty exception message → return False.
+
+  ## Function: try_skip_reindex_by_checksum
+
+  Signature:
+      def try_skip_reindex_by_checksum(
+          database: Any,
+          *,
+          abs_path: str,
+          file_id: str,
+          file_record: Dict[str, Any],
+      ) -> Optional[Dict[str, Any]]:
+
+  Docstring (exact):
+      """
+      Return skip result dict if source SHA-256 equals stored tree_checksum; else None.
+
+      When checksums match (C-006 / C-022), clears vectors and sets needs_chunking=1,
+      then returns success with skipped=True. On DB error during skip path, returns
+      error dict. When stored_checksum is None or differs, returns None to proceed
+      with full reindex.
+      """
+
+  Algorithm:
+  1. Compute source_checksum = hashlib.sha256(Path(abs_path).read_bytes()).hexdigest().
+  2. Read stored_checksum = file_record.get("tree_checksum").
+  3. If stored_checksum is None OR stored_checksum != source_checksum: return None.
+  4. Enter try block:
+     a. Call database._clear_file_vectors(file_id).
+     b. Call database._execute("UPDATE files SET needs_chunking = 1 WHERE id = ?", (file_id,)).
+     c. Call database._commit().
+  5. On success return {"success": True, "file_path": abs_path, "file_id": file_id, "skipped": True}.
+  6. On Exception as e in step 4:
+     a. logger.error("Error clearing vectors / setting needs_chunking on skip: %s", e, exc_info=True).
+     b. If _is_fk_or_integrity_error(e): err_msg = f"Database foreign key constraint error: {e}".
+     c. Else: err_msg = f"Failed on skip path: {e}".
+     d. Return {"success": False, "error": err_msg, "file_path": abs_path, "file_id": file_id}.
+
+  Return value specification:
+  - None → caller must proceed with full reindex (checksum missing or mismatch).
+  - Dict with skipped=True → reindex skipped; checksums matched.
+  - Dict with success=False → skip path failed; caller returns this dict to user.
+
+  Error handling:
+  - Path(abs_path).read_bytes(): do NOT catch; let OSError/FileNotFoundError propagate to update_file_data outer handler.
+  - DB operations in step 4: catch Exception, log, return error dict (never raise).
+
+  Edge cases:
+  - stored_checksum is None → return None (always reindex until watcher persists checksum).
+  - stored_checksum equals source_checksum → skip path runs (vectors cleared, needs_chunking=1).
+  - File missing on disk when read_bytes called → propagate OSError (not this module's job to swallow).
+
+  ## Constants and literals
+
+  - SQL needs_chunking update: "UPDATE files SET needs_chunking = 1 WHERE id = ?"
+  - Logger error template: "Error clearing vectors / setting needs_chunking on skip: %s"
+  - FK error prefix: "Database foreign key constraint error: {e}"
+  - Generic skip failure prefix: "Failed on skip path: {e}"
+
+  ## Forbidden patterns
+
+  - Do NOT modify update.py or any other file in this step.
+  - Do NOT import from update.py (avoid circular imports).
+  - Do NOT use mtime, last_modified, st_mtime, FILE_MODIFICATION_TOLERANCE, or LAST_MODIFIED_EPSILON.
+  - Do NOT call analyze_file or clear_file_data in this module.
+  - Do NOT add classes; module contains exactly two functions.
+  - Do NOT use bare except.
+
+  ## Validation commands (.venv active)
+
+      black ai_editor/core/database/files/update_checksum_guard.py
+      flake8 ai_editor/core/database/files/update_checksum_guard.py
+      mypy ai_editor/core/database/files/update_checksum_guard.py
+      python -c "from ai_editor.core.database.files.update_checksum_guard import try_skip_reindex_by_checksum, _is_fk_or_integrity_error"
+      pytest -q
+
+  Expected: formatters clean; import succeeds; full pytest suite passes (module is additive, unused until next step).
+
+  All tests must pass before marking this step complete.
+verification:
+  type: import
+  target: ai_editor/core/database/files/update_checksum_guard.py
+  expected: >
+    New module exists with try_skip_reindex_by_checksum and _is_fk_or_integrity_error.
+    Checksum skip returns None when tree_checksum is missing or differs; returns skipped=True
+    dict when SHA-256 matches stored tree_checksum. No mtime references. Module under 120 lines.
+    Full pytest suite passes.

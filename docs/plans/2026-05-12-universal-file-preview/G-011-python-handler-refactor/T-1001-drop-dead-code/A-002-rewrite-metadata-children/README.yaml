@@ -1,0 +1,56 @@
+step_id: A-002
+parent_tactical_step: T-1001
+name: Rewrite _metadata_children_to_nodes in python_handler.py
+target_file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-016
+- C-022
+status: obsolete
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.handlers.python_handler
+  expected: 'Module imports without error. _metadata_children_to_nodes filters metadata_map
+    by depth == parent_depth + 1 and non-empty kind. PythonFileHandler.open_root and
+    resolve_node_ref are unchanged.
+
+    '
+prompt: "## Task\n\nModify an existing file by rewriting one function body.\n\nTarget\
+  \ file: ai_editor/commands/universal_file_preview/handlers/python_handler.py\n\
+  Operation: modify_file\n\n## Current file content (after A-001 — four dead functions\
+  \ removed)\n\nThe file after T-1001/A-001 contains:\n- Module docstring and imports\
+  \ (unchanged)\n- PythonFileHandler class with open_root and resolve_node_ref (unchanged)\n\
+  - _metadata_children_to_nodes (to be rewritten below)\n- No other functions\n\n\
+  Full file content is the result of applying T-1001/A-001 to python_handler.py\n\
+  after G-010/T-904/A-002: four functions removed (_cst_statements_to_nodes,\n_classify_cst_node,\
+  \ _cst_node_to_node, _find_by_stable_id).\n\n## What to change\n\n### Rewrite _metadata_children_to_nodes\
+  \ body\n\nKeep the function signature exactly:\n  def _metadata_children_to_nodes(tree:\
+  \ Any, parent_node_id: str | None) -> list[Node]:\n\nReplace the docstring with:\n\
+  \    \"\"\"Build preview Nodes from CSTTree metadata for direct children of parent_node_id.\n\
+  \n    Filters by depth == parent_depth + 1 and non-empty kind to skip\n    whitespace\
+  \ and structural nodes.\n\n    Args:\n        tree: CSTTree with metadata_map.\n\
+  \        parent_node_id: node_id of the parent node, or None.\n\n    Returns:\n\
+  \        List of Nodes sorted by start_line.\n    \"\"\"\n\nReplace the entire body\
+  \ with:\n\n    if parent_node_id is None:\n        return []\n    parent_meta =\
+  \ tree.metadata_map.get(parent_node_id)\n    child_depth = (\n        parent_meta.depth\
+  \ + 1\n        if parent_meta and parent_meta.depth is not None\n        else 1\n\
+  \    )\n    selected: list[tuple[int, str, Any]] = []\n    for nid, meta in tree.metadata_map.items():\n\
+  \        if meta.parent_id != parent_node_id:\n            continue\n        if\
+  \ meta.depth != child_depth:\n            continue\n        kind = meta.kind or\
+  \ \"\"\n        if not kind:\n            continue\n        selected.append((meta.start_line\
+  \ or 0, nid, meta))\n    selected.sort(key=lambda x: x[0])\n    nodes: list[Node]\
+  \ = []\n    for _, nid, meta in selected:\n        kind_str = meta.kind or \"\"\n\
+  \        preview_kind = (\n            NodeKind.TREE_NODE\n            if kind_str\
+  \ in (\"class\", \"function\", \"method\")\n            else NodeKind.SCALAR\n \
+  \       )\n        nodes.append(\n            Node(\n                node_kind=preview_kind,\n\
+  \                node_ref=meta.stable_id,\n                type_label=meta.type,\n\
+  \                name=meta.name,\n                attributes={},\n             \
+  \   _children_loader=(\n                    (lambda nid=nid: _metadata_children_to_nodes(tree,\
+  \ nid))\n                    if preview_kind == NodeKind.TREE_NODE\n           \
+  \         else None\n                ),\n            )\n        )\n    return nodes\n\
+  \n### Keep everything else exactly as in the current file\n\nDo not change PythonFileHandler,\
+  \ open_root, resolve_node_ref, or any imports.\n\n## Constraints\n\nProduce the\
+  \ full new file content.\nFile must not exceed 180 lines after the change.\n"

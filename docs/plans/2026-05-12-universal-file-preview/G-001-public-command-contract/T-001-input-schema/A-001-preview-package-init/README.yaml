@@ -1,0 +1,55 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create universal_file_preview package __init__
+target_file: ai_editor/commands/universal_file_preview/__init__.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-003
+status: done
+prompt: |-
+  Create a new Python package init file.
+
+  Target file (create_file — file does not exist):
+    ai_editor/commands/universal_file_preview/__init__.py
+
+  The file is the __init__.py of the package
+  ai_editor/commands/universal_file_preview/. It exposes the public
+  surface of the package to importers.
+
+  File-level docstring (required):
+    """
+    universal_file_preview — package for the universal_file_preview MCP command.
+
+    Exposes UniversalFilePreviewCommand as the single public entry point.
+
+    Author: Vasiliy Zdanovskiy
+    email: vasilyvz@gmail.com
+    """
+
+  Required imports and exports:
+    from __future__ import annotations
+    from typing import Any
+
+    __all__ = ["UniversalFilePreviewCommand"]
+
+  Lazy export (required): implement
+    def __getattr__(name: str) -> Any:
+  such that when name == "UniversalFilePreviewCommand", it performs
+    from ..universal_file_preview_command import UniversalFilePreviewCommand
+  and returns that class. For any other name, raise AttributeError with the
+  standard message form (module qualified name has no attribute name).
+
+  Include a short comment that deferred import avoids circular import because
+  universal_file_preview_command imports submodules of this package.
+
+  Do not add a top-level import of UniversalFilePreviewCommand (that would
+  recurse during package load).
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview
+  expected: Module imports without error; UniversalFilePreviewCommand is importable
+    from ai_editor.commands.universal_file_preview (lazy export via __getattr__).

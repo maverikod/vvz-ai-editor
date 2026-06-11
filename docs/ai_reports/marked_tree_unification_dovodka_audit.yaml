@@ -1,0 +1,2612 @@
+# Marked Tree Unification — Phase 1 HRS↔MRS Reconciliation Audit
+# Date: 2026-05-30
+# Author: doc_writer (PHASE 1 planning cascade)
+
+phase_1:
+  scope: HRS edits, MRS cascade, G-step invalidation, cycle_1 re-verification
+  plan_path: docs/plans/marked_tree_unification/
+
+  edits_applied:
+    header:
+      before: "Ten conceptual blocks; proposed global steps G-1..G-10."
+      after: "Thirteen blocks mapped to G-001..G-007; canonical execution order G-001..G-005 → G-006 → G-000 cutover → G-007 wiring (strictly last)."
+    b000:
+      before: "Four-operation handler contract only; no universal all-nodes marker rule."
+      after: "Appended universal rule — every addressable node gets metadata slot or end-of-block format-native comment (per {a004})."
+    c005:
+      before: "recreate_tree_from_content(*, kind, ...) dispatch by format kind."
+      after: "TreeBuilder.build via HandlerRegistry.default_registry().resolve → FormatHandler.mark → sibling .tree; checksum in tree file AND returned reference; legacy recreate_tree_from_content parity oracle until G-000."
+    d002:
+      before: "Open protocol only; no content-supply rule."
+      after: "FINAL-2 — content ONLY for non-existent or broken/corrupted file; ERROR if valid file exists; write-then-build-tree-checksum-git when accepted."
+    d003:
+      before: "In-session source copy not touched by tree edits; tree write + git commit only."
+      after: "Hide markers before mutation, restore after; per-mutation write tree, unmark-export to session TEMP, record SHA-256 both, mandatory git commit (one mutation = one commit)."
+    d005:
+      before: "Close deletes session dir; no explicit blind-delete wording."
+      after: "Close deletes session dir without validation, checksum, or consistency checks; tree survives only if written out via write command."
+    e003:
+      before: "Source mode diff vs in-session source rewritten only by write command."
+      after: "Source mode compares rev_a against most recent per-mutation unmark-exported in-session source; live project file not input."
+    i003:
+      before: "Session preview on in-session tree draft in session directory only."
+      after: "EditSession in-memory CST / .draft artefacts for unsaved edits before write."
+    i005:
+      before: "Preview budget (max lines / max value length) independent of selector."
+      after: "FINAL-1 per-format full_text_max_lines (source lines, default 200, 0 disables); JSON pretty-print before line count; max_chars paginates envelope only."
+    i006:
+      before: "Standard CST drilldown with nested ClassDef/FunctionDef exposure."
+      after: "IndentedBlock transparent; compound header ellipsis; stable ids in sidecar metadata."
+    i007:
+      before: "(new label)"
+      after: "Node-id prefix at start of each physical line in annotated/full-text modes; blank padding for alignment."
+    i008:
+      before: "(new label)"
+      after: "Strip legacy Python identity comments before render; preview ids from sidecar metadata prefixes."
+    k001:
+      before: "Block executed last after Blocks 1–10 built and verified."
+      after: "G-000 final cutover after G-001..G-005 verified, before G-007 identity remap integration."
+    m002:
+      before: "Integration performed last after every other block built and verified."
+      after: "G-007 strictly final — after G-000 cutover AND G-006 universal node id complete."
+    blocks_12_13:
+      action: preserved
+      labels: ["{l001}", "{l002}", "{l003}", "{m001}", "{m002}"]
+
+  mrs_changes:
+    - concept: C-001
+      change: Added universal all-nodes marker property; source_labels +{b000}
+    - concept: C-007
+      change: Added universal marker + EditSession owns hide/unhide during mutation
+    - concept: C-010
+      change: TreeBuilder.build canonical path; legacy parity oracle until G-000
+    - concept: C-011
+      change: Full TreeBuilder.build signature and HandlerRegistry.resolve path
+    - concept: C-012
+      change: FINAL-2 open content rule; per-mutation hide/unhide/export/checksum/commit; blind close
+    - concept: C-013
+      change: Each commit captures tree + exported in-session source
+    - concept: C-014
+      change: Source-mode diff vs most recent per-mutation unmark-exported source
+    - concept: C-016
+      change: EditSession draft preview; i007/i008 render rules; IndentedBlock transparency
+    - concept: C-017
+      change: FINAL-1 per-format full_text_max_lines thresholds
+    - concept: C-023
+      change: G-000 ordering — after G-001..G-005, before G-007 (not globally last)
+    - concept: C-024
+      change: Restored/updated UniversalNodeId; G-007 strictly last after G-000 and G-006
+    - relations:
+      change: Added C-011→C-008 uses; C-015/C-016/C-007→C-024 uses
+
+  new_labels_added:
+    - "{i007}"
+    - "{i008}"
+
+  gs_marked_needs_review:
+    - G-000
+    - G-001
+    - G-002
+    - G-003
+    - G-004
+    - G-007
+
+  cycle_1_verdicts:
+    c1_machine_to_source:
+      verdict: green
+      note: Every MRS concept and relation source_labels resolve to binding HRS paragraphs; C-024 labels {l001}-{m002} present in HRS Blocks 12-13.
+    c2_source_to_machine:
+      verdict: green
+      note: All 78 binding HRS paragraph labels appear in at least one concept source_labels list (automated set diff empty).
+    c3_relation_typing:
+      verdict: green
+      note: All relations use allowed types (uses, owns, implements, depends_on, produces, consumes); no extends violations.
+    c4_concept_quality:
+      verdict: green
+      note: All concepts represent entities with behavior or invariants; no plain-property collapse findings.
+    overall_green: true
+
+  cycle_2_c5_g000_g007:
+    G-000:
+      verdict: green
+      note: concept_ids C-003, C-023, C-006 valid; source_labels {k001}-{k004} relevant; description encodes cutover-after-G-001..G-005 before-G-007 ordering aligned with HRS {k001} and header.
+    G-007:
+      verdict: green
+      note: concept_ids C-024, C-007, C-002, C-016, C-015 valid; source_labels {m001},{m002} relevant; description states strictly final after G-000 and G-006 aligned with HRS {m002}.
+
+phase_2:
+  scope: Tactical layer completion (no atomic steps, no HRS/MRS, no production code)
+  date: 2026-05-30
+
+  ts_added_or_changed:
+    G-002:
+      T-004: wired (already existed); aligned description to MRS unified pipeline + parity oracle; concepts C-010,C-011,C-008,C-007,C-009,C-006
+      T-002: checksum ownership split (C-006 vs C-010)
+      T-003: dual content_checksum exposure; narrowed to entity definition
+    G-003:
+      T-001: FINAL-2 open, hide/unhide, per-mutation export/checksum/commit, write copy-out, blind close
+      T-002: dual-artifact commit invariant; dulwich dependency output
+      T-003: source-mode diff vs per-mutation unmark-export ({e003})
+    G-001:
+      T-001: universal all-nodes marker invariant
+      T-002: hide/unhide boundary constraint
+    G-004:
+      T-002: FINAL-1 preview rules C-016/C-017
+    G-000,G-007: status promotions only
+
+  t5_t13_verdicts:
+    G-000: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass, t12: pass, t13: pass}
+    G-001: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass, t12: pass_after_fix, t13: pass}
+    G-002: {t5: pass, t6: pass_after_fix, t7: pass, t8: pass_after_fix, t9: pass, t10: pass, t11: pass, t12: pass, t13: pass_after_fix}
+    G-003: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass, t12: pass_after_fix, t13: pass}
+    G-004: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass, t12: pass, t13: pass, note: "T-001 tree-validity edit gate absent from HRS/MRS — escalation"}
+    G-005: {all: pass}
+    G-006: {all: pass}
+    G-007: {all: pass}
+
+  cycle_2_verdicts:
+    G-000: green
+    G-001: green
+    G-002: green
+    G-003: green
+    G-004: green
+    G-005: green
+    G-006: green
+    G-007: green
+
+  outer_loop: pass
+
+  tactical_overall_green: false
+  overall_green_blockers:
+    - "G-004 T-001 tree-validity edit gate requires human decision (add to HRS/MRS or remove from TS)"
+
+  gs_status_after_phase_2:
+    G-000: ready_for_review
+    G-001: needs_review
+    G-002: needs_review
+    G-003: needs_review
+    G-004: needs_review
+    G-005: ready_for_review
+    G-006: ready_for_review
+    G-007: ready_for_review
+
+phase_2b_edit_gate:
+  scope: HRS/MRS cascade for tree-validity edit gate (user decision KEEP gate)
+  date: 2026-05-30
+  plan_path: docs/plans/marked_tree_unification/
+  user_decision: KEEP G-004 tree-validity edit gate; encode dual edit mode in HRS/MRS
+
+  hrs_labels_added_or_changed:
+    d002:
+      block: Block 4 — Edit Session Lifecycle
+      change: augmented
+      before_one_liner: "Open protocol with FINAL-2 content-supply rule only."
+      after_one_liner: "Appended one sentence — session records tree-validity state (valid/invalid)."
+    d003:
+      block: Block 4 — Edit Session Lifecycle
+      change: augmented
+      before_one_liner: "Full per-mutation invariant only; 'This invariant has no exceptions.'"
+      after_one_liner: "Split valid vs invalid — full invariant when valid; DEGRADED (source + checksum + git only) when invalid; re-validation resumes full invariant per {h009}."
+    h008:
+      block: Block 8 — Tree Edit Operations
+      change: added
+      before_one_liner: "(new label)"
+      after_one_liner: "Tree-validity edit gate — VALID→NodeId six ops + full {d003}; INVALID→plain-text only + DEGRADED {d003}."
+    h009:
+      block: Block 8 — Tree Edit Operations
+      change: added
+      before_one_liner: "(new label)"
+      after_one_liner: "Re-validation via TreeBuilder.build when plain-text edit makes source parseable; resume NodeId mode and full {d003}."
+
+  mrs_changes:
+    C-012:
+      change: "Definition extended for dual-mode session; tree-validity-state property; full vs DEGRADED per-mutation invariants; re-validation property; source_labels +{h008},{h009}"
+    C-013:
+      change: "Commits during invalid-tree period capture source-only artefact; dual commit shape per validity state; source_labels +{h008}"
+    C-015:
+      change: "Definition dual-mode (NodeId when valid, plain-text when invalid); tree-validity edit gate property; re-validation property; source_labels +{h008},{h009}"
+
+  tactical_files_changed:
+    - path: docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/README.yaml
+      change: "Tree-validity edit gate output aligned to HRS {h008},{h009},{d003} and C-015/C-012; status draft→ready_for_review"
+    - path: docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml
+      change: "source_labels +{h008},{h009}; status needs_review→ready_for_review"
+    - path: docs/plans/marked_tree_unification/G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-007-remap-in-edit-operations.yaml
+      change: "One-line gate reference in MRS excerpt header only (C-012, {h008}, {h009})"
+
+  phase_2b_follow_up_cascade:
+    date: 2026-05-30
+    note: >
+      G-003 GS, T-001, and T-002 cascaded in phase_2b follow-up to close outer_loop
+      blocker G003-*-gate-stale: dual-mode edit/per-mutation (valid full vs invalid
+      DEGRADED), tree-validity-state tracking, re-validation per {h009}, and dual
+      SessionRepo commit shape per C-012/C-013/{h008}/{d003}. Atomic steps unchanged.
+    tactical_files_changed:
+      - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml
+        change: "source_labels +{h008},{h009}; description dual-mode edit/per-mutation and re-validation"
+      - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/README.yaml
+        change: "Description/outputs aligned to C-012 tree-validity gate, valid/invalid edit modes, re-validation per {h008},{h009},{d003}"
+      - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-002-session-repo/README.yaml
+        change: "Description/outputs dual commit shape (both artefacts when valid, source-only when invalid) per C-013/{h008}/{d003}"
+    verification:
+      date: 2026-05-30
+      method: zero_trust_reread — MRS, G-003 README, T-001, T-002, T-003 in full; then outer_loop second pass G-000..G-007
+      G-003_inner_loop:
+        T-001: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass}
+        T-002: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass}
+        T-003: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass}
+        t12: pass
+        t13: pass
+        verdict: green
+        note: >
+          Prior blockers G003-T001-gate-stale, G003-T002-gate-stale, G003-GS-gate-stale
+          closed — dual-mode edit/per-mutation, tree-validity-state tracking, re-validation
+          per {h009}, and dual SessionRepo commit shape now present in GS and T-001/T-002.
+      outer_loop_after_follow_up:
+        verdict: pass
+        gs_rechecked:
+          G-000: green
+          G-001: green
+          G-002: green
+          G-003: green
+          G-004: green
+          G-005: green
+          G-006: green
+          G-007: green
+        advisories:
+          - id: G004-GS-T001-nodeid-qualifier
+            severity: advisory
+            summary: >
+              G-004 GS description and T-001 main description still state unconditional
+              NodeId addressing; gate fully specified in T-001 Tree-validity edit gate
+              output and G-004 source_labels include {h008},{h009}. Optional qualifier
+              in main description — not a tactical blocker.
+          - id: G003-AS-layer-stale
+            severity: downstream
+            summary: >
+              G-003 atomic steps (A-001 etc.) still carry pre-phase_2b MRS/HRS excerpts
+              (unconditional {d003}, no DEGRADED path). AS layer needs cascade before
+              atomic freeze; does not affect tactical_overall_green.
+      tactical_overall_green: true
+
+  cycle_1_verdicts:
+    c1_machine_to_source:
+      verdict: green
+      note: >
+        All 24 concepts and 30 relations have source_labels on binding HRS lines.
+        C-012/C-013/C-015 cite {h008},{h009}; augmented {d002} (validity-state sentence)
+        and {d003} (valid/invalid split, DEGRADED path, re-validation) are justified
+        by C-012 properties. No orphan labels.
+    c2_source_to_machine:
+      verdict: green
+      note: >
+        Automated set diff: 68 binding paragraph labels in source_spec.md, 68 in MRS
+        source_labels union; missing_in_mrs and orphan_in_mrs both empty. New labels
+        {h008},{h009} covered via C-012/C-013/C-015; d002 augmentation via C-012
+        tree-validity-state property.
+    c3_relation_typing:
+      verdict: green
+      note: >
+        All 30 relations use allowed types only (uses, owns, implements, depends_on,
+        produces, consumes); no extends or free-form types.
+    c4_concept_quality:
+      verdict: green
+      note: >
+        Gate encoded as behavior on C-012/C-015/C-013, not a spurious standalone
+        concept; each concept retains entity-level invariants.
+    overall_green: true
+
+  cycle_2_verdicts:
+    G-004:
+      verdict: green
+      note: >
+        c5: C-015,C-016,C-017,C-018,C-019 and listed relations valid in MRS.
+        c6: source_labels include {h008},{h009} (Block 8) plus preview/query labels.
+        c7: dual-mode edit gate readable via MRS C-015 (+ C-012 via depends_on);
+        no deferral to sibling GS. c8/c9: pass.
+    G-007:
+      verdict: green
+      note: >
+        c5: C-024,C-007,C-002,C-016,C-015 valid; no dangling {h008}/{h009} in GS
+        (gate only in A-007 prompt MRS excerpt header, consistent with header-only
+        change). c6: {m001},{m002} relevant. c7/c8/c9: pass.
+    overall_green: true
+
+  t5_t13_verdicts:
+    G-003:
+      date: 2026-05-30
+      T-001:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+      T-002:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+      T-003:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+      t12: pass
+      t13: pass
+      inner_loop_G-003: green
+    G-004:
+      T-001:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+        t12: pass
+        t13: pass
+        note: >
+          Tree-validity edit gate output traces HRS {h008}/{h009}/{d003} and MRS
+          C-015/C-012. Advisory: main description still states unconditional NodeId
+          addressing; gate output resolves — optional description qualifier.
+      T-002: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass}
+      T-003: {t5: pass, t6: pass, t7: pass, t8: pass, t9: pass, t10: pass, t11: pass}
+      t12: pass
+      t13: pass
+    inner_loop_G-004: green
+
+  outer_loop:
+    verdict: pass
+    date: 2026-05-30
+    pass_number: 2
+    method: zero_trust_reread — full MRS + each GS README + all TS per GS; second pass after G-003 follow-up cascade
+    findings: []
+    prior_findings_closed:
+      - id: G003-T001-gate-stale
+        resolution: T-001 now encodes valid/invalid dual-mode edit, DEGRADED per-mutation, re-validation per {h009}
+      - id: G003-T002-gate-stale
+        resolution: T-002 dual commit shape — both artefacts when valid, source-only when invalid
+      - id: G003-GS-gate-stale
+        resolution: G-003 README description includes dual-mode per-mutation and re-validation
+    gs_rechecked:
+      G-000: green
+      G-001: green
+      G-002: green
+      G-003: green
+      G-004: green
+      G-005: green
+      G-006: green
+      G-007: green
+    advisories:
+      - id: G004-GS-T001-nodeid-qualifier
+        severity: advisory
+        checks: [t9 partial]
+        summary: >
+          G-004 GS description and T-001 main description still state unconditional
+          NodeId addressing; gate fully specified in T-001 Tree-validity edit gate
+          output. Optional description qualifier — not a blocker.
+      - id: G003-AS-layer-stale
+        severity: downstream
+        summary: >
+          G-003 atomic steps unchanged; prompts pre-date phase_2b gate cascade.
+          AS layer needs_review before atomic execution — outside tactical scope.
+    note: >
+      Second-pass inner loops unchanged for G-000,G-001,G-002,G-004,G-005,G-006,G-007.
+      G-003 re-verified green after follow-up cascade closes all phase_2b gate-stale blockers.
+
+  tactical_overall_green: true
+  overall_green_blockers: []
+  remaining_advisories:
+    - "G-004 GS/T-001 main description optional NodeId qualifier (gate in T-001 output)"
+    - "G-003 atomic steps need AS-layer cascade before code execution"
+
+  gs_status_after_phase_2b:
+    G-000: ready_for_review
+    G-001: ready_for_review
+    G-002: ready_for_review
+    G-003: ready_for_review
+    G-004: ready_for_review
+    G-005: ready_for_review
+    G-006: ready_for_review
+    G-007: ready_for_review
+
+  gs_status_changes:
+    G-004: "needs_review → ready_for_review (gate in HRS/MRS; T-001 aligned)"
+    G-003: "needs_review → ready_for_review (follow-up cascade verified green; dual-mode gate closed)"
+    G-001: "needs_review → ready_for_review (outer_loop pass; no regressions from phase_2b)"
+    G-002: "needs_review → ready_for_review (outer_loop pass; no regressions from phase_2b)"
+    G-000,G-005,G-006,G-007: unchanged ready_for_review
+    ts_status_recommendations:
+      G-003:
+        T-001: "needs_review → ready_for_review"
+        T-002: "needs_review → ready_for_review"
+        T-003: "needs_review → ready_for_review (unchanged by gate cascade; t5-t11 pass)"
+
+phase_3_atomic:
+  scope: Atomic layer authoring and revision (inline atomic_steps in tactical README.yaml)
+  date: 2026-05-30
+  plan_path: docs/plans/marked_tree_unification/
+  prerequisite: phase_2b tactical_overall_green true
+
+  as_counts:
+    before: 73
+    before_scope: G-000..G-007
+    after_fix_pass_3: 83
+    after_second_repair_pass: 81
+    after: 81
+    after_note: >
+      Second repair pass rglob reported 87 A-*.yaml before duplicate reconcile;
+      81 canonical files match README atomic_steps 1:1 after deleting orphan
+      duplicate slug files A-008-drop-g004-from-spec-source-labels.yaml and
+      A-009-sync-t001-readme-drop-mtime.yaml (canonical A-008/A-009 retained).
+    after_convergence_pass: 78
+    after_convergence_note: >
+      Decisive convergence pass (convergence_pass): −4 G-005/T-001 plan-doc AS
+      removed; +1 G-000/T-003 tree_builder_index.py create; net −3 (81→78).
+      cross_ts_depends_on eliminated from all 23 prior AS (0 remaining on disk).
+    after_per_gs:
+      G-000: 16
+      G-001: 12
+      G-002: 7
+      G-003: 13
+      G-004: 11
+      G-005: 11
+      G-006: 1
+      G-007: 7
+    after_per_gs_pre_convergence:
+      G-000: 15
+      G-001: 12
+      G-002: 7
+      G-003: 13
+      G-004: 11
+      G-005: 15
+      G-006: 1
+      G-007: 7
+    after_per_ts:
+      G-000/T-001: 1
+      G-000/T-002: 4
+      G-000/T-003: 11
+      G-001/T-001: 2
+      G-001/T-002: 8
+      G-001/T-003: 2
+      G-002/T-001: 1
+      G-002/T-002: 1
+      G-002/T-003: 3
+      G-002/T-004: 2
+      G-003/T-001: 4
+      G-003/T-002: 4
+      G-003/T-003: 5
+      G-004/T-001: 7
+      G-004/T-002: 2
+      G-004/T-003: 2
+      G-005/T-001: 5
+      G-005/T-002: 4
+      G-005/T-003: 2
+      G-006/T-001: 1
+      G-007/T-001: 7
+    after_per_ts_pre_convergence:
+      G-000/T-001: 1
+      G-000/T-002: 4
+      G-000/T-003: 10
+      G-001/T-001: 2
+      G-001/T-002: 8
+      G-001/T-003: 2
+      G-002/T-001: 1
+      G-002/T-002: 1
+      G-002/T-003: 3
+      G-002/T-004: 2
+      G-003/T-001: 4
+      G-003/T-002: 4
+      G-003/T-003: 5
+      G-004/T-001: 7
+      G-004/T-002: 2
+      G-004/T-003: 2
+      G-005/T-001: 9
+      G-005/T-002: 4
+      G-005/T-003: 2
+      G-006/T-001: 1
+      G-007/T-001: 7
+    after_delta_notes:
+      - "G-002: +3 net restructure (T-003 split; stale combined A-001 removed)"
+      - "G-003: +1 (T-001 new A-004 marker-cycle-helpers)"
+      - "G-001: +1 (T-002 A-008 python-cst-deferral-tracker authored on disk)"
+      - "G-002: +2 (T-004 A-001/A-002 unified-pipeline integration authored)"
+      - "G-005/T-001: fix_pass_4 deleted orphan duplicate A-008/A-009 slug files; 9 canonical AS match README 1:1"
+      - "G-005/T-003: +1 (monolithic A-001 split → A-001 imports/read + A-002 mtime-writes)"
+      - "convergence_pass: G-005/T-001 −4 plan-doc AS; G-000/T-003 tree_builder split; cross_ts_depends_on 23→0; AS 81→78"
+
+  convergence_pass:
+    date: 2026-05-30
+    alias: fix_pass_decisive
+    scope: >
+      Decisive structural convergence — eliminate cross_ts_depends_on (a4/a5),
+      remove out-of-scope plan-doc AS, split oversized tree_builder module,
+      retain sectioned write_command embed; backlog oversized targets without split
+    prerequisite: >
+      pass 5 strict verification — inner_loop 10 GREEN / 11 RED; outer_loop FAIL;
+      systemic cross_ts_depends_on on 23 AS; G-005 plan-doc embed blockers
+    post_pass_as_count: 78
+    yaml_parse: "78/78 OK (verified pass 6 after a4_mrs_excerpt_fix)"
+    g005_plan_doc_removals:
+      ts: G-005/T-001
+      deleted:
+        - A-006
+        - A-007
+        - A-008
+        - A-009
+      reason: >
+        Plan-doc maintenance AS (spec.yaml, source_spec.md, README sync, MRS label
+        drops) removed from consumer-integration tactical scope — not production-code
+        atomic steps; T-001 README atomic_steps now A-001..A-005 only
+      files_removed:
+        - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-006-mrs-and-readme-sync.yaml
+        - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-007-hrs-and-spec-drop-g004.yaml
+        - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-008-readme-drop-mtime-invariant.yaml
+        - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-009-spec-drop-g004-label.yaml
+    cross_ts_depends_on:
+      before_count: 23
+      after_count: 0
+      method: >
+        Non-standard cross_ts_depends_on field stripped from all AS; post-prior
+        cross-TS file state inlined into modify_file prompts per atomic_step_creation_standard
+        (same-TS depends_on + full embedded content only)
+      prior_scope: "G-000, G-002, G-003, G-004, G-007 AS that referenced other-TS paths"
+    tree_builder_split:
+      ts: G-000/T-003
+      blocker: "tree_builder.py 704 lines — A-010 had no code block under strict a8"
+      before:
+        file: ai_editor/core/cst_tree/tree_builder.py
+        lines: 704
+      split:
+        - step_id: A-010
+          name: tree-builder-index-module
+          target_file: ai_editor/core/cst_tree/tree_builder_index.py
+          operation: create_file
+          lines: 394
+          content: >
+            Sidecar-finalize and _build_tree_index helpers extracted from monolithic
+            tree_builder.py
+        - step_id: A-011
+          name: tree-builder-slim-public-api
+          target_file: ai_editor/core/cst_tree/tree_builder.py
+          operation: modify_file
+          depends_on: [A-010]
+          lines: 251
+          content: >
+            Public load/create/reload/rollback API; imports indexing helpers from
+            tree_builder_index.py
+      ts_readme: >
+        G-000/T-003 README outputs tree_builder_module_split entity; atomic_steps
+        list A-001..A-011
+    write_command:
+      as: G-000/T-003/A-002
+      target_file: ai_editor/commands/universal_file_edit/write_command.py
+      resolution: sectioned embed retained — no TS split
+      prompt_lines: 243
+      note: >
+        _second_call sidecar post-write block only; full-file embed exceeds 400-line
+        cap so sectioned pattern kept with explicit immutable-region contract
+    backlog_files_over_400_without_split:
+      note: >
+        On-disk target files still exceed 400 lines; AS use method-only, region-only,
+        or sectioned embeds — TS-level split deferred to backlog pending researcher
+        verdict (tree_builder addressed separately via module split, not backlog)
+      items:
+        - target_file: ai_editor/core/file_watcher_pkg/processor_queue.py
+          on_disk_lines: 763
+          as: G-005/T-002/A-001
+          pattern: method-only integration seam; no TS split yet
+        - target_file: ai_editor/core/database/schema_definition_tables_core.py
+          on_disk_lines: 479
+          as: G-005/T-002/A-002
+          pattern: region-only files-table embed; no TS split yet
+        - target_file: ai_editor/core/database/files/update.py
+          on_disk_lines: 402
+          as: G-005/T-003/A-001
+          pattern: region-only embed; post-A-001 chain with A-002
+        - target_file: ai_editor/commands/universal_file_edit/write_command.py
+          on_disk_lines: 515
+          as: G-000/T-003/A-002
+          pattern: sectioned embed retained by decision — explicitly not split
+    pass_7_a4_closure:
+      date: 2026-05-30
+      pass_number: 7
+      scope: AS layer only — ## MRS excerpt for every concept_id in AS concepts field
+      as_updated: 32
+      prerequisite: pass_6 — 30 a4 findings on 11 TS
+      method: >
+        planner_auto decisive a4 closure; quote definitions from spec.yaml (manual
+        extract when safe_load fails at L201); G-002/T-002/A-001 prompt rewritten
+        to prompt: | block scalar (fold truncation fix)
+      post_pass_verdict:
+        inner_loop: "34/78 AS still fail a5 (step-id prose); 2 AS fail a8 (A-011, G-005/T-003/A-001)"
+        atomic_overall_green: false
+      note: >
+        a4 backlog from pass 6 closed on 32 AS. Remaining blockers shift to a5
+        and a8; see pass_8_a5_scrub and verification_verdicts (pass 8).
+
+    pass_8_a5_scrub:
+      date: 2026-05-30
+      pass_number: 8
+      scope: AS layer only — remove G-/T-/A-NNN step-id prose from prompt text
+      as_updated: 34
+      rule: >
+        Replace cross-step references with concept names, module names, or wave
+        descriptions; strip cross_ts_depends_on field; keep depends_on within TS only
+      affected_ts:
+        G-000: 16
+        G-002: 5
+        G-003/T-001: 3
+        G-004/T-001: 1
+        G-005/T-001: 1
+        G-007: 7
+        G-001/T-001: 1
+      post_scrub_gates:
+        cross_ts_depends_on: 0
+        step_id_prose_in_prompts: >
+          0 on 77/78 AS at pass-8 verify; 1 residual on G-005/T-003/A-002
+          (## Dependency (A-001 module …)) — closed in T-003 post-pass closure
+      additional_fixes:
+        - "G-000/T-003/A-011: full post-A-010 tree_builder.py embed (~327 lines)"
+        - "G-003 README: tactical_steps order T-001, T-002, T-003 aligned"
+
+    g005_t003_authorized_ts_split:
+      date: 2026-05-30
+      ts: G-005/T-003
+      authorization: TS-level split (a3 file cap — update.py was 402 lines on disk)
+      modules:
+        - target_file: ai_editor/core/database/files/update_checksum_guard.py
+          role: checksum skip guard try_skip_reindex_by_checksum + FK classifier
+          as: A-001
+          operation: create_file
+        - target_file: ai_editor/core/database/files/update.py
+          role: slim update_file_data facade delegating to guard; no mtime path
+          as: A-002
+          operation: modify_file
+      closure_after_pass_8:
+        orphan_deleted:
+          - G-005-consumer-integration/T-003-indexer-checksum-guard/atomic_steps/A-001-indexer-checksum-skip-guard-imports-and-read.yaml
+        retained:
+          - A-001-indexer-checksum-skip-guard.yaml
+          - A-002-indexer-remove-mtime-writes.yaml
+        a002_embed: "355-line POST-A-001 slim update.py; step-id prose removed; README A-001+A-002 1:1"
+      pass_8_verify_state: >
+        At pass-8 FINAL verify: duplicate A-001 on disk, A-002 pre-split 402-line
+        embed, a5/a8/a10 RED — sole RED TS (20 GREEN / 1 RED). Post-closure
+        awaits pass 9 re-verify.
+
+    verification_verdicts:
+      status: complete
+      authoritative_pass: 11
+      superseded_passes: [5, 6, 7, 8, 9, 10]
+      pass_9_status: complete
+      pass_9_note: >
+        Pass 9 re-verify after G-005/T-003 orphan delete + A-002 355-line post-split
+        embed; closed G-005/T-003 a5/a8 blockers from pass 8.
+      pass_10_note: >
+        Pass 10 FINAL verify (researcher, corrected — prior pass 10 verdict was FALSE
+        GREEN): inner_loop 20 GREEN / 1 RED on strict a1–a10; atomic_overall_green
+        false. Sole RED TS: G-005/T-001 (A-001 a8 cross-TS baseline drift; A-002 a9
+        stale expected; A-003 a9 weak expected). G-005/T-003 GREEN after authorized
+        TS split (update_checksum_guard.py + slim update.py). G-005/T-001 A-001
+        target_file corrected to ai_editor/commands/grep_block_resolver.py but
+        TS remains RED. outer_loop not fully green — 8 TS with sectioned modify_file
+        a8 waivers. MRS spec.yaml safe_load FAIL — infra backlog, forbidden without
+        cascade. See pass_10_honest_backlog.
+      date: 2026-05-30
+      method: >
+        zero_trust_reread — all 78 A-*.yaml (yaml.safe_load 78/78 OK on AS files),
+        MRS concept extraction via regex (spec.yaml safe_load FAIL — infra backlog),
+        parent GS/TS README per TS; strict a1–a10 inner_loop_per_ts; outer_loop
+        cross-TS a8 full pass after G-005/T-003 split closure
+      yaml_parse:
+        as_files: "78/78 OK"
+        spec_yaml: "FAIL — L201–205 unquoted prose in C-012 properties block"
+      gates:
+        cross_ts_depends_on: 0
+        g005_t001_as_count: 5
+        g005_t001_readme_1_1: true
+        g005_t001_a001_target_file: ai_editor/commands/grep_block_resolver.py
+        step_id_prose_in_prompts: 0
+      corrections_applied_pass_10:
+        - ts: G-005/T-001
+          step_id: A-001
+          field: target_file
+          before: mis-pointed grep routing module
+          after: ai_editor/commands/grep_block_resolver.py
+          note: >
+            A-001-grep-tree-lifecycle-routing.yaml target_file and prompt Target
+            aligned to grep_block_resolver.py per C-020 Action 1 (TreeLifecycle routing).
+        - ts: G-005/T-003
+          verdict: green
+          note: >
+            GREEN after authorized TS split — update_checksum_guard.py (A-001 create)
+            + slim update.py facade (A-002 modify); orphan duplicate A-001 deleted;
+            A-002 355-line post-A-001 embed; step-id prose removed.
+      pass_10_honest_backlog:
+        date: 2026-05-30
+        prior_verdict_error: >
+          Pass 10 was initially recorded as 21/21 GREEN / atomic_overall_green true;
+          researcher re-verify found FALSE GREEN — corrected in this audit pass.
+        atomic_overall_green: false
+        inner_loop:
+          total_ts: 21
+          green: 20
+          red: 1
+          sole_red_ts: G-005/T-001
+        g005_t001_findings:
+          ts: G-005/T-001
+          verdict: red
+          failing_as:
+            - step_id: A-001
+              check: a8
+              finding: cross-TS baseline drift — embedded file state does not match post-prior cross-TS chain for grep_block_resolver.py
+            - step_id: A-002
+              check: a9
+              finding: verification.expected stale — does not match current prompt scope after routing/target corrections
+            - step_id: A-003
+              check: a9
+              finding: verification.expected weak — target/expected insufficiently specific per atomic_step_creation_standard a9
+        g005_t003:
+          verdict: green
+          note: GREEN after authorized TS split — update_checksum_guard.py + slim update.py; pass 9/10 split closure holds
+        outer_loop:
+          verdict: not_fully_green
+          note: >
+            Strict cross-TS a8 outer_loop not fully green. Eight TS rely on sectioned
+            modify_file a8 waivers (method-only, region-only, or sectioned embed with
+            explicit immutable-region contract) rather than full post-prior file embeds.
+          sectioned_modify_file_a8_waiver_ts_count: 8
+        mrs_infra_backlog:
+          item: spec.yaml
+          parse_status: FAIL
+          fix_policy: forbidden_without_cascade
+          note: >
+            yaml.safe_load fails at lines ~201–205 (unquoted prose in C-012 properties).
+            Direct machine_spec edit requires source_spec cascade; do not patch at AS layer.
+            Tracked as infra backlog separate from AS prompt-quality blockers.
+      inner_loop:
+        total_ts: 21
+        green: 20
+        red: 1
+        pass_number: 10
+        red_ts:
+          - G-005/T-001
+        green_ts:
+          - G-000/T-001
+          - G-000/T-002
+          - G-000/T-003
+          - G-001/T-001
+          - G-001/T-002
+          - G-001/T-003
+          - G-002/T-001
+          - G-002/T-002
+          - G-002/T-003
+          - G-002/T-004
+          - G-003/T-001
+          - G-003/T-002
+          - G-003/T-003
+          - G-004/T-001
+          - G-004/T-002
+          - G-004/T-003
+          - G-005/T-002
+          - G-005/T-003
+          - G-006/T-001
+          - G-007/T-001
+        prior_pass_8_red_ts_detail:
+          ts: G-005/T-003
+          status: closed_pass_9_10
+          finding: >
+            Orphan duplicate A-001 file; A-002 embedded pre-split 402-line update.py
+            not post-checksum-guard facade; step-id prose in A-002 prompt — all closed
+            by g005_t003_authorized_ts_split + pass 9/10 re-verify.
+      outer_loop:
+        verdict: not_fully_green
+        note: >
+          Strict cross-TS a8 outer_loop not fully green at pass 10. G-005/T-003
+          update.py cross-priority chain consistent after checksum-guard module split.
+          Eight TS retain sectioned modify_file a8 waivers; inner_loop 20 GREEN / 1 RED
+          (G-005/T-001 sole RED).
+        multi_ts_files: 11
+        sectioned_modify_file_a8_waiver_ts_count: 8
+      pass_11_note: >
+        Pass 11 FINAL (researcher, after closing_pass + A-003 a5 fix): inner_loop
+        21 GREEN / 0 RED; outer_loop pass with four a3/a8 waivers honored;
+        atomic_overall_green true with waiver caveat (not strict full-file a8 on
+        all modify_file AS). Gates: 78/78 AS parse, cross_ts_depends_on=0,
+        step_id_prose=0, G-005/T-001 5:5 README↔disk, spec.yaml safe_load OK.
+        See closing_pass.verification_verdicts and pass_10_honest_backlog for
+        pass 10 history (FALSE GREEN corrected).
+      pass_11_verdict:
+        superseded_by_full_plan_reverify:
+          date: 2026-05-30
+          reason: >
+            Claimed atomic_overall_green true at 78 AS / 21 TS before G-003 two-stage
+            WRITE remediation (T-004 session_write, 4 AS cascade, G-003 parallel-waves.yaml).
+            G-003 AS still had stale single-stage {d004} write and pre-phase_2b gate excerpts.
+            Authoritative post-remediation verdict is full_plan_reverify below.
+        date: 2026-05-30
+        method: >
+          zero_trust_reread — 78 A-*.yaml, spec.yaml safe_load, inner_loop a1–a10
+          all 21 TS, outer_loop second pass delta 0, a3/a8 waiver policy honored
+        yaml_parse:
+          as_files: "78/78 OK"
+          spec_yaml: "OK — 24 concepts, 40 relations"
+        gates:
+          cross_ts_depends_on: 0
+          step_id_prose_in_prompts: 0
+          g005_t001_as_count: 5
+          g005_t001_readme_1_1: true
+        inner_loop:
+          total_ts: 21
+          green: 21
+          red: 0
+          pass_number: 11
+        outer_loop:
+          verdict: pass
+          waiver_caveat: >
+            Four AS use region/sectioned embed + explicit a3/a8 waiver contract
+            instead of strict full-file post-prior embed; outer_loop pass when
+            waivers honored per closing_pass.a3_a8_waiver_policy
+          waiver_as_count: 4
+          outer_loop_delta: 0
+        atomic_overall_green: true
+        atomic_overall_green_caveat: >
+          true at AS layer with documented a3/a8 waivers on four oversized-file
+          modify_file AS; not claiming strict full-file a8 on every modify_file
+          without waiver
+      atomic_overall_green: true
+      gs_status:
+        G-000: ready_for_review_candidate
+        G-001: ready_for_review_candidate
+        G-002: ready_for_review_candidate
+        G-003: ready_for_review_candidate
+        G-004: ready_for_review_candidate
+        G-005: ready_for_review_candidate
+        G-006: ready_for_review_candidate
+        G-007: ready_for_review_candidate
+        note: >
+          Pass 11 closing: 21/21 TS green; all GS ready_for_review_candidate.
+          spec.yaml syntax fixed (no longer infra backlog for parse).
+      ts_status:
+        all: ready_for_review
+        note: 21/21 TS green at pass 11 — G-005/T-001 closed by closing_pass fixes
+
+    mrs_infra_backlog:
+      item: spec.yaml
+      path: docs/plans/marked_tree_unification/spec.yaml
+      issue: yaml.safe_load fails at lines ~201–205 (unquoted prose in C-012 properties)
+      parse_status: closed_pass_11
+      resolution: >
+        Syntax-only fix in closing_pass.spec_yaml_syntax_fix — three folded block
+        scalars (C-012, C-024); safe_load OK at pass 11 (24 concepts). Semantic
+        C-024 concept-quality (c4) remains pre-existing review note, not parse backlog.
+      fix_policy: syntax_only_at_closing_pass
+      note: >
+        Pass 10 tracked parse FAIL; closed 2026-05-30 without source_spec cascade
+        (YAML syntax only, no semantic drift). See closing_pass.spec_yaml_syntax_fix.
+
+    a3_backlog_sectioned_embeds:
+      policy: accepted_sectioned_embeds
+      documented_at: pass_8
+      confirmed_pass_10: true
+      researcher_pass_8: >
+        Method-only or sectioned embeds with explicit immutable-region / disk-read
+        contract accepted where on-disk file exceeds 400 lines; G-005/T-002 upgraded
+        to GREEN on manual a8 review. Not TS-split backlog unless embed lacks contract.
+      pass_10_note: >
+        Sectioned-embed waiver documented at pass 8; pass 10 honest verify confirms
+        eight TS retain sectioned modify_file a8 waivers — outer_loop not fully green.
+        Four on-disk targets remain over 400 lines; each AS uses method-only, region-only,
+        or sectioned embed with explicit contract. update.py (G-005/T-003) resolved via
+        TS split — excluded from waiver backlog.
+      contract_requirements:
+        - explicit immutable-region markers in prompt
+        - disk-read / post-prior-state contract when full file not embedded
+        - verification.expected documents waiver where applicable
+      items:
+        - target_file: ai_editor/core/file_watcher_pkg/processor_queue.py
+          on_disk_lines: 763
+          as: G-005/T-002/A-001
+          pattern: method-only integration seam
+        - target_file: ai_editor/core/database/schema_definition_tables_core.py
+          on_disk_lines: 479
+          as: G-005/T-002/A-002
+          pattern: region-only files-table embed
+        - target_file: ai_editor/commands/universal_file_edit/write_command.py
+          on_disk_lines: 515
+          as: G-000/T-003/A-002
+          pattern: sectioned embed retained — _second_call sidecar block only
+        - target_file: ai_editor/core/cst_tree/tree_saver.py
+          on_disk_lines: 403
+          as: G-000/T-003/A-006
+          pattern: region-only embed (61 prompt lines)
+      excluded_from_backlog:
+        - target_file: ai_editor/core/database/files/update.py
+          note: >
+            Was 402-line a3 blocker; resolved via authorized G-005/T-003 TS split
+            (update_checksum_guard.py + slim update.py) — not sectioned-embed waiver
+    pass_6_a4_backlog:
+      date: 2026-05-30
+      pass_number: 6
+      total_findings: 30
+      failing_check: a4_only
+      summary: >
+        All 30 findings are a4 (prompt self-sufficiency — ## MRS excerpt missing or
+        incomplete for listed concepts). No a1, a2, a5–a10 failures on any AS.
+        Primary gaps: G-000 block (10/16 AS failing — C-023 excerpt missing),
+        G-004/T-001 handler AS (A-005/A-006 no MRS section), G-001/T-002 handlers (excerpt
+        incomplete), G-002/T-004 (C-006/C-003 absent from excerpt).
+      critical_item:
+        ts: G-002/T-002
+        step_id: A-001
+        file: G-002-tree-storage-and-lifecycle/T-002-checksum-sync-policy/atomic_steps/A-001-checksum-sync-policy-class.yaml
+        issue: yaml_truncation
+        finding: >
+          Source file contains ## MRS excerpt and full file content, but double-quoted
+          folded scalar breaks at ~9377 chars — yaml.safe_load drops everything after
+          ## Why modify_file. Executor would not see MRS excerpt or embedded file
+          content. Rewrite prompt to prompt: | block scalar (as G-000/T-003/A-011 uses).
+      findings_by_ts:
+        G-000/T-001:
+          failing_as: 1
+          root_cause: "No ## MRS excerpt; C-023 (SidecarLayoutMigration) absent"
+        G-000/T-002:
+          failing_as: 3
+          root_cause: "No ## MRS excerpt; C-023 absent on A-001, A-002, A-003"
+        G-000/T-003:
+          failing_as: 6
+          root_cause: >
+            C-023 absent on A-001, A-003, A-004, A-007, A-008, A-009; A-002, A-005,
+            A-006, A-010, A-011 have excerpt ✓ (a4_mrs_excerpt_fix)
+        G-001/T-002:
+          failing_as: 6
+          root_cause: >
+            Excerpt block incomplete — C-001, C-007, C-009 not defined in excerpt
+            on A-003, A-004, A-005, A-006, A-007, A-008
+        G-002/T-002:
+          failing_as: 1
+          root_cause: "YAML fold truncation + C-003 absent in loaded prompt (critical)"
+        G-002/T-003:
+          failing_as: 1
+          root_cause: "C-008 (HandlerRegistry) not in MRS excerpt block (A-002)"
+        G-002/T-004:
+          failing_as: 2
+          root_cause: "C-006 absent (A-001); C-003 absent (A-002)"
+        G-003/T-001:
+          failing_as: 1
+          root_cause: "C-010 (TreeLifecycle) not in MRS excerpt block (A-001)"
+        G-003/T-002:
+          failing_as: 1
+          root_cause: "No ## MRS excerpt section; C-012 (EditSession) absent (A-001)"
+        G-004/T-001:
+          failing_as: 6
+          root_cause: >
+            A-005, A-006 have no MRS section; A-002/A-003/A-004/A-007 partial excerpt
+        G-004/T-002:
+          failing_as: 1
+          root_cause: "C-009 (TreeNode) not in MRS excerpt block (A-002)"
+      findings_list:
+        - {ts: G-000/T-001, step_id: A-001, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-002, step_id: A-001, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-002, step_id: A-002, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-002, step_id: A-003, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-003, step_id: A-001, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-003, step_id: A-003, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-003, step_id: A-004, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-003, step_id: A-007, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-003, step_id: A-008, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-000/T-003, step_id: A-009, finding: "no ## MRS excerpt; C-023 absent"}
+        - {ts: G-001/T-002, step_id: A-003, finding: "C-001 (MarkerContract) not in MRS excerpt block"}
+        - {ts: G-001/T-002, step_id: A-004, finding: "C-001 (MarkerContract) not in MRS excerpt block"}
+        - {ts: G-001/T-002, step_id: A-005, finding: "C-007 (FormatHandler) not in MRS excerpt block"}
+        - {ts: G-001/T-002, step_id: A-006, finding: "C-007 (FormatHandler) not in MRS excerpt block"}
+        - {ts: G-001/T-002, step_id: A-007, finding: "C-001 (MarkerContract) not in MRS excerpt block"}
+        - {ts: G-001/T-002, step_id: A-008, finding: "C-009 (TreeNode) not in MRS excerpt block"}
+        - {ts: G-002/T-002, step_id: A-001, finding: "no ## MRS excerpt; C-003 absent in loaded prompt"}
+        - {ts: G-002/T-002, step_id: A-001, finding: "CRITICAL — safe_load truncates folded prompt at ~9377 chars"}
+        - {ts: G-002/T-003, step_id: A-002, finding: "C-008 (HandlerRegistry) not in MRS excerpt block"}
+        - {ts: G-002/T-004, step_id: A-001, finding: "C-006 (ChecksumSyncPolicy) not in MRS excerpt block"}
+        - {ts: G-002/T-004, step_id: A-002, finding: "C-003 (TreeFile) not in MRS excerpt block"}
+        - {ts: G-003/T-001, step_id: A-001, finding: "C-010 (TreeLifecycle) not in MRS excerpt block"}
+        - {ts: G-003/T-002, step_id: A-001, finding: "no ## MRS excerpt; C-012 (EditSession) absent"}
+        - {ts: G-004/T-001, step_id: A-002, finding: "C-012 (EditSession) not in MRS excerpt block"}
+        - {ts: G-004/T-001, step_id: A-003, finding: "C-007 (FormatHandler) not in MRS excerpt block"}
+        - {ts: G-004/T-001, step_id: A-004, finding: "C-007 (FormatHandler) not in MRS excerpt block"}
+        - {ts: G-004/T-001, step_id: A-005, finding: "no ## MRS excerpt; C-002 (NodeId) absent"}
+        - {ts: G-004/T-001, step_id: A-006, finding: "no ## MRS excerpt; C-015 (EditOperation) absent"}
+        - {ts: G-004/T-001, step_id: A-007, finding: "C-009 (TreeNode) not in MRS excerpt block"}
+        - {ts: G-004/T-002, step_id: A-002, finding: "C-009 (TreeNode) not in MRS excerpt block"}
+      pass_7_closure_actions:
+        - "G-000 block (10 AS): add ## MRS excerpt with C-023 SidecarLayoutMigration (+ C-003 where listed)"
+        - "G-004/T-001 A-005, A-006: add full ## MRS excerpt sections"
+        - "G-001/T-002 handlers: expand excerpt to cover all concept entries or trim concepts list"
+        - "G-002/T-002/A-001: rewrite prompt from folded scalar to prompt: | block scalar"
+        - "G-002/T-004, G-003/T-001, G-003/T-002, G-004/T-002: complete partial excerpts"
+    a4_mrs_excerpt_fix:
+      date: 2026-05-30
+      scope: AS layer only — add ## MRS excerpt blocks to prompts (a4 self-sufficiency)
+      as_updated: 14
+      change_rule: >
+        Prompt text only; target_file, operation, and embedded file content unchanged.
+        No cross_ts_depends_on; no step-id prose. yaml.safe_load verified on all 14.
+      files:
+        - path: G-000-sidecar-layout-migration/T-002-write-path/atomic_steps/A-004-tree-temp-init-drop-trees-reexport.yaml
+          ts: G-000/T-002
+          step_id: A-004
+          concepts: [C-023, C-003]
+        - path: G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-002-write-command-drop-promote-pending.yaml
+          ts: G-000/T-003
+          step_id: A-002
+          concepts: [C-023, C-003]
+        - path: G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-005-close-command-drop-promote-pending.yaml
+          ts: G-000/T-003
+          step_id: A-005
+          concepts: [C-023, C-003]
+        - path: G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-006-tree-saver-drop-promote-pending.yaml
+          ts: G-000/T-003
+          step_id: A-006
+          concepts: [C-023, C-003]
+        - path: G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-010-extract-tree-builder-index-module.yaml
+          ts: G-000/T-003
+          step_id: A-010
+          concepts: [C-023, C-003]
+        - path: G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-011-tree-builder-slim-and-docstrings.yaml
+          ts: G-000/T-003
+          step_id: A-011
+          concepts: [C-023, C-003]
+        - path: G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/atomic_steps/A-002-parity-test-module.yaml
+          ts: G-002/T-004
+          step_id: A-002
+          concepts: [C-011, C-010, C-007]
+        - path: G-003-edit-session-and-git-api/T-002-session-repo/atomic_steps/A-003-edit-session-wire-session-repo.yaml
+          ts: G-003/T-002
+          step_id: A-003
+          concepts: [C-012, C-013, C-007]
+        - path: G-003-edit-session-and-git-api/T-002-session-repo/atomic_steps/A-004-declare-dulwich-dependency.yaml
+          ts: G-003/T-002
+          step_id: A-004
+          concepts: [C-013, "{d006}"]
+        - path: G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-003-block-assembler-drop-mtime-sort.yaml
+          ts: G-005/T-001
+          step_id: A-003
+          concepts: [C-020, C-006]
+        - path: G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-004-ggrep-drop-mtime-zero.yaml
+          ts: G-005/T-001
+          step_id: A-004
+          concepts: [C-020]
+        - path: G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-005-tree-query-drop-mtime-zero.yaml
+          ts: G-005/T-001
+          step_id: A-005
+          concepts: [C-020]
+        - path: G-005-consumer-integration/T-003-indexer-checksum-guard/atomic_steps/A-001-indexer-checksum-skip-guard-imports-and-read.yaml
+          ts: G-005/T-003
+          step_id: A-001
+          concepts: [C-022, C-006]
+        - path: G-005-consumer-integration/T-003-indexer-checksum-guard/atomic_steps/A-002-indexer-remove-mtime-writes.yaml
+          ts: G-005/T-003
+          step_id: A-002
+          concepts: [C-022, C-006]
+      filename_drift_notes:
+        - "G-000/T-003 A-010 on disk: A-010-extract-tree-builder-index-module.yaml (not tree-builder-docstring-cst-cleanup slug)"
+        - "G-005/T-003 A-001 on disk: A-001-indexer-checksum-skip-guard-imports-and-read.yaml (split from combined step)"
+    outcome:
+      note: >
+        Structural convergence complete (78 AS, 0 cross_ts_depends_on, G-005 plan-doc
+        AS A-006..A-009 removed from README, tree_builder module split A-010/A-011).
+        Pass 7–8: a4/a5 closures. Pass 9/10: G-005/T-003 GREEN; pass 10 corrected
+        FALSE GREEN — 20/1, G-005/T-001 RED. closing_pass + pass 11: spec.yaml syntax
+        OK, G-005/T-001 fixes, 21/21 GREEN, atomic_overall_green true with four-AS
+        a3/a8 waiver caveat. See closing_pass and pass_10_honest_backlog.
+
+  fix_pass_2:
+    date: 2026-05-30
+    scope: structural blockers only (YAML parseability, a2 one-file, a3 trim/split encoding)
+    actions:
+      - "G-000/T-003 A-010: re-encode prompt (nested-fence / block-scalar) — still yaml_parse RED at step 5"
+      - "G-002/T-004 A-001: re-encode wire-validate prompt — still yaml_parse RED at step 5"
+      - "G-002/T-004 A-002: auxiliary __init__/fixtures split attempted — still a2 RED at step 5"
+      - "G-005/T-001 A-003..A-007: a9 verification fields completed (pass)"
+      - "G-004/T-001 A-005..A-007, G-007: cross_ts file-state alignment pass (a8 gaps remain on handlers)"
+    step_5_rerun: zero_trust inner_loop + outer_loop after fix pass 2
+
+  fix_pass_3:
+    date: 2026-05-30
+    scope: final 4-TS blocker closure (a8 post-prior embeds, a5 cross-AS prose, a3 split)
+    prerequisite: interim inner_loop 17 GREEN / 4 RED (81 AS on disk before pass)
+    target_ts:
+      - G-004/T-001
+      - G-005/T-001
+      - G-005/T-003
+      - G-007/T-001
+    actions:
+      FIX_1_G004_T001_A007:
+        blocker: "A-007 [a4, a8] — no embedded post-G-004 python_handler.py"
+        resolution: >
+          Full G-001 PythonHandler baseline (~92 lines) embedded in ## Current full content
+          ```python fence; matches A-003–A-006 handler pattern; gate/op additions unchanged; ≤400 lines.
+        file: G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/atomic_steps/A-007-python-handler-edit-operations.yaml
+      FIX_2_G007_T001_A001_A006:
+        blocker: "A-001..A-006 [a4, a8, outer_a8] — no synthesized post-G-004 handler/preview state"
+        resolution: >
+          Synthesized post-G-004 full modules embedded per AS (G-001 create + G-004 edit-op specs):
+          text_handler 229L, markdown_handler 140L, yaml_handler 164L, json_handler 181L,
+          python_handler 142L, preview_navigation 229L; prompts re-encoded to prompt: | pipe form; YAML parse repaired.
+        files:
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-001-apply-identity-remap.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-002-identity-map-markdown-handler.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-003-identity-map-yaml-handler.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-004-identity-map-json-handler.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-005-identity-map-python-handler.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-006-remap-in-preview-navigation.yaml
+      FIX_2_cleanup_G007_A007:
+        blocker: "A-007 [a5] — G-004/T-001/A-002 prose cross-ref"
+        resolution: Stripped A-NNN and G-004/T prose from prompt; depends_on YAML preserved.
+        file: G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-007-remap-in-edit-operations.yaml
+      FIX_3_G005_T001_A005_A008_A009:
+        blocker: "A-005 [a5]; A-008/A-009 missing on disk despite TS README listing"
+        resolution: >
+          A-005 cross-AS prose removed (depends_on: [A-002] in YAML only).
+          A-008 created — drops {g004} from C-020 source_labels in spec.yaml (depends on A-006).
+          A-009 created — syncs T-001 README to drop mtime invariant prose (depends on A-007).
+          parallel-waves.yaml created (waves 1→5).
+        files:
+          - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-005-tree-query-drop-mtime-zero.yaml
+          - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-008-drop-g004-from-spec-source-labels.yaml
+          - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-009-sync-t001-readme-drop-mtime.yaml
+          - G-005-consumer-integration/T-001-grep-consumer-integration/parallel-waves.yaml
+      FIX_4_G005_T003_split:
+        blocker: "A-001 [a3, a5] — single AS with 402-line update.py embed + split cross-refs"
+        resolution: >
+          Monolithic A-001 deleted; split into A-001 (imports + mtime-read removal, priority 1)
+          and A-002 (pre-clear + final-batch mtime removal, priority 2, depends_on: [A-001]);
+          full post-prior file state in each prompt; parallel-waves.yaml created.
+        files:
+          - G-005-consumer-integration/T-003-indexer-checksum-guard/atomic_steps/A-001-indexer-checksum-skip-guard-imports-and-read.yaml
+          - G-005-consumer-integration/T-003-indexer-checksum-guard/atomic_steps/A-002-indexer-remove-mtime-writes.yaml
+          - G-005-consumer-integration/T-003-indexer-checksum-guard/parallel-waves.yaml
+        deleted:
+          - G-005-consumer-integration/T-003-indexer-checksum-guard/atomic_steps/A-001-indexer-checksum-skip-guard.yaml
+    files_changed_count: 17
+    ts_escalation_required: none
+    post_pass_as_count: 83
+    outcome:
+      G-004/T-001: GREEN
+      G-007/T-001: "a8 PASS (outer handler chain); a9 FAIL A-001 (verification.target: tests vague)"
+      G-005/T-001: "duplicate A-008/A-009 files remain RED (a6/dup + a5 + a8 on A-003..A-005)"
+      G-005/T-003: "a5 PASS; outer a8 FAIL — A-002 embedded post-A-001 state stale (mtime skip guard remains)"
+    residual_notes:
+      - "G-005/T-001 duplicate A-008/A-009 slug pairs on disk (11 files, 9 canonical step_ids)"
+      - "G-005/T-003 A-002 outer-loop a8 stale vs A-001 mtime-removal spec"
+
+  fix_pass_4:
+    date: 2026-05-30
+    alias: second_repair_pass
+    scope: Priority 1–4 closure on 7 RED TS residuals from fix_pass_3 verification
+    prerequisite: inner_loop 14 GREEN / 7 RED (81 AS on disk before pass)
+    files_edited: 16
+    repair_pass_rglob_count: 87
+    ts_escalation_required: none
+    post_pass_as_count: 81
+    duplicates_deleted:
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-008-drop-g004-from-spec-source-labels.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-009-sync-t001-readme-drop-mtime.yaml
+    duplicate_note: >
+      Orphan duplicate slug files removed; canonical A-008-readme-drop-mtime-invariant.yaml
+      and A-009-spec-drop-g004-label.yaml retained; README atomic_steps A-001..A-009 1:1 match.
+    actions:
+      priority_1_cross_ts_a8:
+        - "G-002/T-004/A-001: full checksum.py baseline embedded post-T-002 (ChecksumSyncPolicy + full function bodies); T-004 wiring delta only"
+        - "G-007/A-001..A-005: POST-G-004 baselines re-embedded from archive G-001 TreeNode handlers + G-004 edit-ops contracts; status: draft restored; A-001 verification.expected fixed"
+        - "G-007/A-007: verified unchanged — valid"
+      priority_2_a3_trims:
+        - "G-000/T-003/A-002: region-only embed (54 prompt lines)"
+        - "G-000/T-003/A-006: region-only embed (61 prompt lines)"
+        - "G-005/T-001/A-006, A-007, A-009: removed ~630-line spec/HRS embeds → ~30–35 line region-only prompts"
+        - "G-005/T-003/A-001: region-only embed (38 lines); split with A-002 retained"
+      priority_3_a5_prose_strip:
+        - "G-005/T-001/A-004, A-005: cross-AS prose removed (depends_on YAML kept)"
+        - "G-005/T-001/A-008: trimmed full README embed + cross-AS list; restored in TS atomic_steps"
+      priority_4_a10_open_command:
+        resolution: >
+          No TS escalation. Added a10 coverage note to G-000/T-003/A-003 — open_command
+          routes through tree_temp_open_support, already cut over in G-000/T-002/A-003.
+    files_changed:
+      - G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/atomic_steps/A-001-wire-validate-to-unified-build.yaml
+      - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-001-apply-identity-remap.yaml
+      - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-002-identity-map-markdown-handler.yaml
+      - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-003-identity-map-yaml-handler.yaml
+      - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-004-identity-map-json-handler.yaml
+      - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-005-identity-map-python-handler.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-004-ggrep-drop-mtime-zero.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-005-tree-query-drop-mtime-zero.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-006-mrs-and-readme-sync.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-007-hrs-and-spec-drop-g004.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-008-readme-drop-mtime-invariant.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-009-spec-drop-g004-label.yaml
+      - G-005-consumer-integration/T-001-grep-consumer-integration/README.yaml
+      - G-005-consumer-integration/T-003-indexer-checksum-guard/atomic_steps/A-001-indexer-checksum-skip-guard-imports-and-read.yaml
+      - G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-002-write-command-drop-promote-pending.yaml
+      - G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-003-grep-block-resolver-sibling.yaml
+      - G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-006-tree-saver-drop-promote-pending.yaml
+    residual_a3_outside_pass_scope:
+      - G-000/T-003/A-001-tree-representation-sibling-cutover.yaml (402 pl)
+      - G-000/T-003/A-008-move-nodes-command-sibling-cutover.yaml (429 pl)
+      - G-005/T-001/A-001-grep-tree-lifecycle-routing.yaml (456 pl)
+      - G-005/T-003/A-002-indexer-remove-mtime-writes.yaml (403 pl)
+    outcome:
+      inner_loop_delta: "14 GREEN / 7 RED → 17 GREEN / 4 RED (lenient a8/a4 — superseded by fix_pass_5 + strict pass 5)"
+      G-002/T-002: GREEN
+      G-002/T-004: GREEN
+      G-007/T-001: GREEN
+      G-004/T-001: GREEN
+      G-000/T-003: "RED — a10 open_command (A-003 documents T-002 coverage; no dedicated AS)"
+      G-005/T-001: "RED — a9 A-001..A-005 verification.target: tests; a8 A-006..A-009 region-only/read-first"
+      G-005/T-002: "RED — a9 A-001 verification.target: tests"
+      G-005/T-003: "RED — a9 A-001/A-002 verification.target: tests; a8 A-001 region-only (a3 waiver documented)"
+      outer_loop: pass
+      note: Lenient cross-TS a8; strict definitive verification (pass 5) reverted this verdict to FAIL.
+
+  fix_pass_5:
+    date: 2026-05-30
+    alias: third_targeted_fix
+    scope: Close 5 RED TS + outer loop — AS only; no duplicates; no A-NNN prose; yaml.safe_load after each edit
+    prerequisite: inner_loop 17 GREEN / 4 RED under lenient pass 4 checks
+    target_ts:
+      - G-000/T-003
+      - G-002/T-004
+      - G-003/T-002
+      - G-005/T-001
+      - G-007/T-001
+    files_edited: 13
+    duplicate_deleted:
+      - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-008-readme-sync-drop-mtime.yaml
+    duplicate_note: >
+      Orphan duplicate removed; canonical A-008-readme-drop-mtime-invariant.yaml retained.
+    actions:
+      FIX_1_G000_T003_A007:
+        resolution: >
+          Added C-006; cross_ts_depends_on → G-002/T-004/A-001; re-embedded POST-G-002/T-004
+          checksum.py (ChecksumSyncPolicy + TreeBuilder.build in validate path); forbidden
+          section preserves validate_or_recreate_* without contradicting T-004.
+        file: G-000-sidecar-layout-migration/T-003-read-path-and-consumers/atomic_steps/A-007-checksum-drop-dead-fallback.yaml
+      FIX_2_G002_T004_A001:
+        resolution: Added C-009 (TreeNode) to concepts list.
+        file: G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/atomic_steps/A-001-wire-validate-to-unified-build.yaml
+      FIX_3_G003_T002_A001:
+        resolution: >
+          Explicit import list in prompt (pathlib, dataclasses, typing, dulwich.porcelain, dulwich.repo).
+        file: G-003-edit-session-and-git-api/T-002-session-repo/atomic_steps/A-001-session-repo-module.yaml
+      FIX_4_G005_T001:
+        resolution: >
+          A-006 cross-AS prose stripped; A-007 full source_spec.md embed + depends_on [A-006];
+          A-008 full README.yaml embed; A-009 priority 2 on spec.yaml + full post-A-006 spec embed.
+        files:
+          - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-006-mrs-and-readme-sync.yaml
+          - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-007-hrs-and-spec-drop-g004.yaml
+          - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-008-readme-drop-mtime-invariant.yaml
+          - G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-009-spec-drop-g004-label.yaml
+      FIX_5_G007_A001_A005:
+        resolution: >
+          Each prompt embeds post-G-004 handler Python (G-001/G-004 synthesis) with TreeNode +
+          op_* contract block and identity-remap delta section.
+        files:
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-001-apply-identity-remap.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-002-identity-map-markdown-handler.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-003-identity-map-yaml-handler.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-004-identity-map-json-handler.yaml
+          - G-007-identity-remap-integration/T-001-remap-in-preview-and-edit/atomic_steps/A-005-identity-map-python-handler.yaml
+    post_pass_as_count: 81
+    yaml_parse: "81/81 OK via yaml.safe_load"
+    outcome:
+      note: >
+        Targeted fixes applied and all AS parse; subsequent strict zero-trust definitive
+        verification (pass 5) found systemic a4/a8 blockers — inner_loop 10 GREEN / 11 RED;
+        outer_loop FAIL on G-003 edit_session chain. fix_pass_5 did not achieve atomic_overall_green.
+
+  final_verification:
+    status: complete
+    superseded_by: convergence_pass.verification_verdicts
+    supersession_note: >
+      Pass 5–8 verdicts below remain historical. Authoritative atomic verdict is
+      pass 10 (20 GREEN / 1 RED; atomic_overall_green false) in
+      convergence_pass.verification_verdicts — corrected from prior FALSE GREEN.
+      See pass_10_honest_backlog, pass_7_a4_closure, pass_8_a5_scrub, pass_6_a4_backlog.
+    date: 2026-05-30
+    method: >
+      zero_trust_reread — all 81 A-*.yaml (yaml.safe_load 81/81 OK), MRS, parent GS/TS README
+      per TS; strict a1–a10 (no partial credit on region-only a8 or cross_ts_depends_on a4);
+      outer_loop_full_pass cross-TS a8 chains (GS order → TS order → priority)
+    pass_number: 5
+    note: >
+      Definitive verification after fix_pass_5. Strict checks: inner_loop 10 GREEN / 11 RED;
+      outer_loop FAIL — G-003 edit_session chain breaks (2 files); 9 multi-TS chains pass.
+      Supersedes lenient pass 4 verdict (17 GREEN / outer PASS).
+
+  as_revised:
+    G-000:
+      T-003:
+        - A-002
+        - A-006
+      note: a3 trim — prompt line-count reduction, not TS split
+      fix_pass_2_note: A-002/A-006 trim retained GREEN; A-010 yaml_parse still RED
+    G-002:
+      T-002:
+        - A-001
+      T-003:
+        action: split
+        deleted: "stale combined A-001"
+        new:
+          - A-001
+          - A-002
+          - A-003
+      T-004:
+        - A-001
+        - A-002
+      fix_pass_2_note: T-004 A-001 yaml_parse + A-002 a2 still RED after re-encode attempt
+    G-003:
+      T-001:
+        - A-001
+        - A-002
+        - A-003
+        - A-004
+      T-002:
+        - A-001
+        - A-003
+        - A-004
+      note: T-001 A-004 new; phase_2b gate/DEGRADED cascade in revised A-001..A-003
+      fix_pass_2_note: all G-003 TS inner_loop GREEN at step 5
+    G-004:
+      T-001:
+        - A-002
+        - A-005
+        - A-006
+        - A-007
+      T-002:
+        - A-001
+        - A-002
+      note: handler-registry cross_ts file-state alignment
+      fix_pass_2_note: T-001 RED on A-007 a4/a8; T-002/T-003 GREEN at step 5
+    G-005:
+      T-001:
+        - A-003
+        - A-004
+        - A-005
+        - A-006
+        - A-007
+      note: a9 verification field fixes (A-003..A-007)
+      fix_pass_2_note: a9 closed; a2/a5 on A-006/A-007 and a8 on A-004 still RED
+    G-007:
+      steps:
+        - A-001
+        - A-002
+        - A-003
+        - A-004
+        - A-005
+      note: cross_ts_depends_on wired to G-006 + G-004 handler AS
+      fix_pass_2_note: depends_on wired; A-001..A-007 a4/a8/a5 findings remain RED
+
+  as_authored:
+    G-002:
+      T-003:
+        - step_id: A-001
+          name: tree-builder-class
+        - step_id: A-002
+          name: tree-lifecycle-class
+        - step_id: A-003
+          name: tree-lifecycle-package-init
+      T-004:
+        - step_id: A-001
+          name: wire-validate-to-unified-build
+        - step_id: A-002
+          name: parity-test-module
+    G-003:
+      T-001:
+        - step_id: A-004
+          name: marker-cycle-helpers
+    fix_pass_2_note: G-002 T-003/T-004 AS authored; G-001 T-002 A-008 on disk (12 AS in G-001)
+
+  a9_fixes:
+    G-005:
+      T-001:
+        - A-003
+        - A-004
+        - A-005
+        - A-006
+        - A-007
+    note: verification.type/target/expected completed per atomic_step_creation_standard a9
+
+  a3_resolutions:
+    G-000:
+      T-003:
+        A-002:
+          before_lines: 515
+          after_lines: 92
+          method: trim
+        A-006:
+          before_lines: 403
+          after_lines: 40
+          method: trim
+    rule: trim prompt/file-state excerpt — no tactical split
+
+  depends_on_waves:
+    G-002:
+      chain: "T-003 → T-004"
+      note: builder/lifecycle/package-init before unified-pipeline wire + parity
+    G-001:
+      T-003:
+        kind: cross_ts
+        note: cross_ts file-state from prior GS AS on shared handler/tree modules
+    G-004:
+      kind: cross_ts
+      note: handler-registry AS depend on G-001 format-handler AS file state
+    G-007:
+      kind: cross_ts
+      depends_on_gs: [G-006, G-004]
+      note: identity-remap AS cross_ts_depends_on G-006 universal node id + G-004 handler AS
+
+  inner_loop:
+    date: 2026-05-30
+    method: >
+      zero_trust_reread — 81 A-*.yaml on disk (yaml.safe_load 81/81 OK), MRS, parent GS/TS
+      README per TS; strict a1–a10 per atomic_step_creation_standard (no partial credit)
+    total_ts: 21
+    green: 10
+    red: 11
+    pass_number: 5
+    pre_fix_pass_4_baseline:
+      green: 17
+      red: 4
+      note: Lenient a8/a4 checks — superseded by pass 5 strict verification
+    green_ts:
+      - G-000/T-001
+      - G-001/T-001
+      - G-001/T-002
+      - G-001/T-003
+      - G-002/T-001
+      - G-002/T-002
+      - G-003/T-003
+      - G-004/T-002
+      - G-004/T-003
+      - G-006/T-001
+    red_ts:
+      - G-000/T-002
+      - G-000/T-003
+      - G-002/T-003
+      - G-002/T-004
+      - G-003/T-001
+      - G-003/T-002
+      - G-004/T-001
+      - G-005/T-001
+      - G-005/T-002
+      - G-005/T-003
+      - G-007/T-001
+    note: >
+      Definitive strict pass 5. Ten GREEN TS are predominantly create_file or fully
+      self-contained modify steps. Eleven RED TS fail primarily on cross_ts_depends_on a4,
+      region-only/read-first a8, or G-003/T-002 outer a8 chain breaks.
+
+  a1_a10_per_ts_verdicts:
+    verification_status: complete
+    pass_number: 5
+    green_ts:
+      G-000/T-001:
+        verdict: green
+        as_count: 1
+        primary_checks: all pass
+      G-001/T-001:
+        verdict: green
+        as_count: 2
+        primary_checks: all pass
+      G-001/T-002:
+        verdict: green
+        as_count: 8
+        primary_checks: all pass
+      G-001/T-003:
+        verdict: green
+        as_count: 2
+        primary_checks: all pass
+      G-002/T-001:
+        verdict: green
+        as_count: 1
+        primary_checks: all pass
+      G-002/T-002:
+        verdict: green
+        as_count: 1
+        primary_checks: all pass
+      G-003/T-003:
+        verdict: green
+        as_count: 5
+        primary_checks: all pass
+      G-004/T-002:
+        verdict: green
+        as_count: 2
+        primary_checks: all pass
+      G-004/T-003:
+        verdict: green
+        as_count: 2
+        primary_checks: all pass
+      G-006/T-001:
+        verdict: green
+        as_count: 1
+        primary_checks: all pass
+    red_ts:
+      G-000/T-002:
+        verdict: red
+        as_count: 4
+        primary_failing: {a4: [A-004]}
+        finding: "A-004 cross_ts_depends_on (1 path) — not self-sufficient per a4"
+      G-000/T-003:
+        verdict: red
+        as_count: 10
+        primary_failing: {a4: [A-001, A-002, A-003, A-007], a8: [A-002, A-006, A-010]}
+        finding: >
+          cross_ts_depends_on on A-001/A-002/A-003/A-007; A-002 sectioned embed; A-006
+          region-only; A-010 no code block (tree_builder.py 704 lines on disk)
+      G-002/T-003:
+        verdict: red
+        as_count: 3
+        primary_failing: {a4: [A-001, A-002], a5: [A-001, A-002]}
+        finding: "cross_ts_depends_on (4 and 2 paths); prompt references cross_ts_depends_on field"
+      G-002/T-004:
+        verdict: red
+        as_count: 2
+        primary_failing: {a4: [A-001, A-002], a5: [A-001, A-002]}
+        finding: "cross_ts_depends_on (2 and 7 paths); prompt references cross_ts_depends_on field"
+      G-003/T-001:
+        verdict: red
+        as_count: 4
+        primary_failing: {a4: [A-001], a5: [A-001]}
+        finding: "A-001 cross_ts_depends_on → TreeBuilder AS; prompt references field"
+      G-003/T-002:
+        verdict: red
+        as_count: 4
+        primary_failing: {a4: [A-003], a8: [A-002, A-003]}
+        finding: >
+          A-003 cross_ts_depends_on (2 paths); A-002/A-003 false full-content claims —
+          embed ≈24/11 lines vs edit_session files not yet on disk (outer a8 chain break)
+      G-004/T-001:
+        verdict: red
+        as_count: 7
+        primary_failing: {a4: [A-005, A-006, A-007]}
+        finding: "A-005/A-006/A-007 cross_ts_depends_on → G-001 format-handler create AS"
+      G-005/T-001:
+        verdict: red
+        as_count: 9
+        primary_failing: {a3: [A-007, A-009], a5: [A-008, A-009], a8: [A-006, A-008]}
+        finding: >
+          Plan-doc embeds — A-007/A-009 blocks >400 lines; A-008/A-009 post-A-006 prose refs;
+          A-006/A-008 read-first without full spec/README embed
+      G-005/T-002:
+        verdict: red
+        as_count: 4
+        primary_failing: {a8: [A-001, A-002, A-004]}
+        finding: "Method-only embeds vs full files (763/479/135 lines on disk)"
+      G-005/T-003:
+        verdict: red
+        as_count: 2
+        primary_failing: {a8: [A-001]}
+        finding: "A-001 region-only embed (a3 region-only waiver documented in verification.expected)"
+      G-007/T-001:
+        verdict: red
+        as_count: 7
+        primary_failing: {a4: [A-001, A-002, A-003, A-004, A-005]}
+        finding: >
+          A-001..A-005 cross_ts_depends_on (5 paths each) — defers to G-006 + G-001/G-004
+          handler AS without inlining outputs; breaks a4 self-sufficiency
+
+  outer_loop_result:
+    verdict: fail
+    date: 2026-05-30
+    pass_number: 5
+    method: >
+      zero_trust_reread — strict cross-TS a8 on 11 multi-TS shared files; later modify_file
+      after prior cross-TS AS must embed ≥85% of on-disk file or genuine full-content block
+    multi_ts_files: 11
+    chains_pass: 9
+    chains_fail: 2
+    handler_chain_G004_to_G007:
+      verdict: pass
+      note: G-007 handler embeds adequate when strict full-file check applied
+    checksum_chain_G002_T002_to_T004:
+      verdict: pass
+      note: >
+        G-002/T-004/A-001 embeds post-T-002 checksum.py baseline; __all__ order
+        matches T-002/A-001 (fix_pass_6 outer-loop a8 correction).
+    indexer_chain_G005_T003:
+      verdict: pass
+      note: A-002 post-A-001 update.py chain consistent under strict check
+    edit_session_chain_G003:
+      verdict: fail
+      breaks:
+        - file: ai_editor/core/edit_session/edit_session.py
+          as: G-003/T-002/A-003
+          prior: [G-003/T-001/A-001, G-003/T-001/A-003]
+          finding: Claims full content; embeds ~11 lines of snippets only
+        - file: ai_editor/core/edit_session/__init__.py
+          as: G-003/T-002/A-002
+          prior: [G-003/T-001/A-002]
+          finding: False full-content claim; embed ≈24 lines
+      note: Primary outer_loop blocker — G-003/T-002 outer a8
+    failures:
+      - "G-003/T-002/A-003 on edit_session.py after G-003/T-001 chain"
+      - "G-003/T-002/A-002 on __init__.py after G-003/T-001/A-002"
+    fix_pass_5_findings:
+      - "G-003 edit_session chain still breaks under strict outer a8 despite fix_pass_5 A-001 import list"
+      - "9 of 11 multi-TS chains pass (handlers, checksum.py, edit_operations, preview_navigation, indexer)"
+
+  atomic_overall_green: true
+  superseded_by_full_plan_reverify:
+    date: 2026-05-30
+    reason: >
+      phase_3 atomic_overall_green at 78 AS / 21 TS predates G-003 two-stage WRITE
+      remediation (+1 AS, T-004, 4 AS cascade); see full_plan_reverify.
+  atomic_overall_green_note: >
+    Pass 11 (authoritative): true with a3/a8 waiver caveat on four AS. inner_loop
+    21 GREEN / 0 RED after closing_pass (G-005/T-001 A-001 a8, A-002/A-003 a9, A-003 a5).
+    outer_loop pass with waivers honored. spec.yaml safe_load OK. Pass 10 history:
+    false (20/1) — see pass_10_honest_backlog. C-024 c4 pre-existing note only.
+
+  gs_status_after_phase_3:
+    G-000: ready_for_review_candidate
+    G-001: ready_for_review_candidate
+    G-002: ready_for_review_candidate
+    G-003: ready_for_review_candidate
+    G-004: ready_for_review_candidate
+    G-005: ready_for_review_candidate
+    G-006: ready_for_review_candidate
+    G-007: ready_for_review_candidate
+    note: Pass 11 closing — all GS ready_for_review_candidate
+
+  ts_status_after_phase_3:
+    status: all_ready_for_review
+    note: 21/21 TS green at pass 11
+    ready_for_review:
+      - G-000/T-001
+      - G-000/T-002
+      - G-000/T-003
+      - G-001/T-001
+      - G-001/T-002
+      - G-001/T-003
+      - G-002/T-001
+      - G-002/T-002
+      - G-002/T-003
+      - G-002/T-004
+      - G-003/T-001
+      - G-003/T-002
+      - G-003/T-003
+      - G-004/T-001
+      - G-004/T-002
+      - G-004/T-003
+      - G-005/T-001
+      - G-005/T-002
+      - G-005/T-003
+      - G-006/T-001
+      - G-007/T-001
+    needs_review: []
+
+  remaining_blockers:
+    count: 0
+    note: >
+      Pass 11 closing — no AS-layer blockers. Advisory only: C-024 c4 concept-quality
+      pre-existing review (cycle_1); not blocking atomic freeze.
+    pass_10_open:
+      - ts: G-005/T-001
+        verdict: red
+        findings:
+          - {step_id: A-001, check: a8, finding: cross-TS baseline drift}
+          - {step_id: A-002, check: a9, finding: stale verification.expected}
+          - {step_id: A-003, check: a9, finding: weak verification.expected}
+    pass_10_closed:
+      - ts: G-005/T-003
+        resolution: >
+          GREEN after authorized TS split — update_checksum_guard.py + slim update.py;
+          orphan duplicate A-001 deleted; A-002 post-split embed; pass 9/10 re-verify.
+    pass_10_partial:
+      - ts: G-005/T-001
+        step_id: A-001
+        field: target_file
+        resolution: >
+          target_file corrected to grep_block_resolver.py — TS still RED on a8/a9
+          findings above
+    historical_pass_8_red_ts:
+      - ts: G-005/T-003
+        finding: closed pass 9/10 — see pass_10_closed
+    historical_pass_6_a4:
+      count: 30
+      note: closed pass 7 — see convergence_pass.pass_6_a4_backlog
+    categories_historical:
+      - id: a4_mrs_excerpt_incomplete
+        scope: "30 findings across 11 TS — closed pass 7"
+        status: closed
+    residual_a3_advisories:
+      - {file: G-000/T-003/A-001, lines: 402, note: "prompt >400 — TS split candidate"}
+      - {file: G-000/T-003/A-008, lines: 429, note: "prompt >400 — TS split candidate"}
+      - {file: G-005/T-001/A-001, lines: 456, note: "prompt >400 — TS split candidate"}
+      - {file: G-005/T-001/A-007, lines: ">400 embed", note: "full source_spec.md embed exceeds cap"}
+      - {file: G-005/T-001/A-009, lines: ">400 embed", note: "full spec.yaml embed exceeds cap"}
+    fix_pass_3_closed:
+      - "G-004/T-001 A-007 a4/a8 — full python_handler embed (FIX_1)"
+      - "G-007/T-001 A-001..A-006 outer a8 — synthesized post-G-004 embeds (FIX_2)"
+      - "G-007/T-001 A-007 a5 — cross-AS prose stripped (FIX_2 cleanup)"
+      - "G-005/T-001 A-005 a5 — cross-AS prose removed (FIX_3)"
+      - "G-005/T-003 A-001 a3/a5 — split into A-001+A-002 (FIX_4)"
+    fix_pass_4_closed:
+      - "G-002/T-004 A-001 — full post-T-002 checksum.py embed with ChecksumSyncPolicy"
+      - "G-007/T-001 A-001..A-005 — POST-G-004 handler embeds; status + verification targets restored"
+      - "G-000/T-003 A-002/A-006 — region-only embeds (lenient a8 — strict pass 5 reopens)"
+      - "G-005/T-001 — duplicate A-008/A-009 orphan files deleted (a6)"
+    fix_pass_5_applied_not_green:
+      - "G-000/T-003/A-007 — POST-G-002/T-004 checksum embed + cross_ts_depends_on (a4 remains)"
+      - "G-002/T-004/A-001 — C-009 added (cross_ts_depends_on a4 remains)"
+      - "G-003/T-002/A-001 — explicit imports (outer a8 on A-002/A-003 remains)"
+      - "G-005/T-001 A-006..A-009 — full plan-doc embeds attempted (a3/a8/a5 remain under strict check)"
+      - "G-007 A-001..A-005 — post-G-004 handler synthesis (cross_ts_depends_on a4 remains)"
+
+closing_pass:
+  date: 2026-05-30
+  scope: >
+    AS-layer closing after pass 10 honest backlog — spec.yaml syntax repair,
+    G-005/T-001 orphan deletes and prompt fixes, four a3/a8 waivers documented,
+    mtime cascade already in HRS/MRS, pass 11 FINAL verification
+  plan_path: docs/plans/marked_tree_unification/
+
+  spec_yaml_syntax_fix:
+    date: 2026-05-30
+    fix_type: syntax_only
+    semantic_changes: none_beyond_mtime_cascade_already_applied
+    fixes:
+      - concept_id: C-012
+        location: properties list ~lines 200–206
+        issue: multiline single-quoted scalar break in content-supply rule property
+        resolution: folded block scalar `>`
+      - concept_id: C-024
+        location: properties ~lines 490–492
+        issue: multiline single-quoted scalar break
+        resolution: folded block scalar `>`
+      - concept_id: C-024
+        location: properties ~lines 500–503
+        issue: multiline single-quoted unquoted colon risk `(G-007):`
+        resolution: folded block scalar `>`
+    verification:
+      yaml_safe_load: OK
+      concept_count: 24
+      relation_count: 40
+    note: >
+      Does not address C-024 concept-quality (c4) split — out of scope per assignment;
+      c4 remains pre-existing advisory only
+
+  orphan_deletes:
+    date: 2026-05-30
+    ts: G-005/T-001
+    reason: >
+      Plan-doc maintenance AS not in README atomic_steps; forbidden at AS layer
+      without HRS cascade for MRS/HRS edits
+    deleted:
+      - docs/plans/marked_tree_unification/G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-006-mrs-and-readme-sync.yaml
+      - docs/plans/marked_tree_unification/G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-007-hrs-and-spec-drop-g004.yaml
+    readme_atomic_steps_after: [A-001, A-002, A-003, A-004, A-005]
+    disk_file_count: 5
+    readme_disk_1_1: true
+
+  g005_t001_fixes:
+    date: 2026-05-30
+    ts: G-005/T-001
+    fixes:
+      - step_id: A-001
+        check: a8
+        target_file: ai_editor/commands/grep_block_resolver.py
+        action: >
+          Re-embedded full post-prior baseline (280 lines) consistent with
+          G-000/T-003/A-003 post sibling-cutover state; ---BEGIN_FILE--- markers
+        source_baseline: G-000/T-003/A-003-grep-block-resolver-sibling.yaml
+      - step_id: A-002
+        check: a9
+        action: >
+          verification.expected rewritten as outcome prose — Finding has no mtime
+          field; serialization omits mtime; tests pass
+      - step_id: A-003
+        check: a9
+        action: >
+          verification.expected rewritten — BlockAssembler two-tuple sort without
+          mtime; no mtime read; tests pass
+      - step_id: A-003
+        check: a5
+        action: >
+          Removed A-002 step-id prose from prompt; describes prior change by effect
+          only (closes pass 10/11 sole a5 blocker)
+    pass_10_residuals_closed:
+      - A-001 a8 cross-TS baseline drift
+      - A-002 a9 stale expected
+      - A-003 a9 weak expected
+      - A-003 a5 step-id prose
+
+  a3_a8_waiver_policy:
+    policy: accepted_region_sectioned_embed
+    contract_requirements:
+      - explicit a3/a8 waiver block in prompt
+      - immutable-region or Section N anchor markers
+      - file state contract / disk-read when full file not embedded
+      - verification.expected documents waiver where applicable
+    waived_as:
+      - ts: G-000/T-003
+        step_id: A-002
+        target_file: ai_editor/commands/universal_file_edit/write_command.py
+        pattern: sectioned embed — _second_call sidecar block only
+      - ts: G-000/T-003
+        step_id: A-006
+        target_file: ai_editor/core/cst_tree/tree_saver.py
+        pattern: region-only embed with anchor markers
+      - ts: G-005/T-002
+        step_id: A-001
+        target_file: ai_editor/core/file_watcher_pkg/processor_queue.py
+        pattern: method-only integration seam
+      - ts: G-005/T-002
+        step_id: A-002
+        target_file: ai_editor/core/database/schema_definition_tables_core.py
+        pattern: region-only files-table embed
+    pass_11_note: >
+      Four AS under waiver policy; outer_loop pass when honored. Differs from pass 10
+      count of eight sectioned-waiver TS — closing pass documents the four explicit
+      oversized-file contracts required by assignment
+
+  mtime_cascade:
+    date: 2026-05-30
+    note: Semantic mtime removal already applied in HRS/MRS before closing_pass
+    hrs:
+      - label: "{g003}"
+        block: indexer checksum-driven reindex
+        change: indexer uses checksum compare; no mtime-driven reindex
+      - label: "{g004}"
+        block: search-session findings
+        change: Finding carries no file mtime; ranking by relevance + result_id tie-break
+    mrs:
+      - concept_id: C-020
+        name: GrepConsumer
+        change: >
+          source_labels include {g004}; properties — no mtime on findings;
+          relevance + result_id tie-break only
+      - concept_id: C-022
+        name: Indexer
+        change: >
+          source_labels {g003}; skip guard compares source vs tree_checksum;
+          content-driven reindex
+
+  cycle_1_reverdict:
+    date: 2026-05-30
+    precondition: spec.yaml safe_load OK after spec_yaml_syntax_fix
+    c1_machine_to_source:
+      verdict: green
+      note: All 24 concepts and relations have valid source_labels on binding HRS lines
+    c2_source_to_machine:
+      verdict: green
+      note: >
+        Automated hit `{file}` is false positive — HRS prose placeholder in open
+        protocol example, not a binding paragraph label; 68 binding labels covered
+    c3_relation_typing:
+      verdict: green
+      note: All 40 relations use allowed types only
+    c4_concept_quality:
+      verdict: advisory_only
+      note: >
+        C-024 UniversalNodeId pre-existing review — may fail entity-vs-property test;
+        not introduced by closing pass; does not block atomic layer freeze
+    overall_green: true
+    atomic_layer_blocker: false
+
+  verification_verdicts:
+    superseded_by_full_plan_reverify:
+      date: 2026-05-30
+      reason: >
+        closing_pass pass-11 claimed 21/21 TS green and atomic_overall_green at 78 AS
+        before G-003 two-stage WRITE AS remediation; see full_plan_reverify.
+    authoritative_pass: 11
+    date: 2026-05-30
+    prior_pass: 10
+    prior_pass_correction: >
+      Pass 10 initially FALSE GREEN (21/21 claimed); corrected to 20 GREEN / 1 RED
+      in pass_10_honest_backlog before closing_pass
+    method: >
+      Researcher pass 11 FINAL after A-003 a5 fix; zero_trust inner_loop a1–a10
+      all 21 TS; outer_loop second pass delta 0; waivers honored
+    gates:
+      as_count: 78
+      as_parse: "78/78 OK"
+      cross_ts_depends_on: 0
+      step_id_prose_in_prompts: 0
+      g005_t001: "5 AS README↔disk 1:1"
+      spec_yaml_parse: OK
+    inner_loop:
+      total_ts: 21
+      green: 21
+      red: 0
+    outer_loop:
+      verdict: pass
+      waiver_caveat: four AS under a3_a8_waiver_policy — not strict full-file a8 everywhere
+      delta: 0
+    atomic_overall_green: true
+    atomic_overall_green_caveat: >
+      true with documented a3/a8 waivers on four modify_file AS; do not claim strict
+      full-file post-prior embed on every modify_file without waiver
+
+  gs_status:
+    G-000: ready_for_review_candidate
+    G-001: ready_for_review_candidate
+    G-002: ready_for_review_candidate
+    G-003: ready_for_review_candidate
+    G-004: ready_for_review_candidate
+    G-005: ready_for_review_candidate
+    G-006: ready_for_review_candidate
+    G-007: ready_for_review_candidate
+
+  ts_status:
+    all: ready_for_review
+    per_ts:
+      G-000/T-001: ready_for_review
+      G-000/T-002: ready_for_review
+      G-000/T-003: ready_for_review
+      G-001/T-001: ready_for_review
+      G-001/T-002: ready_for_review
+      G-001/T-003: ready_for_review
+      G-002/T-001: ready_for_review
+      G-002/T-002: ready_for_review
+      G-002/T-003: ready_for_review
+      G-002/T-004: ready_for_review
+      G-003/T-001: ready_for_review
+      G-003/T-002: ready_for_review
+      G-003/T-003: ready_for_review
+      G-004/T-001: ready_for_review
+      G-004/T-002: ready_for_review
+      G-004/T-003: ready_for_review
+      G-005/T-001: ready_for_review
+      G-005/T-002: ready_for_review
+      G-005/T-003: ready_for_review
+      G-006/T-001: ready_for_review
+      G-007/T-001: ready_for_review
+
+final_summary:
+  superseded_by_full_plan_reverify:
+    date: 2026-05-30
+    reason: >
+      Inventory and atomic verdict below reflected pass-11 at 78 AS / 21 TS before
+      G-003 two-stage WRITE remediation; superseded — do not use for handoff counts.
+  date: 2026-05-30
+  overall_verdict: complete
+  plan_ready_for_code_execution: true
+  layers:
+    cycle_1: green  # c1-c3 green; c4 advisory C-024
+    cycle_2: green
+    tactical: green  # 21/21 TS — superseded; see full_plan_reverify (22 TS)
+    atomic: green    # 78 AS — superseded; see full_plan_reverify (79 AS)
+  inventory:
+    global_steps: 8
+    tactical_steps: 21
+    atomic_steps: 78
+  phase_highlights:
+    phase_1: HRS/MRS cascade; edit-gate; YAML fix; mtime cascade
+    phase_2: tactical overall_green
+    phase_2b: G-003 gate cascade; tree_builder.py split
+    phase_3: 78 AS convergence; pass-11 atomic_overall_green
+    phase_4: handoff docs synchronized; cross-check complete
+  residuals:
+    a3_a8_waivers: 4
+    c024_c4: advisory_only
+    as_prompt_constraints: [parity-oracle, backup-before-write, test_data-via-MCP, no-legacy-removal-before-G-000]
+  handoff_artifacts:
+    - docs/ai_reports/marked_tree_unification_implementation_assignment.md
+    - docs/ai_reports/marked_tree_unification_dovodka_audit.yaml
+  phase_4_cleanup: "2026-05-30 — A-006 a5 step-id prose removed; G-001/G-002/G-003 GS status promoted to ready_for_review"
+
+two_stage_write_cascade:
+  date: 2026-05-30
+  scope: >
+    Cascade STEP 6 — two-stage WRITE semantics ({d004} preview, {n7k2} confirm) after
+    HRS/MRS/GS/TS cascade; atomic planning complete for affected G-003 TS; no production code
+  plan_path: docs/plans/marked_tree_unification/
+
+  hrs_labels_changed_or_added:
+    d004:
+      block: Block 4 — Edit Session Lifecycle
+      change: rewritten
+      before_one_liner: >
+        Single-stage write — in-session commit then immediate atomic external copy-out
+        (write tree, unmark-export, commit both, then copy externally).
+      after_one_liner: >
+        Stage 1 preview only — diff in-session unmark-exported source and in-session
+        tree versus live external source and sibling tree; no external writes; no-op
+        on equality; distinct from session_git_diff ({e003}).
+      verbatim_location: source_spec.md lines 253-265
+    n7k2:
+      block: Block 4 — Edit Session Lifecycle
+      change: added
+      before_one_liner: "(new label)"
+      after_one_liner: >
+        Stage 2 confirm — explicit confirm parameter or second call; atomic external
+        copy-out of both artefacts (source over live file, tree to sibling); both or
+        neither; no external modification without confirmation.
+      verbatim_location: source_spec.md lines 267-273
+
+  mrs_changes:
+    C-012:
+      change: >
+        Write properties rewritten for two-stage API boundary; in-session artefacts
+        finalized per {d003}; stage 1 preview ({d004}) — external diff, no-op on
+        equality, distinct from C-014 session_git_diff; stage 2 confirm ({n7k2}) —
+        explicit confirmation, atomic co-located copy-out both or neither
+      source_labels_added: ["{n7k2}"]
+      source_labels_retained: ["{d004}"]
+    C-014:
+      change: untouched
+      note: >
+        SessionGitApi definition and source_labels ({e001}-{e006}) unchanged; write-stage
+        external diff vs live files remains C-012 property only; {e003} source mode
+        still compares rev_a vs most recent per-mutation unmark-exported in-session source
+
+  gs_changes:
+    G-003:
+      readme: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml
+      change: >
+        Description write phase rewritten for two-stage preview/confirm; source_labels
+        +{n7k2}; status needs_review (cascade invalidation)
+      tactical_steps_added: [T-004]
+
+  ts_changes:
+    G-003:
+      T-001:
+        path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/README.yaml
+        change: >
+          Phase write rewritten — stage 1 preview diffs in-session vs external without
+          external writes; stage 2 confirm atomic copy-out on explicit confirmation;
+          in-session artefacts already per {d003}; write gates external copy-out only
+        status: needs_review
+      T-004:
+        path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-004-session-write-command/README.yaml
+        change: >
+          New tactical step — session_write MCP command exposing two-stage write API
+          (preview default, confirm-gated external copy-out) per {d004}/{n7k2};
+          atomic_steps [A-001]
+        status: needs_review
+        on_disk: true
+        atomic_steps: [A-001]
+
+  as_changes:
+    planner_status: complete
+    revised:
+      G-003/T-001:
+        - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-001-edit-session-entity.yaml
+          methods: [preview_external_write, confirm_external_copy_out]
+          note: >
+            Replaces legacy write_copy_out; stage 1 preview returns has_changes,
+            source_diff, tree_diff; stage 2 confirm atomic external copy-out
+        - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-003-active-session-registry.yaml
+          note: Preserves preview_external_write and confirm_external_copy_out on EditSession
+      G-003/T-002:
+        - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-002-session-repo/atomic_steps/A-003-edit-session-wire-session-repo.yaml
+          change: >
+            Cross-TS revision — removed write stage-A SessionRepo commit wiring;
+            write phase delegates to preview_external_write/confirm_external_copy_out only
+    authored:
+      G-003/T-004:
+        - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-004-session-write-command/atomic_steps/A-001-session-write-command.yaml
+          command: session_write
+          target_file: ai_editor/commands/universal_file_edit/session_write_command.py
+          note: >
+            MCP command — preview invokes preview_external_write(); confirm=true
+            invokes confirm_external_copy_out(); schema documents confirm parameter
+        - path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-004-session-write-command/atomic_steps/parallel-waves.yaml
+    as_counts_affected:
+      T-001: 4
+      T-002_revised: 1
+      T-004: 1
+
+  per_layer_reverdicts:
+    cycle_1:
+      c1_machine_to_source:
+        verdict: green
+        note: >
+          C-012 write properties cite {d004}/{n7k2}; no orphan MRS claims; C-014
+          unchanged and still justified by {e001}-{e006} only
+      c2_source_to_machine:
+        verdict: green
+        note: >
+          {d004} rewrite and new {n7k2} covered via C-012 properties and source_labels;
+          binding label union unchanged except +{n7k2} in MRS
+      c3_relation_typing:
+        verdict: green
+        note: All relations unchanged; allowed types only
+      c4_concept_quality:
+        verdict: green
+        note: Two-stage write encoded as C-012 behavior properties, not new concept
+      overall_green: true
+    cycle_2_G-003:
+      c5_concept_references_valid:
+        verdict: green
+        note: C-012, C-013, C-014 and listed relations valid; +{n7k2} in GS source_labels
+      c6_source_labels_relevant:
+        verdict: green
+        note: "{d004}, {n7k2}, {d005}, {e001}-{e006} bind to Block 4 session lifecycle/API"
+      c7_executor_completeness:
+        verdict: green
+        note: >
+          GS README self-contained for two-stage write; T-004 Session Write Command
+          README on disk with session_write MCP output
+      c8_no_silent_dependency_on_siblings:
+        verdict: green
+      c9_no_redundancy_with_upper_levels:
+        verdict: green
+      overall_green: true
+    tactical_G-003:
+      method: zero_trust_reread — MRS, G-003 README, T-001/T-002/T-003/T-004 README
+      T-001:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+      T-002:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+      T-003:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+      T-004:
+        t5: pass
+        t6: pass
+        t7: pass
+        t8: pass
+        t9: pass
+        t10: pass
+        t11: pass
+      t12: pass
+      t13: pass
+      inner_loop_G-003: green
+      overall_green: true
+    atomic_G-003:
+      method: zero_trust_reread — affected AS files + parent TS README per TS
+      T-001:
+        as_count: 4
+        as_files:
+          - G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-001-edit-session-entity.yaml
+          - G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-002-edit-session-package-init.yaml
+          - G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-003-active-session-registry.yaml
+          - G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-004-marker-cycle-helpers.yaml
+        a1_a10: green
+        note: A-001 preview_external_write + confirm_external_copy_out; A-003 registry preserves write methods
+      T-004:
+        as_count: 1
+        as_files:
+          - G-003-edit-session-and-git-api/T-004-session-write-command/atomic_steps/A-001-session-write-command.yaml
+        a1_a10: green
+        note: session_write command wires preview_external_write / confirm_external_copy_out
+      T-002_A-003_cross_ts:
+        path: G-003-edit-session-and-git-api/T-002-session-repo/atomic_steps/A-003-edit-session-wire-session-repo.yaml
+        a8_note: >
+          Cross-TS a8 revision — post-T-001 file state embed aligned; write phase
+          explicitly excludes SessionRepo stage-A commit (external copy-out only)
+        a1_a10: green
+      inner_loop_affected_ts: green
+      overall_green: true
+
+  overall_green:
+    cycle_1: true
+    cycle_2: true
+    tactical_G-003: true
+    atomic_G-003: true
+    superseded_by_full_plan_reverify:
+      date: 2026-05-30
+      reason: >
+        two_stage_write_cascade per-layer atomic_G-003 green was pre–full-plan reverify;
+        pass-11 at 78 AS had not yet included T-004 and revised write AS. See
+        full_plan_reverify.g003_remediation and atomic verdict at 79 AS.
+    HRS: true
+    MRS: true
+    GS: true
+    TS: true
+    atomic: true
+    note: >
+      All layers green under two-stage write cascade; G-003 affected TS — T-001 (4 AS),
+      T-002 A-003 cross-TS revision, T-004 (1 AS session_write) — atomic a1-a10 verified
+
+full_plan_reverify:
+  date: 2026-05-30
+  scope: >
+    Full-plan re-verify after G-003 two-stage WRITE cascade ({d004}/{n7k2}, T-004
+    session_write); inventory recount; per-layer verdicts; gates. Supersedes pass-11
+    closing verdict at 78 AS / 21 TS where G-003 AS still violated two-stage semantics.
+  plan_path: docs/plans/marked_tree_unification/
+  method: zero_trust_reread — spec.yaml, all 8 GS README, 22 TS README, 79 A-*.yaml;
+    G-003 remediation AS + G-003/parallel-waves.yaml
+
+  inventory:
+    global_steps: 8
+    tactical_steps: 22
+    atomic_steps: 79
+    per_gs:
+      G-000: {ts: 3, as: 16}
+      G-001: {ts: 3, as: 12}
+      G-002: {ts: 4, as: 7}
+      G-003: {ts: 4, as: 14}
+      G-004: {ts: 3, as: 11}
+      G-005: {ts: 3, as: 11}
+      G-006: {ts: 1, as: 1}
+      G-007: {ts: 1, as: 7}
+    per_gs_g003:
+      T-001: 4
+      T-002: 4
+      T-003: 5
+      T-004: 1
+    delta_from_pass_11:
+      tactical_steps: "+1 (G-003/T-004 session-write-command)"
+      atomic_steps: "+1 (G-003/T-004/A-001 session_write_command)"
+
+  g003_remediation:
+    date: 2026-05-30
+    trigger: two_stage_write_cascade — HRS {d004}/{n7k2}, MRS C-012, GS/TS T-004
+    parallel_waves:
+      path: docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/parallel-waves.yaml
+      waves: 5
+      note: >
+        GS-level cross_ts_execution_waves — wave_5 gates session_write (T-004/A-001)
+        after T-001/A-003 registry; waves 1–4 unchanged from prior G-003 plan
+    as_fixed_count: 4
+    as_fixed:
+      - path: G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-001-edit-session-entity.yaml
+        change: >
+          Replaced legacy write_copy_out with preview_external_write (stage 1 {d004})
+          and confirm_external_copy_out (stage 2 {n7k2}); per-mutation {d003} unchanged
+      - path: G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/atomic_steps/A-003-active-session-registry.yaml
+        change: Registry preserves preview_external_write and confirm_external_copy_out on EditSession
+      - path: G-003-edit-session-and-git-api/T-002-session-repo/atomic_steps/A-003-edit-session-wire-session-repo.yaml
+        change: >
+          Cross-TS revision — write phase delegates to preview/confirm only; removed
+          write stage-A SessionRepo commit wiring (external copy-out not a repo mutation)
+      - path: G-003-edit-session-and-git-api/T-004-session-write-command/atomic_steps/A-001-session-write-command.yaml
+        change: >
+          New — session_write MCP command; preview default; confirm=true invokes
+          confirm_external_copy_out; schema documents confirm parameter
+    as_authored_new_ts:
+      - path: G-003-edit-session-and-git-api/T-004-session-write-command/README.yaml
+      - path: G-003-edit-session-and-git-api/T-004-session-write-command/atomic_steps/parallel-waves.yaml
+    violations_closed:
+      - stale single-stage {d004} write_copy_out in G-003/T-001 and T-002 AS prompts
+      - phase_2b gate excerpts missing DEGRADED/two-stage in write paths (A-001, A-003)
+      - missing T-004 session_write command AS for {n7k2} confirm API
+
+  gates:
+    cross_ts_depends_on: 0
+    step_id_prose: 0
+    as_parse: "79/79 OK"
+    spec_yaml_parse: OK
+    ts_readme_disk_1_1: true
+    g003_readme_disk_1_1: true
+    g003_as_count: 14
+
+  per_layer_verdicts:
+    cycle_1:
+      verdict: green
+      c1_machine_to_source: green
+      c2_source_to_machine: green
+      c3_relation_typing: green
+      c4_concept_quality: advisory_only
+      note: C-024 UniversalNodeId pre-existing; {n7k2} covered via C-012
+    cycle_2:
+      verdict: green
+      per_gs: [G-000, G-001, G-002, G-003, G-004, G-005, G-006, G-007]
+      g003_note: >
+        G-003 triple includes {d004}/{n7k2}, T-004 on disk; two-stage write in GS
+        description; no silent sibling dependency
+    tactical:
+      verdict: green
+      total_ts: 22
+      green: 22
+      red: 0
+      g003_ts: [T-001, T-002, T-003, T-004]
+      inner_loop: pass
+      outer_loop: pass
+    atomic:
+      verdict: green
+      total_as: 79
+      inner_loop_ts: 22
+      green_ts: 22
+      red_ts: 0
+      atomic_overall_green: true
+      atomic_overall_green_caveat: >
+        true with four documented a3/a8 waivers on pre-existing oversized modify_file
+        AS (unchanged from pass-11 closing_pass.a3_a8_waiver_policy); G-003 write
+        AS now align to two-stage {d004}/{n7k2}
+
+  supersession_history:
+    - block: convergence_pass.verification_verdicts.pass_11_verdict
+      prior_claim: atomic_overall_green at 78 AS / 21 TS
+      error: G-003 AS violated two-stage WRITE until remediation
+    - block: closing_pass.verification_verdicts
+      prior_claim: pass-11 authoritative at 78 AS
+    - block: final_summary.inventory
+      prior_counts: {gs: 8, ts: 21, as: 78}
+    - block: phase_3_atomic.atomic_overall_green
+    - block: two_stage_write_cascade.per_layer_reverdicts.atomic_G-003
+
+  plan_ready_for_code_execution: true
+  handoff_note: >
+    Use this block for authoritative counts and layer verdicts; implementation
+    assignment.md synchronized 2026-05-30.
+  superseded_by_node_id_cascade_phase_f:
+    date: 2026-05-30
+    reason: >
+      Node-id model cascade (UUID4 MAP-only; integer short_id markers;
+      3-section tree file; G-007 removed; G-006=NodeIdMap; 85 AS). Phase F
+      final sweep NOT GREEN (F-001–F-004). Authoritative verdict and counts:
+      node_id_cascade_phase_f below.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Node-ID cascade — Phase F final sweep (Part 2 handoff sync)
+# Verified: 2026-05-30
+# Supersedes full_plan_reverify for identity model, GS count, AS count, atomic verdict
+# ─────────────────────────────────────────────────────────────────────────────
+
+node_id_cascade_phase_f:
+  date: 2026-05-30
+  scope: >
+    HRS/MRS node-id model cascade (UUID4 MAP-only canonical identity; integer
+    short_id markers in TREE section; 3-section tree file CHECKSUMS→MAP→TREE;
+    NodeIdMap module; (file,short_id) external API; G-007 removed; G-006
+    repurposed to NodeIdMap). Phases A–F verification sweep; handoff doc sync.
+  plan_path: docs/plans/marked_tree_unification/
+  method: zero_trust_reread — spec.yaml, GS/TS README, A-*.yaml inventory;
+    Phase F Part 1 final sweep
+
+  locked_model:
+    short_id: per-file integer marker in TREE section
+    canonical_identity: UUID4 MAP-only (MRS C-024 TreeNodeUuid)
+    tree_file_format: "3 sections — CHECKSUMS → MAP → TREE (in order)"
+    node_id_map: "MRS C-025 NodeIdMap — build / validate_and_repair / resolve"
+    external_api: "(file path, short_id) only — UUID never crosses API"
+    g006_scope: NodeIdMap module
+    g007_status: REMOVED (directory absent on disk)
+    preview_prefix: minimal integer width for short_id column alignment
+    search_session_finding: "MRS C-026 SearchSessionFinding — no mtime field"
+    retired_hrs_labels: ["{l001}", "{l002}", "{l003}", "{m001}", "{m002}"]
+    new_hrs_labels: ["{a007}", "{n001}", "{n002}", "{n003}"]
+
+  cascade_decision: >
+    Canonical node identity is UUID4 stored only in the tree-file MAP section
+    (C-024 TreeNodeUuid). Markers in marked content (TREE section) are per-file
+    monotonic integer short_ids. Tree files use three ordered sections
+    CHECKSUMS→MAP→TREE. NodeIdMap (C-025) exposes build, validate_and_repair,
+    and resolve. All external commands address nodes as (file path, short_id).
+    G-007 identity-remap integration step removed; G-006 repurposed as NodeIdMap
+    module (single AS). Retired HRS Blocks 12–13 labels {l001}–{l003}, {m001},
+    {m002}; new labels {a007}, {n001}–{n003}.
+
+  phases:
+    A:
+      name: HRS/MRS cascade (node-id model)
+      verdict: green
+    B:
+      name: GS I1 + cycle_2
+      verdict: green
+    C:
+      name: Tactical t5–t13
+      verdict: green
+      note: 21 TS READMEs verified green
+    D:
+      name: Atomic a1–a10 per GS
+      verdict: green
+      atomic_layer: 10/10
+      note: >
+        Phase F close-out — F-001–F-004 resolved; plan-wide a8 audit green;
+        atomic layer 10/10 with documented a3 STOP waivers (non-blocking)
+    E:
+      name: Cascade phases (per parent orchestrator)
+      verdict: green
+    F:
+      name: Final sweep
+      verdict: green
+      part: 2
+      atomic_layer: 10/10
+      a3_stop_waivers: documented in plan_wide_a8_audit.a3_stop_escalations (non-blocking)
+      note: >
+        close-out 2026-05-30 — F-001–F-004 resolved; plan-wide a8 audit clean
+        (50 modify_file AS; 17 as_edited; a3 STOP escalations waived);
+        handoff/audit doc sync complete
+
+  inventory:
+    global_steps: 7
+    g007_on_disk: absent
+    tactical_steps: 21
+    atomic_steps: 85
+    per_gs:
+      G-000: {ts: 3, as: 25}
+      G-001: {ts: 3, as: 13}
+      G-002: {ts: 4, as: 7}
+      G-003: {ts: 4, as: 14}
+      G-004: {ts: 3, as: 11}
+      G-005: {ts: 3, as: 14}
+      G-006: {ts: 1, as: 1}
+    delta_from_full_plan_reverify:
+      global_steps: "-1 (G-007 removed)"
+      tactical_steps: "-1"
+      atomic_steps: "+6 net (G-000 +9, G-001 +1, G-005 +3, G-006 unchanged, G-007 -7 removed)"
+
+  green_areas:
+    - cycle_1
+    - I1
+    - cycle_2
+    - tactical (21 TS READMEs)
+    - atomic (85 AS; Phase F close-out; a1–a10 10/10 with a3 STOP waivers)
+    - plan_wide_a8_audit (50 modify_file AS; a8_planwide_clean)
+    - G-007 directory absent on disk
+
+  overall_verdict: green
+  phase_f_closeout_date: 2026-05-30
+  reverify_method: zero_trust_reread researcher_doc Phase F scoped pass
+
+  blocking_findings:
+    F-001:
+      id: F-001
+      check: atomic a5 (no cross-AS path references)
+      location: docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-001-format-handler-base.yaml:110
+      summary: >
+        Cross-AS path reference to G-006 A-001; lines 108–109 cite G-006
+        NodeIdMap.resolve
+      status: resolved
+      resolution: >
+        Inlined NodeIdMap.resolve contract in A-001-format-handler-base;
+        removed cross-AS G-006 path ref
+    F-002:
+      id: F-002
+      check: directory slug terminology
+      location: docs/plans/marked_tree_unification/G-006-universal-node-id/
+      summary: >
+        Directory slug G-006-universal-node-id/ retains retired
+        universal-node-id terminology
+      status: resolved
+      resolution: >
+        Renamed directory G-006-universal-node-id → G-006-node-id-map;
+        updated all path refs; removed stale duplicate tree
+    F-003:
+      id: F-003
+      check: TS README status
+      location: docs/plans/marked_tree_unification/G-006-universal-node-id/T-001-node-id-map-module/README.yaml:75
+      summary: status needs_review
+      status: resolved
+      resolution: G-006 T-001 README status → ready_for_review
+    F-004:
+      id: F-004
+      check: atomic a5 (prohibition boilerplate)
+      location: G-004 atomic step prompts (10 AS files)
+      summary: >
+        10 G-004 AS prompts contain literal cross_ts_depends_on in prohibition
+        blockquote boilerplate (not YAML fields)
+      status: resolved
+      resolution: >
+        Rephrased G-004 AS prohibition blockquotes; zero cross_ts_depends_on
+        literal in AS prompts
+
+  cross_ts_depends_on_field_sweep:
+    yaml_field_hits:
+      before_count: 1
+      after_count: 0
+    final_removal:
+      date: 2026-05-30
+      step: G-002/T-002/A-001
+      file: >
+        docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-002-checksum-sync-policy/atomic_steps/A-001-checksum-sync-policy-class.yaml
+      action: deleted line 8 cross_ts_depends_on: []
+    note: >
+      Final non-standard cross_ts_depends_on YAML field removed from
+      G-002/T-002/A-001; re-grep of docs/plans/marked_tree_unification/
+      confirms zero residual cross_ts_depends_on fields on disk. No migration
+      to parallel-waves.yaml — G-002/parallel-waves.yaml wave 2 already covers
+      T-002/A-001 ordering.
+
+  fix_pass_6:
+    date: 2026-05-30
+    scope: G-002/T-002/A-001 a8 file-state-in-prompt fix
+    baseline_source: >
+      on-disk (233 lines; no prior AS before T-002/A-001 in G-002 wave order)
+    change: >
+      Replaced abbreviated embed (`...` elisions, docstring placeholder) with
+      full 233-line baseline; prompt folded scalar → block scalar (`prompt: |`).
+    files_edited:
+      - G-002-tree-storage-and-lifecycle/T-002-checksum-sync-policy/atomic_steps/A-001-checksum-sync-policy-class.yaml
+    T-004_A-001:
+      status: corrected_2026-05-30
+      note: >
+        T-004/A-001 embed __all__ order corrected for outer-loop a8 chain:
+        prepend bug fixed — __all__ now matches T-002/A-001 spec (add after
+        is_tree_valid, not prepend). Full 309-line post-T-002 embed; no TreeBuilder
+        in embed; no elisions.
+    a3_post_impl: ~312 lines (within 400 limit)
+    a9_note: >
+      verification.expected rewritten to prose description only (removed
+      embedded python -c assert block); same commit pass as a8 fix.
+    outcome: >
+      a8 and a9 GREEN for T-002/A-001; outer-loop a8 chain T-002→T-004 GREEN
+      after T-004/A-001 embed __all__ correction.
+
+  g002_atomic_verification:
+    date: 2026-05-30
+    G-002_T-002_inner_loop:
+      checks: a1-a10
+      verdict: 10/10 GREEN
+      note: >
+        A-001 a8 and a9 closed by fix_pass_6 (full 233-line embed; verification.expected
+        prose rewrite). T-002 inner loop 10/10 GREEN.
+    G-002_outer_loop_a8_chain:
+      chain: T-002 → T-004 on checksum.py
+      verdict: GREEN
+      note: >
+        T-004/A-001 embed matches post-T-002/A-001 state (__all__ after is_tree_valid:
+        ChecksumSyncPolicy, ShaSyncBranch, ShaSyncDecision); fix_pass_6 T-004 correction.
+    checksum_chain_G002_T002_to_T004:
+      verdict: pass
+      note: >
+        T-002/A-001 full 233-line baseline; T-004/A-001 309-line post-T-002 embed
+        (sha_sync import, ChecksumSyncPolicy class, __all__ order per T-002 §3).
+
+  plan_wide_a8_audit:
+    date: 2026-05-30
+    scope: all modify_file AS under docs/plans/marked_tree_unification/G-000..G-006 (50 AS)
+    method: zero_trust_reread; cross-TS chains from parallel-waves.yaml + G depends_on
+    inventory:
+      modify_file_count: 50
+      multi_as_target_files: 4
+      files: [checksum.py, grep_block_resolver.py, tree_builder.py, edit_session.py]
+    findings_initial: 48 rows (elision, missing-embed, stale-baseline) per researcher_doc STEP 2
+    as_edited:
+      - G-000/T-003/A-007-checksum-drop-dead-fallback.yaml
+      - G-000/T-003/A-013, A-014, A-016, A-018, A-019, A-020
+      - G-004/T-001/A-001, A-003, A-004, A-005, A-006, A-007
+      - G-005/T-002/A-004-persist-tree-checksum-in-file-row.yaml
+    a3_stop_escalations:
+      - G-000/T-003/A-002 write_command.py (515L sectioned)
+      - G-000/T-003/A-006 tree_saver.py (403L sectioned)
+      - G-000/T-003/A-010,A-012 tree_builder.py (704L scoped)
+      - G-000/T-003/A-015 open_command.py (557L)
+      - G-000/T-003/A-017 sidecar_cst_apply.py (435L)
+      - G-000/T-003/A-019 test_tree_modifier.py (1313L scoped waiver)
+      - G-005/T-001/A-006 spec.yaml, A-007 source_spec.md, A-008 search_paginated_cross.py
+      - G-005/T-002/A-001 processor_queue.py, A-002 schema_definition_tables_core.py
+      - G-005/T-003/A-002 update.py (402L)
+      - G-002/T-004/A-001 checksum read-from-disk contract
+    a8_planwide_clean: true
+    atomic_a1_a10_verdict: green
+    plan_ready_for_code_execution: true
+
+  supersession:
+    supersedes: full_plan_reverify
+    reason: >
+      Node-id model cascade changes identity semantics, G-007 removal, AS
+      recount to 85, and Phase F atomic layer green (close-out 2026-05-30).
+      full_plan_reverify retained for two-stage WRITE remediation history only.
+    handoff_docs_updated:
+      - docs/ai_reports/marked_tree_unification_implementation_assignment.md
+      - docs/ai_reports/g002_audit_findings.yaml
+      - docs/ai_reports/g001_lifecycle_cascade_note.yaml
+
+  plan_ready_for_code_execution: true
+  handoff_note: >
+    Phase F F-001–F-004 resolved; plan-wide a8 audit clean; atomic layer
+    10/10 green with documented a3 STOP waivers (non-blocking); ready for code
+    execution. cycle_1, I1, cycle_2, tactical, and atomic layers green.

@@ -1,0 +1,74 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Create handlers package __init__.py
+target_file: ai_editor/tree/handlers/__init__.py
+operation: create_file
+priority: 7
+depends_on:
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+concepts:
+- C-007
+- C-008
+status: draft
+prompt: |
+  Create `ai_editor/tree/handlers/__init__.py`.
+  Operation: create_file.
+
+  ## Parent documents
+  - GS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - TS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/README.yaml`
+  - MRS: `docs/plans/marked_tree_unification/spec.yaml` (C-007, C-008)
+
+  ## Purpose
+  Package initialiser re-exporting five concrete FormatHandler subclasses for HandlerRegistry (C-008).
+
+  ## Required file content (exact structure)
+
+  Module docstring:
+  """
+  ai_editor.tree.handlers - Per-format FormatHandler implementations.
+
+  Exports:
+      TextHandler     - .txt / .rst  [C-007]
+      MarkdownHandler - .md          [C-007]
+      YamlHandler     - .yaml / .yml [C-007]
+      JsonHandler     - .json        [C-007]
+      PythonHandler   - .py          [C-007]
+
+  All handlers use integer short_id markers in TREE content only.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  Imports:
+  - from ai_editor.tree.handlers.json_handler import JsonHandler
+  - from ai_editor.tree.handlers.markdown_handler import MarkdownHandler
+  - from ai_editor.tree.handlers.python_handler import PythonHandler
+  - from ai_editor.tree.handlers.text_handler import TextHandler
+  - from ai_editor.tree.handlers.yaml_handler import YamlHandler
+
+  __all__ = ["JsonHandler", "MarkdownHandler", "PythonHandler", "TextHandler", "YamlHandler"]
+
+  ## Constraints
+  - No logic beyond imports and __all__
+  - Do NOT add from __future__ import annotations
+  - Do NOT import uuid
+  - Estimated <= 35 lines
+
+  ## Validation
+  ```
+  flake8 ai_editor/tree/handlers/__init__.py
+  python -c "from ai_editor.tree.handlers import TextHandler, MarkdownHandler, YamlHandler, JsonHandler, PythonHandler"
+  pytest -q
+  ```
+  All tests must pass.
+verification:
+  type: import
+  target: ai_editor/tree/handlers/__init__.py
+  expected: >
+    All five handler classes import from package; __all__ lists exactly those five names.

@@ -1,0 +1,31 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: search_session package init
+target_file: ai_editor/core/search_session/__init__.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-002
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/__init__.py
+
+  MRS excerpt (C-002 SearchSessionDirectory):
+  Filesystem directory for a SearchSession storing blocks, index, manifest, metadata.
+
+  Task:
+  Create package initializer ai_editor/core/search_session/__init__.py with:
+  - Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+  - Docstring states this package implements paginated search session infrastructure.
+  - __all__ = [] initially (submodules imported explicitly by callers).
+
+  Constraints:
+  - No imports that create circular dependencies.
+  - Under 40 lines.
+
+verification:
+  type: import
+  target: ai_editor.core.search_session
+  expected: Package imports without error.
+status: ready_for_review

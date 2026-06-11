@@ -1,0 +1,45 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Create handlers package __init__.py
+target_file: ai_editor/tree/handlers/__init__.py
+operation: create_file
+priority: 1
+depends_on:
+  - A-003
+  - A-004
+  - A-005
+  - A-006
+  - A-007
+concepts:
+- C-007
+- C-008
+status: draft
+prompt: "Create the file `ai_editor/tree/handlers/__init__.py`.\nOperation: create_file
+  (the file does not exist yet).\n\nThis file is the package initialiser for `ai_editor.tree.handlers`.\n\
+  It re-exports the five concrete FormatHandler (C-007) subclasses\nso callers can
+  import them from a single location.\n\n## MRS excerpt\n\nC-007 FormatHandler: per-format
+  component implementing the marker contract.\n  - one handler per format: text, markdown,
+  yaml, json, python\n  - each subclass is defined in its own module under this package\n\
+  \nC-008 HandlerRegistry: the central registry that resolves a file to its\n  FormatHandler
+  by file extension. It owns the set of registered handlers.\n  The five handler classes
+  exported here are the instances it registers.\n\n## Required file content\n\nWrite
+  exactly this file (no logic, only imports and __all__):\n\n```python\n\"\"\"\nai_editor.tree.handlers
+  - Per-format FormatHandler implementations.\n\nExports:\n    TextHandler     - Handler
+  for .txt and .rst files       [C-007]\n    MarkdownHandler - Handler for .md files\
+  \                 [C-007]\n    YamlHandler     - Handler for .yaml and .yml files\
+  \      [C-007]\n    JsonHandler     - Handler for .json files               [C-007]\n\
+  \    PythonHandler   - Handler for .py files                 [C-007]\n\nAuthor:
+  Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom ai_editor.tree.handlers.json_handler
+  import JsonHandler\nfrom ai_editor.tree.handlers.markdown_handler import MarkdownHandler\n\
+  from ai_editor.tree.handlers.python_handler import PythonHandler\nfrom ai_editor.tree.handlers.text_handler
+  import TextHandler\nfrom ai_editor.tree.handlers.yaml_handler import YamlHandler\n\
+  \n__all__ = [\n    \"JsonHandler\",\n    \"MarkdownHandler\",\n    \"PythonHandler\"\
+  ,\n    \"TextHandler\",\n    \"YamlHandler\",\n]\n```\n\n## Constraints\n- No logic,
+  no constants beyond __all__, no other imports.\n- Do NOT add `from __future__ import
+  annotations`.\n- Estimated line count: ~30 lines.\n"
+verification:
+  type: import
+  target: ai_editor/tree/handlers/__init__.py
+  expected: "`from ai_editor.tree.handlers import TextHandler, MarkdownHandler,
+    YamlHandler, JsonHandler, PythonHandler` succeeds without ImportError. __all__
+    contains exactly the five names listed.\n"

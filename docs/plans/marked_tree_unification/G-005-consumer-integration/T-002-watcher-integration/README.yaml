@@ -1,0 +1,44 @@
+step_id: T-002
+parent_global_step: G-005
+name: Watcher TreeLifecycle Integration and Checksum Persistence
+description: 'Define the Watcher entity (C-021) as the file watcher that ensures a
+  valid marked tree aligned with the current source checksum and persists that checksum
+  before inserting or updating a database file row ({g002}). Establish the two-action
+  contract. Action 1: Watcher calls the TreeLifecycle path-based wrapper before any file-row
+  insert or update; tree validity and short_id marker consistency with source content
+  are preconditions for writing to the database. Action 2: Watcher persists the computed
+  source SHA-256 checksum into the database alongside the file row so downstream consumers
+  can compare content identity without mtime. Establish the schema extension rule: the
+  checksum column is added via an idempotent schema extension that requires no migration
+  script; the idempotency ensures the extension can be applied multiple times safely.
+  Establish that the Watcher does not perform any tree-validity check independently
+  of TreeLifecycle.'
+concepts:
+- C-021
+- C-010
+- C-006
+source_labels:
+- '{g002}'
+inputs:
+- name: TreeLifecycle entity definition
+  type: domain entity definition (C-010)
+  description: Path-based wrapper Watcher calls before each database file-row write.
+- name: ChecksumSyncPolicy alignment
+  type: domain entity definition (C-006)
+  description: Persisted source checksum enables checksum-driven skip and rebuild decisions
+    without mtime.
+outputs:
+- name: Watcher entity definition
+  type: domain entity definition
+  description: File watcher calling TreeLifecycle before each file-row insert or update,
+    persisting source checksum alongside the row; no independent tree-validity checks.
+- name: Idempotent schema extension
+  type: domain constraint definition
+  description: Checksum column added idempotently with no migration script; safe to
+    apply multiple times.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+status: ready_for_review

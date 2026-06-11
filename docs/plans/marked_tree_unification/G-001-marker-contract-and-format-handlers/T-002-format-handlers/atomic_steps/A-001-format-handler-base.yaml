@@ -1,0 +1,252 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Create FormatHandler abstract base class
+target_file: ai_editor/tree/format_handler.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-007
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-009
+- C-024
+- C-025
+status: draft
+prompt: |
+  Create the file `ai_editor/tree/format_handler.py`.
+  Operation: create_file (the file does not exist yet).
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-001, C-002, C-007, C-009, C-024, C-025)
+
+  ## Prerequisite code (must exist before import)
+  - `ai_editor/tree/contracts.py` defines `NodeId = int` (C-002 per-file monotonic integer short_id)
+  - `ai_editor/tree/tree_node.py` defines `TreeNode` dataclass (C-009) with fields
+    `short_id: NodeId`, `parent_short_id: Optional[NodeId] = None` — NOT `node_id` / `parent_id`
+
+  ## MRS excerpt
+
+  C-001 MarkerContract: mark, parse, unmark; round-trip `unmark(mark(source)) == source` verified by SHA-256.
+  C-002 NodeId: per-file monotonic decimal integer short_id embedded in TREE section only; never UUID.
+  C-007 FormatHandler implements C-001 in parallel (does NOT subclass MarkerContract).
+    Four operations: parse_content, mark, unmark, sidecar_path.
+    Uses integer short_id marker syntax only; uses NodeIdMap (C-025) for server-internal short_id↔UUID resolution.
+  C-024 TreeNodeUuid: UUID4 in MAP section only — handlers never embed UUIDs in markers.
+  C-025 NodeIdMap.resolve: bidirectional short_id↔UUID lookup within one tree file context.
+
+  ## Operation mapping (parallel contracts, NOT inheritance)
+
+  | MarkerContract (C-001) | FormatHandler (C-007) | Input | Output |
+  |---|---|---|---|
+  | mark(content) | mark(content) | unmarked SourceFile (C-004) | marked TREE body (C-003) |
+  | parse(marked_text) | parse_content(file_path, content) | unmarked SourceFile body | List[TreeNode] (C-009) |
+  | unmark(marked_text) | unmark(marked_text) | marked TREE body | unmarked SourceFile body |
+
+  FormatHandler adds sidecar_path (sibling `<name>.tree`).
+
+  ## EditSession boundary (C-012 vs C-007) — mandatory
+
+  Marker hide/unhide immediately before and after session mutation is **EditSession
+  (C-012) responsibility**, NOT FormatHandler (C-007). FormatHandler exposes exactly
+  four operations: `parse_content`, `mark`, `unmark`, `sidecar_path`. Handlers do NOT
+  implement session-scoped hide/unhide toggles; callers (EditSession lifecycle) invoke
+  `mark`/`unmark` around mutations at the session layer.
+
+  ## Module docstring (exact)
+  """
+  Per-format FormatHandler abstract base (C-007).
+
+  Handlers embed integer short_id markers in TREE content only.
+  Canonical UUID4 identity lives in the MAP section via NodeIdMap (C-025);
+  handlers never call uuid.uuid4() for markers.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact list)
+  - from __future__ import annotations
+  - from abc import ABC, abstractmethod
+  - from pathlib import Path
+  - from typing import List, Optional, Protocol, runtime_checkable
+  - from uuid import UUID
+  - from ai_editor.core.tree_lifecycle.checksum import compute_content_checksum
+  - from ai_editor.tree.contracts import NodeId, UnknownNodeIdError
+  - from ai_editor.tree.tree_node import TreeNode
+
+  ## Class: ShortIdAllocator
+  Purpose: per-call monotonic integer short_id issuance starting at 1 (C-002 / {a007}).
+
+  ```python
+  class ShortIdAllocator:
+      def __init__(self, start: int = 1) -> None:
+          if start < 1:
+              raise ValueError("ShortIdAllocator start must be >= 1")
+          self._next = start
+
+      def allocate(self) -> int:
+          """Return current short_id and increment internal counter by 1."""
+          sid = self._next
+          self._next += 1
+          return sid
+
+      @property
+      def next_free(self) -> int:
+          """Lowest short_id not yet issued (for MAP next_free metadata)."""
+          return self._next
+  ```
+
+  ## Protocol: NodeIdMapResolver (C-025 integration surface)
+
+  Handlers accept an optional map instance for server-internal UUID resolution.
+  Do NOT import `ai_editor.core.tree_lifecycle.node_id_map` at module level
+  (concrete map module may not exist yet at import time). `NodeIdMapResolver` aligns
+  with the NodeIdMap.resolve contract (C-025):
+
+  NodeIdMap.resolve contract (inlined):
+  - Class `NodeIdMap` method signature:
+    ```python
+    def resolve(self, *, short_id: Optional[int] = None, uuid: Optional[str] = None) -> ResolveResult:
+        """Bidirectional short_id↔UUID lookup within one loaded map; exactly one argument must be provided."""
+    ```
+  - `ResolveResult` has fields `short_id: int` and `uuid: str` (UUID4 lowercase with hyphens).
+  - File-scoped: lookup is within one tree file's MAP; unrecognised short_id or uuid → input error (C-002).
+  - Reverse direction: uuid→short_id uses the same method with `uuid=` kwarg.
+
+  ```python
+  @runtime_checkable
+  class NodeIdMapResolveResult(Protocol):
+      short_id: int
+      uuid: str
+
+  @runtime_checkable
+  class NodeIdMapResolver(Protocol):
+      def resolve(
+          self,
+          *,
+          short_id: Optional[int] = None,
+          uuid: Optional[str] = None,
+      ) -> NodeIdMapResolveResult:
+          """Bidirectional short_id↔UUID lookup within one loaded map; exactly one argument must be provided."""
+  ```
+
+  FormatHandler helpers call `self._id_map.resolve(short_id=...)` or
+  `self._id_map.resolve(uuid=...)` when an id_map is provided — no dual-method facade.
+
+  ## Class: FormatHandler(ABC)
+
+  ```python
+  class FormatHandler(ABC):
+      def __init__(self, id_map: Optional[NodeIdMapResolver] = None) -> None:
+          self._id_map = id_map
+  ```
+
+  ### Abstract methods (exact signatures)
+  - `parse_content(self, file_path: Path, content: str) -> List[TreeNode]`
+  - `mark(self, content: str) -> str`
+  - `unmark(self, marked_text: str) -> str`
+  - `sidecar_path(self, source_abs: Path) -> Path`
+
+  Docstrings: state unmarked input for parse_content; byte-exact unmark output; sibling `.tree` path.
+
+  ### Concrete method: node_id_for
+  ```python
+  def node_id_for(self, raw: str) -> NodeId:
+      """Parse decimal integer short_id from raw marker token."""
+      try:
+          sid = int(raw.strip())
+      except ValueError as exc:
+          raise ValueError(f"short_id must be int, got {raw!r}") from exc
+      if sid < 1:
+          raise UnknownNodeIdError(sid)
+      return sid
+  ```
+
+  Error handling for `node_id_for`:
+  - Non-integer raw token → `ValueError` (same pattern as `validate_short_id` in contracts).
+  - Parsed integer `< 1` → `UnknownNodeIdError(sid)` with `sid: NodeId` (int).
+    UnknownNodeIdError contract (defined in `ai_editor/tree/contracts.py`, C-002):
+    - Base class: `ValueError`
+    - Signature: `__init__(self, short_id: NodeId) -> None`
+    - Docstring: "Raised when a short_id is not recognised in the current tree file (C-002)."
+    - Instance attribute: `self.short_id: NodeId`
+    - Algorithm __init__: call `super().__init__(f"Unknown short_id: {short_id!r}")`; set `self.short_id = short_id`
+    - Message shape: `"Unknown short_id: {short_id!r}"` (e.g. `"Unknown short_id: 0"`)
+    - Argument MUST be `NodeId` (int), never `str`
+
+  Edge cases for `node_id_for`:
+  - `"abc"` → ValueError, NOT UnknownNodeIdError (no int parsed yet).
+  - `"0"` → UnknownNodeIdError(0) with message `Unknown short_id: 0`.
+  - `"  42  "` → returns NodeId 42.
+
+  ### Concrete method: resolve_uuid_for_short_id (server-internal)
+  Signature: `def resolve_uuid_for_short_id(self, short_id: NodeId) -> UUID`
+
+  Algorithm:
+  1. If self._id_map is None: raise RuntimeError("NodeIdMap required for UUID resolution")
+  2. Import inside method: `from ai_editor.core.tree_lifecycle.node_id_map import UnknownShortIdError`
+  3. try: `result = self._id_map.resolve(short_id=short_id)`
+  4. except UnknownShortIdError as exc: raise UnknownNodeIdError(exc.short_id) from exc
+  5. Return `UUID(result.uuid)`
+
+  ### Concrete method: resolve_short_id_for_uuid (server-internal)
+  Signature: `def resolve_short_id_for_uuid(self, node_uuid: UUID) -> NodeId`
+
+  Algorithm:
+  1. If self._id_map is None: raise RuntimeError("NodeIdMap required for UUID resolution")
+  2. `result = self._id_map.resolve(uuid=str(node_uuid))`
+  3. Propagate `UnknownTreeNodeUuidError` from the map instance unchanged (import inside method if needed)
+  4. Return `result.short_id`
+
+  ### Concrete method: verify_byte_round_trip
+  ```python
+  def verify_byte_round_trip(self, source: str) -> bool:
+      """Return True when unmark(mark(source)) equals source byte-for-byte."""
+      return self.unmark(self.mark(source)) == source
+  ```
+
+  ### Concrete method: verify_checksum_round_trip
+  ```python
+  def verify_checksum_round_trip(self, source: str) -> bool:
+      marked = self.mark(source)
+      restored = self.unmark(marked)
+      return compute_content_checksum(restored) == compute_content_checksum(source)
+  ```
+
+  ## Forbidden patterns
+  - Do NOT subclass MarkerContract
+  - Do NOT import or call uuid.uuid4()
+  - Do NOT use 36-character UUID regex patterns
+  - Do NOT embed UUID strings in marker syntax
+  - Do NOT add format-specific handler logic in this file
+  - Do NOT implement EditSession (C-012) hide/unhide lifecycle in FormatHandler
+  - Do NOT define dual-method NodeIdMap protocols (`resolve_short_id_to_uuid` /
+    `resolve_uuid_to_short_id`); use single `resolve(*, short_id=..., uuid=...)` only
+  - Do NOT pass str to UnknownNodeIdError; argument MUST be NodeId (int) per
+    UnknownNodeIdError.__init__(short_id: NodeId) with message "Unknown short_id: {short_id!r}"
+  - Estimated lines: ~180
+
+  ## Validation (run from project root with .venv active)
+  ```
+  black ai_editor/tree/format_handler.py
+  flake8 ai_editor/tree/format_handler.py
+  mypy ai_editor/tree/format_handler.py
+  python -c "import inspect; from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator; assert inspect.isabstract(FormatHandler); a=ShortIdAllocator(); assert a.allocate()==1; assert a.allocate()==2"
+  pytest -q
+  ```
+  All tests must pass.
+verification:
+  type: import
+  target: ai_editor/tree/format_handler.py
+  expected: >
+    FormatHandler is abstract, ShortIdAllocator allocates monotonic integers starting
+    at 1, node_id_for parses int short_id and raises UnknownNodeIdError(NodeId int)
+    when parsed sid < 1, NodeIdMapResolver protocol matches inlined NodeIdMap.resolve
+    contract, resolve helpers call resolve(short_id=...) / resolve(uuid=...). No uuid.uuid4 usage;
+    no EditSession hide/unhide in FormatHandler.

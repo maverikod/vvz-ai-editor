@@ -1,0 +1,40 @@
+#!/usr/bin/make -f
+# debian/rules for code-analysis-server
+
+export DH_VERBOSE = 1
+export PYBUILD_NAME = code-analysis-server
+
+%:
+	dh $@ --with python3
+
+override_dh_auto_install:
+	# Install Python package
+	dh_auto_install
+	
+	# Install systemd service file
+	install -d $(CURDIR)/debian/code-analysis-server/lib/systemd/system
+	install -m 644 $(CURDIR)/scripts/systemd/code-analysis-server.service \
+		$(CURDIR)/debian/code-analysis-server/lib/systemd/system/
+	
+	# Install configuration template
+	install -d $(CURDIR)/debian/code-analysis-server/etc/code-analysis-server
+	if [ -f $(CURDIR)/config.example.json ]; then \
+		install -m 644 $(CURDIR)/config.example.json \
+			$(CURDIR)/debian/code-analysis-server/etc/code-analysis-server/config.json.example; \
+	fi
+	
+	# Install documentation
+	install -d $(CURDIR)/debian/code-analysis-server/usr/share/doc/code-analysis-server
+	if [ -f $(CURDIR)/docs/INSTALLATION.md ]; then \
+		install -m 644 $(CURDIR)/docs/INSTALLATION.md \
+			$(CURDIR)/debian/code-analysis-server/usr/share/doc/code-analysis-server/; \
+	fi
+
+override_dh_installdocs:
+	# Install additional documentation
+	dh_installdocs
+	install -d $(CURDIR)/debian/code-analysis-server/usr/share/doc/code-analysis-server
+	if [ -d $(CURDIR)/docs ]; then \
+		cp -r $(CURDIR)/docs/*.md \
+			$(CURDIR)/debian/code-analysis-server/usr/share/doc/code-analysis-server/ 2>/dev/null || true; \
+	fi

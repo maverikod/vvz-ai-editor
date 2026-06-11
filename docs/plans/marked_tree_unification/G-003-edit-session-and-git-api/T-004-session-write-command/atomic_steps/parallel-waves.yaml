@@ -1,0 +1,10 @@
+global_step: G-003
+tactical_step: T-004
+name: Session Write Command
+waves:
+  - wave: 1
+    steps:
+      - A-001
+    note: >
+      session_write MCP command; requires EditSession.preview_external_write and
+      confirm_external_copy_out from T-001 and get_active_session from T-001 registry wave.

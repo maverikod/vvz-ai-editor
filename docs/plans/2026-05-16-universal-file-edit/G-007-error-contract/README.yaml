@@ -1,0 +1,16 @@
+step_id: G-007
+name: Error contract
+description: Define the deterministic ErrorCodes contract produced by all four
+  commands when preconditions are violated. Codes: SESSION_NOT_FOUND,
+  DRAFT_NOT_FOUND, NESTED_BATCH_FORBIDDEN, WRITE_FAILED, UNKNOWN_FORMAT,
+  PARSE_ERROR.
+concepts:
+- C-014
+relations: []
+source_ranges:
+- start: 265
+  end: 275
+depends_on: []
+tactical_steps:
+- T-001
+status: draft

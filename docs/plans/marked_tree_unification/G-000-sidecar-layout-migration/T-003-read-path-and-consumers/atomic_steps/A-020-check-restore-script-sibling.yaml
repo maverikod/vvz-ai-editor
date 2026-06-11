@@ -1,0 +1,85 @@
+step_id: A-020
+parent_tactical_step: T-003
+name: Align scripts/check_restore.py with sibling sidecar convention
+target_file: scripts/check_restore.py
+operation: modify_file
+priority: 19
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: scripts/check_restore.py
+
+  ## Goal
+  Update this debug script to resolve the CST sidecar via sibling_tree_path instead
+  of the removed sidecar_path_for_py (.cst/ layout).
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover; replaces sidecar_path_for_py (.cst/) with sibling_tree_path.
+  - properties:
+    - hard cutover; no backward-compatibility shim
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact stored as a sibling file next to the source.
+  - properties:
+    - stored as a sibling file placed directly next to the source file it describes
+
+  ## Full current file content (verbatim baseline, 23 lines)
+
+  ```python
+    """Debug: load CST tree — stable ids live in ``.cst/*.tree``, not in ``.py``."""
+    
+    import sys
+    from pathlib import Path
+    
+    sys.path.insert(0, "/home/vasilyvz/projects/tools/ai_editor")
+    
+    from ai_editor.core.cst_tree import load_file_to_tree
+    from ai_editor.core.cst_tree.tree_sidecar import sidecar_path_for_py
+    
+    TEST_FILE = "/home/vasilyvz/projects/tools/cst_mcp_sandbox_20260501/mcp_cst_workspace/test_inline_ids.py"
+    
+    print("=== LOADING TREE ===")
+    tree = load_file_to_tree(TEST_FILE)
+    print(f"tree_id: {tree.tree_id}")
+    print(f"metadata_map size: {len(tree.metadata_map)}")
+    py = Path(TEST_FILE)
+    sc = sidecar_path_for_py(py)
+    print(f"sidecar path: {sc} exists={sc.is_file()}")
+    inline_hits = [
+        i + 1 for i, l in enumerate(tree.module.code.splitlines()) if "@node-id" in l
+    ]
+    print(f"Lines with @node-id in module.code: {inline_hits}")
+  ```
+
+  ## Required edits
+  1. Module docstring first line FROM:
+         """Debug: load CST tree — stable ids live in ``.cst/*.tree``, not in ``.py``."""
+     TO:
+         """Debug: load CST tree — stable ids live in sibling ``<source>.py.tree``, not in ``.py``."""
+
+  2. Replace import:
+         from ai_editor.core.cst_tree.tree_sidecar import sidecar_path_for_py
+     with:
+         from ai_editor.tree.sibling_convention import sibling_tree_path
+
+  3. Replace usage:
+         sc = sidecar_path_for_py(py)
+     with:
+         sc = sibling_tree_path(py.resolve())
+
+  ## Forbidden
+  - Do not change TEST_FILE constant or load_file_to_tree call.
+  - Do not touch other files.
+
+verification:
+  type: static_analysis
+  target: scripts/check_restore.py
+  expected: >
+    Script imports sibling_tree_path; no sidecar_path_for_py or '.cst' references;
+    black/flake8/mypy exit 0 if run on this path.

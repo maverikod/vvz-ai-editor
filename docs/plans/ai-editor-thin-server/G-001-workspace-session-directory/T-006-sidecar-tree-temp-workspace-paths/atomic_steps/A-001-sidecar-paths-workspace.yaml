@@ -1,0 +1,672 @@
+step_id: A-001
+parent_tactical_step: T-006
+name: CST sidecar paths в Edit Subdirectory
+target_file: ai_editor/core/edit_session/edit_session_impl.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-006
+- C-007
+- C-008
+- C-019
+prompt: |-
+  Modify `ai_editor/core/edit_session/edit_session_impl.py` (operation: modify_file).
+
+  Parent tactical step:
+  `docs/plans/ai-editor-thin-server/G-001-workspace-session-directory/T-006-sidecar-tree-temp-workspace-paths/README.yaml`
+
+  Parent global step:
+  `docs/plans/ai-editor-thin-server/G-001-workspace-session-directory/README.yaml`
+
+  Machine spec:
+  `docs/plans/ai-editor-thin-server/spec.yaml`
+
+  Consistency reference (workspace open kwargs): `EditSession.open` in `edit_session_impl.py`
+  accepts `workspace_session_root`, `workspace_file_subtree_root`, `workspace_origin_path`, and
+  `workspace_edit_subdir` together.
+
+  ## MRS excerpt
+
+  **C-006 File Subtree** — поддерево каталога сессии для одного открытого файла; содержит Origin Snapshot (C-007) и Edit Subdirectory (C-008).
+
+  **C-008 Edit Subdirectory** — подкаталог File Subtree с рабочей копией для правок (draft/CST/tree-temp); единственная цель мутаций на стадии edit.
+
+  **C-019 Internal Edit Engine** — INVARIANT: артефакты редактирования (sidecar, tree-temp, in-session lockfile для preview) размещаются относительно подкаталога редактирования в файловом поддереве сессии, а не относительно канонического пути проекта на диске upstream-сервера.
+
+  ## Scope (T-006 A-001 — fixes F-026 sidecar slice, F-036 CST anchor)
+
+  **IN scope:** CST marked-tree sidecar (`.tree` via `sibling_tree_path`) inside **Edit Subdirectory (C-008)** within **File Subtree (C-006)**:
+  - `session_tree_path` resolution in workspace `open()`
+  - `tree_abs` binding in workspace mode
+  - `apply_cst_sidecar_mutation` write guard and copy target
+
+  Path anchor rule (resolved — no "or"): CST sidecar path is `sibling_tree_path(session_source_path)` where `session_source_path` is the working copy inside Edit Subdirectory. Never resolve via `sidecar_path_for(project_root)` or project-side `validate_or_recreate_tree_file` in workspace mode.
+
+  **OUT of scope — deferred to T-004** (`G-001-workspace-session-directory/T-004-format-group-path-adaptation`):
+  - `draft_path` and `lockfile_path`
+  - `draft_path_for`, `draft_path_for_edit_source`, `lockfile_path_for_edit_source`
+  - `.cst_sidecar` draft suffix helpers in `format_group.py`
+
+  **OUT of scope — deferred to `tree_temp_open_support.py` / other modules:**
+  - tree-temp JSON sidecar acquisition (`acquire_tree_temp_for_open`)
+  - `sidecar_cst_apply.py` / `write_sidecar_atomic` caller wiring (orchestration layers pass edit-subdir paths)
+
+  Do NOT modify `edit_session.py` facade, `format_group.py`, or `tree_temp_open_support.py`.
+
+  ## Preconditions
+
+  T-003 complete: `edit_session_impl.py` exists with workspace `open()` accepting
+  `workspace_session_root`, `workspace_file_subtree_root`, `workspace_origin_path`, and
+  `workspace_edit_subdir` kwargs. Use embedded CURRENT FILE CONTENT below; do not read from disk.
+
+  ## CURRENT FILE CONTENT (post T-003 workspace open mode — complete starting state)
+
+  Full `ai_editor/core/edit_session/edit_session_impl.py` as it exists after T-003 workspace
+  open mode. Do NOT read from disk; apply edits relative to this embedded content only.
+
+  ```python
+  """
+  EditSession entity: on-disk session directory and dual-mode edit lifecycle (C-019).
+
+  Distinct from ``commands.universal_file_edit.session`` (in-memory draft registry).
+  Supports FINAL-2 open, valid/invalid tree mutations, re-validation, and staged
+  external copy-out.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import enum
+  import shutil
+  import uuid
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from typing import Callable, Optional
+
+  from ai_editor.core.edit_session.marker_cycle import (
+    denude_marked_tree,
+    restore_marked_tree,
+  )
+  from ai_editor.core.edit_session.session_history import SessionHistory
+  from ai_editor.core.edit_session.session_repo import SessionRepo
+  from ai_editor.core.search_session.tree_representation import sidecar_path_for
+  from ai_editor.core.tree_lifecycle import (
+    compute_content_checksum,
+    is_tree_valid,
+    validate_or_recreate_tree_file,
+  )
+  from ai_editor.tree.edit_operations import EditOperation
+  from ai_editor.tree.handler_registry import HandlerRegistry
+
+
+  class SessionTreeValidity(str, enum.Enum):
+    VALID = "valid"
+    INVALID = "invalid"
+
+
+  class EditSessionError(ValueError):
+    """EditSession lifecycle violations."""
+
+
+  CONTENT_NOT_ALLOWED_FOR_VALID_FILE = "CONTENT_NOT_ALLOWED_FOR_VALID_FILE"
+
+  SESSION_VALID_TRUTH_INVARIANT = (
+    "When tree_validity is valid, the in-session tree is truth; "
+    "the external SourceFile is stale."
+  )
+  SESSION_INVALID_TRUTH_INVARIANT = (
+    "When tree_validity is invalid, the in-session source copy is the editing surface."
+  )
+
+  #: Process-level registry; open registers, close removes (C-019).
+  _active_sessions: dict[str, EditSession] = {}
+
+
+  def _external_source_and_tree_valid(
+    *,
+    source_abs: Path,
+    project_root: Path,
+    file_path: str,
+  ) -> bool:
+    """Return True when external source parses and tree checksums align (FINAL-2)."""
+    if not source_abs.is_file():
+        return False
+    external_text = source_abs.read_text(encoding="utf-8")
+    try:
+        HandlerRegistry.default_registry().resolve(source_abs).parse_content(
+            Path(file_path),
+            external_text,
+        )
+    except Exception:
+        return False
+    try:
+        ref, _validity_state = validate_or_recreate_tree_file(
+            project_root=project_root,
+            file_path=file_path,
+        )
+    except Exception:
+        return False
+    ext_checksum = compute_content_checksum(external_text)
+    return is_tree_valid(ext_checksum, ref.content_checksum)
+
+
+  @dataclass
+  class EditSession:
+    """On-disk edit session with dual-mode valid/invalid tree lifecycle (C-019)."""
+
+    session_id: str
+    source_abs: Path
+    tree_abs: Path
+    session_dir: Path
+    session_source_path: Path
+    session_tree_path: Path
+    session_repo_path: Path
+    session_repo: SessionRepo
+    project_root: Path
+    file_path: str
+    tree_validity: SessionTreeValidity
+    source_checksum: str
+    tree_checksum: Optional[str]
+    is_open: bool = field(default=False)
+    history: SessionHistory = field(default_factory=SessionHistory)
+    workspace_session_root: Optional[Path] = None
+    workspace_file_subtree_root: Optional[Path] = None
+
+    @classmethod
+    def open(
+        cls,
+        *,
+        source_abs: Path,
+        project_root: Path,
+        file_path: str,
+        content: Optional[str] = None,
+        workspace_session_root: Optional[Path] = None,
+        workspace_file_subtree_root: Optional[Path] = None,
+        workspace_origin_path: Optional[Path] = None,
+        workspace_edit_subdir: Optional[Path] = None,
+    ) -> EditSession:
+        _ws = (
+            workspace_session_root,
+            workspace_file_subtree_root,
+            workspace_origin_path,
+            workspace_edit_subdir,
+        )
+        _any_ws = any(p is not None for p in _ws)
+        _all_ws = all(p is not None for p in _ws)
+        if _any_ws and not _all_ws:
+            raise EditSessionError(
+                "WORKSPACE_PATHS_INCOMPLETE",
+                "all four workspace_* paths required together",
+            )
+        workspace_mode = _all_ws
+
+        if content is not None and source_abs.is_file():
+            if _external_source_and_tree_valid(
+                source_abs=source_abs,
+                project_root=project_root,
+                file_path=file_path,
+            ):
+                raise EditSessionError(
+                    CONTENT_NOT_ALLOWED_FOR_VALID_FILE,
+                    "content parameter not allowed when source and tree are valid",
+                )
+
+        session_id = str(uuid.uuid4())
+
+        if workspace_mode:
+            ws_session = workspace_session_root.resolve()
+            ws_subtree = workspace_file_subtree_root.resolve()
+            ws_origin = workspace_origin_path.resolve()
+            session_dir = workspace_edit_subdir.resolve()
+
+            try:
+                ws_subtree.relative_to(ws_session)
+            except ValueError as exc:
+                raise EditSessionError(
+                    "WORKSPACE_PATH_ESCAPE",
+                    f"file subtree {ws_subtree} must be under session root {ws_session}",
+                ) from exc
+            try:
+                ws_origin.relative_to(ws_subtree)
+            except ValueError as exc:
+                raise EditSessionError(
+                    "WORKSPACE_PATH_ESCAPE",
+                    f"origin {ws_origin} must be under file subtree {ws_subtree}",
+                ) from exc
+            try:
+                session_dir.relative_to(ws_subtree)
+            except ValueError as exc:
+                raise EditSessionError(
+                    "WORKSPACE_PATH_ESCAPE",
+                    f"edit subdir {session_dir} must be under file subtree {ws_subtree}",
+                ) from exc
+
+            session_dir.mkdir(parents=True, exist_ok=True)
+            session_source_path = session_dir / ws_origin.name
+            if content is not None:
+                session_source_path.write_text(content, encoding="utf-8")
+            elif ws_origin.is_file():
+                shutil.copy2(ws_origin, session_source_path)
+            elif source_abs.is_file():
+                shutil.copy2(source_abs, session_source_path)
+            else:
+                raise EditSessionError("SOURCE_MISSING")
+
+            source_text = session_source_path.read_text(encoding="utf-8")
+            source_checksum = compute_content_checksum(source_text)
+
+            tree_abs = ws_origin.parent / f"{ws_origin.name}.tree"
+            session_tree_path = session_dir / f"{ws_origin.name}.tree"
+
+            try:
+                HandlerRegistry.default_registry().resolve(ws_origin).parse_content(
+                    Path(file_path),
+                    source_text,
+                )
+                tree_validity = SessionTreeValidity.INVALID
+            except Exception:
+                tree_validity = SessionTreeValidity.INVALID
+
+            tree_checksum = None
+            session_repo_path = session_dir
+            include_tree = False
+            session_repo = SessionRepo.init(
+                repo_dir=session_dir,
+                source_name=session_source_path.name,
+                tree_name=session_tree_path.name,
+                include_tree=include_tree,
+                source_abs=ws_origin,
+            )
+            history = SessionHistory()
+            history.reset(session_repo.log()[-1].hash)
+
+            session = cls(
+                session_id=session_id,
+                source_abs=ws_origin,
+                tree_abs=tree_abs,
+                session_dir=session_dir,
+                session_source_path=session_source_path,
+                session_tree_path=session_tree_path,
+                session_repo_path=session_repo_path,
+                session_repo=session_repo,
+                project_root=project_root,
+                file_path=file_path,
+                tree_validity=tree_validity,
+                source_checksum=source_checksum,
+                tree_checksum=tree_checksum,
+                is_open=True,
+                history=history,
+                workspace_session_root=ws_session,
+                workspace_file_subtree_root=ws_subtree,
+            )
+            _active_sessions[session_id] = session
+            return session
+
+        session_dir = source_abs.parent / f"{source_abs.name}-{session_id}"
+        session_dir.mkdir(exist_ok=False)
+
+        session_source_path = session_dir / source_abs.name
+        if content is not None:
+            session_source_path.write_text(content, encoding="utf-8")
+        elif source_abs.is_file():
+            shutil.copy2(source_abs, session_source_path)
+        else:
+            raise EditSessionError("SOURCE_MISSING")
+
+        source_text = session_source_path.read_text(encoding="utf-8")
+        source_checksum = compute_content_checksum(source_text)
+
+        resolved_root = project_root.resolve()
+        tree_abs = sidecar_path_for(file_path, resolved_root)
+        ref_content_checksum: Optional[str] = None
+        try:
+            ref, _validity_state = validate_or_recreate_tree_file(
+                project_root=project_root,
+                file_path=file_path,
+            )
+            tree_abs = ref.sidecar_path
+            ref_content_checksum = ref.content_checksum
+        except Exception:
+            ref_content_checksum = None
+
+        session_tree_path = session_dir / tree_abs.name
+        if tree_abs.is_file():
+            shutil.copy2(tree_abs, session_tree_path)
+
+        try:
+            HandlerRegistry.default_registry().resolve(source_abs).parse_content(
+                Path(file_path),
+                source_text,
+            )
+            if (
+                session_tree_path.is_file()
+                and ref_content_checksum is not None
+                and is_tree_valid(source_checksum, ref_content_checksum)
+            ):
+                tree_validity = SessionTreeValidity.VALID
+            else:
+                tree_validity = SessionTreeValidity.INVALID
+        except Exception:
+            tree_validity = SessionTreeValidity.INVALID
+
+        session_repo_path = session_dir
+        tree_checksum = (
+            compute_content_checksum(session_tree_path.read_text(encoding="utf-8"))
+            if session_tree_path.is_file()
+            else None
+        )
+
+        include_tree = (
+            tree_validity == SessionTreeValidity.VALID and session_tree_path.is_file()
+        )
+        session_repo = SessionRepo.init(
+            repo_dir=session_dir,
+            source_name=session_source_path.name,
+            tree_name=session_tree_path.name,
+            include_tree=include_tree,
+            source_abs=source_abs,
+        )
+        history = SessionHistory()
+        history.reset(session_repo.log()[-1].hash)
+
+        session = cls(
+            session_id=session_id,
+            source_abs=source_abs,
+            tree_abs=tree_abs,
+            session_dir=session_dir,
+            session_source_path=session_source_path,
+            session_tree_path=session_tree_path,
+            session_repo_path=session_repo_path,
+            session_repo=session_repo,
+            project_root=project_root,
+            file_path=file_path,
+            tree_validity=tree_validity,
+            source_checksum=source_checksum,
+            tree_checksum=tree_checksum,
+            is_open=True,
+            history=history,
+        )
+        _active_sessions[session_id] = session
+        return session
+
+    def apply_tree_operation(self, operation: EditOperation) -> None:
+        """Apply one G-004 EditOperation on the in-session marked tree ({h008})."""
+        from ai_editor.core.edit_session.edit_operations_adapter import (
+            apply_edit_on_session_tree,
+        )
+
+        apply_edit_on_session_tree(self, operation)
+
+    def apply_valid_tree_mutation(
+        self,
+        mutation_fn: Callable[[str], str],
+    ) -> None:
+        if not self.is_open or self.tree_validity != SessionTreeValidity.VALID:
+            raise RuntimeError(
+                "Valid-tree mutation requires open session with valid tree"
+            )
+        marked = self.session_tree_path.read_text(encoding="utf-8")
+        denuded, state = denude_marked_tree(
+            source_abs=self.source_abs,
+            marked_tree=marked,
+        )
+        denuded_after = mutation_fn(denuded)
+        restored = restore_marked_tree(
+            source_abs=self.source_abs,
+            denuded_after_mutation=denuded_after,
+            state=state,
+        )
+        self.session_tree_path.write_text(restored, encoding="utf-8")
+        self._post_mutation_full()
+
+    def apply_plaintext_mutation(self, new_source_text: str) -> None:
+        if not self.is_open or self.tree_validity != SessionTreeValidity.INVALID:
+            raise RuntimeError(
+                "Plaintext mutation requires open session with invalid tree"
+            )
+        self.session_source_path.write_text(new_source_text, encoding="utf-8")
+        self.source_checksum = compute_content_checksum(new_source_text)
+        self._post_mutation_degraded()
+        _mut.try_revalidate(self)
+
+    def apply_cst_sidecar_mutation(
+        self,
+        new_source_text: str,
+        *,
+        sidecar_abs: Path,
+    ) -> None:
+        """Sync session workspace after legacy CST ``write_sidecar_atomic`` edit."""
+        if not self.is_open:
+            raise RuntimeError("EditSession is not open")
+        self.session_source_path.write_text(new_source_text, encoding="utf-8")
+        shutil.copy2(sidecar_abs, self.session_tree_path)
+        self.source_checksum = compute_content_checksum(new_source_text)
+        self.tree_checksum = compute_content_checksum(
+            self.session_tree_path.read_text(encoding="utf-8")
+        )
+        self.tree_validity = SessionTreeValidity.VALID
+        self.session_repo.commit_full(message="session: mutation")
+        self._record_history_commit(self.session_repo.log()[0].hash)
+
+    def _post_mutation_full(self) -> None:
+        _mut.export_source_via_unmark(self)
+        self.source_checksum = compute_content_checksum(
+            self.session_source_path.read_text(encoding="utf-8")
+        )
+        _mut.update_session_tree_checksums(self, self.source_checksum)
+        self.tree_checksum = compute_content_checksum(
+            self.session_tree_path.read_text(encoding="utf-8")
+        )
+        self.session_repo.commit_full(message="session: mutation")
+        self._record_history_commit(self.session_repo.log()[0].hash)
+
+    def _post_mutation_degraded(self) -> None:
+        self.source_checksum = compute_content_checksum(
+            self.session_source_path.read_text(encoding="utf-8")
+        )
+        self.tree_checksum = None
+        self.session_repo.commit_degraded(message="session: plaintext mutation")
+        self._record_history_commit(self.session_repo.log()[0].hash)
+
+    def _record_history_commit(self, commit_hash: str) -> None:
+        self.history.record(commit_hash)
+
+    def _sync_state_after_checkout(self, *, mode: str) -> None:
+        source_text = self.session_source_path.read_text(encoding="utf-8")
+        self.source_checksum = compute_content_checksum(source_text)
+        if mode == "full":
+            self.tree_validity = SessionTreeValidity.VALID
+            self.tree_checksum = (
+                compute_content_checksum(
+                    self.session_tree_path.read_text(encoding="utf-8")
+                )
+                if self.session_tree_path.is_file()
+                else None
+            )
+            return
+        self.tree_validity = SessionTreeValidity.INVALID
+        self.tree_checksum = None
+
+    def checkout_history_index(self, index: int) -> None:
+        """Restore working artefacts to ``timeline[index]`` without a new commit."""
+        _mut.checkout_history_index(self, index)
+
+    def undo(self) -> dict[str, object]:
+        """Step back one edit; classic undo without creating a commit."""
+        return _mut.undo(self)
+
+    def redo(self) -> dict[str, object]:
+        """Step forward one edit; classic redo without creating a commit."""
+        return _mut.redo(self)
+
+    def record_revert_commit(self, *, rev: str) -> str:
+        """Git-style revert: checkout ``rev`` and append a new tracked commit."""
+        return _mut.record_revert_commit(self, rev=rev)
+
+    def preview_external_write(self) -> dict[str, object]:
+        """Compute unified diffs of in-session artefacts vs live external files; no external writes."""
+        return _mut.preview_external_write(self)
+
+    def confirm_external_copy_out(self) -> None:
+        """Atomically copy in-session artefacts to external co-located paths; both or neither when valid."""
+        _mut.confirm_external_copy_out(self)
+
+    def close(self) -> None:
+        _mut.close(self)
+
+    def record_tree_modification(self) -> None:
+        _mut.record_tree_modification(self)
+
+
+  from . import edit_session_mutations as _mut
+  ```
+
+  ## New module-level helper (add before `EditSession` class)
+
+  ```python
+  def _session_sidecar_in_edit_subdir(
+      session_dir: Path,
+      session_source_path: Path,
+  ) -> Path:
+      """Return CST sidecar path inside Edit Subdirectory (C-008)."""
+  ```
+
+  Docstring one line: `Return CST sidecar path inside Edit Subdirectory (C-008).`
+
+  Signature: `def _session_sidecar_in_edit_subdir(session_dir: Path, session_source_path: Path) -> Path`
+
+  Algorithm:
+  1. `resolved_dir = session_dir.resolve()`
+  2. `resolved_source = session_source_path.resolve()`
+  3. Try `resolved_source.relative_to(resolved_dir)`; on `ValueError` raise `EditSessionError("WORKSPACE_PATH_ESCAPE", "session_source_path must be inside session_dir (edit subdir)")`.
+  4. Return `sibling_tree_path(resolved_source)`.
+
+  Error handling:
+  - `session_source_path` not under `session_dir` → `EditSessionError("WORKSPACE_PATH_ESCAPE", ...)`.
+
+  Edge cases:
+  - `session_dir=/ws/sid/files/pid/edit-uuid`, `session_source_path=.../edit-uuid/foo.py` → `.../edit-uuid/foo.py.tree`.
+  - Extensionless `README` working copy → `README.tree`.
+
+  ## Modified `open()` workspace branch (replace workspace open steps 9–14)
+
+  After step 8 (`source_checksum` computed) in workspace_mode block:
+
+  1. **Do NOT** call `sidecar_path_for` or `validate_or_recreate_tree_file`.
+  2. `session_tree_path = _session_sidecar_in_edit_subdir(session_dir, session_source_path)`.
+  3. `tree_abs = session_tree_path` (authoritative in-session sidecar; not external CA path).
+  4. If `session_tree_path.is_file()`:
+     - `shutil.copy2` is NOT needed (already in place).
+     - Read `session_tree_path` text; compute `tree_checksum` via `compute_content_checksum`.
+     - Try parse `source_text` with `HandlerRegistry`; if parse succeeds and `is_tree_valid(source_checksum, tree_checksum)` using checksum from sidecar CHECKSUMS section when parseable, set `tree_validity = VALID`; else `INVALID`.
+     - For validity: use same `is_tree_valid` + `ref_content_checksum` pattern as legacy when sidecar exists — read checksum from parsed tree file if possible; if parsing fails, `tree_validity = INVALID`.
+     - Simplified binding: if `session_tree_path.is_file()` and parse of source_text succeeds, attempt `parse_tree_file` on sidecar; if `sections.checksums.get("source_sha256") == source_checksum`, set `VALID`; else `INVALID`.
+  5. Else (no sidecar file yet):
+     - `tree_validity = SessionTreeValidity.INVALID`
+     - `tree_checksum = None`
+  6. `include_tree = tree_validity == SessionTreeValidity.VALID and session_tree_path.is_file()`
+  7. Continue with `SessionRepo.init(...)` and session construction unchanged from workspace open
+     mode.
+
+  ## Modified `apply_cst_sidecar_mutation`
+
+  Algorithm (prepend guard before writes):
+  1. If not `self.is_open`: raise `RuntimeError("EditSession is not open")`.
+  2. If `self.workspace_session_root is not None` (workspace mode):
+     - `resolved_sidecar = sidecar_abs.resolve()`
+     - `resolved_dir = self.session_dir.resolve()`
+     - Try `resolved_sidecar.relative_to(resolved_dir)`; on `ValueError` raise `EditSessionError("WORKSPACE_SIDECAR_ESCAPE", f"sidecar must be under edit subdir {resolved_dir}, got {resolved_sidecar}")`.
+  3. Existing body unchanged: write source, `shutil.copy2(sidecar_abs, self.session_tree_path)`, checksums, commit.
+
+  Error handling:
+  | Condition | Exception |
+  |-----------|-----------|
+  | Workspace mode + sidecar outside edit subdir | `EditSessionError("WORKSPACE_SIDECAR_ESCAPE", ...)` |
+  | Session closed | `RuntimeError("EditSession is not open")` |
+
+  Edge cases:
+  - Legacy mode (`workspace_session_root is None`): no sidecar path guard; behavior unchanged.
+  - `sidecar_abs` equals `session_tree_path`: allowed (same resolved path under edit subdir).
+
+  ## Constants and literals
+
+  - Error code `WORKSPACE_PATH_ESCAPE` — string literal.
+  - Error code `WORKSPACE_SIDECAR_ESCAPE` — string literal.
+  - Sidecar suffix from `sibling_tree_path` — `TREE_FILE_SUFFIX = ".tree"` (imported via sibling_convention).
+  - Session repo commit message unchanged: `"session: mutation"`.
+
+  ## Forbidden patterns
+
+  - Do NOT call `sidecar_path_for` when `workspace_mode` is True.
+  - Do NOT call `validate_or_recreate_tree_file` when `workspace_mode` is True.
+  - Do NOT read or copy CST sidecar from canonical project path on CA host in workspace mode.
+  - Do NOT implement `draft_path` or `lockfile_path` (T-004).
+  - Do NOT modify `tree_temp_open_support.py`.
+  - Do NOT modify `format_group.py`.
+  - Do NOT modify `edit_session.py` facade.
+  - Do NOT add `Any` type annotations.
+  - Do NOT add methods not listed in this step.
+
+  ## Tests — create `tests/unit/test_edit_session_sidecar_workspace.py`
+
+  ```python
+  """CST sidecar workspace path tests (T-006 A-001)."""
+  ```
+
+  ### `test_workspace_open_session_tree_path_under_edit_subdir`
+
+  - Build tmp layout:
+    - `session_root = tmp_path / "sid"`
+    - `subtree = session_root / "files" / "proj"`
+    - `origin = subtree / "foo.py"` with minimal valid Python content
+    - `edit_subdir = subtree / "edit-uuid"`
+    - `edit_subdir.mkdir()`
+  - Call `EditSession.open(source_abs=origin, project_root=tmp_path, file_path="foo.py", workspace_session_root=session_root, workspace_file_subtree_root=subtree, workspace_origin_path=origin, workspace_edit_subdir=edit_subdir)`.
+  - Assert `session.session_dir == edit_subdir.resolve()`.
+  - Assert `session.session_tree_path == (edit_subdir / "foo.py.tree").resolve()`.
+  - Assert `session.tree_abs == session.session_tree_path`.
+  - Assert `session.session_tree_path.parent == edit_subdir`.
+  - Assert project-side `(origin.parent / "foo.py.tree")` does NOT exist after open (no project-side sidecar created).
+
+  ### `test_apply_cst_sidecar_mutation_rejects_outside_edit_subdir`
+
+  - Open workspace session as above.
+  - Create sidecar at `origin.parent / "foo.py.tree"` (outside edit subdir).
+  - Call `apply_cst_sidecar_mutation("x=1\n", sidecar_abs=project_sidecar)`.
+  - Expect `EditSessionError` with first arg `"WORKSPACE_SIDECAR_ESCAPE"`.
+
+  ### `test_apply_cst_sidecar_mutation_accepts_edit_subdir_sidecar`
+
+  - Open workspace session as above.
+  - Create minimal sidecar file at `session.session_tree_path` (write dummy `.tree` content or copy fixture).
+  - Call `apply_cst_sidecar_mutation` with `sidecar_abs=session.session_tree_path`.
+  - Assert no exception; `session.session_tree_path.is_file()` is True.
+
+  ## Validation commands (from project root, `.venv` activated)
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/edit_session_impl.py tests/unit/test_edit_session_sidecar_workspace.py
+  flake8 ai_editor/core/edit_session/edit_session_impl.py tests/unit/test_edit_session_sidecar_workspace.py
+  mypy ai_editor/core/edit_session/edit_session_impl.py
+  pytest tests/unit/test_edit_session_sidecar_workspace.py tests/unit/test_edit_session_lifecycle.py -v
+  ```
+
+  Expected:
+  - black: "reformatted" or "would be left unchanged"
+  - flake8: no output, exit 0
+  - mypy: "Success: no issues found"
+  - pytest: all PASSED including new workspace sidecar tests; legacy lifecycle tests unchanged
+
+  **Mandatory:** all project tests must pass before handoff.
+verification:
+  type: pytest
+  target: tests/unit/test_edit_session_sidecar_workspace.py
+  expected: >
+    CST sidecar (session_tree_path) resolves under Edit Subdirectory via sibling_tree_path;
+    tree_abs points to in-session sidecar in workspace mode; apply_cst_sidecar_mutation
+    rejects project-side sidecar paths; draft_path and lockfile_path untouched (T-004).
+status: draft

@@ -1,0 +1,32 @@
+step_id: T-001
+parent_global_step: G-007
+name: SessionTTLPolicy configuration
+description: >
+  Creates SessionTTLPolicy covering two related search response settings: the
+  TTL controlling how long inactive SearchSessionDirectory data remains after
+  last access, and the maximum result block size in bytes bounding one
+  SearchResultBlock. Defines default code constants for each setting, requires
+  the configuration generator to emit both settings, and requires the
+  configuration validator to reject missing, invalid, non-integer, zero,
+  negative, or out-of-range values according to declared policy. Keeps maximum
+  block size distinct from the existing per-result preview size limit.
+concepts:
+  - C-007
+inputs:
+  - name: configuration_source
+    type: ConfigurationSource
+    description: Runtime configuration inputs and generated defaults for search response settings.
+outputs:
+  - name: session_ttl_policy
+    type: SessionTTLPolicy
+    description: Validated TTL and maximum block size settings available to runtime components.
+  - name: configuration_validation_rules
+    type: ConfigurationValidationRules
+    description: Rejection rules enforced by the configuration validator for both settings.
+atomic_steps:
+- A-001
+- A-005
+- A-002
+- A-003
+- A-004
+status: ready_for_review

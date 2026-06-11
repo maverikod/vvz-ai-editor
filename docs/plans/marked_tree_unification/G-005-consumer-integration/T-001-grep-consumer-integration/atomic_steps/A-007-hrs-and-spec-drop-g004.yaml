@@ -1,0 +1,60 @@
+step_id: A-007
+parent_tactical_step: T-001
+name: Verify HRS Block 7 {g004} matches C-026 no-mtime contract
+target_file: docs/plans/marked_tree_unification/source_spec.md
+operation: modify_file
+priority: 1
+depends_on:
+- A-006
+concepts:
+- C-026
+status: ready_for_review
+prompt: |
+  Operation: modify_file (verify-first; edit only if drift detected)
+  Target: docs/plans/marked_tree_unification/source_spec.md
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-005-consumer-integration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-005-consumer-integration/T-001-grep-consumer-integration/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-026)
+
+  ## Goal
+  Cascade alignment: confirm HRS Block 7 paragraph {g004} documents the C-026
+  contract (no Finding mtime; score + result_id tie-break). Do NOT delete {g004}.
+  If the on-disk paragraph already matches the target below, make NO edits.
+
+  ## Target {g004} paragraph (must exist verbatim in Block 7 when step completes)
+
+  ```
+  {g004} Search-session findings (`Finding`) do not carry file mtime and ranking
+  does not use mtime as a sort dimension; ordering uses relevance score with a
+  deterministic `result_id` tie-break.
+  ```
+
+  ## Required action
+  1. Open Block 7 — Consumer Integration in source_spec.md.
+  2. If {g004} is missing, insert the target paragraph after the {g003} paragraph.
+  3. If {g004} still describes Finding.mtime, normalize_cross_finding stat-ing
+     source files, or any mtime tie-break — replace that paragraph with the target.
+  4. If {g004} already matches the target, record verify-only and change nothing.
+  5. Do NOT renumber {g001}, {g002}, {g003}, {g004}.
+  6. Do NOT modify spec.yaml in this step.
+
+  ## Forbidden
+  - Do NOT delete the {g004} paragraph (C-026 source binding)
+  - Do NOT add Finding.mtime or normalize_cross_finding mtime language
+  - Do NOT modify any file other than source_spec.md
+  - Do NOT reference G-007, universal-id, UUID-in-marker
+
+  ## Validation
+
+      pytest -q
+
+  All tests must pass.
+verification:
+  type: manual
+  target: docs/plans/marked_tree_unification/source_spec.md
+  expected: >
+    Block 7 contains {g004} with the C-026 no-mtime contract text exactly as
+    specified. No legacy Finding.mtime paragraph remains. Labels g001–g004
+    unchanged in numbering. Full pytest suite passes.

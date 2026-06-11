@@ -1,0 +1,26 @@
+step_id: T-004
+parent_global_step: G-001
+name: SidecarDirectory resolver
+description: |
+  Define the resolver that maps each tree-structured source file within a project to
+  exactly one Sidecar (C-002) storage binding: apply the dedicated storage root and
+  mirrored relative naming described in the Sidecar concept properties so that one
+  Sidecar artifact corresponds to one source file and the storage layout parallels
+  source layout under that root. The resolver yields the sole Sidecar storage binding
+  (C-002) for that source identity without prescribing transport-level details.
+concepts:
+- C-002
+inputs:
+- name: source_file_in_project
+  type: project-scoped source identity
+  description: Logical identity of a tree-structured source file relative to the project
+    root for resolution purposes.
+outputs:
+- name: sidecar_storage_reference
+  type: Sidecar storage binding (C-002)
+  description: The resolved storage binding for that source file's Sidecar under the
+    directory and path rules in C-002.
+atomic_steps:
+- A-001
+- A-002
+status: done

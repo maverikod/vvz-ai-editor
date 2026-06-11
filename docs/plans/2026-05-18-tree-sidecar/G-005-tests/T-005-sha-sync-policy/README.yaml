@@ -1,0 +1,32 @@
+step_id: T-005
+parent_global_step: G-005
+name: SHASyncPolicy unit tests
+status: done
+description: 'Establish verification obligations on SHASyncPolicy (C-003) governing
+  Sidecar (C-002) versus live source bytes when opening or reconciling state. Prove
+  branch no_sidecar: absent sidecar implies build tree from source, allocate stable_ids,
+  and persist a new sidecar with source_sha256 matching current source. Prove branch
+  sha_match: existing sidecar with matching source_sha256 loads without rebuild and
+  preserves recorded stable_ids. Prove branch sha_mismatch_no_session: mismatch with
+  no active EditSession (C-007) yields source priority, rebuild from source with new
+  stable_ids, overwrite sidecar and recorded digest. Prove branch sha_mismatch_active_session:
+  mismatch while a session holds the file yields sidecar priority and forbids rebuild,
+  treating mismatch as consistent with session write semantics. Prove transitions do not
+  corrupt sidecar JSON shape or omit source_sha256 updates when writes are specified by
+  the branch.'
+concepts:
+- C-003
+- C-002
+- C-007
+inputs:
+- name: policy_scenarios
+  type: tuples of sidecar presence, recorded digest, current digest, session-active flag
+  description: Enumerated combinations covering all four C-003 branches plus boundary
+    equality on digest comparison.
+outputs:
+- name: branch_behavior_verdict
+  type: verification outcome
+  description: 'For each scenario, observed resolution path matches the mandated branch:
+    rebuild versus load-as-is versus defer rebuild, with correct sidecar mutation rules.'
+atomic_steps:
+- A-001

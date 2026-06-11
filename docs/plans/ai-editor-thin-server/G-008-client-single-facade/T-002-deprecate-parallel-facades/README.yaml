@@ -1,0 +1,21 @@
+step_id: T-002
+parent_global_step: G-008
+name: Deprecate параллельных фасадов
+description: 'Пометить deprecated параллельные клиентские фасады (C-020, {4z1r}) с DeprecationWarning на одну минорную версию; физическое удаление — в рамках Legacy Removal Scope после сужения MCP-поверхности (C-016).
+
+  '
+concepts:
+- C-016
+- C-020
+inputs:
+- name: client_package_exports
+  type: object
+  description: Публичные экспорты клиентской библиотеки (C-016, C-020).
+outputs:
+- name: single_public_facade
+  type: boolean
+  description: Единственный поддерживаемый публичный файловый фасад (C-016) в клиентской библиотеке.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

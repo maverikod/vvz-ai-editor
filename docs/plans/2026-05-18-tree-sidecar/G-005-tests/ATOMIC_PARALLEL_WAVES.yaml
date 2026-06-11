@@ -1,0 +1,22 @@
+# Parallel-safe groups within each tactical step (ordering between TS waves follows G-005 depends_on).
+
+meta:
+  plan: docs/plans/2026-05-18-tree-sidecar
+  global_step: G-005
+
+intra_ts_parallel_groups:
+  T-004-source-serializer-round-trip:
+    waves:
+      - parallel:
+          - A-001
+          - A-002
+  T-007-universal-file-integration-json:
+    waves:
+      - parallel:
+          - A-001
+          - A-002
+  T-008-universal-file-integration-yaml:
+    waves:
+      - parallel:
+          - A-001
+          - A-002

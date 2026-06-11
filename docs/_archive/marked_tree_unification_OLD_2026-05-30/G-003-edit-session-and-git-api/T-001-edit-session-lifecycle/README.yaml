@@ -1,0 +1,43 @@
+step_id: T-001
+parent_global_step: G-003
+name: EditSession Lifecycle
+description: 'Define the EditSession entity (C-012) as a bounded editing context represented
+  by a session directory placed next to the SourceFile, with a unique name derived
+  from the source file name. Establish the four-phase lifecycle. Phase open: create
+  session directory, copy SourceFile in, validate or rebuild TreeFile via TreeLifecycle
+  (C-010), initialise SessionRepo with an initial commit. Phase edit: every tree modification
+  is immediately committed to the SessionRepo — one modification equals one commit,
+  no exceptions. Phase write/commit: regenerate in-session source via unmark, commit
+  both artifacts in the SessionRepo, then atomically propagate TreeFile and source
+  to their co-located external positions. Phase close: delete the session directory
+  entirely; only the co-located TreeFile survives; session git history is ephemeral
+  and destroyed with the directory. Establish that inside an active session the tree
+  is the source of truth and the external SourceFile is stale.'
+concepts:
+- C-012
+- C-010
+- C-003
+- C-006
+inputs:
+- name: TreeLifecycle entity
+  type: domain entity definition (C-010)
+  description: Used in the open phase to validate or rebuild the TreeFile before
+    the session is considered active.
+- name: SourceFile
+  type: C-004 instance
+  description: The file the EditSession is opened on; copied into the session 
+    directory at open time.
+outputs:
+- name: EditSession entity definition
+  type: domain entity definition
+  description: Four-phase lifecycle (open, edit, write/commit, close) with the 
+    invariant that one tree modification equals one SessionRepo commit; session 
+    directory is ephemeral and destroyed on close.
+- name: Session-is-truth invariant
+  type: domain constraint definition
+  description: Inside an active session the tree is truth; the external 
+    SourceFile is stale and must not be read as truth while a session is active.
+atomic_steps:
+- A-001
+- A-002
+status: draft

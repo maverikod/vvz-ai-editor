@@ -1,0 +1,16 @@
+{
+  "ai_editor": {
+    "database": {
+      "driver": {
+        "type": "postgres",
+        "config": {
+          "host": "ai-editor-db",
+          "port": 5432,
+          "dbname": "ai_editor",
+          "user": "ai_editor",
+          "password_env": "AI_EDITOR_POSTGRES_PASSWORD"
+        }
+      }
+    }
+  }
+}

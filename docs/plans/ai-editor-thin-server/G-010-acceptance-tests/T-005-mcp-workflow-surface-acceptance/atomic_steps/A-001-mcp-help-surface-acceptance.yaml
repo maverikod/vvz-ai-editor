@@ -1,0 +1,173 @@
+step_id: A-001
+parent_tactical_step: T-005
+name: Приёмка MCP help surface
+target_file: tests/integration/test_mcp_workflow_surface_help.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-016
+- C-020
+- C-022
+prompt: |
+  Create `tests/integration/test_mcp_workflow_surface_help.py` (operation: create_file).
+
+  Parent context:
+  - C-001 AI Editor Server owns C-016 MCP Workflow Surface.
+  - C-016 public MCP contract: universal_file_open, universal_file_edit, universal_file_write,
+    universal_file_close, universal_file_preview, and health only (queue_health must not register).
+  - C-020 Legacy Removal Scope: session_*, subordinate_session_*, project_file_transfer_*,
+    auxiliary universal_file_* (search, save, move_nodes), session_git_*, session_write/undo/redo
+    must not appear on the public surface.
+  - C-022 Product Acceptance Criteria criterion (6): help without duplicate command families.
+
+  Write the file with EXACT content below (module docstring, imports, constants, helper, two tests).
+
+  ```python
+  """Acceptance: MCP Workflow Surface help lists thin commands only (C-016, C-022).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from ai_editor.hooks import register_ai_editor_commands
+  from mcp_proxy_adapter.commands.command_registry import CommandRegistry
+
+  EXPECTED_WORKFLOW_COMMANDS: frozenset[str] = frozenset(
+      {
+          "universal_file_open",
+          "universal_file_edit",
+          "universal_file_write",
+          "universal_file_close",
+          "universal_file_preview",
+          "health",
+      }
+  )
+
+  FORBIDDEN_LEGACY_COMMANDS: frozenset[str] = frozenset(
+      {
+          "session_create",
+          "session_delete",
+          "session_list",
+          "session_view",
+          "session_open_file",
+          "session_close_file",
+          "session_list_file_locks",
+          "subordinate_session_create",
+          "subordinate_session_delete",
+          "subordinate_session_get",
+          "subordinate_session_list",
+          "subordinate_session_update",
+          "project_file_transfer_download_begin",
+          "project_file_transfer_upload_save",
+          "project_file_advisory_lock_batch",
+          "project_file_lock_status",
+          "universal_file_move_nodes",
+          "universal_file_search",
+          "universal_file_save",
+          "session_git_log",
+          "session_git_diff",
+          "session_git_show",
+          "session_git_status",
+          "session_git_revert",
+          "session_undo",
+          "session_redo",
+          "session_write",
+          "queue_health",
+      }
+  )
+
+  LEGACY_NAME_PREFIXES: tuple[str, ...] = (
+      "session_",
+      "subordinate_session_",
+      "project_file_transfer_",
+      "project_file_advisory_",
+      "project_file_lock_",
+      "session_git_",
+  )
+
+
+  def _registered_command_names() -> set[str]:
+      """Return command names registered by editor hooks (MCP help surface)."""
+      reg = CommandRegistry()
+      register_ai_editor_commands(reg)
+      return set(reg.get_all_commands().keys())
+
+
+  def test_help_lists_universal_file_workflow_and_health_only() -> None:
+      """C-022 (6) / C-016: help exposes exactly the thin workflow + health."""
+      names = _registered_command_names()
+      assert names == EXPECTED_WORKFLOW_COMMANDS, (
+          "Editor MCP help surface must list only universal_file_* workflow commands "
+          "and health; "
+          f"expected={sorted(EXPECTED_WORKFLOW_COMMANDS)!r} "
+          f"actual={sorted(names)!r} "
+          f"extra={sorted(names - EXPECTED_WORKFLOW_COMMANDS)!r} "
+          f"missing={sorted(EXPECTED_WORKFLOW_COMMANDS - names)!r}"
+      )
+
+
+  def test_help_excludes_legacy_session_command_families() -> None:
+      """C-020 / C-022 (6): no session_*, git, transfer, or legacy universal_file_* families."""
+      names = _registered_command_names()
+      overlap = names & FORBIDDEN_LEGACY_COMMANDS
+      assert not overlap, (
+          "Legacy or duplicate MCP command families must not appear in help: "
+          f"{sorted(overlap)!r}"
+      )
+      for command_name in names:
+          for prefix in LEGACY_NAME_PREFIXES:
+              assert not command_name.startswith(prefix), (
+                  f"Command {command_name!r} matches forbidden legacy prefix {prefix!r}"
+              )
+  ```
+
+  Helper `_registered_command_names` algorithm:
+  1. Instantiate fresh `CommandRegistry()` (isolated from other tests).
+  2. Call `register_ai_editor_commands(reg)` from `ai_editor.hooks` (same path as server hook).
+  3. Return `set(reg.get_all_commands().keys())` — these names are what MCP help lists.
+
+  Test `test_help_lists_universal_file_workflow_and_health_only`:
+  - Assert set equality with EXPECTED_WORKFLOW_COMMANDS (exactly six commands, no more, no less).
+
+  Test `test_help_excludes_legacy_session_command_families`:
+  - Assert empty intersection with FORBIDDEN_LEGACY_COMMANDS.
+  - For every registered name, assert it does not start with any LEGACY_NAME_PREFIXES entry.
+
+  Error handling: no try/except; failed assertions produce the message strings shown above.
+
+  Edge cases:
+  - If hooks register zero commands → first test fails with missing= all six expected names.
+  - If legacy commands still registered → second test fails listing overlap or prefix match.
+  - If extra non-legacy commands remain (e.g. list_projects) → first test fails with extra=.
+
+  Forbidden:
+  - Do NOT modify hooks_register_part1.py, hooks_register_part2.py, or registration.py.
+  - Do NOT import CommandRegistry from ai_editor.commands.registry.
+  - Do NOT use print() for debugging.
+  - Do NOT add test classes; use the two module-level functions exactly as named.
+  - Do NOT parametrize; keep exactly two test functions.
+  - Do NOT modify files other than the target file.
+
+  Validation (run from project root with `.venv` activated):
+  - black tests/integration/test_mcp_workflow_surface_help.py → reformatted or already well formatted
+  - flake8 tests/integration/test_mcp_workflow_surface_help.py → no output (exit 0)
+  - mypy tests/integration/test_mcp_workflow_surface_help.py → Success: no issues found
+  - pytest tests/integration/test_mcp_workflow_surface_help.py -v → both tests PASSED
+  - pytest tests/ -v → all tests pass (mandatory completion condition)
+verification:
+  type: pytest
+  target: tests/integration/test_mcp_workflow_surface_help.py
+  expected: >
+    Both test functions pass: test_help_lists_universal_file_workflow_and_health_only confirms
+    the editor MCP registry exposes exactly universal_file_open, universal_file_edit,
+    universal_file_write, universal_file_close, universal_file_preview, and health;
+    test_help_excludes_legacy_session_command_families confirms no session_*,
+    subordinate_session_*, project_file_transfer_*, session_git_*, session_write,
+    session_undo, session_redo, universal_file_search, universal_file_save,
+    universal_file_move_nodes, or queue_health commands remain registered — matching
+    the C-016 MCP Workflow Surface contract and C-022 acceptance criterion (6).
+status: draft

@@ -1,0 +1,19 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Удалить устаревшие тесты
+target_file: tests/test_multi_file_session.py
+operation: delete_file
+priority: 1
+depends_on: []
+concepts:
+- C-019
+- C-020
+- C-022
+prompt: |
+  Delete `tests/test_multi_file_session.py` only (superseded by multi-file acceptance test).
+  Other obsolete test modules are removed in subsequent steps of this tactical step.
+verification:
+  type: pytest
+  target: tests/
+  expected: Test suite runs without imports of removed MCP commands.
+status: draft

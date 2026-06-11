@@ -1,0 +1,97 @@
+concepts:
+- C-002
+- C-004
+depends_on:
+- A-001
+name: Add SessionFileLock operations to client_sessions.py
+operation: modify_file
+parent_tactical_step: T-002
+priority: 2
+prompt: "Modify the existing file at the exact path:\n  ai_editor/core/client_sessions.py\n\
+  \nOperation: modify_file. The file currently contains (post A-001 of T-002):\n-
+  Module docstring, imports (from __future__ import annotations, import logging, import
+  uuid, from typing import Any, Optional, from ai_editor.core.database_client.client
+  import DatabaseClient)\n- logger, TABLE constants, DDL constants, SessionNotFoundError,
+  SessionHasLocksError\n- ensure_client_session_tables(conn)\n- create_client_session(database,
+  comment, role_ids)\n- get_client_session(database, session_id)\n- is_session_valid(database,
+  session_id)\n- touch_client_session(database, session_id)\n- touch_or_error(database,
+  session_id)\n- list_client_sessions(database, stale_threshold_seconds)\n- delete_client_session(database,
+  session_id, force)\n\nAppend the following five functions at the END of the file.
+  Do not modify any existing content.\n\nDATABASE API CONTRACT (mandatory for all
+  functions):\n- database parameter type is DatabaseClient in all functions.\n- database.execute(sql,
+  params) returns {\"data\": list[dict]} for SELECT, {\"affected_rows\": int, ...}
+  for DML.\n- To fetch all rows: res = database.execute(sql, params); rows = res.get(\"\
+  data\") or []\n- To get affected_rows: res = database.execute(sql, params); res.get(\"\
+  affected_rows\") or 0\n- Never call database.commit(), database.rollback(), or .fetchone()/.fetchall().\n\
+  - DML (INSERT OR IGNORE, DELETE) auto-commits through DatabaseClient; no explicit
+  transaction needed for single-statement idempotent ops.\n\n--- FUNCTION 1 ---\n\n\
+  def open_session_file(\n    database: DatabaseClient,\n    session_id: str,\n  \
+  \  project_id: str,\n    file_id: str,\n) -> dict[str, object]:\n    \"\"\"\n  \
+  \  Acquire a file lock for a session (idempotent).\n\n    Inserts a row into session_file_locks
+  using INSERT OR IGNORE so that\n    calling this function when the lock already
+  exists is not an error.\n\n    Args:\n        database: DatabaseClient instance.\n\
+  \        session_id: UUID4 string of the owning session.\n        project_id: UUID4
+  string of the registered project.\n        file_id: UUID4 string of the file record.\n\
+  \n    Returns:\n        dict with keys: acquired (bool, True if new row inserted,
+  False if\n        lock already existed), session_id (str), project_id (str), file_id
+  (str).\n    \"\"\"\n    res = database.execute(\n        'INSERT OR IGNORE INTO
+  session_file_locks (session_id, project_id, file_id) VALUES (?, ?, ?)',\n      \
+  \  (session_id, project_id, file_id),\n    )\n    return {\n        'acquired':
+  (res.get('affected_rows') or 0) > 0,\n        'session_id': session_id,\n      \
+  \  'project_id': project_id,\n        'file_id': file_id,\n    }\n\n--- FUNCTION
+  2 ---\n\ndef close_session_file(\n    database: DatabaseClient,\n    session_id:
+  str,\n    project_id: str,\n    file_id: str,\n) -> dict[str, object]:\n    \"\"\
+  \"\n    Release a file lock for a session (idempotent).\n\n    Deletes the row from
+  session_file_locks matching the primary key triple.\n    If no row exists, was_locked
+  is False but the call still succeeds.\n\n    Args:\n        database: DatabaseClient
+  instance.\n        session_id: UUID4 string of the owning session.\n        project_id:
+  UUID4 string of the registered project.\n        file_id: UUID4 string of the file
+  record.\n\n    Returns:\n        dict with keys: released (bool, True if row deleted),
+  was_locked (bool,\n        True if the lock existed before this call), session_id,
+  project_id, file_id.\n    \"\"\"\n    res = database.execute(\n        'DELETE FROM
+  session_file_locks WHERE session_id = ? AND project_id = ? AND file_id = ?',\n \
+  \       (session_id, project_id, file_id),\n    )\n    was_locked = (res.get('affected_rows')
+  or 0) > 0\n    return {\n        'released': was_locked,\n        'was_locked':
+  was_locked,\n        'session_id': session_id,\n        'project_id': project_id,\n\
+  \        'file_id': file_id,\n    }\n\n--- FUNCTION 3 ---\n\ndef list_session_file_locks(\n\
+  \    database: DatabaseClient,\n    session_id: str,\n) -> list[dict[str, object]]:\n\
+  \    \"\"\"\n    List all file locks held by a session.\n\n    Args:\n        database:
+  DatabaseClient instance.\n        session_id: UUID4 string.\n\n    Returns:\n  \
+  \      List of dicts with keys: project_id (str), file_id (str),\n        locked_at
+  (float). Ordered by locked_at ascending.\n    \"\"\"\n    res = database.execute(\n\
+  \        'SELECT project_id, file_id, locked_at FROM session_file_locks '\n    \
+  \    'WHERE session_id = ? ORDER BY locked_at ASC',\n        (session_id,),\n  \
+  \  )\n    return [dict(row) for row in (res.get('data') or [])]\n\n--- FUNCTION
+  4 ---\n\ndef count_session_file_locks(\n    database: DatabaseClient,\n    session_id:
+  str,\n) -> int:\n    \"\"\"\n    Count open file locks for a session.\n\n    Args:\n\
+  \        database: DatabaseClient instance.\n        session_id: UUID4 string.\n\
+  \n    Returns:\n        Integer count of open locks for this session.\n    \"\"\"\
+  \n    res = database.execute(\n        'SELECT COUNT(*) as cnt FROM session_file_locks
+  WHERE session_id = ?',\n        (session_id,),\n    )\n    data = res.get('data')
+  or []\n    return data[0]['cnt'] if data else 0\n\n--- FUNCTION 5 ---\n\ndef list_locked_files(\n\
+  \    database: DatabaseClient,\n) -> list[dict[str, object]]:\n    \"\"\"\n    List
+  all locked files across all sessions.\n\n    session_id is intentionally NOT included
+  in the output. This function\n    is used by the CLI operator interface (casmgr
+  locks) where session\n    attribution must not be shown.\n\n    Args:\n        database:
+  DatabaseClient instance.\n\n    Returns:\n        List of dicts with keys: project_id
+  (str), file_id (str),\n        locked_at (float). Ordered by project_id, file_id
+  ascending.\n    \"\"\"\n    res = database.execute(\n        'SELECT project_id,
+  file_id, locked_at FROM session_file_locks '\n        'ORDER BY project_id ASC,
+  file_id ASC'\n    )\n    return [dict(row) for row in (res.get('data') or [])]\n\
+  \nConstraints:\n- Do not modify any existing content.\n- All functions must have
+  Google-style docstrings with Args and Returns sections.\n- All parameters and return
+  types must be annotated.\n- database parameter type is DatabaseClient in all functions.\n\
+  - Do not use f-strings in SQL queries; use ? placeholders.\n- list_locked_files
+  must NOT include session_id in the returned dicts.\n- COUNT(*) query: use alias
+  'cnt' and access as row['cnt'] (DatabaseClient returns dicts, not tuples)."
+status: done
+step_id: A-002
+target_file: ai_editor/core/client_sessions.py
+verification:
+  expected: All five functions are importable. open_session_file called twice 
+    with the same triple returns acquired=True on the first call and 
+    acquired=False on the second (via INSERT OR IGNORE). close_session_file on a
+    non-existent lock returns was_locked=False without raising. 
+    list_locked_files output dicts do not contain a session_id key.
+  target: ai_editor/core/client_sessions.py
+  type: import

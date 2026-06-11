@@ -1,0 +1,97 @@
+step_id: A-012
+parent_tactical_step: T-003
+name: Slim tree_builder.py public API after index extract
+target_file: ai_editor/core/cst_tree/tree_builder.py
+operation: modify_file
+priority: 11
+depends_on:
+- A-011
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/cst_tree/tree_builder.py
+
+  ## Parent documents
+  - Global step: docs/plans/marked_tree_unification/G-000-sidecar-layout-migration/README.yaml
+  - Tactical step: docs/plans/marked_tree_unification/G-000-sidecar-layout-migration/T-003-read-path-and-consumers/README.yaml
+  - Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-023, C-003)
+
+  ## Prerequisite (intra-TS only; no non-standard dependency fields)
+  `ai_editor/core/cst_tree/tree_builder_index.py` exists with
+  `_attach_disk_snapshot`, `_strip_legacy_trailer_from_disk`, `_finalize_cst_tree`,
+  and `_build_tree_index` moved out of tree_builder.py.
+
+  ## a8 file-state contract
+  Start from POST-extract `tree_builder.py`: the four helper bodies (lines 73-120,
+  122-209, 313-510) are already absent; file is still ~704 lines until deletions in
+  this step. After edits: ≤400 lines (~310 estimated).
+
+  ## Goal
+  Remove the four moved function bodies from `tree_builder.py` and import them from
+  `tree_builder_index`. Update the `create_tree_from_code` docstring to reference the
+  sibling sidecar path. Result: `tree_builder.py` ≤400 lines, public API unchanged.
+
+  ## Required edits
+
+  1. Add import after existing relative imports:
+     ```python
+     from .tree_builder_index import (
+         _attach_disk_snapshot,
+         _build_tree_index,
+         _finalize_cst_tree,
+         _strip_legacy_trailer_from_disk,
+     )
+     ```
+
+  2. Delete from tree_builder.py the full definitions of:
+     - `_attach_disk_snapshot`
+     - `_strip_legacy_trailer_from_disk`
+     - `_finalize_cst_tree`
+     - `_build_tree_index`
+
+  3. Docstring-only edit in `create_tree_from_code` Args section — `persist_sidecar` line:
+     FROM:
+         persist_sidecar: When True and ``file_path`` exists on disk, write ``.cst`` sidecar
+             after indexing (used by DB sync / indexer).
+     TO:
+         persist_sidecar: When True and ``file_path`` exists on disk, write the sibling
+             ``<source>.py.tree`` sidecar after indexing (used by DB sync / indexer).
+
+  4. Remove imports from tree_builder.py that become unused ONLY after the move
+     (e.g. MetadataWrapper, ParentNodeProvider, PositionProvider, node_id_markers
+     helpers used solely by `_build_tree_index`). Keep imports still required by
+     remaining functions (`load_file_to_tree`, `reload_tree_from_file`, etc.).
+
+  ## Immutable in this step
+  - Signatures and bodies of `load_file_to_tree`, `create_tree_from_code`, `get_tree`,
+    `remove_tree`, `reload_tree_from_file`, `rollback_tree_to_code`,
+    `start_cst_tree_ttl_cleanup`, `_read_logical_py_source_sync_disk`,
+    `_on_disk_logical_matches_tree_snapshot`, and `_trees` dict.
+  - All call sites continue to invoke `_finalize_cst_tree` / `_build_tree_index` by name
+    (now imported from tree_builder_index).
+
+  ## Forbidden
+  - Do not change logic inside tree_builder_index.py except if a required import fix
+    is needed for mypy (minimal).
+  - Do not introduce any new `.cst` string in tree_builder.py.
+  - Do not touch other files.
+  - Do not add `non-standard dependency fields`.
+
+  ## Validation
+  - black/flake8/mypy on tree_builder.py → exit 0
+  - wc -l tree_builder.py ≤ 400
+  - grep -E '\\.cst' ai_editor/core/cst_tree/tree_builder.py → no matches
+  - pytest tests/ -q → all passed
+
+  All tests must pass before marking this step complete.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/cst_tree/tree_builder.py
+  expected: >
+    tree_builder.py ≤400 lines; imports indexing helpers from tree_builder_index;
+    moved function bodies removed; create_tree_from_code docstring references sibling
+    <source>.py.tree; no .cst references; black/flake8/mypy exit 0; full pytest green.

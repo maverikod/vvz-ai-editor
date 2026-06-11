@@ -1,0 +1,87 @@
+step_id: T-002
+parent_global_step: G-001
+name: FormatHandler Per-Format Definitions
+description: "Define the FormatHandler entity (C-007) as a per-format component implementing
+  the four-operation handler contract and producing TreeNodes (C-009) from SourceFiles
+  (C-004) of its format. The four handler-contract operations are: parse_content (builds
+  the node tree from source content), mark (embeds integer short_id markers natively into
+  the TREE section only), unmark (strips markers and reproduces original source bytes
+  exactly), and sidecar_path (returns the sibling tree-file path for a source file).
+  Specify the five FormatHandler instances and their format-native marker syntax per HRS
+  {b001}-{b005}, using integer short_id tokens only — never UUIDs in markers: text handler
+  prefixes each line with `<short_id>:` and paragraph/continuation level is recorded in MAP
+  attributes ({b001}); markdown handler places `<!-- id:<short_id> -->` HTML comments
+  immediately before each addressable block ({b002}); YAML handler uses `___id___` as the
+  first key of each addressable mapping with integer short_id value ({b003}); JSON handler
+  wraps every value recursively as `{\"___id___\": <short_id>, \"v\": <original_value>}`
+  where short_id is a JSON integer ({b004}); Python handler uses a hybrid scheme — metadata
+  dict under reserved key ___id___ with integer short_id for CST nodes that carry a metadata
+  dict; trailing comment `# ___id___:<short_id>` for all other CST node types ({b005}).
+  Handlers use NodeIdMap (C-025) to resolve short_id↔TreeNodeUuid (C-024) when building
+  or parsing trees; canonical UUID4 is written only in the MAP section, not by handlers
+  inventing API-facing ids ({n001}). Establish that each handler uses only its own format
+  marker syntax with integer short_id tokens and enforces the unmark invertibility invariant
+  (unmark reproduces original source bytes exactly, verified by SHA-256 checksum). Establish
+  that handlers are the only component that reads or writes format-specific marker syntax.\n"
+concepts:
+- C-007
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-009
+- C-024
+- C-025
+source_labels:
+- '{b000}'
+- '{b001}'
+- '{b002}'
+- '{b003}'
+- '{b004}'
+- '{b005}'
+- '{n001}'
+inputs:
+- name: MarkerContract specification
+  type: MRS concept definition (C-001)
+  description: The three-operation contract (mark, parse, unmark) defined in MRS
+    as C-001 that each FormatHandler must implement.
+- name: NodeId specification
+  type: MRS concept definition (C-002)
+  description: Per-file integer short_id handle defined in MRS as C-002; embedded
+    in TREE section markers only.
+- name: NodeIdMap specification
+  type: MRS concept definition (C-025)
+  description: short_id↔UUID4 map operations that handlers use for identity resolution;
+    handlers never embed UUID4 in markers.
+- name: AddressableBlock specification
+  type: MRS concept definition (C-005)
+  description: Per-format minimal addressable unit defined in MRS as C-005;
+    constrains marker placement to block boundaries only.
+outputs:
+- name: FormatHandler entity definition
+  type: domain entity definition
+  description: "The per-format component contract with the four handler-contract operations
+    (parse_content, mark, unmark, sidecar_path) and the constraint that it uses only
+    its own format marker syntax with integer short_id tokens.\n"
+- name: Five handler instance definitions
+  type: domain entity definition
+  description: Text, markdown, YAML, JSON, and Python handler instances with
+    their format-native short_id marker syntax specified; Python hybrid scheme
+    documented; no UUID markers in any format.
+- name: Marker hide/unhide boundary constraint
+  type: domain constraint definition
+  description: Marker hide before mutation and restore after mutation are
+    EditSession (C-012) responsibilities, not FormatHandler (C-007) scope.
+    FormatHandler implements only parse_content, mark, unmark, and sidecar_path;
+    in-session hide/unhide during editing is outside FormatHandler.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+- A-008
+status: needs_review

@@ -1,0 +1,58 @@
+concepts:
+- C-005
+- C-009
+- C-003
+depends_on: []
+name: Create security_policy_guard.py with enforce_security_policy and 
+  CommandForbiddenError
+operation: create_file
+parent_tactical_step: T-003
+priority: 1
+prompt: "Create a new Python file at the exact path:\n  ai_editor/core/security_policy_guard.py\n\
+  \nThis file is new with no pre-existing content.\n\nMRS context:\n- C-009 SecurityPolicy:
+  three modes disabled|allowlist|denylist; evaluated via is_command_permitted.\n-
+  C-005 SessionMCPCommands: all commands invoke this guard after SessionTouchRule.\n\
+  - C-003 SessionTouchRule: execution order is: (1) touch_or_error, (2) enforce_security_policy,
+  (3) main logic.\n\nFile-level docstring:\n\"\"\"\nSecurityPolicy enforcement guard
+  for MCP command boundaries.\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\
+  \"\"\"\n\nImports (exact):\n  from __future__ import annotations\n  from typing
+  import Any\n\nClass (domain exception):\n\nclass CommandForbiddenError(ValueError):\n\
+  \    \"\"\"Raised when SecurityPolicy denies a command for a session.\"\"\"\n\n\
+  \    def __init__(\n        self,\n        session_id: str,\n        command_name:
+  str,\n        server_uuid: str,\n        policy_mode: str,\n    ) -> None:\n   \
+  \     super().__init__(\n            f'Command {command_name!r} is forbidden for
+  session {session_id!r} '\n            f'under policy {policy_mode!r} on server {server_uuid!r}.'\n\
+  \        )\n        self.session_id = session_id\n        self.command_name = command_name\n\
+  \        self.server_uuid = server_uuid\n        self.policy_mode = policy_mode\n\
+  \nFunction:\n\ndef enforce_security_policy(\n    database: Any,\n    session_id:
+  str,\n    command_name: str,\n    server_uuid: str,\n    policy_mode: str,\n) ->
+  None:\n    \"\"\"\n    Enforce SecurityPolicy at the MCP command boundary.\n\n \
+  \   Calls is_command_permitted from security_policy module. Raises\n    CommandForbiddenError
+  if the command is not permitted under the given\n    policy mode. Returns None (silently)
+  if permitted.\n\n    Execution order contract (C-003, C-005, C-009):\n      1. SessionTouchRule
+  (touch_or_error) — call before this function.\n      2. enforce_security_policy
+  (this function).\n      3. Main command logic.\n\n    Args:\n        database: DB
+  connection with .execute() method.\n        session_id: UUID4 of the active session.\n\
+  \        command_name: MCP command name being executed.\n        server_uuid: UUID4
+  of the proxy server.\n        policy_mode: One of 'disabled', 'allowlist', 'denylist'.\n\
+  \n    Raises:\n        CommandForbiddenError: if is_command_permitted returns False.\n\
+  \    \"\"\"\n    from ai_editor.core.security_policy import is_command_permitted\n\
+  \    if not is_command_permitted(\n        database=database,\n        session_id=session_id,\n\
+  \        command_name=command_name,\n        server_uuid=server_uuid,\n        policy_mode=policy_mode,\n\
+  \    ):\n        raise CommandForbiddenError(\n            session_id=session_id,\n\
+  \            command_name=command_name,\n            server_uuid=server_uuid,\n\
+  \            policy_mode=policy_mode,\n        )\n\nConstraints:\n- File must not
+  exceed 80 lines.\n- No imports other than those listed above (defer security_policy
+  import inside the function).\n- All parameters and return types must be annotated.\n\
+  - Google-style docstring with Args and Raises sections."
+status: done
+step_id: A-001
+target_file: ai_editor/core/security_policy_guard.py
+verification:
+  expected: Importing security_policy_guard succeeds. 
+    CommandForbiddenError(session_id='s', command_name='c', server_uuid='u', 
+    policy_mode='allowlist') is instantiable and str(e) contains 'forbidden'. 
+    enforce_security_policy with policy_mode='disabled' returns None without 
+    raising.
+  target: ai_editor/core/security_policy_guard.py
+  type: import

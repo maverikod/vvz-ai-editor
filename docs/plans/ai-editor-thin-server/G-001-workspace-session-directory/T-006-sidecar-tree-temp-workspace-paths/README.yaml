@@ -1,0 +1,22 @@
+step_id: T-006
+parent_global_step: G-001
+name: Sidecar и tree-temp пути в workspace
+description: 'Перенести пути sidecar (CST) и tree-temp roots Internal Edit Engine (C-019) внутрь Edit Subdirectory (C-008) внутри File Subtree (C-006). Sidecar и tree-temp не создаются рядом с каноническим файлом проекта на СА. Правила draft_path и lockfile_path — в T-004.
+
+  '
+concepts:
+- C-006
+- C-008
+- C-019
+inputs:
+- name: edit_subdirectory_root
+  type: path
+  description: Корень подкаталога редактирования в File Subtree.
+outputs:
+- name: engine_artifact_paths
+  type: object
+  description: sidecar_path, tree_temp storage paths под workspace.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

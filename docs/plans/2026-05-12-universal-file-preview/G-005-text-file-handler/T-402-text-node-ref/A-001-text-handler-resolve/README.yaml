@@ -1,0 +1,93 @@
+step_id: A-001
+parent_tactical_step: T-402
+name: Add __init__ and fix resolve_node_ref in TextFileHandler for _last_file_path
+target_file: ai_editor/commands/universal_file_preview/handlers/text_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-014
+- C-017
+status: done
+prompt: "Modify an existing Python file.\n\nTarget file (modify_file):\n  ai_editor/commands/universal_file_preview/handlers/text_handler.py\n\
+  \nCurrent content of the file (text_handler.py) after T-401 has been fully applied:\n\
+  \n  \"\"\"\n  TextFileHandler -- FileHandler for .md, .txt, .rst, .adoc files (C-017).\n\
+  \n  Root NodeKind is 'lines'. Each child line is a 'scalar' Block with\n  its zero-based\
+  \ index as node_ref. No external tree infrastructure.\n  Text files are never structurally\
+  \ invalid (empty files are valid).\n\n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n\
+  \  \"\"\"\n  from __future__ import annotations\n\n  import logging\n  from pathlib\
+  \ import Path\n  from typing import Any\n\n  from ..base_handler import FileHandler\n\
+  \  from ..errors import PreviewError, input_error, INPUT_ERROR_UNKNOWN_NODE_REF\n\
+  \  from ..models import Node, NodeKind\n\n  logger = logging.getLogger(__name__)\n\
+  \n\n  class TextFileHandler(FileHandler):\n      \"\"\"\n      FileHandler for text\
+  \ files (.md, .txt, .rst, .adoc) (C-017).\n\n      Root NodeKind: lines.\n     \
+  \ Children: scalar Nodes, one per line.\n      node_ref: zero-based integer line\
+  \ index (serialised as str).\n      Lazy materialisation: reads only lines needed\
+  \ by the request.\n      No FILE_STRUCTURE_ERROR: any readable file is accepted.\n\
+  \n      Attributes:\n          supported_extensions: Frozenset of .md, .txt, .rst,\
+  \ .adoc.\n      \"\"\"\n\n      @property\n      def supported_extensions(self)\
+  \ -> frozenset[str]:\n          \"\"\"Frozenset of lowercase extensions this handler\
+  \ supports.\"\"\"\n          return frozenset({'.md', '.txt', '.rst', '.adoc'})\n\
+  \n      def open_root(self, file_path: str, session: Any | None) -> Node | PreviewError:\n\
+  \          \"\"\"\n          Read the text file and return a lines root Node.\n\n\
+  \          Root block set is the ordered sequence of all text lines.\n         \
+  \ Each line is a scalar Node with node_ref == str(line_index).\n          Lazy:\
+  \ reads line list once on first children access.\n\n          Args:\n          \
+  \    file_path: Project-relative path to the file.\n              session: Ignored\
+  \ for text files.\n\n          Returns:\n              Lines root Node.\n      \
+  \    \"\"\"\n          def _load_lines() -> list[Node]:\n              try:\n  \
+  \                text = Path(file_path).read_text(encoding='utf-8', errors='replace')\n\
+  \              except OSError:\n                  text = ''\n              raw_lines\
+  \ = text.splitlines()\n              return [\n                  Node(\n       \
+  \               node_kind=NodeKind.SCALAR,\n                      node_ref=str(i),\n\
+  \                      attributes={'value': line},\n                  )\n      \
+  \            for i, line in enumerate(raw_lines)\n              ]\n\n          return\
+  \ Node(\n              node_kind=NodeKind.LINES,\n              node_ref='',\n \
+  \             _children_loader=_load_lines,\n          )\n\n      def resolve_node_ref(self,\
+  \ node_ref: str, session: Any | None) -> Node | PreviewError:\n          \"\"\"\n\
+  \          Resolve a zero-based integer line index to the corresponding line Node.\n\
+  \n          node_ref must be a string representation of a non-negative integer\n\
+  \          in [0, total_line_count). Out-of-range returns UNKNOWN_NODE_REF.\n\n\
+  \          Args:\n              node_ref: str(line_index), zero-based.\n       \
+  \       session: Ignored for text files.\n\n          Returns:\n              Scalar\
+  \ Node for the addressed line, or PreviewError.\n          \"\"\"\n          try:\n\
+  \              idx = int(node_ref)\n          except ValueError:\n             \
+  \ return input_error(\n                  INPUT_ERROR_UNKNOWN_NODE_REF,\n       \
+  \           f'node_ref {node_ref!r} is not a valid integer line index.',\n     \
+  \             details={'node_ref': node_ref},\n              )\n          # Read\
+  \ just that line to avoid full-file load\n          root_result = self.open_root(self._last_file_path,\
+  \ session)\n          if isinstance(root_result, PreviewError):\n              return\
+  \ root_result\n          lines = root_result.children\n          if idx < 0 or idx\
+  \ >= len(lines):\n              return input_error(\n                  INPUT_ERROR_UNKNOWN_NODE_REF,\n\
+  \                  f'Line index {idx} out of range [0, {len(lines)}).',\n      \
+  \            details={'node_ref': node_ref, 'total_lines': len(lines)},\n      \
+  \        )\n          return lines[idx]\n\nChange to make:\n  Three additions to\
+  \ the class:\n\n\nChange to make:\n  Three additions to the class:\n\n  1. Add __init__\
+  \ to initialise _last_file_path before open_root is first called:\n\n       def\
+  \ __init__(self) -> None:\n           \"\"\"Initialise TextFileHandler state.\"\"\
+  \"\n           self._last_file_path: str | None = None\n\n  2. In open_root, add\
+  \ as the FIRST statement of the method body\n     (after the docstring, before the\
+  \ _load_lines closure definition):\n\n       self._last_file_path = file_path\n\n\
+  \  3. Replace the body of resolve_node_ref with:\n\n       try:\n           idx\
+  \ = int(node_ref)\n       except ValueError:\n           return input_error(\n \
+  \              INPUT_ERROR_UNKNOWN_NODE_REF,\n               f'node_ref {node_ref!r}\
+  \ is not a valid integer line index.',\n               details={'node_ref': node_ref},\n\
+  \           )\n       fp = self._last_file_path\n       if fp is None:\n       \
+  \    return input_error(\n               INPUT_ERROR_UNKNOWN_NODE_REF,\n       \
+  \        'open_root must be called before resolve_node_ref '\n               '(TextFileHandler\
+  \ needs the file path).',\n               details={'node_ref': node_ref},\n    \
+  \       )\n       root_result = self.open_root(fp, session)\n       if isinstance(root_result,\
+  \ PreviewError):\n           return root_result\n       lines = root_result.children\n\
+  \       if idx < 0 or idx >= len(lines):\n           return input_error(\n     \
+  \          INPUT_ERROR_UNKNOWN_NODE_REF,\n               f'Line index {idx} out\
+  \ of range [0, {len(lines)}).',\n               details={'node_ref': node_ref, 'total_lines':\
+  \ len(lines)},\n           )\n       return lines[idx]\n\nNo other changes to the\
+  \ file.\nImports already present: input_error, INPUT_ERROR_UNKNOWN_NODE_REF, PreviewError.\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_preview/handlers/text_handler.py
+  expected: TextFileHandler has __init__ initialising _last_file_path to None; open_root
+    assigns self._last_file_path = file_path as its first statement; resolve_node_ref
+    uses self._last_file_path and returns UNKNOWN_NODE_REF when it is None; no bare
+    exceptions propagate.

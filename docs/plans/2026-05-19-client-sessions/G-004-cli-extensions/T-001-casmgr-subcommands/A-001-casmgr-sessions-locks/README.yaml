@@ -1,0 +1,86 @@
+concepts:
+- C-010
+- C-004
+- C-001
+- C-002
+depends_on: []
+name: Add casmgr sessions and locks subcommands to server_manager_cli.py
+operation: modify_file
+parent_tactical_step: T-001
+priority: 1
+prompt: "Modify the existing file at the exact path:\n  ai_editor/cli/server_manager_cli.py\n\
+  \nOperation: modify_file. The file currently ends with the `server()` function and\n\
+  `if __name__ == '__main__': raise SystemExit(server())`.\n\nThe `server()` function
+  currently contains:\n  sub = parser.add_subparsers(dest=\"cmd\", required=True)\n\
+  \  sub.add_parser(\"start\")\n  sub.add_parser(\"stop\")\n  sub.add_parser(\"restart\"\
+  )\n  sub.add_parser(\"status\")\n  ns = parser.parse_args(argv)\n  ...\n  if ns.cmd
+  == \"start\": return _cmd_start(config_path)\n  if ns.cmd == \"stop\": return _cmd_stop(config_path)\n\
+  \  if ns.cmd == \"restart\": return _cmd_restart(config_path)\n  if ns.cmd == \"\
+  status\": return _cmd_status(config_path)\n  raise RuntimeError(f\"Unknown command:
+  {ns.cmd}\")\n\nDATABASE ACCESS CONTRACT (mandatory):\n- CLI opens DatabaseClient
+  via create_database_client_from_config_path(Path(config_path)).\n- This function
+  is available at: from ai_editor.core.database_client.factory import create_database_client_from_config_path\n\
+  - It accepts a Path object and returns a connected DatabaseClient (works without
+  a running server).\n- All session/lock data is read via SessionService functions
+  from ai_editor.core.client_sessions.\n- Never use sqlite3.connect() or any direct
+  DBAPI connection in CLI code.\n- DatabaseClient.execute(sql, params) returns {\"\
+  data\": list[dict]} for SELECT.\n\nRequired changes:\n\n1. Add imports at the top
+  of the file, after the existing stdlib imports block:\n   from pathlib import Path\
+  \  (check if already imported; add only if absent)\n   from datetime import datetime,
+  timezone  (check if already imported; add only if absent)\n   from ai_editor.core.database_client.factory
+  import create_database_client_from_config_path\n   from ai_editor.core.client_sessions
+  import (\n       list_client_sessions,\n       count_session_file_locks,\n     \
+  \  list_locked_files,\n   )\n\n2. Add two new private functions BEFORE the `server()`
+  function (after `_cmd_status`):\n\n--- FUNCTION 1: _cmd_sessions ---\n\ndef _cmd_sessions(config_path:
+  str) -> int:\n    \"\"\"\n    Print all client sessions as an aligned table.\n\n\
+  \    Reads client sessions via SessionService using DatabaseClient.\n    Always
+  shows session_id (operator interface; ignores show_session_ids config).\n\n    Columns:
+  session_id | comment | created_at | last_active_at | locks\n\n    Args:\n      \
+  \  config_path: Path to server config JSON.\n\n    Returns:\n        Exit code.\n\
+  \    \"\"\"\n    try:\n        db = create_database_client_from_config_path(Path(config_path))\n\
+  \        rows = list_client_sessions(db)\n        print(f\"{'session_id':<36}  {'comment':<30}\
+  \  {'created_at':<19}  {'last_active_at':<19}  locks\")\n        print('-' * 120)\n\
+  \        for row in rows:\n            cnt = count_session_file_locks(db, row['session_id'])\n\
+  \            created = _julianday_to_iso(row.get('created_at'))\n            active
+  = _julianday_to_iso(row.get('last_active_at'))\n            comment = (row.get('comment')
+  or '')[:30]\n            print(f\"{row['session_id']:<36}  {comment:<30}  {created:<19}\
+  \  {active:<19}  {cnt}\")\n        print(f\"\\n{len(rows)} session(s).\")\n    except
+  Exception as exc:\n        print(f\"error: {exc}\", file=sys.stderr)\n        return
+  1\n    return 0\n\n--- FUNCTION 2: _cmd_locks ---\n\ndef _cmd_locks(config_path:
+  str) -> int:\n    \"\"\"\n    Print all locked files as an aligned table (session_id
+  intentionally omitted).\n\n    Reads all SessionFileLocks via SessionService using
+  DatabaseClient.\n\n    Columns: project_id | file_id | locked_at\n\n    Args:\n\
+  \        config_path: Path to server config JSON.\n\n    Returns:\n        Exit
+  code.\n    \"\"\"\n    try:\n        db = create_database_client_from_config_path(Path(config_path))\n\
+  \        rows = list_locked_files(db)\n        print(f\"{'project_id':<36}  {'file_id':<36}\
+  \  locked_at\")\n        print('-' * 95)\n        for row in rows:\n           \
+  \ locked = _julianday_to_iso(row.get('locked_at'))\n            print(f\"{row['project_id']:<36}\
+  \  {row['file_id']:<36}  {locked}\")\n        print(f\"\\n{len(rows)} lock(s).\"\
+  )\n    except Exception as exc:\n        print(f\"error: {exc}\", file=sys.stderr)\n\
+  \        return 1\n    return 0\n\n--- HELPER FUNCTION (also add before server())
+  ---\n\ndef _julianday_to_iso(jd: Optional[float]) -> str:\n    \"\"\"\n    Convert
+  a SQLite julianday float to an ISO 8601 datetime string (UTC).\n\n    Args:\n  \
+  \      jd: Julian day number as float, or None.\n\n    Returns:\n        ISO datetime
+  string 'YYYY-MM-DD HH:MM:SS', or '-' if jd is None.\n    \"\"\"\n    if jd is None:\n\
+  \        return '-'\n    try:\n        unix_ts = (jd - 2440587.5) * 86400.0\n  \
+  \      dt = datetime.fromtimestamp(unix_ts, tz=timezone.utc)\n        return dt.strftime('%Y-%m-%d
+  %H:%M:%S')\n    except Exception:\n        return str(jd)\n\n3. In the `server()`
+  function, add two new sub-parsers after `sub.add_parser(\"status\")`:\n   sub.add_parser(\"\
+  sessions\", help=\"List all client sessions.\")\n   sub.add_parser(\"locks\", help=\"\
+  List all file locks across all sessions.\")\n\n4. In the `server()` function, add
+  two new dispatch branches after\n   `if ns.cmd == \"status\": return _cmd_status(config_path)`:\n\
+  \   if ns.cmd == \"sessions\":\n       return _cmd_sessions(config_path)\n   if
+  ns.cmd == \"locks\":\n       return _cmd_locks(config_path)\n\nDo not modify any
+  other part of the file. Do not reformat existing code.\nOptional is already imported
+  at the top of the file (from typing import Optional, Union); do not re-import it."
+status: done
+step_id: A-001
+target_file: ai_editor/cli/server_manager_cli.py
+verification:
+  expected: The file contains _cmd_sessions and _cmd_locks functions and 
+    _resolve_db_path and _julianday_to_iso helpers. Running 'casmgr --help' 
+    shows sessions and locks subcommands. _cmd_sessions and _cmd_locks are 
+    importable via from ai_editor.cli.server_manager_cli import 
+    _cmd_sessions, _cmd_locks.
+  target: ai_editor/cli/server_manager_cli.py
+  type: static_analysis

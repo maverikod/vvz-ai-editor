@@ -1,0 +1,37 @@
+atomic_steps: []
+concepts:
+- C-023
+- C-003
+description: 'Cut the Python tree-file module cst_tree/tree_sidecar.py over to the
+  sibling convention and delete its legacy .cst/ path machinery. The Python resolver
+  sidecar_path_for_py (which produces <parent>/.cst/<stem>.tree) is removed; its role
+  is taken by the existing sibling_tree_path function (created in G-002). The atomic
+  writer write_sidecar_atomic is redirected to write at the sibling path and loses
+  its branch that selected between a final and a pending path. The entire legacy pending-sidecar
+  mechanism in this module is deleted, not migrated: pending_sidecar_path_for_py (<parent>/.cst/_pending/<stem>.tree),
+  resolve_sidecar_write_path, promote_pending_sidecar_to_final, _cleanup_empty_pending_dir,
+  and the _pending subdirectory. This deletion is sound because the edit-session lifecycle
+  (HRS Block 4) means an external tree never exists without its source beside it.
+  After this step, tree_sidecar.py produces and writes only the single sibling path
+  with no .cst/ and no pending branch. This step uses the existing sibling_tree_path
+  and does not create it.'
+inputs:
+- description: The existing sibling-path function (created in G-002) that maps a
+    source file to its co-located tree file <stem>.<ext>.tree; the replacement 
+    for the removed Python resolver.
+  name: sibling_tree_path
+  type: tree-file path resolver
+- description: The Python module that currently produces the .cst/ layout and 
+    the pending mechanism, to be cut over and pruned.
+  name: tree_sidecar.py
+  type: legacy Python sidecar module
+name: Python Sidecar Module Cutover (tree_sidecar.py)
+outputs:
+- description: tree_sidecar.py writes and resolves only the sibling path; 
+    sidecar_path_for_py and the pending-sidecar functions are deleted; 
+    write_sidecar_atomic has no pending branch.
+  name: sibling_python_sidecar
+  type: tree-file persistence behavior
+parent_global_step: G-000
+status: draft
+step_id: T-001

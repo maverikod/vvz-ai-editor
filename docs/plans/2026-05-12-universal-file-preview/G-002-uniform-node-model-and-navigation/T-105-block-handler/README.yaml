@@ -1,0 +1,44 @@
+step_id: T-105
+parent_global_step: G-002
+name: Block handler — five rendering rules
+status: frozen
+concepts:
+- C-004
+- C-005
+- C-008
+- C-013
+description: "Define the BlockHandler (C-008) as the set of five rendering rules,\
+  \ one per NodeKind (C-004). The BlockHandler is chosen by the block's own NodeKind,\
+  \ not by the parent focus node's NodeKind. The set is closed under this plan: a\
+  \ new NodeKind would require adding a new rule.\nRule 1 — scalar:\n  Output: the\
+  \ block's value, truncated to value_preview_len characters.\n  The scalar block\
+  \ has no children; no further information is included.\n\nRule 2 — lines:\n  Output:\
+  \ the total count of lines in the block, and the first line\n  truncated to value_preview_len\
+  \ characters.\n\nRule 3 — sequence:\n  Output: the total element count, and a coarse\
+  \ summary of the element\n  kinds present (the set of distinct NodeKind values among\
+  \ the direct\n  children, without counts per kind).\n\nRule 4 — mapping:\n  Output:\
+  \ the total key count, and a list of key names each truncated\n  to value_preview_len\
+  \ characters. Only key names are shown; values\n  are not included in the summary.\n\
+  \nRule 5 — tree_node:\n  Output: the type label (e.g. 'FunctionDef', 'ClassDef'),\
+  \ an optional\n  name if the node carries one, a compact dictionary of attributes\n\
+  \  appropriate to the type (e.g. params and returns for a function),\n  and the\
+  \ total count of direct children.\n\nInvariant: a BlockHandler never includes the\
+  \ block's own children's content. To see inside a block, the caller issues a follow-up\
+  \ request with that block's node_ref as the new focus.\n"
+inputs:
+- name: block
+  type: Block (C-005)
+  description: A single selected block whose NodeKind determines which rendering rule
+    to apply.
+- name: value_preview_len
+  type: integer
+  description: The cap on the length of any scalar value or name shown inline, from
+    PreviewBudget (C-013).
+outputs:
+- name: block_summary
+  type: structured summary
+  description: 'The compact rendering of the block according to its NodeKind rule:
+    scalar (truncated value), lines (count + first line), sequence (count + kind set),
+    mapping (key count + key names), tree_node (type + name + attributes + child count).'
+atomic_steps:
+- A-001

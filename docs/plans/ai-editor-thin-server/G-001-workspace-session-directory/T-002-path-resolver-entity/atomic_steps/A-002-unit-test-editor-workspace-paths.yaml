@@ -1,0 +1,282 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Unit-тесты editor_workspace_paths
+target_file: tests/unit/test_editor_workspace_paths.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-005
+- C-006
+- C-007
+- C-008
+- C-018
+prompt: |
+  Create `tests/unit/test_editor_workspace_paths.py` (operation: create_file).
+
+  ## Parent links
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-001-workspace-session-directory/README.yaml`
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-001-workspace-session-directory/T-002-path-resolver-entity/README.yaml`
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml`
+  - Prerequisite implementation: `ai_editor/core/editor_workspace_paths.py` must exist with
+    `FileWorkspaceLayout`, `ensure_session_directory`, `file_workspace_layout`, and
+    `resolve_workspace_root`.
+
+  ## MRS excerpt (concepts for this step only)
+
+  - **C-005 Editor Session Directory**: `workspace_root/session_id/` — root of all local session artifacts.
+  - **C-006 File Subtree**: per `(project_id, file_path)` subtree inside Editor Session Directory; contains Origin Snapshot and (later) Edit Subdirectory.
+  - **C-007 Origin Snapshot**: immutable local copy at a path inside File Subtree (basename of `file_path`).
+  - **C-008 Edit Subdirectory**: child directory `{origin_basename}-{uuid}/` inside File Subtree; **NOT** resolved by `file_workspace_layout` — allocation is deferred to `allocate_edit_subdir` in `workspace_layout.py`.
+  - **C-018 Workspace Root Configuration**: canonical config key `ai_editor.storage.workspace_root` in `config.json`.
+
+  ## Target file
+
+  - Path: `tests/unit/test_editor_workspace_paths.py`
+  - Action: create_file
+
+  ## File header (exact module docstring)
+
+  ```text
+  """Unit tests for editor_workspace_paths (C-005, C-006, C-007, C-008, C-018).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list)
+
+  ```python
+  from __future__ import annotations
+
+  import json
+  from pathlib import Path
+
+  import pytest
+
+  from ai_editor.core.editor_workspace_paths import (
+      FileWorkspaceLayout,
+      ensure_session_directory,
+      file_workspace_layout,
+      resolve_workspace_root,
+  )
+  from ai_editor.core.exceptions import ValidationError
+  ```
+
+  ## Constants and literals
+
+  - Config fixture key (canonical only): `"workspace_root"` under `ai_editor.storage`.
+  - Fixture relative path value: `"data/ws"`.
+  - Test session id: `"sess-1"`, `"sess-2"`.
+  - Test project id: `"p1"`.
+  - Test file path: `"src/pkg/mod.py"`.
+  - Expected origin basename: `"mod.py"`.
+  - Do NOT use key name `editor_workspace_dir` anywhere in this file.
+
+  ## Test function skeleton (exact names and signatures)
+
+  ### `def test_file_workspace_layout_paths(tmp_path: Path) -> None`
+  One-line docstring: "Assert C-005 session_dir, C-006 file_subtree_dir, C-007 origin_path."
+
+  ### `def test_file_workspace_layout_no_edit_subdir(tmp_path: Path) -> None`
+  One-line docstring: "Assert resolver does not expose Edit Subdirectory (C-008)."
+
+  ### `def test_ensure_session_directory(tmp_path: Path) -> None`
+  One-line docstring: "ensure_session_directory creates Editor Session Directory (C-005)."
+
+  ### `def test_resolve_workspace_root_ok(tmp_path: Path) -> None`
+  One-line docstring: "resolve_workspace_root reads ai_editor.storage.workspace_root (C-018)."
+
+  ### `def test_resolve_workspace_root_missing_key(tmp_path: Path) -> None`
+  One-line docstring: "Missing workspace_root raises ValidationError (C-018)."
+
+  ## Test logic — step-by-step algorithms
+
+  ### `test_file_workspace_layout_paths`
+  1. `root = tmp_path / "ws"`; `root.mkdir()`.
+  2. Call `file_workspace_layout(root, ca_session_id="sess-1", project_id="p1", file_path="src/pkg/mod.py")` → `layout`.
+  3. Assert `layout.session_dir.resolve() == (root / "sess-1").resolve()` (C-005).
+  4. Assert `layout.file_subtree_dir.resolve() == (root / "sess-1" / "files" / "p1" / "src" / "pkg").resolve()` (C-006).
+  5. Assert `layout.origin_path.resolve() == (layout.file_subtree_dir / "mod.py").resolve()` (C-007).
+  6. Assert `layout.origin_path.name == "mod.py"`.
+  7. Assert `layout.origin_path.parent == layout.file_subtree_dir`.
+
+  ### `test_file_workspace_layout_no_edit_subdir`
+  1. `root = tmp_path / "ws"`; `root.mkdir()`.
+  2. Call `file_workspace_layout(root, ca_session_id="sess-1", project_id="p1", file_path="mod.py")` → `layout`.
+  3. Assert `isinstance(layout, FileWorkspaceLayout)`.
+  4. Assert `not hasattr(layout, "edit_subdir")` — resolver must not allocate C-008.
+  5. Assert `layout.file_subtree_dir != layout.origin_path` — origin is a file path, not the subtree root.
+  6. Assert `layout.file_subtree_dir.is_dir() is False` before mkdir — resolver returns paths only.
+
+  ### `test_ensure_session_directory`
+  1. `root = tmp_path / "ws"`; `root.mkdir()`.
+  2. Call `ensure_session_directory(root, "sess-2")` → `path`.
+  3. Assert `path.is_dir()`.
+  4. Assert `path.resolve() == (root / "sess-2").resolve()`.
+
+  ### `test_resolve_workspace_root_ok`
+  1. `cfg = tmp_path / "config.json"`.
+  2. Write JSON: `{"ai_editor": {"storage": {"workspace_root": "data/ws"}}}` — use key `workspace_root` only.
+  3. Call `resolve_workspace_root(config_path=cfg)`.
+  4. Assert result equals `(tmp_path / "data/ws").resolve()`.
+
+  ### `test_resolve_workspace_root_missing_key`
+  1. `cfg = tmp_path / "config.json"`.
+  2. Write JSON: `{"ai_editor": {"storage": {}}}` — no `workspace_root` key.
+  3. Use `pytest.raises(ValidationError) as exc_info`.
+  4. Call `resolve_workspace_root(config_path=cfg)`.
+  5. Assert `exc_info.value.field == "ai_editor.storage.workspace_root"`.
+  6. Assert `"workspace_root"` in str(exc_info.value).lower().
+
+  ## Error handling per test
+
+  - `test_resolve_workspace_root_missing_key`: expects `ValidationError` from `resolve_workspace_root`; do not catch other exceptions.
+  - All other tests: no exception handling; failures surface as assertion errors.
+
+  ## Return value specification
+
+  - Each test returns `None` (pytest void test).
+
+  ## Edge cases covered
+
+  - Nested `file_path` with parent dirs → file_subtree includes parent path segments (C-006).
+  - Flat `file_path="mod.py"` → file_subtree at `.../files/p1/` without extra parent segment.
+  - Config with empty `storage` object → ValidationError for missing `workspace_root`.
+  - `FileWorkspaceLayout` exposes exactly three path fields; no C-008 edit path from resolver.
+
+  ## Forbidden patterns
+
+  - Do NOT use config key `editor_workspace_dir` in fixtures or assertions.
+  - Do NOT assert or expect `layout.edit_subdir`.
+  - Do NOT import or test `allocate_edit_subdir` (C-008 allocation is out of scope for T-002 resolver).
+  - Do NOT add test functions beyond the five listed above.
+  - Do NOT modify files other than the target file.
+  - Do NOT use `Any` type annotation.
+  - Do NOT use bare `except:`.
+
+  ## Complete file content to create
+
+  ```python
+  """Unit tests for editor_workspace_paths (C-005, C-006, C-007, C-008, C-018).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import json
+  from pathlib import Path
+
+  import pytest
+
+  from ai_editor.core.editor_workspace_paths import (
+      FileWorkspaceLayout,
+      ensure_session_directory,
+      file_workspace_layout,
+      resolve_workspace_root,
+  )
+  from ai_editor.core.exceptions import ValidationError
+
+
+  def test_file_workspace_layout_paths(tmp_path: Path) -> None:
+      """Assert C-005 session_dir, C-006 file_subtree_dir, C-007 origin_path."""
+      root = tmp_path / "ws"
+      root.mkdir()
+      layout = file_workspace_layout(
+          root,
+          ca_session_id="sess-1",
+          project_id="p1",
+          file_path="src/pkg/mod.py",
+      )
+      assert layout.session_dir.resolve() == (root / "sess-1").resolve()
+      assert layout.file_subtree_dir.resolve() == (
+          root / "sess-1" / "files" / "p1" / "src" / "pkg"
+      ).resolve()
+      assert layout.origin_path.resolve() == (
+          layout.file_subtree_dir / "mod.py"
+      ).resolve()
+      assert layout.origin_path.name == "mod.py"
+      assert layout.origin_path.parent == layout.file_subtree_dir
+
+
+  def test_file_workspace_layout_no_edit_subdir(tmp_path: Path) -> None:
+      """Assert resolver does not expose Edit Subdirectory (C-008)."""
+      root = tmp_path / "ws"
+      root.mkdir()
+      layout = file_workspace_layout(
+          root,
+          ca_session_id="sess-1",
+          project_id="p1",
+          file_path="mod.py",
+      )
+      assert isinstance(layout, FileWorkspaceLayout)
+      assert not hasattr(layout, "edit_subdir")
+      assert layout.file_subtree_dir != layout.origin_path
+      assert layout.file_subtree_dir.is_dir() is False
+
+
+  def test_ensure_session_directory(tmp_path: Path) -> None:
+      """ensure_session_directory creates Editor Session Directory (C-005)."""
+      root = tmp_path / "ws"
+      root.mkdir()
+      path = ensure_session_directory(root, "sess-2")
+      assert path.is_dir()
+      assert path.resolve() == (root / "sess-2").resolve()
+
+
+  def test_resolve_workspace_root_ok(tmp_path: Path) -> None:
+      """resolve_workspace_root reads ai_editor.storage.workspace_root (C-018)."""
+      cfg = tmp_path / "config.json"
+      cfg.write_text(
+          json.dumps({"ai_editor": {"storage": {"workspace_root": "data/ws"}}}),
+          encoding="utf-8",
+      )
+      assert resolve_workspace_root(config_path=cfg) == (tmp_path / "data/ws").resolve()
+
+
+  def test_resolve_workspace_root_missing_key(tmp_path: Path) -> None:
+      """Missing workspace_root raises ValidationError (C-018)."""
+      cfg = tmp_path / "config.json"
+      cfg.write_text(
+          json.dumps({"ai_editor": {"storage": {}}}),
+          encoding="utf-8",
+      )
+      with pytest.raises(ValidationError) as exc_info:
+          resolve_workspace_root(config_path=cfg)
+      assert exc_info.value.field == "ai_editor.storage.workspace_root"
+      assert "workspace_root" in str(exc_info.value).lower()
+  ```
+
+  ## Validation commands (run from project root with `.venv` active)
+
+  ```bash
+  source .venv/bin/activate
+  black tests/unit/test_editor_workspace_paths.py
+  flake8 tests/unit/test_editor_workspace_paths.py
+  mypy tests/unit/test_editor_workspace_paths.py
+  pytest tests/unit/test_editor_workspace_paths.py -v
+  ```
+
+  Expected:
+  - black → "reformatted" or "All done!"
+  - flake8 → no output (exit 0)
+  - mypy → "Success: no issues found"
+  - pytest → all 5 tests PASSED
+
+  ## Mandatory completion
+
+  All project tests must pass after implementation.
+verification:
+  type: pytest
+  target: tests/unit/test_editor_workspace_paths.py
+  expected: |
+    Five unit tests pass: layout paths (C-005/C-006/C-007), no edit_subdir (C-008 negative),
+    ensure_session_directory, resolve_workspace_root with workspace_root key (C-018),
+    ValidationError when workspace_root missing. Config fixtures use workspace_root only;
+    editor_workspace_dir is not referenced.
+status: draft

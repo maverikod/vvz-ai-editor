@@ -1,0 +1,29 @@
+step_id: T-002
+parent_global_step: G-001
+name: NodeSubclassSet Static Definition
+description: "Define the NodeSubclassSet entity (C-002) as the complete, statically
+  committed set of IdentifiedNode (C-001) subclasses, one per concrete LibCST node
+  category. The set must contain exactly one subclass per concrete source category
+  with no category omitted. Each subclass in the set adds only the stable_id field
+  of type StableId and inherits all original fields and behavior from its LibCST base
+  category. The subclasses are defined statically in committed package source, not
+  generated at runtime, so that each member class exists at a fixed, importable location
+  and can be serialized and deserialized by class reference without dynamic class
+  construction. This step realizes the C-001 depends_on C-002 relation: every IdentifiedNode
+  instance is an instance of exactly one member of this NodeSubclassSet.\n"
+concepts:
+- C-002
+- C-001
+inputs:
+- name: LibCST concrete node category list
+  type: enumeration of concrete LibCST node types
+  description: The complete list of concrete LibCST classes that appear in 
+    parsed trees; drives completeness of the set.
+outputs:
+- name: NodeSubclassSet entity
+  type: domain entity definition
+  description: A statically committed set of subclasses, one per LibCST concrete
+    category, each carrying a stable_id field; importable by reference for 
+    serialization.
+atomic_steps: []
+status: draft

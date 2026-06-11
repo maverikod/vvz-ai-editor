@@ -1,0 +1,32 @@
+step_id: T-002
+parent_global_step: G-004
+name: StructuralEvidence qualification
+description: >
+  Creates StructuralEvidence qualification rules for project cross-search and
+  related structural pipelines. Accepts only evidence backed by a validated
+  TreeRepresentation and a preview-compatible result node or block. Rejects
+  line-only grep matches as structural evidence unless converted into validated
+  preview-compatible nodes. Ensures timed-out dynamic or structural phases do
+  not contribute partial invalid structural evidence.
+concepts:
+  - C-018
+inputs:
+  - name: candidate_result
+    type: SearchResultCandidate
+    description: Potential evidence item produced by grep, XPath-like filtering, or cross-search enrichment.
+  - name: tree_representation
+    type: TreeRepresentation
+    description: Validated tree backing the candidate when structural evidence is claimed.
+  - name: preview_reference
+    type: PreviewReference
+    description: Preview-compatible node reference attached to the candidate.
+  - name: phase_outcome
+    type: PhaseOutcome
+    description: Completion, cancellation, or hard-timeout outcome of the producing phase.
+outputs:
+  - name: structural_evidence_verdict
+    type: StructuralEvidenceVerdict
+    description: Qualified structural evidence or explicit rejection with reason.
+atomic_steps:
+- A-001
+status: frozen

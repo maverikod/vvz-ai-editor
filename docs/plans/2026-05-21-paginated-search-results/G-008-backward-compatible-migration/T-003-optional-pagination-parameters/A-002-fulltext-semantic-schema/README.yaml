@@ -1,0 +1,422 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: Pagination schema on fulltext search
+target_file: ai_editor/commands/search_mcp_commands_fulltext.py
+operation: modify_file
+priority: 2
+depends_on: []
+concepts:
+  - C-021
+  - C-023
+  - C-024
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/search_mcp_commands_fulltext.py
+
+  MRS (C-024 OptionalPaginationParameters):
+  - May include paginated, job_id, include_job_id, block position number.
+  - Must not be required for existing non-paginated callers.
+
+  Precondition: ai_editor/commands/search_session_schema.py exports merge_pagination_schema.
+
+  Required edits only (schema and metadata; do not change default execute path):
+  1. Import merge_pagination_schema from ai_editor.commands.search_session_schema.
+  2. In get_schema(), assign base schema to a variable and return merge_pagination_schema(base).
+  3. In metadata() parameters dict, add paginated, job_id, include_job_id, block_position entries.
+  4. In metadata() best_practices, note paginated defaults to false and block_position continues a job.
+
+  Forbidden:
+  - Add pagination fields to required list.
+  - Change default non-paginated execute behavior.
+  - Implement paginated execute routing in this file (use search_paginated_fulltext.py).
+
+  Run black, flake8, and mypy on the touched file after edits.
+
+  Current full file content (apply edits to this baseline):
+
+  ```python
+  """
+  MCP command: fulltext_search.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import logging
+  from typing import Any, Dict, Optional
+
+  from mcp_proxy_adapter.commands.result import SuccessResult, ErrorResult
+
+  from ..core.exceptions import ValidationError
+  from .base_mcp_command import BaseMCPCommand
+  from .search import SearchCommand
+
+  logger = logging.getLogger(__name__)
+
+
+  class FulltextSearchMCPCommand(BaseMCPCommand):
+      """Perform full-text search in code content and docstrings."""
+
+      name = "fulltext_search"
+      version = "1.0.0"
+      descr = (
+          "Indexed full-text search (database FTS) over code content, docstrings, "
+          "entity names, and indexed symbol rows (variables, class attributes). "
+          "For line scan on disk without the index, use ``fs_ggrep``."
+      )
+      category = "search"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+      use_queue = False
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          """Get JSON schema for command parameters."""
+          return {
+              "type": "object",
+              "description": (
+                  "Perform full-text search over indexed code content (FTS5) for a project. "
+                  "Requires a built database (run update_indexes/restore_database first)."
+              ),
+              "properties": {
+                  "project_id": {
+                      "type": "string",
+                      "description": "Project UUID (from create_project or list_projects).",
+                      "examples": ["550e8400-e29b-41d4-a716-446655440000"],
+                  },
+                  "query": {
+                      "type": "string",
+                      "description": "Search query text",
+                      "examples": ["structure analysis", "def solve", "MyClass"],
+                  },
+                  "entity_type": {
+                      "type": "string",
+                      "description": (
+                          "Optional filter by entity_type stored in code_content "
+                          "(file, class, method, function, variable, attribute)"
+                      ),
+                      "enum": [
+                          "file",
+                          "class",
+                          "method",
+                          "function",
+                          "variable",
+                          "attribute",
+                      ],
+                      "examples": ["class", "variable"],
+                  },
+                  "limit": {
+                      "type": "integer",
+                      "description": (
+                          "Maximum number of results (1–1000). Default 20. "
+                          "Values outside the range are rejected."
+                      ),
+                      "default": 20,
+                      "minimum": 1,
+                      "maximum": 1000,
+                      "examples": [5, 20, 100],
+                  },
+              },
+              "required": ["project_id", "query"],
+              "additionalProperties": False,
+              "examples": [
+                  {
+                      "project_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "query": "structure analysis",
+                      "limit": 5,
+                  },
+                  {
+                      "project_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "query": "MyClass",
+                      "entity_type": "class",
+                      "limit": 20,
+                  },
+              ],
+          }
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          """Reject ``limit`` outside schema min/max; ensure project_id exists."""
+          params = super().validate_params(params)
+          schema = self.get_schema()
+          props = schema.get("properties") or {}
+          key = "limit"
+          if key in params and params[key] is not None:
+              value = params[key]
+              prop = props.get(key) or {}
+              minimum = prop.get("minimum")
+              maximum = prop.get("maximum")
+              if minimum is not None and value < minimum:
+                  raise ValidationError(
+                      f"{self.name}: parameter {key!r} must be >= {minimum}, got {value!r}",
+                      field=key,
+                      details={"minimum": minimum, "maximum": maximum},
+                  )
+              if maximum is not None and value > maximum:
+                  raise ValidationError(
+                      f"{self.name}: parameter {key!r} must be <= {maximum}, got {value!r}",
+                      field=key,
+                      details={"minimum": minimum, "maximum": maximum},
+                  )
+          BaseMCPCommand._validate_project_id_exists(params["project_id"])
+          return params
+
+      async def execute(
+          self,
+          project_id: str,
+          query: str,
+          entity_type: Optional[str] = None,
+          limit: Optional[int] = None,
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          """Execute full-text search."""
+          params: Dict[str, Any] = {
+              "project_id": project_id,
+              "query": query,
+              "entity_type": entity_type,
+              "limit": limit,
+          }
+          params.update(kwargs)
+          try:
+              params = self.validate_params(params)
+          except ValidationError as e:
+              return self._handle_error(e, "VALIDATION_ERROR", "fulltext_search")
+          project_id = params["project_id"]
+          query = params["query"]
+          entity_type = params.get("entity_type")
+          if params.get("limit") is None:
+              limit_effective = 20
+          else:
+              limit_effective = int(params["limit"])
+          try:
+              self._resolve_project_root(project_id)
+              database = self._open_database_from_config(auto_analyze=False)
+              try:
+                  search_cmd = SearchCommand(database, project_id)
+                  results = search_cmd.full_text_search(
+                      query, entity_type=entity_type, limit=limit_effective
+                  )
+
+                  return SuccessResult(
+                      data={
+                          "query": query,
+                          "results": results,
+                          "count": len(results),
+                      }
+                  )
+              finally:
+                  database.disconnect()
+
+          except Exception as e:
+              return self._handle_error(e, "SEARCH_ERROR", "fulltext_search")
+
+      @classmethod
+      def metadata(cls: type["FulltextSearchMCPCommand"]) -> Dict[str, Any]:
+          """Get detailed command metadata for AI models."""
+          return {
+              "name": cls.name,
+              "version": cls.version,
+              "description": cls.descr,
+              "category": cls.category,
+              "author": cls.author,
+              "email": cls.email,
+              "detailed_description": (
+                  "The fulltext_search command performs full-text search over indexed code content "
+                  "using SQLite FTS5 (Full-Text Search 5) or PostgreSQL tsvector. It searches through "
+                  "code content, docstrings (including merged symbol lines for classes, functions, and "
+                  "methods), entity names, and dedicated rows for module variables and class attributes.\n\n"
+                  "Operation flow:\n"
+                  "1. Validates root_dir exists and is a directory\n"
+                  "2. Opens database connection\n"
+                  "3. Resolves project_id (from parameter or inferred from root_dir)\n"
+                  "4. Performs FTS5 search in code_content_fts table (BM25 ranking)\n"
+                  "5. Filters by entity_type if provided (file, class, method, function, variable, attribute)\n"
+                  "6. Limits results to specified limit\n"
+                  "7. Returns matching chunks with file paths and metadata\n\n"
+                  "Search Capabilities:\n"
+                  "- Searches in code content (chunk_text)\n"
+                  "- Searches in docstrings\n"
+                  "- Searches in entity names\n"
+                  "- Supports partial word matching\n"
+                  "- Case-insensitive search\n"
+                  "- Can filter by entity type\n\n"
+                  "Use cases:\n"
+                  "- Find code containing specific text\n"
+                  "- Search for function/class names\n"
+                  "- Find code with specific patterns\n"
+                  "- Search in docstrings\n\n"
+                  "Important notes:\n"
+                  "- Requires built database (run update_indexes first)\n"
+                  "- Uses SQLite FTS5 for fast text search\n"
+                  "- Results are ranked by relevance\n"
+                  "- Default limit is 20 results; ``limit`` must be 1–1000 (out-of-range rejected)\n"
+                  "- Entity type filter: 'class', 'method', or 'function'"
+              ),
+              "parameters": {
+                  "root_dir": {
+                      "description": (
+                          "Project root directory path. Can be absolute or relative. "
+                          "Must contain data/ai_editor.db file."
+                      ),
+                      "type": "string",
+                      "required": True,
+                  },
+                  "query": {
+                      "description": (
+                          "Search query text. Searches in code content, docstrings (including merged "
+                          "symbol lines), entity names, and variable/attribute index rows. "
+                          "Supports partial word matching and is case-insensitive."
+                      ),
+                      "type": "string",
+                      "required": True,
+                      "examples": [
+                          "structure analysis",
+                          "def solve",
+                          "MyClass",
+                          "database connection",
+                      ],
+                  },
+                  "entity_type": {
+                      "description": (
+                          "Optional filter by entity type. Options: 'file', 'class', 'method', "
+                          "'function', 'variable', 'attribute'. If not provided, searches all types."
+                      ),
+                      "type": "string",
+                      "required": False,
+                      "enum": [
+                          "file",
+                          "class",
+                          "method",
+                          "function",
+                          "variable",
+                          "attribute",
+                      ],
+                      "examples": ["class", "variable"],
+                  },
+                  "limit": {
+                      "description": (
+                          "Maximum number of results to return (1–1000). Default is 20. "
+                          "Values outside the range are rejected. Results are ranked by relevance."
+                      ),
+                      "type": "integer",
+                      "required": False,
+                      "default": 20,
+                      "minimum": 1,
+                      "maximum": 1000,
+                      "examples": [5, 20, 100],
+                  },
+                  "project_id": {
+                      "description": (
+                          "Optional project UUID. If omitted, inferred from root_dir."
+                      ),
+                      "type": "string",
+                      "required": False,
+                  },
+              },
+              "usage_examples": [
+                  {
+                      "description": "Search for text in code",
+                      "command": {
+                          "root_dir": "/home/user/projects/my_project",
+                          "query": "structure analysis",
+                          "limit": 10,
+                      },
+                      "explanation": (
+                          "Searches for 'structure analysis' in all code content and docstrings, "
+                          "returning up to 10 results."
+                      ),
+                  },
+                  {
+                      "description": "Search for classes",
+                      "command": {
+                          "root_dir": "/home/user/projects/my_project",
+                          "query": "MyClass",
+                          "entity_type": "class",
+                      },
+                      "explanation": (
+                          "Searches for classes containing 'MyClass' in their name or content."
+                      ),
+                  },
+                  {
+                      "description": "Search for function definitions",
+                      "command": {
+                          "root_dir": "/home/user/projects/my_project",
+                          "query": "def solve",
+                          "entity_type": "function",
+                      },
+                      "explanation": (
+                          "Searches for functions containing 'solve' in their name or content."
+                      ),
+                  },
+              ],
+              "error_cases": {
+                  "PROJECT_NOT_FOUND": {
+                      "description": "Project not found in database",
+                      "example": "root_dir='/path' but project not registered",
+                      "solution": "Ensure project is registered. Run update_indexes first.",
+                  },
+                  "SEARCH_ERROR": {
+                      "description": "General error during search",
+                      "example": "Database error, FTS5 not available, or query parsing error",
+                      "solution": (
+                          "Check database integrity, ensure FTS5 is enabled, "
+                          "verify database was built with update_indexes."
+                      ),
+                  },
+              },
+              "return_value": {
+                  "success": {
+                      "description": "Command executed successfully",
+                      "data": {
+                          "query": "Search query that was used",
+                          "results": (
+                              "List of matching chunks. Each contains:\n"
+                              "- chunk_uuid: Chunk UUID\n"
+                              "- chunk_type: Type of chunk (class, method, function, etc.)\n"
+                              "- chunk_text: Text content of chunk\n"
+                              "- file_path: Path to file containing the chunk\n"
+                              "- line: Line number in file\n"
+                              "- rank: Relevance rank (lower is better)"
+                          ),
+                          "count": "Number of results found",
+                      },
+                      "example": {
+                          "query": "structure analysis",
+                          "results": [
+                              {
+                                  "chunk_uuid": "abc123...",
+                                  "chunk_type": "function",
+                                  "chunk_text": "def analyze_structure(...)",
+                                  "file_path": "src/analyzer.py",
+                                  "line": 42,
+                                  "rank": 1,
+                              },
+                          ],
+                          "count": 1,
+                      },
+                  },
+                  "error": {
+                      "description": "Command failed",
+                      "code": "Error code (e.g., PROJECT_NOT_FOUND, SEARCH_ERROR)",
+                      "message": "Human-readable error message",
+                  },
+              },
+              "best_practices": [
+                  "Run update_indexes first to build the search index",
+                  "Use entity_type filter to narrow down results",
+                  "Adjust limit based on expected result count",
+                  "Query text supports partial word matching",
+                  "Results are ranked by relevance",
+              ],
+          }
+  ```
+
+verification:
+  type: pytest
+  target: tests/unit/test_fulltext_pagination_schema.py
+  expected: >
+    get_schema includes optional paginated, job_id, include_job_id, block_position properties;
+    required remains project_id and query only; execute with paginated omitted still returns legacy
+    inline results shape in integration stub or unchanged unit behavior test.
+status: ready_for_review

@@ -1,0 +1,147 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: PreviewSelector module
+target_file: ai_editor/tree/preview_selector.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-017
+- C-002
+- C-009
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-002-preview-navigation-and-selector/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-017, C-002, C-009)
+
+  Create `ai_editor/tree/preview_selector.py`.
+  Operation: create_file.
+
+  PreviewSelector (C-017): phase-2 block selection plus per-format inline-versus-drilldown
+  policy ({i005}). External selectors use integer short_id lists only.
+
+  ## MRS excerpt
+
+  C-017:
+  - slice "start:end" zero-based exclusive end
+  - list of short_id integers cherry-picks blocks
+  - per-format full_text_max_lines default 200 source lines; 0 → drilldown only
+  - inline when line_span strictly less than threshold; measured in source lines not bytes
+  - JSON pretty-print before line counting (done in PreviewNavigation, not here)
+  - max_chars paginates envelope only
+
+  C-002: unrecognised short_id in id-list → input error.
+
+  ## Module docstring
+
+  """
+  PreviewSelector and per-format render thresholds (C-017).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports
+
+  - from __future__ import annotations
+  - from dataclasses import dataclass, field
+  - from enum import Enum
+  - from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
+  - from ai_editor.tree.contracts import NodeId, validate_short_id
+
+  ## Constants
+
+  DEFAULT_FULL_TEXT_MAX_LINES: int = 200
+  FORMAT_EXTENSION_MAP: Dict[str, tuple[str, ...]] = {
+      "python": (".py",),
+      "json": (".json",),
+      "yaml": (".yaml", ".yml"),
+      "markdown": (".md",),
+      "text": (".txt", ".rst"),
+  }
+  DEFAULT_THRESHOLDS: Dict[str, int] = {k: 200 for k in FORMAT_EXTENSION_MAP}
+
+  ## Classes
+
+  PreviewRenderMode(str, Enum): INLINE = "inline"; DRILLDOWN = "drilldown"
+
+  PreviewSelectorError(ValueError): malformed slice, unknown form, unknown short_id in list.
+
+  @dataclass(frozen=True) PreviewSelectorConfig:
+    full_text_max_lines: Mapping[str, int] = field(default_factory=lambda: dict(DEFAULT_THRESHOLDS))
+    max_chars: Optional[int] = None
+
+  @dataclass(frozen=True) PreviewSelector:
+    _kind: str  # "slice" | "ids" | "all"
+    _slice_start: Optional[int] = None
+    _slice_end: Optional[int] = None
+    _short_ids: Optional[tuple[NodeId, ...]] = None
+
+  ## PreviewSelector.parse(raw: Union[str, Sequence[int], None]) -> PreviewSelector
+
+  1. None or "" or [] → all-kind.
+  2. str with ":" → slice; parse int parts allowing empty (":", "3:", ":5"); bad int → PreviewSelectorError.
+  3. non-empty sequence of int → ids-kind; each element through validate_short_id.
+  4. else PreviewSelectorError("unsupported selector form").
+
+  ## PreviewSelector.apply(blocks: Sequence[Any]) -> List[Any]
+
+  Blocks expose `.short_id: int`.
+  - all → list(blocks)
+  - slice → list(blocks)[start:end]
+  - ids → for each sid in order: find block with matching short_id else PreviewSelectorError(f"unknown short_id: {sid!r}"); duplicates allowed (repeat block per occurrence)
+
+  ## format_key_from_extension(ext: str) -> str
+
+  Lowercase ext with dot; lookup FORMAT_EXTENSION_MAP; unknown → PreviewSelectorError.
+
+  ## decide_render_mode(*, format_key, line_span, config) -> PreviewRenderMode
+
+  1. threshold = config.full_text_max_lines.get(format_key, DEFAULT_FULL_TEXT_MAX_LINES)
+  2. threshold == 0 → DRILLDOWN
+  3. line_span < threshold → INLINE
+  4. else DRILLDOWN
+
+  ## paginate_envelope(serialized: str, max_chars: Optional[int]) -> str
+
+  None or <=0 → unchanged; len <= max → unchanged; else truncate to max_chars + "…" (U+2026).
+
+  ## Forbidden
+
+  - NO UUID or str node identifiers in selector lists
+  - NO NODE_ID_PREFIX_WIDTH (belongs in preview_navigation)
+  - NO bytes-based thresholds
+  - NO G-007, non-standard cross-TS ordering fields, {l*}/{m*}
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/preview_selector.py
+  flake8 ai_editor/tree/preview_selector.py
+  mypy ai_editor/tree/preview_selector.py
+  python -c "
+  from ai_editor.tree.preview_selector import PreviewSelector, PreviewSelectorConfig
+  class B:
+      def __init__(self, s): self.short_id = s
+  sel = PreviewSelector.parse([1, 3])
+  out = sel.apply([B(1), B(2), B(3)])
+  assert [b.short_id for b in out] == [1, 3]
+  from ai_editor.tree.preview_selector import PreviewSelector as PS
+  assert PS.decide_render_mode(format_key='python', line_span=199, config=PreviewSelectorConfig()) .value == 'inline'
+  assert PS.decide_render_mode(format_key='python', line_span=200, config=PreviewSelectorConfig()) .value == 'drilldown'
+  "
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/preview_selector.py
+  expected: >
+    PreviewSelector uses int short_id lists; decide_render_mode line-based thresholds
+    default 200; paginate_envelope independent of render mode; estimated ~190 lines (≤400).

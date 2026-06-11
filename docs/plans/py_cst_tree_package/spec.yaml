@@ -1,0 +1,420 @@
+# Machine-Readable Specification — py_cst_tree package
+
+# Level 2 artifact (plan_standard_machine.yaml).
+# Structured projection of source_spec.md into concepts and typed relations.
+# Single source of truth for terminology. Direct edit forbidden — changes via cascade.
+meta:
+  locale: en
+  plan_name: py_cst_tree_package
+  relation_matrix_file: docs/plans/py_cst_tree_package/relation_matrix.yaml
+  source_spec: docs/plans/py_cst_tree_package/source_spec.md
+concepts:
+- concept_id: C-001
+  name: IdentifiedNode
+  definition: A package tree node that mirrors exactly one concrete LibCST node 
+    category and additionally carries a stable_id attribute on the node itself.
+  properties:
+  - One-to-one correspondence with a LibCST node category, same fields, same 
+    children, same order.
+  - Realized as a direct subclass of the corresponding concrete LibCST node 
+    type, adding only the stable_id field and inheriting all original fields and
+    behavior.
+  - The subclass changes only the runtime class of a node to carry identity, 
+    never its category, fields, or grammatical position.
+  - Every node without exception carries a stable_id, including statement, 
+    expression, structural, and formatting or comment nodes.
+  source_labels:
+  - '{cdb1}'
+  - '{b1sc}'
+  - '{crwt}'
+- concept_id: C-002
+  name: NodeSubclassSet
+  definition: The statically defined, committed set of IdentifiedNode 
+    subclasses, one per concrete LibCST node type, importable by reference for 
+    serialization.
+  properties:
+  - One subclass per concrete LibCST node type, no concrete type omitted.
+  - Defined statically in committed package source, not generated at runtime.
+  - Serializable and deserializable by reference because classes are statically 
+    importable.
+  source_labels:
+  - '{b1sc}'
+- concept_id: C-017
+  name: SubclassGenerator
+  definition: The build-time generator that enumerates concrete LibCST node 
+    types and emits the committed NodeSubclassSet source module.
+  properties:
+  - Enumerates concrete LibCST node types and emits one static subclass per 
+    type.
+  - Runs as a development-time step, not during normal package operation.
+  - Keeps the subclass set tracking the LibCST type list across LibCST versions.
+  source_labels:
+  - '{gx4k}'
+- concept_id: C-003
+  name: StableId
+  definition: The identity value attached to each node as an attribute, unique 
+    within one tree, assigned once and never regenerated, used to address the 
+    node.
+  properties:
+  - Stored as a node attribute, not in rendered text and not only in an external
+    map.
+  - Assigned once on first entry into a tree, never regenerated for that node 
+    afterward.
+  - Unique within one tree; a duplicated node receives a fresh stable_id while 
+    the original keeps its own.
+  source_labels:
+  - '{704c}'
+  - '{we5g}'
+- concept_id: C-004
+  name: Tree
+  definition: The self-contained object that owns the root node together with 
+    the indexes and lookup machinery required to query and mutate it.
+  properties:
+  - Owns the root node; callers interact with the object rather than walking raw
+    nodes.
+  - Owns the indexes as part of its state; indexes travel with it through 
+    serialization.
+  - Indexes are derived state; on disagreement a node's own stable_id field is 
+    authoritative and the index is rebuilt to match.
+  - After any mutation, indexes are kept consistent with the mutated structure 
+    with no entry pointing at a removed node.
+  source_labels:
+  - '{s3ig}'
+  - '{prib}'
+- concept_id: C-005
+  name: IdIndex
+  definition: The index mapping a StableId to its node for direct retrieval 
+    without traversal.
+  properties:
+  - Maps stable_id to node for direct retrieval without traversing the tree.
+  - Primary path by which external code addresses a node for a mutation.
+  - Built once on create or load, updated after each mutation.
+  source_labels:
+  - '{wk0n}'
+  - '{k9h7}'
+- concept_id: C-006
+  name: AttributeIndex
+  definition: "The set of indexes mapping query-relevant node attributes to the nodes
+    that have them. The indexed attributes are: node type (the underlying source-library
+    node class name, such as FunctionDef or Call), node kind (the package's semantic
+    classification of a node such as function, class, method, statement, small-statement,
+    import, or decorator, a role label layered over the raw type), simple name, and
+    qualified name."
+  properties:
+  - Maps node type, kind, simple name, and qualified name to matching nodes.
+  - Lets an attribute query resolve against an index rather than scanning every 
+    node.
+  - Built once on create or load, updated after each mutation; never triggers a 
+    full rescan to answer.
+  source_labels:
+  - '{ln31}'
+  - '{k9h7}'
+- concept_id: C-007
+  name: ParentRelation
+  definition: The maintained relation letting a query move from a node to its 
+    parent or ancestors without rescanning the tree.
+  properties:
+  - Maps a node to its parent, enabling ancestor navigation without rescanning.
+  - Built once on create or load, updated after each mutation.
+  source_labels:
+  - '{ln31}'
+  - '{k9h7}'
+- concept_id: C-008
+  name: QueryInterface
+  definition: The single interface over one Tree that answers in-tree lookups by
+    identity, by attribute, and by path-style selector.
+  properties:
+  - Retrieves a node by stable_id, selects nodes by type or kind or name or 
+    qualified name, evaluates path-style selectors over child, descendant, and 
+    sibling relations.
+  - Resolves the first broadest selector step against an index then narrows 
+    through the parent relation, never scanning all nodes per step.
+  - Intended foundation for the project's existing in-tree search operations, 
+    which become thin wrappers; cross-project database search is out of scope.
+  source_labels:
+  - '{goki}'
+  - '{f6io}'
+- concept_id: C-009
+  name: LibcstConverter
+  definition: The bidirectional conversion between a LibCST tree and a package 
+    Tree, assigning identities inward and stripping them outward.
+  properties:
+  - Inbound, each LibCST node becomes a package node of the corresponding 
+    subclass and is assigned a stable_id; persisted identities are reused, 
+    otherwise fresh ones are generated.
+  - Outbound, the identity attributes are removed during conversion so the 
+    resulting LibCST tree renders to ordinary Python with no identity markers.
+  - The outbound identity-stripping pass is the only whole-tree reconstruction 
+    the package performs; reverting nodes to their base LibCST type is its 
+    intended effect.
+  - Realizes the fixed lifecycle sequence of parse, convert-in, persist, mutate,
+    persist, convert-out, render.
+  source_labels:
+  - '{ij84}'
+  - '{v1hk}'
+  - '{lm9g}'
+  - '{q2wv}'
+- concept_id: C-010
+  name: Serializer
+  definition: The persistence mechanism that writes a Tree to a file and reads 
+    it back losslessly in the package's own format.
+  properties:
+  - Writes full node structure, every stable_id, and the indexes in the 
+    package's own format, not Python source and not a LibCST artifact.
+  - A write-then-read is lossless for identity and structure and leaves rendered
+    Python unchanged; a loaded tree is queryable without a rebuild pass.
+  - Optimized for fast repeated load and save across a working session; the file
+    is the carrier of Tree state between lifecycle phases — a Tree is written to
+    file after each phase and read back at the start of the next, making the 
+    file the point of continuity between conversion, mutation, and rendering.
+  - The serialized form is a same-version, trusted-source artifact; 
+    cross-version migration and untrusted deserialization are out of scope.
+  source_labels:
+  - '{m6si}'
+  - '{6par}'
+  - '{dmv8}'
+  - '{1ba4}'
+  - '{p9sn}'
+- concept_id: C-011
+  name: InsertOperation
+  definition: The mutation that places a new node or subtree at a position 
+    relative to a target node or inside a target parent.
+  properties:
+  - Addresses target and destination by stable_id, not by position.
+  - Inserted nodes receive fresh stable_id values; every pre-existing node keeps
+    its stable_id.
+  - Keeps indexes consistent after the operation.
+  source_labels:
+  - '{j8m6}'
+  - '{8niu}'
+  - '{prib}'
+- concept_id: C-012
+  name: DeleteOperation
+  definition: The mutation that removes a target node and its entire subtree.
+  properties:
+  - Addresses the target by stable_id.
+  - Every remaining node keeps its stable_id; identities of removed nodes are 
+    gone with them.
+  - Keeps indexes consistent after the operation with no entry pointing at a 
+    removed node.
+  source_labels:
+  - '{z0lu}'
+  - '{8niu}'
+  - '{prib}'
+- concept_id: C-013
+  name: ReplaceOperation
+  definition: The mutation that substitutes a target node with a new node or 
+    subtree.
+  properties:
+  - Addresses the target by stable_id.
+  - New nodes receive fresh stable_id values; every other node keeps its 
+    stable_id.
+  - Keeps indexes consistent after the operation.
+  source_labels:
+  - '{lqg8}'
+  - '{8niu}'
+  - '{prib}'
+- concept_id: C-014
+  name: MoveOperation
+  definition: The mutation that relocates a target node and its entire subtree 
+    to a new position, preserving the identity of the moved subtree.
+  properties:
+  - Addresses target and destination by stable_id; only position changes.
+  - The moved node and every descendant keep their stable_id, however deeply 
+    nested and whatever the node types; nodes outside the moved subtree also 
+    keep theirs. This is the strictest identity guarantee and the central reason
+    the package exists.
+  - Carries with the moved subtree all attached formatting, including docstring 
+    and leading comments and blank lines; attached content is never lost.
+  - Does not normalize blank-line cosmetics at source or destination; result is 
+    valid structurally faithful Python whose surrounding blank-line count may 
+    differ from a style ideal; style normalization is the caller's 
+    responsibility.
+  - Keeps indexes consistent after the operation.
+  source_labels:
+  - '{hevj}'
+  - '{m5zg}'
+  - '{t8rc}'
+  - '{8niu}'
+  - '{prib}'
+- concept_id: C-015
+  name: TextualFidelity
+  definition: The invariant that a parse, convert, mutate-nothing, convert-back,
+    render round trip through the package reproduces the exact text LibCST 
+    guarantees.
+  properties:
+  - Whitespace, comments, string quoting, and formatting that survive a LibCST 
+    round trip equally survive the package mutate-nothing round trip.
+  - Bounds exact byte fidelity to the mutate-nothing path; mutated trees are 
+    governed by per-operation contracts.
+  source_labels:
+  - '{ylqj}'
+- concept_id: C-018
+  name: VerificationHarness
+  definition: The automated suite that exercises the identity invariants of 
+    every mutation and the lossless round trips, serving as executable evidence 
+    of the guarantees.
+  properties:
+  - Exercises identity invariants of insert, delete, replace, and move.
+  - Exercises lossless round trip of serialization and of the mutate-nothing 
+    render path.
+  - Is the executable evidence that the package's identity and fidelity 
+    guarantees hold.
+  source_labels:
+  - '{v6hd}'
+- concept_id: C-016
+  name: PackageDistribution
+  definition: The standalone, PyPI-publishable package boundary with its own 
+    metadata and a single runtime dependency on LibCST.
+  properties:
+  - Publishable to PyPI as an independent distribution with its own packaging 
+    metadata.
+  - Lives in its own subdirectory in the server repo and imports nothing from 
+    the code analysis server.
+  - Declares LibCST as its only runtime dependency.
+  - Wraps LibCST, which is used only to parse Python text into a tree and render
+    a tree back to text.
+  source_labels:
+  - '{aokx}'
+  - '{0268}'
+  - '{74yi}'
+  - '{71mf}'
+relations:
+- from_concept: C-001
+  to_concept: C-003
+  type: owns
+- from_concept: C-017
+  to_concept: C-002
+  type: produces
+- from_concept: C-001
+  to_concept: C-002
+  type: depends_on
+- from_concept: C-004
+  to_concept: C-001
+  type: owns
+- from_concept: C-004
+  to_concept: C-005
+  type: owns
+- from_concept: C-004
+  to_concept: C-006
+  type: owns
+- from_concept: C-004
+  to_concept: C-007
+  type: owns
+- from_concept: C-004
+  to_concept: C-008
+  type: owns
+- from_concept: C-005
+  to_concept: C-003
+  type: uses
+- from_concept: C-008
+  to_concept: C-005
+  type: uses
+- from_concept: C-008
+  to_concept: C-006
+  type: uses
+- from_concept: C-008
+  to_concept: C-007
+  type: uses
+- from_concept: C-009
+  to_concept: C-001
+  type: produces
+- from_concept: C-009
+  to_concept: C-002
+  type: uses
+- from_concept: C-009
+  to_concept: C-004
+  type: produces
+- from_concept: C-010
+  to_concept: C-004
+  type: consumes
+- from_concept: C-010
+  to_concept: C-004
+  type: produces
+- from_concept: C-011
+  to_concept: C-004
+  type: uses
+- from_concept: C-012
+  to_concept: C-004
+  type: uses
+- from_concept: C-013
+  to_concept: C-004
+  type: uses
+- from_concept: C-014
+  to_concept: C-004
+  type: uses
+- from_concept: C-011
+  to_concept: C-003
+  type: uses
+- from_concept: C-012
+  to_concept: C-003
+  type: uses
+- from_concept: C-013
+  to_concept: C-003
+  type: uses
+- from_concept: C-014
+  to_concept: C-003
+  type: uses
+- from_concept: C-011
+  to_concept: C-005
+  type: uses
+- from_concept: C-012
+  to_concept: C-005
+  type: uses
+- from_concept: C-013
+  to_concept: C-005
+  type: uses
+- from_concept: C-014
+  to_concept: C-005
+  type: uses
+- from_concept: C-011
+  to_concept: C-006
+  type: uses
+- from_concept: C-012
+  to_concept: C-006
+  type: uses
+- from_concept: C-013
+  to_concept: C-006
+  type: uses
+- from_concept: C-014
+  to_concept: C-006
+  type: uses
+- from_concept: C-011
+  to_concept: C-007
+  type: uses
+- from_concept: C-012
+  to_concept: C-007
+  type: uses
+- from_concept: C-013
+  to_concept: C-007
+  type: uses
+- from_concept: C-014
+  to_concept: C-007
+  type: uses
+- from_concept: C-015
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-018
+  to_concept: C-011
+  type: uses
+- from_concept: C-018
+  to_concept: C-012
+  type: uses
+- from_concept: C-018
+  to_concept: C-013
+  type: uses
+- from_concept: C-018
+  to_concept: C-014
+  type: uses
+- from_concept: C-018
+  to_concept: C-010
+  type: uses
+- from_concept: C-018
+  to_concept: C-015
+  type: uses
+- from_concept: C-016
+  to_concept: C-004
+  type: produces
+- from_concept: C-016
+  to_concept: C-008
+  type: produces

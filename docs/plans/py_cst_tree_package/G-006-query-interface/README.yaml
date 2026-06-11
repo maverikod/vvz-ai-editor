@@ -1,0 +1,39 @@
+# Global Step G-006 — Query Interface
+
+# Level 3 artifact. Conceptual block. Domain objects and operations only.
+step_id: G-006
+name: Query Interface
+description: "Establish the single query interface over one tree that answers the
+  in-tree lookups the rest of the project needs. The interface offers three kinds
+  of lookup. By identity: retrieve a node given its stable identity. By attribute:
+  select the nodes that bear a given node type, node kind, simple name, or qualified
+  name. By path-style selector: evaluate a selector that combines an attribute match
+  with structural relations among nodes — child, descendant, and sibling. Selector
+  evaluation resolves its first and broadest step against the appropriate attribute
+  or identity index, and then narrows the result through the parent relation to satisfy
+  the structural relations, rather than scanning all nodes for every step. This interface
+  is the intended foundation for the project's existing in-tree search operations
+  — selecting a node by identity, locating nodes by name or type, and evaluating path-style
+  selectors — which are expected to become thin delegations to it. Cross-project search
+  that ranges over many files and relies on the project's database is out of scope
+  and is not delegated to this interface. This step defines the three lookup kinds,
+  the index-first then narrow-by-parent evaluation strategy, the delegation role for
+  existing in-tree search, and the explicit exclusion of cross-project database-backed
+  search. It does not define the tree object or the indexes themselves, conversion,
+  persistence, or mutation.\n"
+concepts:
+- C-008  # QueryInterface
+relations:
+- C-008 uses C-005  # query uses the identity index for by-identity lookup
+- C-008 uses C-006 # query uses the attribute indexes for selection
+- C-008 uses C-007 # query narrows through the parent relation
+source_labels:
+- '{goki}'
+- '{f6io}'
+depends_on:
+- G-002
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: draft

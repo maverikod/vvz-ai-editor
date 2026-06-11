@@ -1,0 +1,445 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Add ChecksumSyncPolicy entity to checksum module
+target_file: ai_editor/core/tree_lifecycle/checksum.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-006
+- C-003
+- C-004
+status: ready_for_review
+prompt: |
+  Modify the file `ai_editor/core/tree_lifecycle/checksum.py`.
+  Operation: modify_file.
+
+  This file already exists and must not be replaced. Add the `ChecksumSyncPolicy`
+  entity (C-006) as a named class, exposing the four-branch decision mechanism and
+  re-exporting the canonical branch enum from the existing implementation.
+
+  ## Locked decision A1 (context for this step — no routing change here)
+
+  Canonical unified rebuild path (tree lifecycle builder plus unified pipeline integration in this
+  global step): HandlerRegistry.default_registry().resolve →
+  FormatHandler.mark → TreeBuilder.build → sibling `.tree`; checksum recorded on
+  TreeRepresentationRef and in tree file per handler contract.
+
+  This step adds ChecksumSyncPolicy only. It does NOT wire validate_or_recreate_from_content to
+  TreeBuilder.build (unified-pipeline validate-or-recreate wiring, not in this
+  step). Legacy `recreate_tree_from_content` and
+  `TreeFormatKind` in this file remain **untouched** as the parity oracle until
+  G-000 (strategy: new-alongside-old; backup-before-write; test_data via MCP; venv;
+  no legacy removal before G-000).
+
+  ## Why modify_file, not create_file
+
+  The file `ai_editor/core/tree_lifecycle/checksum.py` already contains
+  `compute_content_checksum` and `is_tree_valid` (both required by HRS {c004}),
+  plus builder and lifecycle wrappers (tree-lifecycle-and-builder scope in this
+  global step). This checksum-sync-policy tactical step adds only
+  the `ChecksumSyncPolicy` entity on top of this existing content.
+
+  ## MRS excerpt
+
+    C-006 ChecksumSyncPolicy: The single mechanism that decides tree-vs-source truth
+    by SHA-256 checksum comparison; the checksum comparison is the synchronization
+    trigger. Pure checksum helpers (compute_content_checksum, is_tree_valid) belong
+    to TreeLifecycle (C-010) per HRS {c004}, not to this policy entity.
+      Properties:
+      - invariant: inside an active session the tree is truth, outside the source
+        file is truth
+      - owns the four-branch decision only; wraps resolve_sha_sync_policy
+      - does not own compute_content_checksum or is_tree_valid (TreeLifecycle scope)
+      - SHA-256 checksum of source content is the synchronization trigger
+      - four-branch decision: no tree present, checksum match, mismatch outside
+        session, mismatch inside active session
+      - on mismatch outside a session the tree is rebuilt from source
+      - applies uniformly to all formats
+  C-003 TreeFile: stored as a sibling file placed directly next to the source file
+  it describes; on-disk format is natively-marked content.
+
+  C-004 SourceFile: never modified by the tree system; source of truth outside any
+  active edit session; its byte content is what unmark must reproduce exactly.
+
+  ## HRS binding paragraphs
+
+  {c002}: The `resolve_sha_sync_policy` function (already implemented in
+  `ai_editor/commands/universal_file_edit/sha_sync_policy.py`) governs the
+  four-branch decision:
+    Branch 1 (NO_SIDECAR): no TreeFile present -> build tree from source
+    Branch 2 (SHA_MATCH): checksum match -> tree is current, no action
+    Branch 3 (SHA_MISMATCH_NO_SESSION): mismatch outside session -> rebuild
+    Branch 4 (SHA_MISMATCH_ACTIVE_SESSION): mismatch inside active session ->
+      tree is truth, source is stale, do not rebuild
+  This policy applies uniformly to all formats.
+
+  {c004}: `compute_content_checksum(content: str) -> str` computes SHA-256 hex
+  digest of source content. `is_tree_valid(content_checksum: str, stored_checksum:
+  str | None) -> bool` returns True if and only if both values are non-None and
+  equal. These functions have no file-system side effects and no format-specific
+  logic. (Both already implemented in this file.)
+
+  ## Current file content (post-prior-AS state)
+
+  Full on-disk baseline (233 lines; no prior AS within G-002 before this step):
+
+  ```python
+  """
+  Centralized tree-lifecycle: checksum + validate + recreate.
+
+  This module owns ONE responsibility: "is there a valid tree (sidecar) for this
+  content; if not, build it". Every consumer that needs a structurally valid tree
+  (preview, grep, watcher, indexer, edit sessions, builders) routes through here
+  so the rule lives in a single place.
+
+  Design:
+  - The CORE works on CONTENT (strings), not file paths. Builders and edit
+    sessions that already hold the source text in memory call the core directly,
+    avoiding a redundant file read.
+  - A thin FILE wrapper sits on top: it reads the source once, computes the
+    checksum, reads the sidecar digest, and delegates to the core.
+
+  Representation building (turning a valid tree into a preview/structure) is NOT
+  this module's job — that stays in ``tree_representation``. This module only
+  guarantees the tree is valid and rebuilds it when stale.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import hashlib
+  import json
+  import os
+  from pathlib import Path
+
+  from ai_editor.core.search_session.tree_representation import (
+      TreeFormatKind,
+      TreeRepresentationRef,
+      TreeValidityState,
+      classify_tree_format,
+      sidecar_path_for,
+  )
+
+
+  def compute_content_checksum(content: str) -> str:
+      """Return the SHA-256 hex digest of *content*.
+
+      This is the content-based counterpart of hashing a file: callers that hold
+      the source text in memory hash it directly, without touching disk.
+      """
+      return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+  def is_tree_valid(content_checksum: str, sidecar_digest: str | None) -> bool:
+      """Return True when a sidecar digest exists and matches the content checksum."""
+      return sidecar_digest is not None and sidecar_digest == content_checksum
+
+
+  def recreate_tree_from_content(
+      *,
+      kind: TreeFormatKind,
+      content: str,
+      source_abs: Path,
+      sidecar_path: Path,
+      file_path: str,
+      content_checksum: str,
+  ) -> TreeRepresentationRef:
+      """Rebuild the sidecar tree for *content* using the per-format tree builders.
+
+      Takes the already-in-memory ``content`` instead of re-reading the file, so a
+      caller that just hashed the content does not pay a second read. Writes the
+      sidecar atomically and returns a validated reference.
+      """
+      # Local imports break a module-load cycle with tree_representation and keep
+      # the per-format builder dependencies lazy (heavy modules).
+      if kind == TreeFormatKind.python_cst:
+          from ai_editor.core.cst_tree.tree_builder import create_tree_from_code
+          from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+          from ai_editor.core.search_session.tree_representation import (
+              _read_cst_digest_and_root,
+          )
+
+          create_tree_from_code(str(source_abs), content, persist_sidecar=True)
+          if not sidecar_path.is_file():
+              write_sidecar_atomic(source_abs, {"source_sha256": content_checksum})
+          _digest, root_stable_id = _read_cst_digest_and_root(source_abs, sidecar_path)
+          return TreeRepresentationRef(
+              file_path=file_path,
+              sidecar_path=sidecar_path,
+              content_checksum=content_checksum,
+              root_stable_id=root_stable_id,
+          )
+
+      if kind in {TreeFormatKind.json, TreeFormatKind.yaml}:
+          from ai_editor.core.tree_temp.sidecar_payload import (
+              serialize_sidecar_to_json_text,
+          )
+          from ai_editor.core.search_session.tree_representation import (
+              _read_tree_temp_root_stable_id,
+          )
+
+          if kind == TreeFormatKind.json:
+              from ai_editor.core.json_tree.tree_builder import build_tree_from_data
+
+              data = json.loads(content)
+              tree = build_tree_from_data(data, source_path=str(source_abs))
+          else:
+              import yaml as _yaml
+
+              from ai_editor.core.yaml_tree.tree_builder import (
+                  build_yaml_tree_from_data,
+              )
+
+              data = _yaml.safe_load(content)
+              tree = build_yaml_tree_from_data(data, source_path=str(source_abs))
+
+          sidecar_text = serialize_sidecar_to_json_text(
+              tree, source_sha256=content_checksum
+          )
+          sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+          tmp = sidecar_path.with_suffix(sidecar_path.suffix + ".tmp")
+          tmp.write_text(sidecar_text, encoding="utf-8")
+          os.replace(tmp, sidecar_path)
+          return TreeRepresentationRef(
+              file_path=file_path,
+              sidecar_path=sidecar_path,
+              content_checksum=content_checksum,
+              root_stable_id=_read_tree_temp_root_stable_id(sidecar_path),
+          )
+
+      # markdown or plain text — adjacent .tree_sidecar
+      from ai_editor.core.structure_extraction.extractor import extract_structure
+      from ai_editor.core.search_session.tree_representation import (
+          _read_adjacent_root_stable_id,
+      )
+
+      extract_structure(str(source_abs), ensure_persisted_tree=True)
+      payload: dict = {"source_sha256": content_checksum}
+      root_stable_id = _read_adjacent_root_stable_id(sidecar_path)
+      if root_stable_id is not None:
+          payload["root_stable_id"] = root_stable_id
+      tmp = sidecar_path.with_suffix(sidecar_path.suffix + ".tmp")
+      tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+      os.replace(tmp, sidecar_path)
+      return TreeRepresentationRef(
+          file_path=file_path,
+          sidecar_path=sidecar_path,
+          content_checksum=content_checksum,
+          root_stable_id=root_stable_id,
+      )
+
+
+  def validate_or_recreate_from_content(
+      *,
+      kind: TreeFormatKind,
+      content: str,
+      source_abs: Path,
+      sidecar_path: Path,
+      file_path: str,
+      sidecar_digest: str | None,
+      root_stable_id: str | None,
+      force: bool = False,
+  ) -> tuple[TreeRepresentationRef, TreeValidityState]:
+      """Decide reuse vs recreate for already-in-memory *content*.
+
+      The caller supplies the current sidecar digest (and root stable id) it has
+      already read. When the digest matches the content checksum and ``force`` is
+      false, the existing sidecar is reused; otherwise the tree is rebuilt.
+      """
+      content_checksum = compute_content_checksum(content)
+      if not force and is_tree_valid(content_checksum, sidecar_digest):
+          return (
+              TreeRepresentationRef(
+                  file_path=file_path,
+                  sidecar_path=sidecar_path,
+                  content_checksum=content_checksum,
+                  root_stable_id=root_stable_id,
+              ),
+              TreeValidityState.reused,
+          )
+      ref = recreate_tree_from_content(
+          kind=kind,
+          content=content,
+          source_abs=source_abs,
+          sidecar_path=sidecar_path,
+          file_path=file_path,
+          content_checksum=content_checksum,
+      )
+      return ref, TreeValidityState.recreated
+
+
+  def validate_or_recreate_tree_file(
+      *,
+      project_root: Path,
+      file_path: str,
+      force: bool = False,
+  ) -> tuple[TreeRepresentationRef, TreeValidityState]:
+      """File wrapper over the content core.
+
+      Reads the source once, computes its checksum, reads the current sidecar
+      digest, then delegates to ``validate_or_recreate_from_content``. This is the
+      entry point for path-based consumers (preview, grep, watcher).
+
+      Raises FileNotFoundError when the source file is absent.
+      """
+      from ai_editor.core.search_session.tree_representation import (
+          _read_sidecar_state,
+      )
+
+      kind = classify_tree_format(file_path)
+      root = project_root.resolve()
+      source_abs = (root / file_path).resolve()
+      if not source_abs.is_file():
+          raise FileNotFoundError(f"source file not found: {source_abs}")
+      content = source_abs.read_text(encoding="utf-8")
+      sidecar_path = sidecar_path_for(file_path, root)
+      sidecar_digest, root_stable_id = _read_sidecar_state(
+          kind=kind, source_abs=source_abs, sidecar_path=sidecar_path
+      )
+      return validate_or_recreate_from_content(
+          kind=kind,
+          content=content,
+          source_abs=source_abs,
+          sidecar_path=sidecar_path,
+          file_path=file_path,
+          sidecar_digest=sidecar_digest,
+          root_stable_id=root_stable_id,
+          force=force,
+      )
+
+
+  __all__ = [
+      "compute_content_checksum",
+      "is_tree_valid",
+      "recreate_tree_from_content",
+      "validate_or_recreate_from_content",
+      "validate_or_recreate_tree_file",
+  ]
+  ```
+
+  The embedded content above is the complete pre-edit file; only the changes listed below may be applied.
+
+  ## Changes to make
+
+  ### 1. Add import after the existing import block
+
+  Insert the following import statement immediately after the existing
+  `from ai_editor.core.search_session.tree_representation import (...)` block,
+  before `compute_content_checksum`:
+
+  ```python
+  from ai_editor.commands.universal_file_edit.sha_sync_policy import (
+      ShaSyncBranch,
+      ShaSyncDecision,
+      resolve_sha_sync_policy,
+  )
+  ```
+
+  ### 2. Add ChecksumSyncPolicy class after is_tree_valid and before recreate_tree_from_content
+
+  Insert the following class definition between `is_tree_valid` and
+  `recreate_tree_from_content`:
+
+  ```python
+  class ChecksumSyncPolicy:
+      """ChecksumSyncPolicy (C-006): four-branch tree-vs-source truth decision.
+
+      This is the single mechanism that decides whether a TreeFile (C-003) is
+      current with respect to its SourceFile (C-004), based solely on SHA-256
+      checksums. Checksum computation and verification are the only synchronization
+      trigger; mtime, size, and other file metadata are not used.
+
+      Four-branch decision table (applies uniformly to all formats):
+
+      Branch 1 -- NO_SIDECAR (ShaSyncBranch.NO_SIDECAR):
+          Precondition: no co-located TreeFile exists.
+          Action: build a new tree from the SourceFile content.
+
+      Branch 2 -- SHA_MATCH (ShaSyncBranch.SHA_MATCH):
+          Precondition: TreeFile present; stored checksum == current source
+          checksum.
+          Action: tree is current; no rebuild needed.
+
+      Branch 3 -- SHA_MISMATCH_NO_SESSION (ShaSyncBranch.SHA_MISMATCH_NO_SESSION):
+          Precondition: TreeFile present; checksums differ; no active edit
+          session holds the file.
+          Action: tree is stale; rebuild from SourceFile content.
+
+      Branch 4 -- SHA_MISMATCH_ACTIVE_SESSION
+      (ShaSyncBranch.SHA_MISMATCH_ACTIVE_SESSION):
+          Precondition: TreeFile present; checksums differ; an active edit
+          session holds the file.
+          Action: tree is truth, source copy inside session is stale;
+          do NOT rebuild -- the session tree takes precedence.
+
+      Session-truth invariant (C-006, HRS {a005}):
+          Inside an active edit session the tree is the source of truth.
+          Outside any session the SourceFile (C-004) is the source of truth.
+      """
+
+      #: Re-export the branch enum so callers need only import this class.
+      Branch = ShaSyncBranch
+
+      @staticmethod
+      def decide(
+          *,
+          tree_file_present: bool,
+          stored_checksum: str | None,
+          current_checksum: str,
+          active_session: bool,
+      ) -> ShaSyncDecision:
+          """Run the four-branch decision for one file.
+
+          Args:
+              tree_file_present: True when a co-located TreeFile exists on disk.
+              stored_checksum: SHA-256 hex digest stored in the TreeFile, or None
+                  when the TreeFile is absent or its digest is unreadable.
+              current_checksum: SHA-256 hex digest of the current SourceFile
+                  content, produced by :func:`compute_content_checksum`.
+              active_session: True when an active edit session currently holds
+                  the file; the session tree is the source of truth in that case.
+
+          Returns:
+              A :class:`ShaSyncDecision` whose ``branch`` attribute identifies
+              which of the four branches applies.
+          """
+          return resolve_sha_sync_policy(
+              sidecar_exists=tree_file_present,
+              sidecar_source_sha256=stored_checksum,
+              current_source_sha256=current_checksum,
+              active_session_holds_file=active_session,
+          )
+  ```
+
+  ### 3. Extend __all__
+
+  Add `"ChecksumSyncPolicy"`, `"ShaSyncBranch"`, `"ShaSyncDecision"` to the
+  existing `__all__` list.
+
+  ## Constraints
+  - Do NOT modify any existing function body (compute_content_checksum,
+    is_tree_valid, recreate_tree_from_content, validate_or_recreate_from_content,
+    validate_or_recreate_tree_file).
+  - Do NOT modify the module-level docstring.
+  - No new imports beyond the one listed above.
+  - `ChecksumSyncPolicy.decide` is a pure delegating static method; no file I/O.
+  - sibling_tree_path logic is NOT added here (that is in
+    ai_editor/tree/sibling_convention.py, sibling-storage-convention scope).
+  - `recreate_tree_from_content` body stays unchanged; it remains the legacy parity oracle until G-000 sidecar layout migration completes (unified pipeline integration will wire validate rebuild to TreeBuilder.build).
+  - All docstrings and comments in English (ARTIFACT_LOCALE=en, CR-010).
+  - Estimated added lines: ~75. Total post-modification: ~310 lines (within CR-008).
+verification:
+  expected: >
+    Import smoke test exits with code 0 and no output. ChecksumSyncPolicy,
+    ShaSyncBranch, ShaSyncDecision, compute_content_checksum, and is_tree_valid
+    are importable. compute_content_checksum produces a 64-character hex digest.
+    is_tree_valid returns True when digests match and False when sidecar digest
+    is None. ChecksumSyncPolicy.decide returns NO_SIDECAR when tree file absent,
+    SHA_MATCH when digests match, SHA_MISMATCH_NO_SESSION when digests differ
+    outside session, and SHA_MISMATCH_ACTIVE_SESSION when digests differ inside
+    active session — covering all four branches.
+  target: ai_editor/core/tree_lifecycle/checksum.py
+  type: import

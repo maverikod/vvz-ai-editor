@@ -1,0 +1,51 @@
+step_id: T-702
+parent_global_step: G-008
+name: YAML file handler — resolve node_ref via YAML tree infrastructure
+status: done
+concepts:
+- C-004
+- C-009
+- C-011
+- C-014
+- C-020
+description: |
+  Intended behaviour: the project YAML tree infrastructure produces opaque StableIdentifiers
+  (C-009); YamlFileHandler resolves node_ref via that infrastructure inside a TreeSession
+  (C-011).
+
+  Identifier format in this mode is whatever opaque StableIdentifier values the
+  infrastructure emits; it is opaque to HandlerDispatcher and NavigationProcedure.
+
+  Resolution process: YamlFileHandler passes node_ref to the YAML tree infrastructure;
+  the infrastructure returns the addressed Node with NodeKind (C-004), block set, and
+  node_ref.
+
+  Resolution failure: UNKNOWN_NODE_REF surfaced as ErrorClassification (C-014) input error,
+  with details including the attempted node_ref.
+
+  When infrastructure is absent or yields no resolution, tactical step T-703 JSON Pointer
+  fallback is used.
+implementation_note: >
+  Until ai_editor.core.yaml_tree exists, `_try_infra_resolve` returns None on ImportError;
+  the infra branch runs only when that module imports and the caller passes a non-None
+  session. There is no per-file registration at open time yet.
+inputs:
+- name: node_ref_value
+  type: string (infrastructure-native identifier)
+  description: A StableIdentifier (C-009) value in the format produced by the project
+    YAML tree infrastructure.
+- name: yaml_session
+  type: TreeSession (C-011) with YAML tree infrastructure active
+  description: The in-memory YAML tree with the project YAML tree infrastructure available
+    for identifier resolution.
+outputs:
+- name: resolved_node
+  type: Node with NodeKind (C-004) assigned
+  description: The YAML Node addressed by node_ref_value, with its NodeKind (mapping,
+    sequence, or scalar), block set, and node_ref.
+- name: resolution_error
+  type: ErrorClassification (C-014) UNKNOWN_NODE_REF input error
+  description: Returned instead of resolved_node when the infrastructure cannot resolve
+    the provided identifier.
+atomic_steps:
+- A-001

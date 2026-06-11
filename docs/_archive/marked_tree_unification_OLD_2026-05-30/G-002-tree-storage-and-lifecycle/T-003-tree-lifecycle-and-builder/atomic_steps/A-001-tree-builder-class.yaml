@@ -1,0 +1,258 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Create TreeBuilder entity class with HandlerRegistry dispatch
+target_file: ai_editor/core/tree_lifecycle/builder.py
+operation: create_file
+priority: 1
+depends_on: []
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-003-default-registry-bootstrap.yaml
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-007-python-handler.yaml
+status: needs_review
+concepts:
+- C-011
+- C-007
+- C-008
+- C-003
+prompt: |
+  Create the file `ai_editor/core/tree_lifecycle/builder.py`.
+  Operation: create_file.
+
+  This file does NOT exist yet. Create it from scratch.
+
+  ## Purpose
+
+  Define the TreeBuilder entity (C-011) as the **canonical unified-pipeline writer**
+  of TreeFiles (C-003). TreeBuilder.build resolves FormatHandler via
+  `HandlerRegistry.default_registry().resolve(source_abs)`, calls
+  `handler.mark(content)` to produce natively-marked TreeFile text, and writes
+  that text atomically to `handler.sidecar_path(source_abs)`.
+
+  **Decision A1 (locked):** This is the canonical G-002 build path. TreeBuilder
+  must **NOT** call `recreate_tree_from_content`, `TreeFormatKind`, or
+  `classify_tree_format`. Those legacy symbols in `checksum.py` remain untouched
+  as a parity oracle (strategy: new alongside old).
+
+  ## Cross-TS prerequisites (must be applied before this step)
+
+  1. G-001 T-003 A-003 — `default_registry()` in `ai_editor/tree/handler_registry.py`
+  2. G-001 T-002 A-001 through A-007 — all FormatHandler implementations including
+     PythonHandler (real cst_tree wrapper, not NotImplementedError stub)
+  3. G-002 T-001 A-001 — `sibling_tree_path` in `ai_editor/tree/sibling_convention.py`
+     (handlers' sidecar_path must agree with sibling convention)
+
+  ## MRS excerpt
+
+  C-011 TreeBuilder:
+    - dispatches via HandlerRegistry.resolve → FormatHandler.mark
+    - single place that writes unified-pipeline tree files
+    - writes sibling TreeFile at FormatHandler.sidecar_path; records content_checksum
+      in returned reference
+
+  C-008 HandlerRegistry: keyed by extension; sole resolution path.
+
+  C-007 FormatHandler contract (from `ai_editor/tree/format_handler.py`):
+
+  ```python
+  class FormatHandler(ABC):
+      def parse_content(self, file_path: Path, content: str) -> List[TreeNode]: ...
+      def mark(self, content: str) -> str: ...
+      def unmark(self, marked_text: str) -> str: ...
+      def sidecar_path(self, source_abs: Path) -> Path: ...
+      def node_id_for(self, raw: str) -> NodeId: ...
+  ```
+
+  C-003 TreeFile: sibling `<stem>.<ext>.tree`; natively-marked content (not JSON sidecar).
+
+  ## FormatHandler signatures (exact — embed for a4 self-sufficiency)
+
+  | Method | Signature | Input state | Output |
+  |--------|-----------|-------------|--------|
+  | parse_content | `(file_path: Path, content: str) -> List[TreeNode]` | **unmarked** source | ordered node list |
+  | mark | `(content: str) -> str` | unmarked source | marked TreeFile body |
+  | unmark | `(marked_text: str) -> str` | marked TreeFile body | unmarked source bytes |
+  | sidecar_path | `(source_abs: Path) -> Path` | absolute source path | sibling `.tree` path |
+
+  Registry bootstrap (G-001 A-003):
+
+  ```python
+  def default_registry() -> HandlerRegistry:
+      registry = HandlerRegistry()
+      registry.register(".txt", TextHandler())
+      registry.register(".rst", TextHandler())
+      registry.register(".md", MarkdownHandler())
+      registry.register(".yaml", YamlHandler())
+      registry.register(".yml", YamlHandler())
+      registry.register(".json", JsonHandler())
+      registry.register(".py", PythonHandler())
+      return registry
+  ```
+
+  ## PythonHandler adapter nuance (G-001 A-007 — consumed, not implemented here)
+
+  - `parse_content`: thin wrapper over `create_tree_from_code` from
+    `ai_editor/core/cst_tree/tree_builder.py`
+  - Maps `CSTTree.metadata_map` (keyed by internal `node_id`) → `List[TreeNode]`
+  - **Identity mapping:** `TreeNode.node_id` = `TreeNodeMetadata.stable_id` (UUID);
+    internal CST `node_id` is NOT exposed on TreeNode
+  - **Granularity filter:** emit TreeNode only for addressable blocks per C-005 /
+    HRS {b005}: FunctionDef, AsyncFunctionDef, ClassDef, decorated statements
+    (metadata-dict path), SimpleStatementLine/Expr/AnnAssign/Assign/AugAssign
+    (trailing-comment path); exclude shebang lines; one block = one logical CST
+    statement/expression
+  - **Covered node types (from cst_tree):** FunctionDef, AsyncFunctionDef, ClassDef,
+    SimpleStatementLine, Expr, AnnAssign, Assign, AugAssign, Decorator
+  - **Unverified / indexed but marker path TBD in parity tests:** Import, If, For,
+    While, Try, With (indexed in metadata_map but compound-block marker semantics
+    not parity-guaranteed until fixtures pass)
+  - `mark`/`unmark`: implement HRS {b005} hybrid contract — metadata key `___id___`
+    in CST metadata dict OR trailing `# ___id___:<uuid>`; markers written only into
+    `.py.tree` sidecar; SourceFile `.py` stays clean
+  - **Forbidden:** `.cst/<stem>.tree` JSON sidecar path from legacy cst_tree;
+    do NOT call `persist_sidecar=True` on create_tree_from_code in unified path
+
+  ## Marker contract {b005} (Python — reference for TreeBuilder consumers)
+
+  - Named constructs with metadata dict: write `___id___` key with UUID
+  - Other statements: append `# ___id___:<uuid>` on last physical line of block
+  - Shebang: not addressable, no marker
+  - Multiline docstring: marker on closing `"""` line after quotes
+
+  ## File header (exact module docstring)
+
+  ```python
+  """
+  TreeBuilder (C-011): single writer of TreeFiles on the unified HandlerRegistry path.
+
+  Resolves FormatHandler via HandlerRegistry.default_registry(), produces marked
+  TreeFile content via FormatHandler.mark, writes to FormatHandler.sidecar_path.
+  Does NOT use recreate_tree_from_content or TreeFormatKind (legacy oracle only).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (exact list)
+
+  ```python
+  from __future__ import annotations
+
+  import os
+  import tempfile
+  from pathlib import Path
+  from typing import Optional
+
+  from ai_editor.core.search_session.tree_representation import TreeRepresentationRef
+  from ai_editor.tree.handler_registry import HandlerRegistry, default_registry
+  ```
+
+  ## Class skeleton
+
+  ```python
+  class TreeBuilder:
+      """TreeBuilder (C-011): canonical unified-pipeline writer of TreeFiles."""
+
+      @staticmethod
+      def build(
+          *,
+          content: str,
+          source_abs: Path,
+          file_path: str,
+          content_checksum: str,
+          registry: Optional[HandlerRegistry] = None,
+      ) -> TreeRepresentationRef:
+          """Build and write a TreeFile from unmarked source content.
+
+          Algorithm:
+          1. Resolve registry = registry or default_registry().
+          2. handler = registry.resolve(source_abs).
+          3. marked_text = handler.mark(content).
+          4. sidecar_path = handler.sidecar_path(source_abs).
+          5. Atomic write: write marked_text to temp file in sidecar_path.parent,
+             then os.replace to sidecar_path (create parent dirs if missing).
+          6. Return TreeRepresentationRef(
+                 file_path=file_path,
+                 sidecar_path=sidecar_path,
+                 content_checksum=content_checksum,
+                 root_stable_id=_first_root_node_id(handler, source_abs, content),
+             ) where root_stable_id is the node_id of the first TreeNode from
+             handler.parse_content if any, else None.
+
+          Args:
+              content: Raw unmarked SourceFile text.
+              source_abs: Absolute path to SourceFile (used for handler resolution).
+              file_path: Project-relative path string for the reference.
+              content_checksum: SHA-256 hex digest of content (from compute_content_checksum).
+              registry: Optional HandlerRegistry; defaults to default_registry().
+
+          Returns:
+              TreeRepresentationRef pointing to the newly written sibling TreeFile.
+
+          Raises:
+              HandlerNotFoundError: no handler registered for source extension.
+              OSError: atomic write failure.
+              Any exception from handler.mark (format-specific parse/marker errors).
+          """
+          ...
+  ```
+
+  ## Helper: _first_root_node_id (private module function)
+
+  ```python
+  def _first_root_node_id(handler, source_abs: Path, content: str) -> str | None:
+      nodes = handler.parse_content(source_abs, content)
+      return nodes[0].node_id if nodes else None
+  ```
+
+  ## Concrete example
+
+  Input:
+    - content = 'print("hi")\n'
+    - source_abs = Path('/proj/src/foo.py')
+    - file_path = 'src/foo.py'
+    - content_checksum = 'abc123...' (SHA-256 hex)
+
+  Steps:
+    1. default_registry().resolve → PythonHandler
+    2. PythonHandler.mark → marked text with `# ___id___:<uuid>` on statement line
+    3. sidecar_path → `/proj/src/foo.py.tree`
+    4. Atomic write marked text to foo.py.tree
+
+  Output TreeRepresentationRef:
+    - file_path = 'src/foo.py'
+    - sidecar_path = Path('/proj/src/foo.py.tree')
+    - content_checksum = 'abc123...'
+    - root_stable_id = first stable_id UUID from parse_content
+
+  ## Error handling
+
+  - Do NOT catch HandlerNotFoundError, OSError, or handler.mark exceptions.
+  - Propagate all exceptions unchanged.
+
+  ## Forbidden approaches
+
+  - Do NOT import or call recreate_tree_from_content, TreeFormatKind, classify_tree_format.
+  - Do NOT modify checksum.py or legacy cst_tree sidecar writers.
+  - Do NOT write to SourceFile (.py stays unmarked on disk).
+  - Do NOT use `.cst/` JSON sidecar paths.
+  - Do NOT delete or refactor legacy code (G-000 scope).
+  - Do NOT add TreeBuilder to checksum.py.
+
+  ## Module __all__
+
+  ```python
+  __all__ = ["TreeBuilder"]
+  ```
+
+  ## Estimated post-implementation line count
+
+  ~130 lines (≤350 cap).
+
+verification:
+  type: import
+  target: ai_editor/core/tree_lifecycle/builder.py
+  expected: >
+    Import TreeBuilder succeeds. TreeBuilder.build exists. Unit test or import
+    smoke test confirms build writes sibling .tree file via FormatHandler.mark
+    without importing recreate_tree_from_content. All project tests pass.

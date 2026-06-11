@@ -1,0 +1,13 @@
+# MERGED INTO T-902
+# This tactical step has been merged into T-902 (Python visualizer module).
+# render_node is now part of T-902 scope. This file is obsolete.
+step_id: T-903
+parent_global_step: G-010
+name: OBSOLETE - merged into T-902
+description: >
+  Merged into T-902 (render_module + render_node). This TS is no longer active.
+concepts: []
+inputs: []
+outputs: []
+atomic_steps: []
+status: obsolete

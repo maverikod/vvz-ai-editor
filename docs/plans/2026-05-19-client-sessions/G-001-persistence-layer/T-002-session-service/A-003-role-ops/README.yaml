@@ -1,0 +1,70 @@
+concepts:
+- C-007
+- C-008
+- C-004
+depends_on:
+- A-002
+name: Add Role and RolePermission query operations to client_sessions.py
+operation: modify_file
+parent_tactical_step: T-002
+priority: 3
+prompt: "Modify the existing file at the exact path:\n  ai_editor/core/client_sessions.py\n\
+  \nOperation: modify_file. The file currently contains (post A-002 of T-002):\n-
+  Module docstring, imports (from __future__ import annotations, import logging, import
+  uuid, from typing import Any, Optional, from ai_editor.core.database_client.client
+  import DatabaseClient)\n- logger, TABLE constants, DDL constants\n- SessionNotFoundError,
+  SessionHasLocksError\n- ensure_client_session_tables(conn)\n- create_client_session,
+  get_client_session, is_session_valid, touch_client_session, touch_or_error, list_client_sessions,
+  delete_client_session\n- open_session_file, close_session_file, list_session_file_locks,
+  count_session_file_locks, list_locked_files\n\nAppend the following three functions
+  at the END of the file. Do not modify any existing content.\n\nDATABASE API CONTRACT
+  (mandatory for all functions):\n- database parameter type is DatabaseClient in all
+  functions.\n- database.execute(sql, params) returns {\"data\": list[dict]} for SELECT.\n\
+  - To fetch all rows: res = database.execute(sql, params); rows = res.get(\"data\"\
+  ) or []\n- Never call .fetchone(), .fetchall(), database.commit(), database.rollback().\n\
+  - get_permissions_for_roles: f-string for IN-clause placeholders is allowed; all
+  values passed as parameters.\n\n--- FUNCTION 1 ---\n\ndef list_roles(\n    database:
+  DatabaseClient,\n) -> list[dict[str, object]]:\n    \"\"\"\n    List all defined
+  roles.\n\n    Args:\n        database: DatabaseClient instance.\n\n    Returns:\n\
+  \        List of dicts with keys: role_id (str), name (str).\n        Ordered by
+  name ascending.\n    \"\"\"\n    res = database.execute('SELECT role_id, name FROM
+  roles ORDER BY name ASC')\n    return [dict(row) for row in (res.get('data') or
+  [])]\n\n--- FUNCTION 2 ---\n\ndef get_roles_for_session(\n    database: DatabaseClient,\n\
+  \    session_id: str,\n) -> list[dict[str, object]]:\n    \"\"\"\n    Get all roles
+  assigned to a session.\n\n    Args:\n        database: DatabaseClient instance.\n\
+  \        session_id: UUID4 string.\n\n    Returns:\n        List of dicts with keys:
+  role_id (str), name (str).\n        Ordered by name ascending.\n    \"\"\"\n   \
+  \ res = database.execute(\n        'SELECT r.role_id, r.name FROM roles r '\n  \
+  \      'JOIN session_roles sr ON r.role_id = sr.role_id '\n        'WHERE sr.session_id
+  = ? ORDER BY r.name ASC',\n        (session_id,),\n    )\n    return [dict(row)
+  for row in (res.get('data') or [])]\n\n--- FUNCTION 3 ---\n\ndef get_permissions_for_roles(\n\
+  \    database: DatabaseClient,\n    role_ids: list[str],\n    server_uuid: str,\n\
+  ) -> list[str]:\n    \"\"\"\n    Get all command names permitted for the given roles
+  on a specific server.\n\n    Returns the union of all command_name values from role_permissions
+  where\n    role_id is in role_ids and server_uuid matches. Used by the SecurityPolicy\n\
+  \    evaluator to determine allowed commands.\n\n    Args:\n        database: DatabaseClient
+  instance.\n        role_ids: List of role UUID4 strings. If empty, returns empty
+  list.\n        server_uuid: UUID4 string of the proxy server.\n\n    Returns:\n\
+  \        List of distinct command_name strings. Order is not guaranteed.\n    \"\
+  \"\"\n    if not role_ids:\n        return []\n    placeholders = ','.join('?' *
+  len(role_ids))\n    res = database.execute(\n        f'SELECT DISTINCT command_name
+  FROM role_permissions '\n        f'WHERE role_id IN ({placeholders}) AND server_uuid
+  = ?',\n        (*role_ids, server_uuid),\n    )\n    return [row['command_name']
+  for row in (res.get('data') or [])]\n\nConstraints:\n- Do not modify any existing
+  content.\n- All functions must have Google-style docstrings with Args and Returns
+  sections.\n- All parameters and return types must be annotated.\n- database parameter
+  type is DatabaseClient in all functions.\n- get_permissions_for_roles may use an
+  f-string only for building the IN-clause placeholders; all values must still be
+  passed as parameters.\n- DatabaseClient returns dicts per row — access fields by
+  key, not by index."
+status: done
+step_id: A-003
+target_file: ai_editor/core/client_sessions.py
+verification:
+  expected: All three functions are importable. list_roles returns an empty list
+    on an empty DB without raising. get_permissions_for_roles called with an 
+    empty role_ids list returns an empty list without executing any SQL. 
+    get_roles_for_session returns an empty list when no roles are assigned to 
+    the session.
+  target: ai_editor/core/client_sessions.py
+  type: import

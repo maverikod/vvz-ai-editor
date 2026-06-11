@@ -1,0 +1,41 @@
+step_id: T-501
+parent_global_step: G-006
+name: JSON file handler — open and produce root Node
+status: frozen
+concepts:
+- C-003
+- C-004
+- C-014
+- C-018
+description: "Define the opening behaviour of JsonFileHandler (C-018), which extends\
+  \ FileHandler (C-003), for .json files. When invoked to open a JSON file, JsonFileHandler\
+  \ parses it and produces a root Node whose NodeKind (C-004) depends on the top-level\
+  \ JSON value type.\nRoot Node NodeKind by document type: - JSON object ({...}):\
+  \ NodeKind mapping. Block set is the ordered\n  sequence of key-value pairs. Each\
+  \ pair is one self-contained Block\n  carrying both the key (string) and the value\
+  \ (arbitrary NodeKind).\n- JSON array ([...]): NodeKind sequence. Block set is the\
+  \ ordered\n  sequence of array elements, each with its own NodeKind.\n- JSON bare\
+  \ scalar (string, number, boolean, null): NodeKind scalar.\n  Block set is empty.\n\
+  \nInterior node structure: - Object values are mapped recursively: nested objects\
+  \ become mapping\n  Nodes, nested arrays become sequence Nodes, primitive values\
+  \ become\n  scalar Nodes.\n- The JSON structure is reflected directly; no additional\
+  \ wrapping.\nLazy materialisation: JsonFileHandler materialises only the root and\
+  \ the children needed by the current NavigationProcedure request.\nFile-structure\
+  \ errors: if the file is not valid JSON, JsonFileHandler returns a FILE_STRUCTURE_ERROR\
+  \ of class ErrorClassification (C-014) carrying the parser name ('json') and, when\
+  \ available, the line and column of the syntax error.\n"
+inputs:
+- name: file_path
+  type: string
+  description: Project-relative path to the .json file to open.
+outputs:
+- name: root_node
+  type: Node with NodeKind mapping | sequence | scalar (C-004)
+  description: The root Node produced from the parsed JSON file. Its NodeKind is determined
+    by the top-level JSON value type.
+- name: file_structure_error
+  type: ErrorClassification (C-014) FILE_STRUCTURE_ERROR
+  description: Returned instead of root_node when the file is not valid JSON. Carries
+    parser name 'json' and position information when available.
+atomic_steps:
+- A-001

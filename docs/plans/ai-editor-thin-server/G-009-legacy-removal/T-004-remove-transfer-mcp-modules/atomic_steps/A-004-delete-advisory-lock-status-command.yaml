@@ -1,0 +1,34 @@
+step_id: A-004
+parent_tactical_step: T-004
+name: Удалить advisory lock status MCP модуль
+target_file: ai_editor/commands/project_file_lock_status_command.py
+operation: delete_file
+priority: 4
+depends_on: []
+concepts:
+- C-017
+- C-020
+prompt: |
+  Precondition: execute ONLY after BOTH of the following are complete:
+  - G-002/T-005 (upload transfer wrapper fully implemented in Upstream Client, C-017)
+  - G-006/T-002 (transfer/lock MCP commands unregistered from hooks_register_part2;
+    do NOT duplicate unregistration here — G-006 owns MCP surface cleanup)
+
+  Delete `ai_editor/commands/project_file_lock_status_command.py`.
+
+  This file implements legacy public MCP advisory lock status command (C-020):
+  ProjectFileLockStatusCommand (`project_file_lock_status`).
+  After G-006/T-002 this class is no longer registered as an MCP command;
+  this step removes the module from disk only.
+
+  Do not modify hooks.py — removing the register_auto_import_module line for
+  project_file_lock_status_command from hooks.py is out of scope for this delete_file step.
+  Do not modify any other file in this step.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/project_file_lock_status_command.py
+  expected: >
+    File absent from repository; no MCP registration exists for
+    ProjectFileLockStatusCommand or command name project_file_lock_status
+    (unregistration is a precondition satisfied by G-006/T-002).
+status: draft

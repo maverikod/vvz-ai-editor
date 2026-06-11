@@ -1,0 +1,24 @@
+step_id: G-001
+name: TreeNode model and Sidecar persistence
+status: done
+description: 'Define the TreeNode data model and the Sidecar persistence contract.
+  A TreeNode carries a stable UUID, type discriminator, optional key (for object members),
+  optional scalar value, ordered children list (for containers), and two optional
+  comment strings (comment_before and comment_inline). A Sidecar is a JSON file in
+  .trees/ storing the full TreeNode tree for one source file together with the SHA-256
+  of the source at last sync. This step establishes the data contracts all subsequent
+  steps depend on: the TreeNode schema, Sidecar read/write, and SidecarDirectory layout.'
+concepts:
+- C-001
+- C-002
+relations:
+- C-002 owns C-001
+source_ranges:
+- end: 101
+  start: 1
+depends_on: []
+tactical_steps:
+- T-001-tree-node-dataclass
+- T-002-sidecar-reader
+- T-003-sidecar-writer
+- T-004-sidecar-directory-resolver

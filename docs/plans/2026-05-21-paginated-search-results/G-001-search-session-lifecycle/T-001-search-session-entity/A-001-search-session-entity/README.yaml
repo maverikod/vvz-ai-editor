@@ -1,0 +1,60 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: SearchSession entity module
+target_file: ai_editor/core/search_session/session.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+prompt: "Operation: create_file\nTarget: ai_editor/core/search_session/session.py\n\
+  \nMRS excerpt (C-001 SearchSession):\n- Logical execution context for one search
+  request.\n- Created immediately when a client starts a search.\n- Unique search_id
+  for HTTP access to index, blocks, and status.\n- Owns session directory for blocks,
+  index, and service metadata.\n- States: running, completed, failed, cancelled, timed_out,
+  dead, expired, closed.\n\nParent GS (G-001): establishes SearchSession as owner
+  of on-disk artefacts before execution.\n\nParent TS (T-001): entity and state machine
+  only. directory_path is Optional and starts as\nNone; the directory provisioning
+  step binds it later via bind_session_directory. Request\nparameters and creation
+  triggers are persisted in the session manifest by a separate step.\n\nRequired imports:\n\
+  ```python\nfrom __future__ import annotations\n\nimport uuid\nfrom dataclasses import
+  dataclass, replace\nfrom enum import Enum\nfrom pathlib import Path\nfrom typing
+  import Final, Optional\n```\n\nTask:\nCreate ai_editor/core/search_session/session.py
+  with:\n\n1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).\n\
+  \n2. Module constant:\n   ```python\n   INVALID_SESSION_TRANSITION: Final[str] =
+  \"INVALID_SESSION_TRANSITION\"\n   ```\n\n3. SearchSessionState(str, Enum) with
+  values exactly:\n   running, completed, failed, cancelled, timed_out, dead, expired,
+  closed.\n\n4. Module-level frozenset _TERMINAL_STATES containing all states except
+  running:\n   completed, failed, cancelled, timed_out, dead, expired, closed.\n\n\
+  5. @dataclass(frozen=True) class SearchSession:\n     - search_id: str  (UUID string)\n\
+  \     - state: SearchSessionState\n     - directory_path: Optional[Path] = None\n\
+  \   Docstring documents each field. directory_path is None until directory provisioning
+  binds it.\n\n6. def create_search_session(*, directory_path: Optional[Path] = None)
+  -> SearchSession:\n     - Generates search_id via uuid.uuid4()\n     - When directory_path
+  is not None, stores directory_path.resolve(); otherwise None\n     - Initial state
+  SearchSessionState.running\n     - Returns new SearchSession\n   Full type hints
+  and docstring.\n   This factory realizes T-001 outputs `search_session` and `search_id`
+  without requiring\n   a provisioned directory.\n\n7. def transition_session_state(session:
+  SearchSession, new_state: SearchSessionState) -> SearchSession:\n     Document this
+  **allowed transition matrix** in the function docstring:\n\n     | From state |
+  To state | Allowed |\n     |------------|----------|---------|\n     | any | same
+  state | yes (idempotent no-op; return session unchanged) |\n     | running | any
+  other state | yes |\n     | terminal | running | **no** — raise ValueError prefixed
+  with INVALID_SESSION_TRANSITION |\n     | terminal | any other terminal or closed
+  | yes |\n\n     Terminal states are exactly the members of _TERMINAL_STATES (all
+  states except running).\n\n     Implementation rules:\n     - If new_state == session.state:
+  return session unchanged.\n     - If session.state in _TERMINAL_STATES and new_state
+  == SearchSessionState.running:\n       raise ValueError with message prefix INVALID_SESSION_TRANSITION.\n\
+  \     - All other transitions: return replace(session, state=new_state).\n\nConstraints:\n\
+  - No HTTP, manifest, or block logic in this file — entity only.\n- No directory
+  provisioning or bind_session_directory in this file.\n- File must stay under 200
+  lines.\n- All public symbols typed and documented.\n"
+verification:
+  type: import
+  target: ai_editor.core.search_session.session
+  expected: "Module imports. SearchSessionState has all eight states. create_search_session
+    returns running session with UUID search_id and directory_path=None when called
+    without directory_path. transition_session_state rejects any terminal-to-running
+    transition with INVALID_SESSION_TRANSITION; allows running-to-terminal and terminal-to-terminal
+    transitions; no-op when state unchanged.\n"
+status: ready_for_review

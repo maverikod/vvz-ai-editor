@@ -1,0 +1,38 @@
+step_id: T-901
+parent_global_step: G-010
+name: Full-text threshold in PreviewBudget
+description: >
+  Add field full_text_max_lines (type: int, default 200) to PreviewBudget dataclass
+  (C-023 extends C-013). Wire the field into UniversalFilePreviewCommand (C-001):
+  add key "full_text_max_lines" to get_schema() as an optional integer property
+  with default 200 and minimum 0; extract it in validate_params() and pass it
+  through to PreviewBudget construction. When a Python file has fewer lines than
+  this threshold and the threshold is greater than 0, PythonFileHandler (C-016)
+  returns the entire file source as a single text block instead of structured
+  rendering. A value of 0 disables the full-text fallback entirely.
+concepts:
+- C-023
+- C-013
+- C-001
+inputs:
+- name: budget_py
+  type: file
+  description: budget.py containing PreviewBudget dataclass
+- name: command_py
+  type: file
+  description: universal_file_preview_command.py
+outputs:
+- name: budget_py
+  type: file
+  description: PreviewBudget with full_text_max_lines field added
+- name: command_py
+  type: file
+  description: schema updated with full_text_max_lines key; validate_params passes value to PreviewBudget
+atomic_steps:
+- A-001
+status: done
+implementation_note: >
+  Already implemented in code before AS authoring. budget.py (49 lines) has
+  full_text_max_lines field with __post_init__ validation. universal_file_preview_command.py
+  (282 lines) has the key in get_schema(), extraction in validate_params(), and
+  passes it to PreviewBudget in execute(). No AS needed.

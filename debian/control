@@ -1,0 +1,42 @@
+Source: code-analysis-server
+Section: devel
+Priority: optional
+Maintainer: Vasiliy Zdanovskiy <vasilyvz@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               python3-setuptools,
+               python3-pip,
+               python3-venv
+Standards-Version: 4.6.2
+Homepage: https://github.com/vasilyvz/code_analysis
+Vcs-Browser: https://github.com/vasilyvz/code_analysis
+Vcs-Git: https://github.com/vasilyvz/code_analysis.git
+
+Package: code-analysis-server
+Architecture: all
+Depends: ${python3:Depends},
+         ${misc:Depends},
+         python3 (>= 3.8),
+         python3-venv,
+         python3-pip,
+         systemd,
+         rsync
+Recommends: python3-dev
+Description: Code Analysis Server - MCP server for code analysis and refactoring
+ A comprehensive Python code analysis and refactoring tool that generates code
+ maps, detects issues, and provides automated refactoring capabilities.
+ .
+ Features:
+  - Code mapping and dependency analysis
+  - Issue detection and code quality checks
+  - Semantic search using FAISS vector index
+  - Automated refactoring (class splitting, superclass extraction)
+  - SQLite database for fast indexed storage
+  - MCP (Model Context Protocol) server interface
+  - File watching and automatic indexing
+  - Vectorization and embedding support
+ .
+ This package installs code-analysis-server as a systemd service with
+ configuration in /etc/code-analysis-server/ and data in /var/lib/code-analysis-server/.
+

@@ -1,0 +1,220 @@
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-006
+- C-009
+depends_on:
+- A-001
+name: Create session_list_command.py
+operation: create_file
+parent_tactical_step: T-001
+priority: 4
+prompt: "Create a new Python file at the exact path:
+  ai_editor/commands/sessions/session_list_command.py
+
+This file is new with no pre-existing content.
+
+MRS context:
+- C-001 ClientSession: session_id, comment, created_at, last_active_at.
+- C-002 SessionFileLock: open_lock_count per session.
+- C-003 SessionTouchRule: applied only when session_id is provided.
+- C-005 SessionMCPCommands: session_list; session_id optional under C-006.
+- C-006 SessionListVisibilityPolicy: show_session_ids config flag.
+- C-009 SecurityPolicy: enforce_security_policy called after SessionTouchRule
+  (when session_id provided) and before list logic. When session_id not
+  provided and show_session_ids=false, policy check is skipped entirely.
+
+Behavior governed by config flag sessions.show_session_ids
+  (read via _get_raw_config()):
+  False (default):
+    - session_id parameter optional
+    - touch applied if session_id provided, then policy check
+    - session_id NOT included in output rows
+    - if session_id not provided: no touch, no policy check
+  True:
+    - session_id required; return SESSION_ID_REQUIRED if absent
+    - touch applied; return SESSION_NOT_FOUND if session absent
+    - policy check after touch
+    - session_id included in each output row
+
+File-level docstring:
+\"\"\"\nsession_list MCP command: list all client sessions.\n\nAuthor: Vasiliy
+  Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"
+
+Imports (exact):
+  from __future__ import annotations
+  from typing import Any, Dict, List, Optional
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.core.client_sessions import (
+      list_client_sessions,
+      count_session_file_locks,
+      touch_or_error,
+      SessionNotFoundError,
+  )
+  from ai_editor.core.security_policy_guard import (
+      enforce_security_policy,
+      CommandForbiddenError,
+  )
+
+Class:
+
+class SessionListCommand(BaseMCPCommand):
+    \"\"\"MCP command: list all client sessions.\"\"\"
+
+    name = 'session_list'
+    version = '1.0.0'
+    descr = 'List all client sessions with optional stale filter.'
+    category = 'session_management'
+    author = 'Vasiliy Zdanovskiy'
+    email = 'vasilyvz@gmail.com'
+    use_queue = False
+
+    @staticmethod
+    def get_name() -> str:
+        \"\"\"Return the MCP command name.
+
+        Returns:
+            MCP command name string.
+        \"\"\"
+        return 'session_list'
+
+    @classmethod
+    def get_schema(cls) -> Dict[str, Any]:
+        \"\"\"Return the JSON schema for command parameters.
+
+        Returns:
+            JSON schema dict.
+        \"\"\"
+        return {
+            'type': 'object',
+            'properties': {
+                'session_id': {
+                    'type': 'string',
+                    'description': (
+                        'Required when show_session_ids=true in config. '
+                        'Optional when show_session_ids=false. '
+                        'Touch and SecurityPolicy check applied when provided.'
+                    ),
+                },
+                'stale_threshold_seconds': {
+                    'type': 'integer',
+                    'minimum': 1,
+                    'description': 'If set, return only sessions idle longer than N seconds.',
+                },
+            },
+            'required': [],
+            'additionalProperties': False,
+        }
+
+    async def execute(  # type: ignore[override]
+        self,
+        session_id: Optional[str] = None,
+        stale_threshold_seconds: Optional[int] = None,
+        **kwargs: Any,
+    ) -> SuccessResult | ErrorResult:
+        \"\"\"Execute session_list.
+
+        Lists all ClientSessions enriched with open_lock_count. Respects
+        SessionListVisibilityPolicy (C-006) and SecurityPolicy (C-009).
+
+        Execution order when session_id provided:
+          1. SessionTouchRule (touch_or_error) -> SESSION_NOT_FOUND on failure.
+          2. SecurityPolicy check -> COMMAND_FORBIDDEN on failure.
+          3. List logic.
+        When session_id not provided and show_session_ids=false:
+          no touch, no policy check.
+
+        Args:
+            session_id: Optional session UUID4. Required when show_session_ids=True.
+            stale_threshold_seconds: Optional inactivity filter in seconds.
+            **kwargs: Adapter context (ignored).
+
+        Returns:
+            SuccessResult with sessions list and count.
+            ErrorResult SESSION_ID_REQUIRED, SESSION_NOT_FOUND, or
+            COMMAND_FORBIDDEN on failure.
+        \"\"\"
+        _ = kwargs
+        raw_config = self._get_raw_config()
+        sessions_cfg = raw_config.get('sessions') or {}
+        show_ids: bool = bool(sessions_cfg.get('show_session_ids', False))
+        server_uuid: str = raw_config.get('registration', {}).get('instance_uuid', '')
+        policy_mode: str = (raw_config.get('security') or {}).get('policy', 'disabled')
+
+        database = self._open_database_from_config()
+
+        if show_ids:
+            if not session_id:
+                return ErrorResult(
+                    code='SESSION_ID_REQUIRED',
+                    message='sessions.show_session_ids is true: session_id is required.',
+                )
+            try:
+                touch_or_error(database, session_id)
+            except SessionNotFoundError:
+                return ErrorResult(
+                    code='SESSION_NOT_FOUND',
+                    message=f'Session {session_id!r} not found.',
+                )
+            try:
+                enforce_security_policy(
+                    database=database,
+                    session_id=session_id,
+                    command_name='session_list',
+                    server_uuid=server_uuid,
+                    policy_mode=policy_mode,
+                )
+            except CommandForbiddenError as e:
+                return ErrorResult(code='COMMAND_FORBIDDEN', message=str(e))
+        elif session_id:
+            try:
+                touch_or_error(database, session_id)
+            except SessionNotFoundError:
+                return ErrorResult(
+                    code='SESSION_NOT_FOUND',
+                    message=f'Session {session_id!r} not found.',
+                )
+            try:
+                enforce_security_policy(
+                    database=database,
+                    session_id=session_id,
+                    command_name='session_list',
+                    server_uuid=server_uuid,
+                    policy_mode=policy_mode,
+                )
+            except CommandForbiddenError as e:
+                return ErrorResult(code='COMMAND_FORBIDDEN', message=str(e))
+
+        rows: List[Dict[str, Any]] = list_client_sessions(
+            database, stale_threshold_seconds=stale_threshold_seconds
+        )
+        for row in rows:
+            row['open_lock_count'] = count_session_file_locks(database, row['session_id'])
+            if not show_ids:
+                row.pop('session_id', None)
+
+        return SuccessResult(data={
+            'sessions': rows,
+            'count': len(rows),
+            'show_session_ids': show_ids,
+        })
+
+Constraints:
+- File must not exceed 160 lines.
+- No other functions or classes.
+- All type annotations required.
+- Google-style docstrings."
+status: done
+step_id: A-004
+target_file: ai_editor/commands/sessions/session_list_command.py
+verification:
+  expected: SessionListCommand is importable. get_name() returns 'session_list'.
+    get_schema() has required=[] and optional 'session_id' and
+    'stale_threshold_seconds' properties. enforce_security_policy is called
+    after touch_or_error and before list logic when session_id is provided.
+  target: ai_editor/commands/sessions/session_list_command.py
+  type: import

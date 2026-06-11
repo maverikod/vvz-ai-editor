@@ -1,0 +1,49 @@
+step_id: T-703
+parent_global_step: G-008
+name: YAML file handler — resolve node_ref via JSON-pointer-style path
+status: done
+concepts:
+- C-004
+- C-009
+- C-014
+- C-020
+description: |
+  Define the identifier-resolution fallback behaviour of YamlFileHandler (C-020) when the
+  project YAML tree infrastructure is absent or does not resolve the reference (see T-702).
+  node_ref values are JSON Pointer-style paths (RFC 6901-style) derived from the loaded
+  YAML document structure.
+
+  Path syntax: root is the empty string ''. Segments use '/' separators: '/key' for
+  mapping keys, '/index' for zero-based sequence indices. Escape sequences ~0 and ~1
+  represent literal '~' and '/' inside keys.
+
+  Dict traversal tries a string key first, then falls back to an integer key when the
+  segment is numeric, so YAML keys stored as numeric strings still resolve.
+
+  Resolution process: YamlFileHandler traverses the loaded YAML document following path
+  segments. If each segment resolves, the addressed value is returned as a Node with its
+  NodeKind (C-004) and block set.
+
+  Resolution failure: UNKNOWN_NODE_REF as ErrorClassification (C-014) input error when any
+  segment is missing, out of range, or when descending into a scalar. If open_root has not
+  run and the in-memory document (`_doc`) is unset, resolution fails with UNKNOWN_NODE_REF and
+  a message that open_root must run first.
+
+  No external infrastructure: identifiers are resolved directly from the parsed YAML
+  document without tree-infra calls.
+inputs:
+- name: node_ref_value
+  type: string (JSON-pointer-style path)
+  description: A StableIdentifier (C-009) in JSON-pointer-style path format derived
+    from the YAML document structure (e.g. '', '/key', '/list/0/nested').
+outputs:
+- name: resolved_node
+  type: Node with NodeKind (C-004) assigned
+  description: The YAML Node addressed by the path, with its NodeKind (mapping, sequence,
+    or scalar), block set, and node_ref.
+- name: resolution_error
+  type: ErrorClassification (C-014) UNKNOWN_NODE_REF input error
+  description: Returned instead of resolved_node when any path segment cannot be resolved
+    in the YAML document.
+atomic_steps:
+- A-001

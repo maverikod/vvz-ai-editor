@@ -1,0 +1,105 @@
+step_id: A-002
+parent_tactical_step: T-004
+name: search_start bridge command
+target_file: ai_editor/commands/search_start_command.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-022
+  - C-001
+  - C-024
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_start_command.py
+
+  MRS (C-022 IncrementalCompatibilityLayer): bridge command exposing paginated opt-in behavior.
+  MRS (C-001 SearchSession): provisions session directory before paginated execution.
+  MRS (C-024 OptionalPaginationParameters): paginated, job_id, block_position optional fields in schema.
+
+  G-008 contract (plan README.md "G-008 contract decision"):
+  - Responses use job_id, index_url, first_block_position — not README opaque cursor or search_id param names.
+  - Continuation is job_id + block_position via search_get_page (G-008/T-005).
+
+  Create search_start MCP command per plan README.md new_commands.search_start mapped to job_id/block_position model.
+
+  Imports (exact paths):
+  - BaseMCPCommand, ValidationError handling from ai_editor.commands.base_mcp_command
+  - merge_pagination_schema from ai_editor.commands.search_session_schema
+  - maybe_route_paginated, BRIDGE_COMMANDS, handoff_to_response from ai_editor.core.search_session.compatibility
+  - provision_search_session_directory, SearchSessionDirectoryLayout from ai_editor.core.search_session.directory
+  - SearchSession, SearchSessionState from ai_editor.core.search_session.session
+  - BlockAssembler factory helpers using load_session_ttl_policy, append_block_entry, mark_index_finished
+  - Paginated adapters (exact signatures from G-008/T-003/A-005):
+      async def run_paginated_fulltext(
+          *, command: FulltextSearchMCPCommand, params: dict[str, Any],
+          session: SearchSession, layout: SearchSessionDirectoryLayout,
+          raw_config: dict[str, Any],
+          block_assembler_factory: Callable[..., BlockAssembler],
+      ) -> Optional[int]
+      async def run_paginated_semantic(
+          *, command: SemanticSearchMCPCommand, params: dict[str, Any],
+          session: SearchSession, layout: SearchSessionDirectoryLayout,
+          raw_config: dict[str, Any],
+          block_assembler_factory: Callable[..., BlockAssembler],
+      ) -> Optional[int]
+      async def run_paginated_cross(
+          *, command: ProjectCrossSearchCommand, params: dict[str, Any],
+          session: SearchSession, layout: SearchSessionDirectoryLayout,
+          raw_config: dict[str, Any],
+          block_assembler_factory: Callable[..., BlockAssembler],
+      ) -> Optional[int]
+      async def run_paginated_ggrep(
+          *, command: FsGgrepCommand, params: dict[str, Any],
+          session: SearchSession, layout: SearchSessionDirectoryLayout,
+          raw_config: dict[str, Any],
+          block_assembler_factory: Callable[..., BlockAssembler],
+      ) -> Optional[int]
+      async def run_paginated_tree_query(
+          *, params: dict[str, Any], session: SearchSession,
+          layout: SearchSessionDirectoryLayout, raw_config: dict[str, Any],
+          block_assembler_factory: Callable[..., BlockAssembler],
+          tree_scanner: Callable[..., list[dict[str, Any]]],
+      ) -> Optional[int]
+  - Schema helpers: get_fs_ggrep_schema_with_pagination, get_semantic_search_schema_with_pagination,
+    get_project_cross_search_schema_with_pagination from G-008/T-003 schema modules
+  - Legacy commands: FulltextSearchMCPCommand, SemanticSearchMCPCommand, FsGgrepCommand, ProjectCrossSearchCommand
+
+  Class SearchStartCommand(BaseMCPCommand):
+  - name = "search_start"
+  - get_schema(): project_id, search_type enum (fulltext, semantic, grep, cross, tree_query), query, grep_patterns,
+    xpath, file_pattern, page_size, timeout fields per README; merge_pagination_schema on base.
+  - validate_params(): search_type in enum; project_id exists; when search_type=tree_query and paginated is not true,
+    raise ValidationError (tree_query is paginated-only until a legacy tree command exists).
+  - execute():
+      When paginated is not true: delegate to legacy command execute for fulltext, semantic, grep, cross only.
+      When paginated is true (required for tree_query):
+        1. Provision session directory with uuid search_id (exposed as job_id in handoff).
+        2. Build SearchSession(state=running).
+        3. Select adapter run_paginated_* by search_type (all five backends).
+        4. Call maybe_route_paginated with legacy_executor returning legacy inline payload,
+           paginated_executor closure calling adapter with shared block_assembler_factory,
+           session_factory returning the provisioned session.
+        5. On adapter failure, remove session directory and return ErrorResult.
+  - Shared _create_block_assembler(layout, max_block_size_bytes) wiring index append and manifest metrics
+    (same callback pattern as frozen G-005 block assembler integration).
+
+  Forbidden:
+  - NotImplementedError, TODO, or stub for any of the five backends when paginated=true.
+  - README opaque cursor, search_id param, or page.next_cursor in responses.
+  - Modifying monolith commands over 400 lines.
+  - Registering SearchStartCommand in hooks_register_part1.py (G-008/T-004/A-003 owns registration).
+
+  If implementation exceeds 400 lines, split get_schema/metadata into search_start_command_schema.py and
+  search_start_command_metadata.py (separate follow-up AS outside this step if needed).
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_start_command.py
+  expected: >
+    Pytest parametrizes all five search_type values with paginated=true; each exercises legacy command via adapter,
+    publishes first block when findings exist, and returns handoff with job_id, index_url, and first_block_position;
+    paginated=false returns legacy inline shape for fulltext, semantic, grep, and cross;
+    paginated=false with tree_query fails validation; no test skips backends with NotImplementedError.
+status: ready_for_review

@@ -1,0 +1,593 @@
+# G-002 + G-001 unified pipeline cascade audit
+# Plan root: docs/plans/marked_tree_unification/
+#
+# SUPERSEDED (node-id model, Phase F counts/verdicts): see
+# docs/ai_reports/marked_tree_unification_dovodka_audit.yaml
+# → node_id_cascade_phase_f (2026-05-30). History below retained.
+# Standard: docs/standards/planning/hrs_mrs_gs_consistency_verification_standard.yaml
+#           docs/standards/planning/atomic_step_creation_standard.yaml
+# Verified: 2026-05-30 (unified-pipeline cascade A1/A2/A3/C1)
+# Prior audit: docs/ai_reports/g002_audit_findings.yaml (post-{c001}, overall_green)
+# Scope: decisions A1 unified pipeline, A2 PythonHandler, A3 T-003 AS, C1 G2-CORR-001 supersession
+
+meta:
+  plan_name: marked_tree_unification
+  cascade_id: unified-pipeline-2026-05-30
+  source_spec_edited: false
+  locked_decisions:
+    - A1: HandlerRegistry/default_registry/FormatHandler canonical build
+    - A2: PythonHandler real cst_tree wrapper + {b005} markers
+    - A3: G-002 T-003 AS re-specified for FormatHandler dispatch
+    - C1: G2-CORR-001 superseded; G1-13 resolved-in-plan
+    - strategy: new alongside old (legacy oracle untouched)
+  concepts_in_scope:
+    - C-007
+    - C-008
+    - C-009
+    - C-010
+    - C-011
+  subagents:
+    researcher_code: done — FormatHandler signatures, cst_tree adapter facts
+    researcher_doc: done — HRS/T-002 README drift, G2-CORR-001 absent
+    planner_auto: not invoked — orchestrator_tactical authored AS directly per parent brief
+
+corrections_and_supersession:
+  G2-CORR-001:
+    prior_record: Cross-plan Python CST deferral (not found on disk in repo search)
+    status: superseded
+    superseded_by: marked_tree_unification decision C1 + G-001 A-007/A-008 rewrite
+    recorded_in:
+      - docs/ai_reports/g002_audit_findings.yaml (this file)
+      - G-001/T-002/A-008 tracked_deferrals.py spec (supersedes: [G2-CORR-001])
+      - G-001/T-002/A-007 PythonHandler spec (resolved-in-plan, no NotImplementedError)
+  G1-13-python-cst-integration:
+    prior_status: open deferral, owner_plan None, NotImplementedError stub
+    new_status: resolved_in_plan
+    owner_plan: marked_tree_unification
+    resolution_step: G-001/T-002/A-007-python-handler.yaml
+
+verdict:
+  overall_green: conditional
+  blocking_pending_hrs:
+    - HRS-{c005}-unified-dispatch
+  summary: >
+    Planning cascade applied for unified HandlerRegistry build path. MRS C-010/C-011
+    and G-002 T-003/T-004 AS green under a1-a10. cycle_1 conditional: HRS {c005}
+    still names TreeFormatKind/kind dispatch — Proposed HRS edit required for full
+    cycle_1 green (MRS ahead of HRS on build dispatch). cycle_2 green for G-002
+    triple with updated executor_brief. G-001 A-007/A-008 green. source_spec.md
+    NOT edited.
+
+counts_by_severity:
+  critical: 0
+  major: 0
+  minor: 1
+  info: 2
+  resolved_total: 14
+  new_findings: 3
+
+cycle_1_summary:
+  c1_machine_to_source:
+    result: pass
+    notes: >
+      C-007/C-008/C-009/C-010/C-011 MRS relations and properties align with HRS
+      {b000}-{b005} for handlers and markers. C-010/C-011 new unified-pipeline
+      properties reference HandlerRegistry consistent with {b000} registry tezis.
+  c2_source_to_machine:
+    result: conditional
+    notes: >
+      HRS {c005} binding tezis still describes recreate_tree_from_content(*, kind, ...)
+      dispatch by TreeFormatKind — MRS C-011 now specifies HandlerRegistry.resolve
+      path. Recorded as pending-HRS (G002-F015). All other binding tezises covered.
+  c3_relation_typing:
+    result: pass
+    notes: >
+      Added C-010 uses C-008, C-011 uses C-008 — allowed types uses/owns/produces.
+  c4_concept_quality:
+    result: pass
+
+cycle_2_summary:
+  g002:
+    c5_concept_references_valid: pass
+    c6_source_labels_relevant: pass
+    c7_executor_completeness: pass
+    c8_no_silent_dependency_on_siblings: pass
+    c9_no_redundancy_with_upper_levels: pass
+  g001:
+    c5_concept_references_valid: pass
+    c7_executor_completeness: pass — PythonHandler no longer deferred at plan level
+
+atomic_step_verification:
+  g002_t003:
+    A-001:
+      a1: pass
+      a2: pass
+      a3: pass — est ~130 lines
+      a4: pass — FormatHandler signatures, adapter mapping, forbidden list embedded
+      a5: pass
+      a6: pass
+      a7: pass — cross_ts_depends_on G-001 A-003, A-007
+      a8: pass — create_file, no prior state
+      a9: pass
+    A-002:
+      a1-a9: pass
+    A-003:
+      a1-a9: pass
+    a10_ts_coverage: pass — TS dispatches via FormatHandler per A3
+  g002_t004:
+    A-001:
+      a1-a9: pass
+    A-002:
+      a1-a9: pass
+    a10_ts_coverage: pass — wiring + parity tests cover TS
+  g001_a007_a008:
+    A-007:
+      a1-a9: pass — full cst_tree wrapper, no stub
+    A-008:
+      a1-a9: pass — resolved_in_plan, owner_plan set
+    a10: pass — PythonHandler fully specified
+
+findings:
+  G002-F015:
+    id: G002-F015
+    severity: minor
+    status: open
+    artifact: docs/plans/marked_tree_unification/source_spec.md
+    paragraph: '{c005}'
+    title: HRS {c005} names kind-based recreate_tree_from_content; MRS/G-002 now unified HandlerRegistry path
+    resolution: Proposed HRS edit for user approval — see proposed_hrs_edits below
+
+  G002-F016:
+    id: G002-F016
+    severity: info
+    status: resolved
+    resolution_date: '2026-05-30'
+    artifact: G-001/T-002/README.yaml
+    title: JSON marker _node_id drift vs HRS ___id___
+    resolution: README description updated to ___id___ (no HRS change needed)
+
+  G002-F017:
+    id: G002-F017
+    severity: info
+    status: resolved
+    resolution_date: '2026-05-30'
+    artifact: G-001/T-002/A-007, A-008
+    title: G1-13 open deferral contradicts decision A2/C1
+    resolution: A-007 rewritten as real handler; A-008 records resolved_in_plan + G2-CORR-001 supersession
+
+proposed_hrs_edits:
+  - paragraph_label: '{c005}'
+    current_text: >
+      A dedicated tree-creation module (`core/tree_lifecycle/builder.py` or equivalent)
+      exposes `recreate_tree_from_content(*, kind, content, source_path, tree_path,
+      content_checksum)`. It dispatches to the appropriate per-format handler based
+      on `kind`, writes the resulting tree file to `tree_path` as a sibling of the
+      source file, and records `content_checksum` in the tree file so that subsequent
+      validity checks can compare it against the current source checksum. This module
+      is the single place that writes tree files; no other module writes tree files
+      directly.
+    proposed_text: >
+      A dedicated tree-creation module (`core/tree_lifecycle/builder.py` or equivalent)
+      exposes `TreeBuilder.build(*, content, source_abs, file_path, content_checksum)`.
+      It resolves the appropriate FormatHandler via `HandlerRegistry.default_registry().resolve(source_abs)`,
+      produces natively-marked tree content via `FormatHandler.mark(content)`, writes
+      the tree file to `FormatHandler.sidecar_path(source_abs)` as a sibling of the
+      source file, and records `content_checksum` in the returned tree reference so
+      that subsequent validity checks can compare it against the current source checksum.
+      This module is the single place that writes tree files on the canonical unified
+      path; no other module writes tree files directly. The legacy
+      `recreate_tree_from_content(*, kind, ...)` dispatch remains in the codebase
+      as an untouched parity oracle until G-000 cutover.
+    why: >
+      Locked decision A1 — canonical G-002 build uses HandlerRegistry/FormatHandler,
+      not TreeFormatKind. MRS C-011 and G-002 T-003 AS already encode this; HRS must
+      cascade to restore cycle_1 full green.
+
+remediation_trail:
+  level_2_mrs:
+    - file: docs/plans/marked_tree_unification/spec.yaml
+      changes: C-010/C-011 unified-pipeline properties; C-010 uses C-008, C-011 uses C-008 relations
+  level_3_global_step:
+    - file: G-002-tree-storage-and-lifecycle/README.yaml
+      changes: scope, executor_brief, T-004 added, status needs_review
+    - file: G-001-marker-contract-and-format-handlers/README.yaml
+      changes: status needs_review
+  level_4_tactical:
+    created:
+      - G-002/T-004-unified-pipeline-integration/README.yaml
+    modified:
+      - G-002/T-003-tree-lifecycle-and-builder/README.yaml
+      - G-001/T-002-format-handlers/README.yaml
+  level_5_atomic:
+    rewritten:
+      - G-002/T-003/A-001, A-002
+      - G-001/T-002/A-007, A-008
+    created:
+      - G-002/T-004/A-001, A-002
+      - G-001/parallel-waves.yaml
+      - G-002/T-004/parallel-waves.yaml
+    modified:
+      - G-002/T-003/A-003 status
+      - G-002/T-003/parallel-waves.yaml
+      - G-001/T-001/A-002 depends_on
+      - G-001/T-002/A-003..A-006 cross_ts_depends_on
+      - G-001/T-003/A-002, A-003 cross_ts_depends_on
+
+on_disk_verification:
+  verified_at: '2026-05-30'
+  files_confirmed:
+    - docs/plans/marked_tree_unification/spec.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/README.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/README.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/README.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/atomic_steps/A-001-tree-builder-class.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/atomic_steps/A-002-tree-lifecycle-class.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/atomic_steps/A-001-wire-validate-to-unified-build.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/atomic_steps/A-002-parity-test-module.yaml
+    - docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-007-python-handler.yaml
+    - docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/atomic_steps/A-008-python-cst-deferral-tracker.yaml
+    - docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/parallel-waves.yaml
+  source_spec_edited: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cascade 2 — HRS review cascade (FINAL-1, FINAL-2, {c005} alignment)
+# Verified: 2026-05-30
+# Prior cascade: unified-pipeline-2026-05-30 (above)
+# ─────────────────────────────────────────────────────────────────────────────
+
+hrs_review_cascade:
+  meta:
+    cascade_id: hrs-review-cascade-2026-05-30
+    source_spec_edited: true
+    locked_decisions:
+      - FINAL-1: per-format full_text_max_lines threshold (default 200 source lines, zero disables inline rendering); JSON pretty-print normalization before line counting and inline rendering
+      - FINAL-2: open content-supply rule — caller content accepted ONLY when target file is non-existent or source/tree is broken/corrupted; ERROR if valid file exists
+      - A1: HandlerRegistry/default_registry/FormatHandler canonical build (prior cascade)
+      - A2: PythonHandler real cst_tree wrapper plus {b005} markers (prior cascade)
+    paragraphs_edited:
+      - '{b000} augment — universal all-nodes marker rule (metadata slot or END-of-block comment)'
+      - '{c005} modify — TreeBuilder.build via HandlerRegistry.default_registry().resolve; legacy recreate_tree_from_content parity oracle'
+      - '{d002} augment — FINAL-2 content-supply rule on open'
+      - '{d003} augment — hide/unhide mutation cycle, per-mutation post-steps, one modification equals one git commit'
+      - '{d005} augment — close deletes session directory without validation, checksum, or consistency checks'
+      - '{i003} modify — in-session tree or draft navigation via session_id'
+      - '{i005} modify — FINAL-1 per-format full_text_max_lines, JSON pretty-print before line counting'
+      - '{i006} modify — IndentedBlock transparent in enumeration; compound-statement drilldown'
+      - '{i007} add — node-id prefix at start of physical line in annotated/full-text modes'
+      - '{i008} add — strip legacy Python identity comments before render'
+    paragraphs_kept:
+      - '{d001}'
+      - '{d004}'
+      - '{d006}'
+      - '{e001}'
+      - '{e002}'
+      - '{e003}'
+      - '{e004}'
+      - '{e005}'
+      - '{e006}'
+      - '{b005}'
+
+  verdict:
+    overall_green: conditional
+    prior_blocking:
+      - id: G002-F015
+        status: resolved
+        resolution: HRS {c005} now specifies TreeBuilder.build via HandlerRegistry.default_registry().resolve; MRS C-010/C-011 and G-002 executor_brief aligned
+    blocking_open:
+      - id: HRS-F001
+        severity: critical
+        location: source_spec.md {e003} vs {d003}
+        summary: >
+          {d003} requires per-mutation unmark export of in-session source after every
+          tree edit; {e003} states the in-session source is "rewritten only by the write
+          command via unmark". Mutually exclusive. {e001}-{e006} were KEPT verbatim this
+          cascade, so {e003} is now stale relative to augmented {d003}.
+        resolution: >
+          Requires a follow-up human-authorized HRS edit to {e003} (align with per-mutation
+          export), then cascade to MRS C-014 (source-mode diff = per-commit exported
+          in-session source) and G-003.
+      - id: G004-F001
+        severity: high
+        location: G-004 README.yaml relations
+        summary: >
+          Relation 'C-007 implements C-015' is listed in G-004 but C-007 is not in G-004
+          concepts list (dangling reference, cycle_2 c5 fail).
+        resolution: >
+          Remove the relation from G-004 (it belongs to G-001) OR add C-007 to G-004
+          concepts with a scope note.
+    summary: >
+      cycle_1 conditional — HRS-F001 blocks c2 full green: {d003} augmented this cascade
+      requires per-mutation unmark export but {e003} (kept verbatim) still says in-session
+      source is rewritten only by write command. cycle_2 G-001/G-002 pass; G-004 has dangling
+      C-007 implements C-015 relation (c5 fail); G-003/G-004 descriptions were cascaded from
+      MRS this round and c7 now pass after description cascade. Not ready for tactical/atomic
+      until HRS-F001 resolved.
+
+  counts_by_severity:
+    critical: 1
+    high: 1
+    major: 0
+    minor: 0
+    info: 2
+    resolved_total: 15
+    new_findings: 2
+    resolved_this_cascade: 1
+
+  cycle_1_summary:
+    c1_machine_to_source:
+      result: pass
+      notes: >
+        C-001 universal all-nodes marker from {b000} augment; C-010/C-011 TreeBuilder.build
+        and HandlerRegistry dispatch match HRS {c005}; C-012 FINAL-2 and mutation-cycle
+        properties match {d002}-{d005}; C-016/C-017 preview properties match {i003}-{i008}
+        including FINAL-1 thresholds and JSON pretty-print normalization.
+    c2_source_to_machine:
+      result: pass
+      notes: >
+        All binding HRS tezises covered in MRS. Prior gap on {c005} (G002-F015) closed:
+        HRS now names TreeBuilder.build, not kind-based recreate_tree_from_content as
+        canonical path. New paragraphs {i007}/{i008} represented in C-016 properties.
+    c3_relation_typing:
+      result: pass
+      notes: No relation additions or type changes in this cascade; existing relations remain valid.
+    c4_concept_quality:
+      result: pass
+      notes: >
+        FINAL-1 threshold semantics live in PreviewSelector (C-017); FINAL-2 open rule
+        lives in EditSession (C-012); no property-only entities introduced.
+
+  cycle_2_summary:
+    g001:
+      c5_concept_references_valid: pass
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass — universal all-nodes marker rule and hide/unhide delegation to EditSession explicit
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+    g002:
+      c5_concept_references_valid: pass
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass — executor_brief matches HRS {c005} TreeBuilder.build path
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+    g003:
+      c5_concept_references_valid: pass
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass — FINAL-2, hide/unhide, per-mutation invariant, ephemeral close documented
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+    g004:
+      c5_concept_references_valid: fail — dangling C-007 implements C-015 relation; C-007 not in concepts list
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass — FINAL-1 thresholds, JSON pretty-print, i007/i008, in-session draft preview
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+
+  findings:
+    G002-F015:
+      id: G002-F015
+      severity: minor
+      status: resolved
+      resolution_date: '2026-05-30'
+      cascade_id: hrs-review-cascade-2026-05-30
+      artifact: docs/plans/marked_tree_unification/source_spec.md
+      paragraph: '{c005}'
+      title: HRS {c005} names kind-based recreate_tree_from_content; MRS/G-002 now unified HandlerRegistry path
+      resolution: >
+        HRS {c005} rewritten to TreeBuilder.build via HandlerRegistry.default_registry().resolve;
+        legacy recreate_tree_from_content retained as parity oracle. cycle_1 c2 now pass.
+
+    G002-F016:
+      id: G002-F016
+      severity: info
+      status: resolved
+      resolution_date: '2026-05-30'
+      cascade_id: unified-pipeline-2026-05-30
+      artifact: G-001/T-002/README.yaml
+      title: JSON marker _node_id drift vs HRS ___id___
+      resolution: README description updated to ___id___ (no HRS change needed)
+
+    G002-F017:
+      id: G002-F017
+      severity: info
+      status: resolved
+      resolution_date: '2026-05-30'
+      cascade_id: unified-pipeline-2026-05-30
+      artifact: G-001/T-002/A-007, A-008
+      title: G1-13 open deferral contradicts decision A2/C1
+      resolution: A-007 rewritten as real handler; A-008 records resolved_in_plan plus G2-CORR-001 supersession
+
+    G004-F001:
+      id: G004-F001
+      severity: high
+      status: open
+      cascade_id: hrs-review-cascade-2026-05-30
+      artifact: docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml
+      title: Dangling C-007 implements C-015 relation in G-004
+      summary: >
+        Relation 'C-007 implements C-015' is listed in G-004 but C-007 is not in G-004
+        concepts list (dangling reference, cycle_2 c5 fail).
+      resolution: >
+        Remove the relation from G-004 (it belongs to G-001) OR add C-007 to G-004
+        concepts with a scope note.
+
+  remediation_trail:
+    level_1_hrs:
+      - file: docs/plans/marked_tree_unification/source_spec.md
+        changes: >
+          {b000} augment universal marker; {c005} TreeBuilder.build; {d002} FINAL-2;
+          {d003} hide/unhide and per-mutation invariant; {d005} close without validation;
+          {i003} in-session draft; {i005} FINAL-1 thresholds and JSON pretty-print;
+          {i006} IndentedBlock transparency; {i007}/{i008} new preview rendering rules
+    level_2_mrs:
+      - file: docs/plans/marked_tree_unification/spec.yaml
+        changes: >
+          C-001 universal all-nodes marker property from {b000}; C-012 FINAL-2 content-supply
+          rule, hide/unhide mutation cycle, per-mutation post-steps, close without validation;
+          C-016 in-session draft navigation, IndentedBlock transparency, i007 prefix placement,
+          i008 legacy comment stripping; C-017 per-format full_text_max_lines (FINAL-1),
+          JSON pretty-print normalization, max_chars envelope pagination note
+    level_3_global_step:
+      - file: G-001-marker-contract-and-format-handlers/README.yaml
+        changes: universal all-nodes marker rule in description; status needs_review
+      - file: G-002-tree-storage-and-lifecycle/README.yaml
+        changes: executor_brief already aligned with {c005}; status needs_review
+      - file: G-003-edit-session-and-git-api/README.yaml
+        changes: FINAL-2, hide/unhide, per-mutation invariant, ephemeral close; status needs_review
+      - file: G-004-edit-operations-preview-and-tree-query/README.yaml
+        changes: session draft preview, IndentedBlock, i007/i008, FINAL-1 thresholds; status needs_review
+
+  on_disk_verification:
+    verified_at: '2026-05-30'
+    files_confirmed:
+      - docs/plans/marked_tree_unification/source_spec.md
+      - docs/plans/marked_tree_unification/spec.yaml
+      - docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml
+      - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/README.yaml
+      - docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml
+      - docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml
+    source_spec_edited: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cascade 3 — HRS-F001 {e003} alignment (per-mutation unmark export)
+# Verified: 2026-05-30
+# Prior cascade: hrs-review-cascade-2026-05-30 (HRS-F001 open)
+# ─────────────────────────────────────────────────────────────────────────────
+
+e003_hrs_f001_cascade:
+  meta:
+    cascade_id: e003-hrs-f001-cascade-2026-05-30
+    source_spec_edited: true
+    authorized_hrs_edit: true
+    paragraphs_edited:
+      - '{e003}'
+    paragraphs_unchanged:
+      - '{e001}'
+      - '{e002}'
+      - '{e004}'
+      - '{e005}'
+      - '{e006}'
+      - '{d001}'
+      - '{d002}'
+      - '{d003}'
+      - '{d004}'
+      - '{d005}'
+      - '{d006}'
+    e003_verbatim_on_disk: >
+      The in-session source is the copy made at open and re-exported after every
+      mutation via `unmark` (per `{d003}`); the live project file on disk is not
+      an input to this diff. Mode `source` therefore compares `rev_a` against
+      the most recent per-mutation exported in-session source.
+
+  verdict:
+    overall_green: true
+    hrs_f001_status: resolved
+    summary: >
+      Human-authorized HRS edit to {e003} closes contradiction between {e003}
+      (write-command-only unmark) and {d003} (per-mutation unmark export). MRS
+      C-014 source-mode property cascaded. G-004 dangling C-007 relation removed
+      (G004-F001). cycle_1 and cycle_2 full green for all GS in scope.
+
+  counts_by_severity:
+    critical: 0
+    high: 0
+    major: 0
+    minor: 0
+    info: 1
+    resolved_total: 17
+    resolved_this_cascade: 2
+
+  cycle_1_summary:
+    c1_machine_to_source:
+      result: pass
+      notes: >
+        C-014 diff source-mode property now matches corrected {e003}: rev_a versus
+        most recent per-mutation unmark-exported in-session source; live project
+        file excluded. C-012/C-013 per-mutation export properties unchanged and
+        consistent with {d003}.
+    c2_source_to_machine:
+      result: pass
+      notes: >
+        Corrected {e003} binding tezis fully represented in C-014. No orphan
+        MRS claims; HRS-F001 closed — {e003} and {d003} no longer mutually exclusive.
+    c3_relation_typing:
+      result: pass
+    c4_concept_quality:
+      result: pass
+
+  cycle_2_summary:
+    g001:
+      c5_concept_references_valid: pass
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+    g002:
+      c5_concept_references_valid: pass
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+    g003:
+      c5_concept_references_valid: pass
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass — {e003} source-mode semantics align with {d003}
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+    g004:
+      c5_concept_references_valid: pass — removed dangling C-007 implements C-015
+      c6_source_labels_relevant: pass
+      c7_executor_completeness: pass
+      c8_no_silent_dependency_on_siblings: pass
+      c9_no_redundancy_with_upper_levels: pass
+
+  findings:
+    HRS-F001:
+      id: HRS-F001
+      severity: critical
+      status: resolved
+      resolution_date: '2026-05-30'
+      cascade_id: e003-hrs-f001-cascade-2026-05-30
+      artifact: docs/plans/marked_tree_unification/source_spec.md
+      paragraph: '{e003}'
+      title: '{e003} write-command-only unmark vs {d003} per-mutation unmark export'
+      resolution: >
+        HRS {e003} closing sentences rewritten (label stable): in-session source
+        re-exported after every mutation via unmark per {d003}; source mode compares
+        rev_a against most recent per-mutation exported in-session source.
+
+    G004-F001:
+      id: G004-F001
+      severity: high
+      status: resolved
+      resolution_date: '2026-05-30'
+      cascade_id: e003-hrs-f001-cascade-2026-05-30
+      artifact: docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml
+      title: Dangling C-007 implements C-015 relation in G-004
+      resolution: Removed relation from G-004 (belongs to G-001 scope).
+
+  remediation_trail:
+    level_1_hrs:
+      - file: docs/plans/marked_tree_unification/source_spec.md
+        changes: '{e003} closing aligned with {d003} per-mutation unmark export'
+    level_2_mrs:
+      - file: docs/plans/marked_tree_unification/spec.yaml
+        changes: >
+          C-014 diff source-mode property — rev_a vs most recent per-mutation
+          unmark-exported in-session source; live project file excluded
+    level_3_global_step:
+      - file: G-004-edit-operations-preview-and-tree-query/README.yaml
+        changes: removed dangling C-007 implements C-015 relation
+    level_docs:
+      - file: docs/ai_reports/marked_tree_unification_implementation_assignment.md
+        changes: created — external-environment implementation assignment (10 sections)
+
+  on_disk_verification:
+    verified_at: '2026-05-30'
+    files_confirmed:
+      - docs/plans/marked_tree_unification/source_spec.md
+      - docs/plans/marked_tree_unification/spec.yaml
+      - docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml
+      - docs/ai_reports/marked_tree_unification_implementation_assignment.md
+      - docs/ai_reports/g002_audit_findings.yaml
+    source_spec_edited: true
+    overall_green: true

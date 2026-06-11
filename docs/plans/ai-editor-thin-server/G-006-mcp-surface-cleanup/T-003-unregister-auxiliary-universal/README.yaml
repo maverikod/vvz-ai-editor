@@ -1,0 +1,20 @@
+step_id: T-003
+parent_global_step: G-006
+name: Снять вспомогательные universal_file MCP
+description: 'Удалить регистрацию universal_file_move_nodes, universal_file_search, session_git_*, session_undo/redo, session_write. Оставить open/edit/write/close/ preview. Git/undo не входят в thin workflow (C-020).
+
+  '
+concepts:
+- C-016
+- C-020
+inputs:
+- name: mcp_registration_surface
+  type: object
+  description: MCP registration surface (C-016) — точка регистрации universal_file_*.
+outputs:
+- name: core_universal_only
+  type: boolean
+  description: На MCP только core workflow команды.
+atomic_steps:
+- A-001
+status: ready_for_review

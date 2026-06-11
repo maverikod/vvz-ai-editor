@@ -1,0 +1,21 @@
+step_id: T-001
+parent_global_step: G-007
+name: Define ErrorCodes constants module
+description: Define the ErrorCodes (C-014) entity as a constants module containing
+  string constants for all six error codes: SESSION_NOT_FOUND, DRAFT_NOT_FOUND,
+  NESTED_BATCH_FORBIDDEN, WRITE_FAILED, UNKNOWN_FORMAT, PARSE_ERROR.
+  Provide an error-construction helper that returns a structured error dict
+  consumed by all four commands. The module has no dependencies on other new modules.
+concepts:
+- C-014
+inputs:
+- name: nothing
+  type: new module
+  description: No existing file; this T-step creates the errors module from scratch.
+outputs:
+- name: errors_module
+  type: new source file
+  description: Python module with six ErrorCodes string constants and a make_error helper returning structured error dicts.
+atomic_steps:
+- A-001
+status: draft

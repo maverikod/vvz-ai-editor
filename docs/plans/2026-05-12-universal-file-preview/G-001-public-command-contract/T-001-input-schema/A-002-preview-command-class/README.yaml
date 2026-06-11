@@ -1,0 +1,92 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Create UniversalFilePreviewCommand with input schema and validate_params
+target_file: ai_editor/commands/universal_file_preview_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-007
+- C-010
+- C-011
+- C-013
+- C-014
+- C-021
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview_command.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  MCP command: universal_file_preview\n\n  Uniform structured\
+  \ preview of any project file node.\n  Read-only; never writes to files, database,\
+  \ or tree sessions\n  the command did not create.\n\n  Author: Vasiliy Zdanovskiy\n\
+  \  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from __future__ import annotations\n\
+  \  import logging\n  from typing import Any\n  from mcp_proxy_adapter.commands.result\
+  \ import ErrorResult, SuccessResult\n  from .base_mcp_command import BaseMCPCommand\n\
+  \  from .universal_file_preview.dispatcher import HandlerDispatcher\n  from .universal_file_preview.budget\
+  \ import PreviewBudget\n  from .universal_file_preview.navigation import navigate\n\
+  \  from .universal_file_preview.response import build_envelope\n  from .universal_file_preview.errors\
+  \ import (\n      INPUT_ERROR_GLOB_IN_FILE_PATH,\n      INPUT_ERROR_INVALID_SELECTOR_FORM,\n\
+  \      INPUT_ERROR_MIXED_SELECTOR_LIST,\n      INPUT_ERROR_DUPLICATE_SELECTOR_ENTRY,\n\
+  \  )\n\nClass: UniversalFilePreviewCommand(BaseMCPCommand)\nClass docstring:\n \
+  \ \"\"\"\n  MCP command that returns a structured preview of any project file node.\n\
+  \n  Supports .py, .pyi, .pyw (Python), .md, .txt, .rst, .adoc (text),\n  .json (JSON),\
+  \ .jsonl, .ndjson (JSON Lines), .yaml, .yml (YAML).\n  XML and HTML are out of scope.\n\
+  \n  Attributes:\n      name: Command name identifier.\n      version: Command version\
+  \ string.\n      descr: Human-readable command description.\n      category: Command\
+  \ category.\n      author: Author name.\n      email: Author email.\n      use_queue:\
+  \ Whether to use async queue for execution.\n  \"\"\"\n\nClass attributes:\n  name\
+  \ = \"universal_file_preview\"\n  version = \"1.0.0\"\n  descr = \"Uniform structured\
+  \ preview of any project file node\"\n  category = \"preview\"\n  author = \"Vasiliy\
+  \ Zdanovskiy\"\n  email = \"vasilyvz@gmail.com\"\n  use_queue = False\n\nClass-level\
+  \ constants (module-level, before class):\n  _GLOB_CHARS = frozenset(\"*?[\")\n\
+  \  _PREVIEW_LINES_DEFAULT = 20\n  _VALUE_PREVIEW_LEN_DEFAULT = 120\n  logger = logging.getLogger(__name__)\n\
+  \nMethod: get_schema(cls) -> dict[str, Any]\n  Decorator: @classmethod\n  Return\
+  \ type: dict[str, Any]\n  Docstring: \"Return JSON Schema for the command input\
+  \ parameters.\"\n  Body: return a dict with:\n    type: \"object\"\n    properties:\n\
+  \      project_id: {type: str, description: \"Project UUID.\"}\n      file_path:\
+  \ {type: str, description: \"Project-relative path to one file. No globs.\"}\n \
+  \     node_ref: {type: str, description: \"StableIdentifier in file handler native\
+  \ format. Omit for file root.\", nullable: True}\n      selector: {\n        description:\
+  \ \"Picks a subset of the focus node block set. String (slice form: contains ':'\
+  \ or starts with '-'), list[int] (explicit indices), or list[str] (block identifiers).\
+  \ Omit to get first preview_lines blocks.\",\n        oneOf: [\n          {type:\
+  \ str},\n          {type: array, items: {type: integer}},\n          {type: array,\
+  \ items: {type: str}},\n        ],\n        nullable: True\n      }\n      preview_lines:\
+  \ {type: integer, minimum: 1, description: \"Cap on blocks returned when selector\
+  \ is omitted.\", nullable: True}\n      value_preview_len: {type: integer, minimum:\
+  \ 1, description: \"Cap on inline scalar/name length.\", nullable: True}\n     \
+  \ tree_id: {type: str, description: \"UUID of an existing in-memory TreeSession.\"\
+  , nullable: True}\n    required: [\"project_id\", \"file_path\"]\n    additionalProperties:\
+  \ False\n\nMethod: validate_params(self, params: dict[str, Any]) -> dict[str, Any]\n\
+  \  Return type: dict[str, Any]\n  Docstring: \"Validate and normalise raw MCP call\
+  \ parameters.\"\n  Body:\n    1. Extract file_path (required str); assert no glob\
+  \ chars in\n       frozenset('*?['); raise ValueError with code GLOB_IN_FILE_PATH\
+  \ if found.\n    2. Extract node_ref (optional str | None).\n    3. Extract selector\
+  \ (optional str | list | None). Validate:\n       - string: must contain ':' or\
+  \ start with '-'; else raise ValueError\n         INVALID_SELECTOR_FORM.\n     \
+  \  - list: must be homogeneous (all int or all str); mixed raises\n         MIXED_SELECTOR_LIST.\
+  \ Duplicates raise DUPLICATE_SELECTOR_ENTRY.\n    4. Extract preview_lines (optional\
+  \ int, default _PREVIEW_LINES_DEFAULT).\n    5. Extract value_preview_len (optional\
+  \ int, default _VALUE_PREVIEW_LEN_DEFAULT).\n    6. Extract tree_id (optional str\
+  \ | None).\n    7. Return dict with all normalised values.\n\nMethod: execute(self,\
+  \ **kwargs: Any) -> SuccessResult | ErrorResult\n  Return type: SuccessResult |\
+  \ ErrorResult\n  Docstring:\n    \"\"\"\n    Execute the preview command.\n\n  \
+  \  Args:\n        **kwargs: Validated parameters from validate_params.\n\n    Returns:\n\
+  \        SuccessResult with ResponseEnvelope data, or ErrorResult on failure.\n\
+  \    \"\"\"\n  Body (high-level, each step is a call to a helper in the package):\n\
+  \    1. dispatcher = HandlerDispatcher()\n    2. handler_result = dispatcher.dispatch(kwargs[\"\
+  file_path\"]) — returns\n       handler or ErrorResult(UNKNOWN_EXTENSION).\n   \
+  \ 3. budget = PreviewBudget(\n         preview_lines=kwargs[\"preview_lines\"],\n\
+  \         value_preview_len=kwargs[\"value_preview_len\"],\n       )\n    4. Call\
+  \ navigate(handler, kwargs, budget) — returns navigation_result\n       or ErrorResult.\n\
+  \    5. session_origin = 'command_created' if navigation_result.tree_id is not None\
+  \ else ('caller_owned' if kwargs.get('tree_id') else 'none')\n    6. envelope =\
+  \ build_envelope(navigation_result, kwargs.get(\"selector\"),\n                \
+  \                 session_origin)\n    7. return SuccessResult(data=envelope)\n\
+  \    Wrap all handler exceptions in try/except; return appropriate ErrorResult.\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview_command
+  expected: Module imports without error; UniversalFilePreviewCommand.name equals
+    'universal_file_preview'; get_schema() returns a dict with keys 'type', 'properties',
+    'required', 'additionalProperties'.

@@ -1,0 +1,61 @@
+step_id: A-002
+parent_tactical_step: T-006
+name: fs_ggrep paginated session unit tests
+target_file: tests/unit/test_fs_ggrep_paginated_session.py
+operation: create_file
+priority: 2
+depends_on:
+  - T-004
+  - T-005
+concepts:
+  - C-001
+  - C-019
+  - C-022
+prompt: |
+  Operation: create_file
+  Target: tests/unit/test_fs_ggrep_paginated_session.py
+
+  Author: Vasiliy Zdanovskiy, vasilyvz@gmail.com.
+  Covers tests_required: fs_ggrep_paginated_first_page_before_completion.
+
+  G-008 contract: search_start returns job_id, index_url, first_block_position; continuation uses block_position.
+
+  MRS excerpts:
+  - C-001 SearchSession: session created before execution; status running until completion.
+  - C-019 GrepSearchMode: structural vs classic_line mapping to fs_ggrep params.
+  - C-022: paginated fs_ggrep must flush page-ready batches while scan continues.
+
+  IMPORTS:
+    from __future__ import annotations
+    import asyncio, uuid
+    from pathlib import Path
+    from unittest.mock import AsyncMock, MagicMock, patch
+    import pytest
+    from ai_editor.commands.search_start_command import SearchStartCommand
+    from ai_editor.commands.search_get_page_command import SearchGetPageCommand
+    from ai_editor.core.search_session.result_index import COMPLETENESS_RUNNING
+    from mcp_proxy_adapter.commands.result import SuccessResult
+
+  TEST test_fs_ggrep_paginated_first_page_before_completion:
+  1. tmp_path project root with two Python files containing pattern "NEEDLE".
+  2. Mock DB get_project returning root_path=tmp_path; mock config_dir.
+  3. Patch FsGgrepCommand.execute to yield first match immediately then block on asyncio.Event
+     (simulating in-flight scan) unless cancelled.
+  4. Invoke SearchStartCommand.run with search_type=grep, paginated=true, grep_patterns=["NEEDLE"].
+  5. Assert SuccessResult with job_id str non-empty, index_url matching /search/jobs/{job_id}/index,
+     first_block_position=1 when matches exist, status running (or queued then running).
+  6. Call SearchGetPageCommand.run with job_id and block_position=1 while background scan event still unset;
+     assert items non-empty.
+  7. Assert session index completeness COMPLETENESS_RUNNING.
+  8. Release event; allow scan completion; search_get_status shows completed.
+
+  Do not require live daemon. Use deterministic relative_path fixtures under tmp_path only.
+  File under 280 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_fs_ggrep_paginated_session.py
+  expected: >
+    First block returns at least one match via block_position=1 while grep worker still running; job_id and
+    index_url handoff present; index completeness running until worker finishes.
+status: ready_for_review

@@ -1,0 +1,25 @@
+step_id: T-003
+parent_global_step: G-009
+name: Упростить storage_paths и CLI
+description: 'Удалить из storage_paths и default config неиспользуемые пути thin server (db_path, faiss_dir, trash); упростить server_manager_cli/main от worker PID (indexing, vectorization, file_watcher). AI Editor Server (C-001) не использует локальную БД проектов.
+
+  '
+concepts:
+- C-001
+- C-018
+- C-020
+- C-021
+inputs:
+- name: storage_paths_module
+  type: object
+  description: Модуль резолва путей хранения редактора.
+outputs:
+- name: thin_storage_profile
+  type: object
+  description: Только workspace, logs, config paths.
+atomic_steps:
+- A-001
+- A-002
+- A-004
+- A-003
+status: ready_for_review

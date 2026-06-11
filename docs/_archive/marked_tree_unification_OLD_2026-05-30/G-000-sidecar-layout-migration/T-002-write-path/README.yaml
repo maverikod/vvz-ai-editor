@@ -1,0 +1,33 @@
+atomic_steps: []
+concepts:
+- C-023
+- C-003
+description: Remove the standalone .trees/ resolver module 
+  core/tree_temp/sidecar_paths.py and cut its tree-temp consumers over to the 
+  sibling convention. The module resolve_trees_sidecar_path (which produces 
+  <project_root>/.trees/<rel_path>.tree), together with its TREES_DIRECTORY_NAME
+  constant and SidecarPathError, is removed whole. Its direct callers, 
+  tree_temp_write_commit.py and tree_temp_open_support.py, are pointed at the 
+  existing sibling_tree_path function (created in G-002), so JSON and YAML tree 
+  files are written and read as siblings <stem>.<ext>.tree next to their 
+  sources, exactly like every other format. After this step no JSON or YAML code
+  path produces a .trees/ mirror artifact. This step uses the existing 
+  sibling_tree_path and does not create it.
+inputs:
+- description: The existing sibling-path function (created in G-002) used to 
+    locate the JSON/YAML tree file as a sibling of its source.
+  name: sibling_tree_path
+  type: tree-file path resolver
+- description: The standalone .trees/ resolver module to be removed whole.
+  name: sidecar_paths.py
+  type: legacy tree-temp resolver module
+name: Tree-Temp .trees Module Removal (sidecar_paths.py)
+outputs:
+- description: sidecar_paths.py is deleted; tree_temp_write_commit and 
+    tree_temp_open_support resolve JSON/YAML tree files as siblings; no .trees/ 
+    artifact is produced.
+  name: sibling_tree_temp
+  type: tree-file persistence behavior
+parent_global_step: G-000
+status: draft
+step_id: T-002

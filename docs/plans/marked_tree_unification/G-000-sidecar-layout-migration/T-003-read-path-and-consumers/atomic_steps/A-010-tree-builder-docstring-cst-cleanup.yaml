@@ -1,0 +1,105 @@
+step_id: A-010
+parent_tactical_step: T-003
+name: Clean stale .cst docstring references in tree_builder.py
+target_file: ai_editor/core/cst_tree/tree_builder.py
+operation: modify_file
+priority: 10
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/cst_tree/tree_builder.py
+
+  ## Parent scope (inlined — do not read external README files)
+
+  Global step G-000 Sidecar Layout Migration: final cutover redirecting remaining legacy
+  tree-path call sites onto sibling_tree_path; removes .cst/, .trees/, .tree_sidecar
+  layouts. Hard cutover with no backward-compatibility shim.
+
+  Parent tactical scope (dispatcher and remaining consumers cutover): align
+  remaining consumers and docstrings with sibling `<source>.tree` persistence; update
+  stale .cst references in tree_builder docstrings only in this atomic step.
+
+  Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-023, C-003)
+
+  ## Goal
+  Remove the two stale ``.cst`` references that remain in docstrings of
+  tree_builder.py. Once tree_sidecar.py resolves only sibling paths the CST tree is persisted next to
+  its source as <source>.py.tree, never under a .cst/ directory. These docstrings
+  still describe the old .cst layout. This is a DOCSTRING-ONLY change: no
+  executable line, signature, import, or behaviour changes.
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover; CST sidecars persist as sibling `<source>.py.tree`, not under .cst/.
+  - properties:
+    - replaces sidecar_path_for_py (.cst/) with sibling_tree_path
+    - hard cutover; no backward-compatibility shim
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact stored as a sibling file next to the source.
+  - properties:
+    - stored as a sibling file placed directly next to the source file it describes
+
+  ## File size contract (a3)
+  tree_builder.py is 704 lines and exceeds the 400-line atomic-step file cap.
+  This step touches ONLY the docstring text in the two regions below. Every other
+  line in the file is immutable. Locate the two docstrings by function name
+  (_finalize_cst_tree, create_tree_from_code) within the embedded file below.
+
+  ## Full current file content (verbatim — pre-step on disk)
+
+  Total lines: 704.
+
+  ## Pre-edit docstring excerpts (locate by function within embedded file)
+
+  Region 1 — inside ``def _finalize_cst_tree(...) -> None:``, opening docstring:
+      """
+      Parse-time CST index: try ``.cst/*.tree`` sidecar when SHA matches; else full
+      ``_build_tree_index`` (legacy marker path map + optional previous metadata).
+      """
+
+  Region 2 — inside ``def create_tree_from_code(...) -> CSTTree:``, Args section:
+          persist_sidecar: When True and ``file_path`` exists on disk, write ``.cst`` sidecar
+              after indexing (used by DB sync / indexer).
+
+  ## Required docstring edits (only these two changes)
+
+  Edit 1 — ``_finalize_cst_tree`` docstring first line:
+  FROM:
+      Parse-time CST index: try ``.cst/*.tree`` sidecar when SHA matches; else full
+  TO:
+      Parse-time CST index: try the sibling ``<source>.py.tree`` sidecar when SHA matches; else full
+
+  Edit 2 — ``create_tree_from_code`` docstring ``persist_sidecar`` Arg line:
+  FROM:
+          persist_sidecar: When True and ``file_path`` exists on disk, write ``.cst`` sidecar
+              after indexing (used by DB sync / indexer).
+  TO:
+          persist_sidecar: When True and ``file_path`` exists on disk, write the sibling
+              ``<source>.py.tree`` sidecar after indexing (used by DB sync / indexer).
+
+  ## Forbidden
+  - Do not change any executable code, signatures, imports, or comments other than the
+    two docstring regions above.
+  - Do not introduce any new .cst occurrence anywhere in the file.
+  - Do not touch other files.
+
+  ## Validation
+  black/flake8/mypy on tree_builder.py exit 0; grep for '.cst' in the file returns nothing.
+  All tests must pass before marking this step complete.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/cst_tree/tree_builder.py
+  expected: >
+    Target file is 704 lines (exceeds 400-line AS cap); this step is scoped to
+    docstring-only edits in _finalize_cst_tree and create_tree_from_code only.
+    black, flake8, mypy exit 0; both docstrings reference the sibling form
+    <source>.py.tree instead of .cst; grep for '.cst' in
+    ai_editor/core/cst_tree/tree_builder.py returns nothing; no executable
+    line changed.

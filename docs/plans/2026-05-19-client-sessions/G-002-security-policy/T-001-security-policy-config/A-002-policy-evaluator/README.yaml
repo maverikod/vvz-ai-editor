@@ -1,0 +1,58 @@
+concepts:
+- C-009
+- C-007
+- C-008
+- C-004
+depends_on:
+- A-001
+name: Create ai_editor/core/security_policy.py with policy evaluator
+operation: create_file
+parent_tactical_step: T-001
+priority: 2
+prompt: "Create a new Python file at the exact path:\n  ai_editor/core/security_policy.py\n\
+  \nThis file is new with no pre-existing content. Do not assume any content.\n\n\
+  File-level docstring (required, exact text):\n\"\"\"\nSecurityPolicy evaluator:
+  determines whether a session may execute a command.\n\nAuthor: Vasiliy Zdanovskiy\n\
+  email: vasilyvz@gmail.com\n\"\"\"\n\nImports (exact):\n  from __future__ import
+  annotations\n  from typing import Any\n\n--- CONSTANT ---\n\nPOLICY_DISABLED = 'disabled'\n\
+  POLICY_ALLOWLIST = 'allowlist'\nPOLICY_DENYLIST = 'denylist'\n\n--- FUNCTION ---\n\
+  \ndef is_command_permitted(\n    database: Any,\n    session_id: str,\n    command_name:
+  str,\n    server_uuid: str,\n    policy_mode: str,\n) -> bool:\n    \"\"\"\n   \
+  \ Evaluate whether a session may execute a command on a server.\n\n    Uses Role
+  (C-007) and RolePermission (C-008) data from the session service\n    (C-004) to
+  determine access under the given SecurityPolicy mode (C-009).\n\n    Policy semantics:\n\
+  \    - disabled: always returns True. No DB queries performed.\n    - allowlist:
+  returns True only if the session has at least one role whose\n      permissions
+  include (command_name, server_uuid). Returns False otherwise.\n    - denylist: returns
+  False only if the session has at least one role whose\n      permissions explicitly
+  deny (command_name, server_uuid). Returns True otherwise.\n\n    Args:\n       \
+  \ database: DB connection with .execute() method.\n        session_id: UUID4 string
+  of the active session.\n        command_name: MCP command name being requested.\n\
+  \        server_uuid: UUID4 string of the proxy server.\n        policy_mode: One
+  of 'disabled', 'allowlist', 'denylist'.\n\n    Returns:\n        True if the command
+  is permitted, False if denied.\n    \"\"\"\n    if policy_mode == POLICY_DISABLED:\n\
+  \        return True\n\n    from ai_editor.core.client_sessions import (\n \
+  \       get_roles_for_session,\n        get_permissions_for_roles,\n    )\n\n  \
+  \  roles = get_roles_for_session(database, session_id)\n    role_ids = [r['role_id']
+  for r in roles]\n\n    if policy_mode == POLICY_ALLOWLIST:\n        if not role_ids:\n\
+  \            return False\n        permitted = get_permissions_for_roles(database,
+  role_ids, server_uuid)\n        return command_name in permitted\n\n    if policy_mode
+  == POLICY_DENYLIST:\n        if not role_ids:\n            return True\n       \
+  \ denied = get_permissions_for_roles(database, role_ids, server_uuid)\n        return
+  command_name not in denied\n\n    # Unknown policy mode: fail safe (deny)\n    return
+  False\n\nConstraints:\n- File must not exceed 80 lines.\n- No imports other than
+  those listed above (defer client_sessions import inside the function).\n- All parameters
+  and return type must be annotated.\n- Google-style docstring with Args and Returns
+  sections.\n- The import of get_roles_for_session and get_permissions_for_roles must
+  be\n  inside the function body (to avoid circular imports at module level).\n- Do
+  not add any other functions."
+status: done
+step_id: A-002
+target_file: ai_editor/core/security_policy.py
+verification:
+  expected: Importing security_policy succeeds. is_command_permitted with 
+    policy_mode='disabled' returns True without executing any SQL. 
+    POLICY_DISABLED, POLICY_ALLOWLIST, POLICY_DENYLIST constants are importable 
+    strings.
+  target: ai_editor/core/security_policy.py
+  type: import

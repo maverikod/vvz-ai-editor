@@ -1,0 +1,104 @@
+step_id: A-002
+parent_tactical_step: T-004
+name: Add unified-vs-legacy parity pytest module
+target_file: tests/tree_pipeline_parity/test_unified_vs_legacy.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+status: needs_review
+concepts:
+- C-011
+- C-007
+- C-010
+prompt: |
+  Create `tests/tree_pipeline_parity/test_unified_vs_legacy.py`.
+  Operation: create_file.
+
+  ## Purpose
+
+  Parity tests comparing **unified pipeline** (TreeBuilder.build → FormatHandler)
+  against **legacy oracle** (`recreate_tree_from_content` + TreeFormatKind) on
+  real fixtures. Strategy: new alongside old — legacy must remain untouched;
+  tests document equivalence gaps.
+
+  ## Cross-TS prerequisites
+
+  - G-002 T-003 A-001 TreeBuilder.build
+  - G-002 T-004 A-001 wired validate path
+  - G-001 all FormatHandlers including PythonHandler (A-007)
+
+  ## Test plan
+
+  ### Fixtures directory
+
+  Use `tests/tree_pipeline_parity/fixtures/` with minimal real files:
+    - `sample.txt`, `sample.md`, `sample.yaml`, `sample.json`, `sample.py`
+
+  ### Test functions
+
+  ```python
+  def test_text_unified_matches_legacy_unmark_roundtrip(tmp_path): ...
+  def test_markdown_unified_matches_legacy_unmark_roundtrip(tmp_path): ...
+  def test_yaml_unified_matches_legacy_unmark_roundtrip(tmp_path): ...
+  def test_json_unified_matches_legacy_unmark_roundtrip(tmp_path): ...
+  def test_python_unified_unmark_roundtrip(tmp_path): ...
+  def test_python_node_id_set_parity_documented(tmp_path): ...
+  ```
+
+  ### Per-format algorithm
+
+  1. Load fixture content from disk.
+  2. **Unified:** TreeBuilder.build(content=..., source_abs=..., file_path=..., content_checksum=...)
+  3. Read unified sidecar; handler = default_registry().resolve(source_abs);
+     assert handler.unmark(marked) == original content (byte-for-byte).
+  4. **Legacy:** recreate_tree_from_content(kind=classify_tree_format(...), ...)
+     on same content (legacy sidecar path may differ — compare unmark semantics
+     and node coverage, not necessarily same on-disk path during interim).
+  5. Compare: unmark(unified_marked) == unmark(legacy_marked) == original OR
+     document known delta in test docstring (Python compound blocks: unverified list).
+
+  ### Python-specific parity notes (embed in test module docstring)
+
+  **Covered (expect parity or document gap):**
+    FunctionDef, AsyncFunctionDef, ClassDef, SimpleStatementLine, Expr,
+    AnnAssign, Assign, AugAssign, Decorator
+
+  **Unverified (test may xfail with reason):**
+    Import, If, For, While, Try, With — indexed in cst_tree metadata_map but
+    hybrid marker path not guaranteed until fixtures prove otherwise
+
+  **Identity mapping under test:**
+    unified TreeNode.node_id == CSTTree.metadata_map[*].stable_id
+
+  **Forbidden in tests:**
+    - Do NOT delete legacy code if parity fails — file xfail/skip with reason
+    - Do NOT write to SourceFile fixtures in place
+
+  ## Imports
+
+  ```python
+  from pathlib import Path
+
+  import pytest
+
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+  from ai_editor.core.tree_lifecycle.checksum import (
+      compute_content_checksum,
+      recreate_tree_from_content,
+  )
+  from ai_editor.core.search_session.tree_representation import (
+      TreeFormatKind,
+      classify_tree_format,
+  )
+  from ai_editor.tree.handler_registry import default_registry
+  ```
+
+  ## Estimated line count: ~200 lines
+
+verification:
+  type: pytest
+  target: tests/tree_pipeline_parity/test_unified_vs_legacy.py
+  expected: >
+    pytest tests/tree_pipeline_parity/ passes or documents expected xfails for
+    unverified Python node types; text/json/yaml/md formats pass unmark roundtrip.

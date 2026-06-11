@@ -1,0 +1,36 @@
+step_id: T-902
+parent_global_step: G-010
+name: Python visualizer module (render_module + render_node)
+description: >
+  Create python_visualizer.py with two public functions.
+  render_module(tree, budget): returns structured text overview of a Python module
+  — file docstring, imports (stable_id + range + type), constants, class signatures
+  + docstrings + method signatures + docstrings, module-level function signatures
+  + docstrings. Full-text fallback when file line count < budget.full_text_max_lines.
+  render_node(tree, stable_id): returns structured text for a single CST node
+  identified by its StableIdentifier (C-009). FunctionDef/AsyncFunctionDef: signature
+  + docstring + first-level body (compound stmts collapsed with stable_id + range + ...).
+  ClassDef: signature + docstring + method signatures + docstrings.
+  Compound stmts (If/For/While/Try/With): first line + stable_id + range + ...
+concepts:
+- C-009
+- C-016
+- C-022
+- C-023
+inputs:
+- name: tree
+  type: CSTTree
+  description: CSTTree loaded for the Python file
+- name: budget
+  type: PreviewBudget
+  description: PreviewBudget with full_text_max_lines cap (C-023)
+- name: stable_id
+  type: str
+- name: python_visualizer_py
+  type: file
+  description: new module with render_module and render_node
+  type: file
+atomic_steps:
+- A-001
+- A-002
+status: done

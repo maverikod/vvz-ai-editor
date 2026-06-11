@@ -1,0 +1,99 @@
+step_id: G-008
+name: Backward-compatible incremental migration
+description: "Defines how the new paginated, session-backed behavior is introduced
+  as an extension of existing working search commands rather than a replacement. Current
+  command behavior remains the default for existing callers; paginated job-backed
+  behavior is opt-in through optional parameters or compatible bridge commands. Migration
+  preserves current validation, schemas, queue behavior, timeouts, direct payloads,
+  structural results, and preview references, and an inventory marks each behavior
+  as existing or new to avoid duplicating working search logic. Canonical client contract
+  (plan README.md G-008 contract decision): job_id + block_position + index_url —
+  not README opaque cursor. This step defines the compatibility and migration contract
+  only; it does not define the internal mechanics of sessions, blocks, or filtering.\n"
+concepts:
+- C-021
+- C-022
+- C-023
+- C-024
+- C-025
+- C-004
+- C-020
+- C-027
+- C-003
+- C-005
+- C-007
+- C-011
+- C-018
+relations:
+- from_concept: C-022
+  to_concept: C-021
+  type: uses
+- from_concept: C-021
+  to_concept: C-023
+  type: owns
+- from_concept: C-024
+  to_concept: C-023
+  type: extends
+- from_concept: C-025
+  to_concept: C-021
+  type: depends_on
+- from_concept: C-022
+  to_concept: C-004
+  type: uses
+  description: IncrementalCompatibilityLayer routes paginated execution to 
+    SearchResultBlock delivery.
+- from_concept: C-022
+  to_concept: C-020
+  type: uses
+  description: IncrementalCompatibilityLayer exposes SearchStatus through 
+    lifecycle commands.
+- from_concept: C-022
+  to_concept: C-027
+  type: uses
+  description: IncrementalCompatibilityLayer reads SearchResultIndex to deliver 
+    blocks to lifecycle commands.
+- description: Lifecycle commands read SearchSessionManifest for status 
+    snapshots and cancellation.
+  from_concept: C-022
+  to_concept: C-003
+  type: uses
+- description: search_get_status is distinct from HTTPResultAccess; lifecycle 
+    commands do not replace HTTP retrieval.
+  from_concept: C-022
+  to_concept: C-005
+  type: uses
+- description: search_close and cleaner interaction depends on SessionTTLPolicy 
+    for block retention after close.
+  from_concept: C-022
+  to_concept: C-007
+  type: uses
+- description: 'search_close interaction with BackgroundSessionCleaner: closed sessions
+    remain until cleaner TTL.'
+  from_concept: C-022
+  to_concept: C-011
+  type: uses
+- description: 'Migration preserves StructuralEvidence rules: structural results and
+    preview references are carried through paginated blocks.'
+  from_concept: C-022
+  to_concept: C-018
+  type: uses
+source_labels:
+- '{tuj9}'
+- '{3crm}'
+- '{ebj8}'
+- '{2w6w}'
+- '{rn07}'
+depends_on:
+- G-002
+- G-004
+- G-006
+- G-007
+- G-005
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+- T-006
+status: ready_for_review

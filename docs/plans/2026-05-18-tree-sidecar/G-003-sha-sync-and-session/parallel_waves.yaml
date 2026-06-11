@@ -1,0 +1,62 @@
+# Atomic execution waves for G-003-sha-sync-and-session
+# Cross-group: complete T-001 before T-002; complete T-002 before T-003, T-004, T-005.
+#
+# Layout (G-003 + G-004): keep one consistent split:
+# - ai_editor/core/tree_temp/: TreeNode (C-001), sidecar_payload + sidecar_paths (C-002 .trees/*.tree JSON)
+# - ai_editor/commands/universal_file_edit/: sha_sync_policy, tree_temp_open_support, command modules,
+#   tree_temp_edit_batch.py apply_tree_temp_mutations (G-003 tree-temp edit pipeline; single edit entrypoint), plus G-004 tree_temp_open_pipeline, tree_temp_write_commit.
+# Python CST sidecar (FORMAT_SIDECAR) stays on ai_editor.core.cst_tree.tree_sidecar — not .trees JSON.
+meta:
+  plan: 2026-05-18-tree-sidecar
+  global_step: G-003-sha-sync-and-session
+
+waves:
+  - wave_id: W1
+    description: SHASyncPolicy resolver (no code dependencies on session).
+    parallel_within_wave: []
+    sequential:
+      - T-001/A-001
+
+  - wave_id: W2
+    description: Session fields and tree-temp open pipeline (ordered inside T-002).
+    parallel_within_wave: []
+    sequential:
+      - T-002/A-001
+      - T-002/A-002
+      - T-002/A-003
+
+  - wave_id: W3
+    description: >-
+      After W2: run T-003/A-001, T-004/A-001, T-005/A-001 in parallel (separate files).
+      Then run T-003/A-002 (modifies edit_command.py; depends on T-003/A-001). Cross-plan a3: T-003/A-002 SHOULD follow
+      G-004 T-002 slim edit_command wave when mixing G-003 and G-004 (see G-003 T-003 delegate README); GS-strict order
+      may fold this delegation into G-004 T-002 A-002 instead.
+    parallel_within_wave:
+      - T-003/A-001
+      - T-004/A-001
+      - T-005/A-001
+    sequential_after_parallel:
+      - T-003/A-002
+
+escalations:
+  - >-
+    If ai_editor/core/tree_temp/ (C-001 TreeNode, C-002 sidecar_payload/sidecar_paths)
+    or G-002 SourceParser modules are missing, halt coding for T-002–T-005 and finish
+    G-001/G-002 first, then reconcile import paths in atomic prompts with orchestrator_tactical.
+  - >-
+    If open_command.py would exceed 400 lines after W2, split T-002 A-003 into an
+    extra atomic step that only delegates to helpers (TS-level split per
+    atomic_step_creation_standard.yaml).
+    Baseline in repo at plan time: ~355 lines — headroom ~45 lines before split.
+  - >-
+    If edit_command.py grows beyond 400 lines after T-003, extract further helpers
+    in a new atomic step (TS-level scope review).
+  - >-
+    If tree_temp_edit_batch.py or write_command.py would exceed 400 lines once
+    legacy code is inlined, add a new atomic step targeting a helper module and
+    slim the primary file (TS-level split).
+  - >-
+    Planner routing: these atomic steps were produced for G-003 per plan
+    2026-05-18-tree-sidecar; if your runtime requires orchestrator_tactical as the
+    sole parent for planner_auto, treat the orchestrator handoff as forwarded through
+    tactical before execution.

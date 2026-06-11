@@ -1,0 +1,36 @@
+step_id: T-002
+parent_global_step: G-002
+name: IndexedFileSet construction
+description: >
+  Builds the IndexedFileSet as the intersection of database-known files and
+  on-disk files that pass FreshnessValidation. Excludes stale, changed,
+  missing, draft-only, and unavailable-index files from indexed search.
+  Anti-rescan enforcement (fresh indexed files must not appear in dynamic
+  scanning) is realized in T-003 when DynamicFileSet excludes IndexedFileSet
+  members.
+concepts:
+  - C-012
+  - C-014
+inputs:
+  - name: database_known_files
+    type: DatabaseFileList
+    description: >
+      Indexed metadata keyed by project-relative path (Mapping[str, IndexedFileRecord]).
+  - name: disk_file_list
+    type: DiskFileList
+    description: Project-relative paths present on disk within the search scope.
+  - name: disk_file_metadata
+    type: DiskFileMetadataMap
+    description: On-disk checksum and mtime keyed by project-relative path.
+  - name: draft_only_paths
+    type: DraftPathSet
+    description: >
+      Project-relative paths open only in draft edit sessions; excluded from indexed set
+      even when freshness would otherwise pass.
+outputs:
+  - name: indexed_file_set
+    type: IndexedFileSet
+    description: Files eligible for database or index-backed search without direct rescan.
+atomic_steps:
+- A-001
+status: frozen

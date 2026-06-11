@@ -1,0 +1,371 @@
+step_id: A-003
+parent_tactical_step: T-001
+name: Add active-session registry synced with FINAL-2 EditSession
+target_file: ai_editor/core/edit_session/edit_session.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-001
+concepts:
+- C-012
+status: ready_for_review
+prompt: |
+  > Cross-TS and within-TS execution ordering is expressed ONLY via the standard depends_on field plus parallel-waves.yaml. Do not add non-standard cross-TS ordering fields. Cross-TS FILE dependencies must be satisfied by INLINING full post-prior-AS file state into the prompt (a8), NOT by referencing other steps. No atomic, tactical, or global step identifiers may appear in any prompt: prose.
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-012)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-001-edit-session-lifecycle/README.yaml`
+
+  Modify `ai_editor/core/edit_session/edit_session.py` whose current full content is:
+
+  ```python
+  # Author: Vasiliy Zdanovskiy -- vasilyvz@gmail.com
+
+  """EditSession (C-012): bounded on-disk editing context with dual-mode lifecycle."""
+
+  from __future__ import annotations
+
+  import difflib
+  import enum
+  import shutil
+  import uuid
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from typing import Any, Callable, Optional
+
+  from ai_editor.core.edit_session.marker_cycle import (
+      MarkerEditState,
+      denude_marked_tree,
+      restore_marked_tree,
+  )
+  from ai_editor.core.tree_lifecycle import (
+      compute_content_checksum,
+      is_tree_valid,
+      validate_or_recreate_tree_file,
+  )
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+  from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
+  from ai_editor.tree.handler_registry import HandlerRegistry
+
+
+  class SessionTreeValidity(str, enum.Enum):
+      VALID = "valid"
+      INVALID = "invalid"
+
+
+  class EditSessionError(ValueError):
+      """EditSession lifecycle violations."""
+
+
+  CONTENT_NOT_ALLOWED_FOR_VALID_FILE = "CONTENT_NOT_ALLOWED_FOR_VALID_FILE"
+
+  SESSION_VALID_TRUTH_INVARIANT = (
+      "When tree_validity is valid, the in-session tree is truth; "
+      "the external SourceFile is stale."
+  )
+  SESSION_INVALID_TRUTH_INVARIANT = (
+      "When tree_validity is invalid, the in-session source copy is the editing surface."
+  )
+
+
+  @dataclass
+  class EditSession:
+      session_id: str
+      source_abs: Path
+      tree_abs: Path
+      session_dir: Path
+      session_source_path: Path
+      session_tree_path: Path
+      session_repo_path: Path
+      project_root: Path
+      file_path: str
+      tree_validity: SessionTreeValidity
+      source_checksum: str
+      tree_checksum: Optional[str]
+      is_open: bool = field(default=False)
+
+      @classmethod
+      def open(
+          cls,
+          *,
+          source_abs: Path,
+          project_root: Path,
+          file_path: str,
+          content: Optional[str] = None,
+      ) -> EditSession:
+          if content is not None and source_abs.is_file():
+              ref, validity_state = validate_or_recreate_tree_file(
+                  project_root=project_root, file_path=file_path
+              )
+              if validity_state.is_valid:
+                  raise EditSessionError(
+                      CONTENT_NOT_ALLOWED_FOR_VALID_FILE,
+                      "content parameter not allowed when source and tree are valid",
+                  )
+          session_id = str(uuid.uuid4())
+          session_dir = source_abs.parent / f"{source_abs.name}-{session_id}"
+          session_dir.mkdir(exist_ok=False)
+          session_source_path = session_dir / source_abs.name
+          if content is not None:
+              session_source_path.write_text(content, encoding="utf-8")
+          elif source_abs.is_file():
+              shutil.copy2(source_abs, session_source_path)
+          else:
+              raise EditSessionError("SOURCE_MISSING")
+          source_text = session_source_path.read_text(encoding="utf-8")
+          source_checksum = compute_content_checksum(source_text)
+          ref, _validity_state = validate_or_recreate_tree_file(
+              project_root=project_root, file_path=file_path
+          )
+          tree_abs = ref.sidecar_path
+          session_tree_path = session_dir / tree_abs.name
+          if tree_abs.is_file():
+              shutil.copy2(tree_abs, session_tree_path)
+          try:
+              HandlerRegistry.default_registry().resolve(source_abs).parse_content(
+                  file_path, source_text
+              )
+              if session_tree_path.is_file() and is_tree_valid(
+                  source_checksum, ref.content_checksum
+              ):
+                  tree_validity = SessionTreeValidity.VALID
+              else:
+                  tree_validity = SessionTreeValidity.INVALID
+          except Exception:
+              tree_validity = SessionTreeValidity.INVALID
+          tree_checksum = (
+              compute_content_checksum(session_tree_path.read_text(encoding="utf-8"))
+              if session_tree_path.is_file()
+              else None
+          )
+          session_repo_path = session_dir
+          return cls(
+              session_id=session_id,
+              source_abs=source_abs,
+              tree_abs=tree_abs,
+              session_dir=session_dir,
+              session_source_path=session_source_path,
+              session_tree_path=session_tree_path,
+              session_repo_path=session_repo_path,
+              project_root=project_root,
+              file_path=file_path,
+              tree_validity=tree_validity,
+              source_checksum=source_checksum,
+              tree_checksum=tree_checksum,
+              is_open=True,
+          )
+
+      def apply_valid_tree_mutation(self, mutation_fn: Callable[[str], str]) -> None:
+          if not self.is_open or self.tree_validity != SessionTreeValidity.VALID:
+              raise RuntimeError("Valid-tree mutation requires open session with valid tree")
+          marked = self.session_tree_path.read_text(encoding="utf-8")
+          denuded, state = denude_marked_tree(
+              source_abs=self.source_abs, marked_tree=marked
+          )
+          denuded_after = mutation_fn(denuded)
+          restored = restore_marked_tree(
+              source_abs=self.source_abs,
+              denuded_after_mutation=denuded_after,
+              state=state,
+          )
+          self.session_tree_path.write_text(restored, encoding="utf-8")
+          self._post_mutation_full()
+
+      def apply_plaintext_mutation(self, new_source_text: str) -> None:
+          if not self.is_open or self.tree_validity != SessionTreeValidity.INVALID:
+              raise RuntimeError("Plaintext mutation requires open session with invalid tree")
+          self.session_source_path.write_text(new_source_text, encoding="utf-8")
+          self.source_checksum = compute_content_checksum(new_source_text)
+          self._post_mutation_degraded()
+          self._try_revalidate()
+
+      def _export_source_via_unmark(self) -> None:
+          handler = HandlerRegistry.default_registry().resolve(self.source_abs)
+          sections = parse_tree_file(self.session_tree_path.read_text(encoding="utf-8"))
+          clean = handler.unmark(sections.tree)
+          self.session_source_path.write_text(clean, encoding="utf-8")
+
+      def _post_mutation_full(self) -> None:
+          self._export_source_via_unmark()
+          self.source_checksum = compute_content_checksum(
+              self.session_source_path.read_text(encoding="utf-8")
+          )
+          self.tree_checksum = compute_content_checksum(
+              self.session_tree_path.read_text(encoding="utf-8")
+          )
+
+      def _post_mutation_degraded(self) -> None:
+          self.source_checksum = compute_content_checksum(
+              self.session_source_path.read_text(encoding="utf-8")
+          )
+          self.tree_checksum = None
+
+      def _try_revalidate(self) -> None:
+          if self.tree_validity != SessionTreeValidity.INVALID:
+              return
+          source_text = self.session_source_path.read_text(encoding="utf-8")
+          try:
+              HandlerRegistry.default_registry().resolve(self.source_abs).parse_content(
+                  self.file_path, source_text
+              )
+          except Exception:
+              return
+          ref = TreeBuilder.build(
+              content=source_text,
+              source_abs=self.source_abs,
+              file_path=self.file_path,
+              content_checksum=self.source_checksum,
+          )
+          shutil.copy2(ref.sidecar_path, self.session_tree_path)
+          self.tree_validity = SessionTreeValidity.VALID
+          self.tree_checksum = compute_content_checksum(
+              self.session_tree_path.read_text(encoding="utf-8")
+          )
+
+      def preview_external_write(self) -> dict[str, Any]:
+          if not self.is_open:
+              raise RuntimeError("EditSession is not open; cannot preview external write.")
+          in_source = (
+              self.session_source_path.read_text(encoding="utf-8")
+              if self.session_source_path.is_file()
+              else ""
+          )
+          in_tree = (
+              self.session_tree_path.read_text(encoding="utf-8")
+              if self.session_tree_path.is_file()
+              else ""
+          )
+          ext_source = (
+              self.source_abs.read_text(encoding="utf-8") if self.source_abs.is_file() else ""
+          )
+          ext_tree = self.tree_abs.read_text(encoding="utf-8") if self.tree_abs.is_file() else ""
+          source_diff = "".join(
+              difflib.unified_diff(
+                  in_source.splitlines(keepends=True),
+                  ext_source.splitlines(keepends=True),
+                  fromfile="in-session-source",
+                  tofile="external-source",
+              )
+          )
+          tree_diff = "".join(
+              difflib.unified_diff(
+                  in_tree.splitlines(keepends=True),
+                  ext_tree.splitlines(keepends=True),
+                  fromfile="in-session-tree",
+                  tofile="external-tree",
+              )
+          )
+          has_changes = bool(source_diff.strip() or tree_diff.strip())
+          return {
+              "has_changes": has_changes,
+              "source_diff": source_diff,
+              "tree_diff": tree_diff,
+          }
+
+      def confirm_external_copy_out(self) -> None:
+          if not self.is_open:
+              raise RuntimeError("EditSession is not open; cannot confirm external copy-out.")
+          preview = self.preview_external_write()
+          if not preview["has_changes"]:
+              return
+          if self.tree_validity == SessionTreeValidity.VALID:
+              tmp_tree = self.tree_abs.with_suffix(self.tree_abs.suffix + ".tmp")
+              tmp_source = self.source_abs.with_suffix(self.source_abs.suffix + ".tmp")
+              backup_tree = self.tree_abs.with_suffix(self.tree_abs.suffix + ".bak")
+              if not self.session_tree_path.is_file() or not self.session_source_path.is_file():
+                  raise RuntimeError("Session artefacts missing for external copy-out")
+              try:
+                  shutil.copy2(self.session_tree_path, tmp_tree)
+                  shutil.copy2(self.session_source_path, tmp_source)
+                  if self.tree_abs.exists():
+                      shutil.copy2(self.tree_abs, backup_tree)
+                  tmp_tree.replace(self.tree_abs)
+                  try:
+                      tmp_source.replace(self.source_abs)
+                  except Exception:
+                      if backup_tree.exists():
+                          shutil.copy2(backup_tree, self.tree_abs)
+                      raise
+              except Exception:
+                  tmp_tree.unlink(missing_ok=True)
+                  tmp_source.unlink(missing_ok=True)
+                  raise
+              finally:
+                  backup_tree.unlink(missing_ok=True)
+          else:
+              tmp_source = self.source_abs.with_suffix(self.source_abs.suffix + ".tmp")
+              try:
+                  shutil.copy2(self.session_source_path, tmp_source)
+                  tmp_source.replace(self.source_abs)
+              except Exception:
+                  tmp_source.unlink(missing_ok=True)
+                  raise
+
+      def close(self) -> None:
+          if self.session_dir.exists():
+              shutil.rmtree(self.session_dir)
+          self.is_open = False
+
+      def record_tree_modification(self) -> None:
+          raise RuntimeError("use apply_valid_tree_mutation")
+  ```
+
+  Add the process-level active-session registry (C-012): module dict keyed by
+  `session_id`, register in `open()`, remove in `close()`, `get_active_session()`.
+
+  ## Required changes (exactly four)
+
+  ### 1. After imports, before `@dataclass`:
+
+  ```python
+  #: Process-level registry; open registers, close removes (C-012, C-014).
+  _active_sessions: dict[str, EditSession] = {}
+  ```
+
+  ### 2. End of `open()` before return
+
+  Build `session = cls(...)` then:
+  ```python
+  _active_sessions[session_id] = session
+  return session
+  ```
+
+  ### 3. Start of `close()` before rmtree
+
+  ```python
+  _active_sessions.pop(self.session_id, None)
+  ```
+
+  ### 4. Module end — after invariant constants and class
+
+  ```python
+  def get_active_session(session_id: str) -> EditSession:
+      """Resolve live EditSession; KeyError if absent (no sessionless access)."""
+      try:
+          return _active_sessions[session_id]
+      except KeyError as exc:
+          raise KeyError(f"No active edit session: {session_id}") from exc
+  ```
+
+  ## Semantics to preserve
+
+  - Registry stores sessions regardless of `tree_validity` (VALID or INVALID).
+  - Do NOT add SessionRepo wiring (deferred to a later modify step on this file).
+  - Preserve `preview_external_write`, `confirm_external_copy_out`,
+    `apply_valid_tree_mutation`, `apply_plaintext_mutation`, FINAL-2 `open(content=...)`,
+    and blind `close()` unchanged except registry hooks.
+
+  ## Field and symbol checklist (must remain)
+
+  `SessionTreeValidity`, `tree_validity`, `source_checksum`, `tree_checksum`,
+  `preview_external_write`, `confirm_external_copy_out`, `apply_valid_tree_mutation`,
+  `apply_plaintext_mutation`, `EditSessionError`, `CONTENT_NOT_ALLOWED_FOR_VALID_FILE`.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/edit_session/edit_session.py
+  expected: |
+    Module defines _active_sessions before class; open registers; close pops before
+    rmtree;     get_active_session raises KeyError when missing; FINAL-2 and dual-mode
+    methods remain intact. All tests pass.

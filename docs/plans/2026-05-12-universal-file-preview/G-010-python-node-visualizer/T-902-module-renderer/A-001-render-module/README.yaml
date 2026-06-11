@@ -1,0 +1,190 @@
+step_id: A-001
+parent_tactical_step: T-902
+name: Create python_visualizer.py with render_module
+target_file: ai_editor/commands/universal_file_preview/python_visualizer.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-022
+- C-016
+- C-009
+status: done
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.python_visualizer
+  expected: >
+    Module imports without error. render_module(tree, budget) is callable
+    and returns a non-empty string for a valid CSTTree and PreviewBudget.
+prompt: |
+  ## Task
+
+  Create a new file. The file does not exist.
+
+  Target file: ai_editor/commands/universal_file_preview/python_visualizer.py
+  Operation: create_file
+
+  ## Purpose
+
+  This module implements PythonNodeRenderer (C-022). It converts a CSTTree node
+  into structured human-readable text for AI model consumption.
+  This step adds only render_module.
+
+  ## Module-level docstring (use exactly this)
+
+  """
+  Python node renderer for universal_file_preview (C-022).
+
+  Converts CSTTree nodes to structured human-readable text for AI consumption.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Required imports
+
+  from __future__ import annotations
+  import pathlib
+  from typing import Any
+  from .budget import PreviewBudget
+
+  ## CSTTree interface (duck-typed, do not import the class)
+
+  tree.metadata_map: dict[str, NodeMetadata]  — maps node_id to metadata.
+  tree.root_node_id: str  — node_id of the Module root.
+  tree.file_path: str | None  — absolute path to the source file (may be missing).
+
+  NodeMetadata attributes:
+    stable_id: str
+    start_line: int | None
+    end_line: int | None
+    type: str  (e.g. 'FunctionDef', 'ClassDef', 'ImportFrom', 'Import')
+    kind: str | None  ('import', 'class', 'function', 'method', 'smallstmt')
+    name: str | None
+    parent_id: str | None
+    depth: int | None  (root=0, top-level children=1, class members=2)
+    signature: str | None  (one-line signature string)
+    docstring: str | None  (extracted docstring text; may be None)
+
+  ## PreviewBudget (already exists at ai_editor/commands/universal_file_preview/budget.py)
+
+  @dataclass
+  class PreviewBudget:
+      preview_lines: int
+      value_preview_len: int
+      full_text_max_lines: int = 200
+
+  ## Function to implement
+
+  ### _fmt_range(meta: Any) -> str
+
+  Docstring:
+      Format a line range string from node metadata.
+
+      Args:
+          meta: NodeMetadata with start_line and end_line attributes.
+
+      Returns:
+          String 'L{start}-{end}', 'L{start}', or '' when start_line is None.
+
+  Logic:
+    start = meta.start_line
+    if start is None: return ""
+    end = meta.end_line
+    if end is not None and end != start: return f"L{start}-{end}"
+    return f"L{start}"
+
+  ### render_module(tree: Any, budget: PreviewBudget) -> str
+
+  Docstring:
+      Render a structured text overview of a Python module (C-022).
+
+      When the file has fewer lines than budget.full_text_max_lines and that
+      threshold is positive, returns the raw file source instead of the
+      structured overview (C-023 full-text fallback).
+
+      Args:
+          tree: CSTTree loaded for the file.
+          budget: PreviewBudget with full_text_max_lines cap.
+
+      Returns:
+          Structured text string suitable for AI consumption.
+
+  Logic:
+
+  Step 1 — Full-text fallback (C-023):
+    file_line_count = max(
+        (meta.end_line for meta in tree.metadata_map.values() if meta.end_line),
+        default=0,
+    )
+    if budget.full_text_max_lines > 0 and file_line_count < budget.full_text_max_lines:
+        file_path = getattr(tree, 'file_path', None)
+        if file_path:
+            try:
+                return pathlib.Path(file_path).read_text(encoding='utf-8')
+            except Exception:
+                pass  # fall through to structured rendering
+
+  Step 2 — Collect depth-1 nodes:
+    top_nodes = sorted(
+        (meta for meta in tree.metadata_map.values() if meta.depth == 1),
+        key=lambda m: m.start_line or 0,
+    )
+
+  Step 3 — Build entries list (list[str]), one entry per top_node by kind:
+
+    kind == 'import' or (not kind and meta.type in ('Import', 'ImportFrom', 'ImportStar')):
+      entries.append(f'[{stable_id}] {rng}  {meta.signature or meta.type}')
+
+    kind == 'smallstmt':
+      entries.append(f'[{stable_id}] {rng}  {meta.signature or meta.type}')
+
+    kind == 'function':
+      line1 = f'[{stable_id}] {rng}  {meta.signature or "def " + (meta.name or "?") + ":"}'
+      doc = (meta.docstring or '').strip()
+      if doc:
+          entries.append(line1 + '\n    ' + doc.splitlines()[0])
+      else:
+          entries.append(line1)
+
+    kind == 'class':
+      line1 = f'[{stable_id}] {rng}  class {meta.name or "?"}:'
+      lines_for_entry = [line1]
+      doc = (meta.docstring or '').strip()
+      if doc:
+          lines_for_entry.append('    ' + doc.splitlines()[0])
+      # collect methods: depth==2, parent_id == node_id of this meta
+      node_id = next(
+          (nid for nid, m in tree.metadata_map.items() if m.stable_id == meta.stable_id),
+          None,
+      )
+      if node_id:
+          methods = sorted(
+              (m for m in tree.metadata_map.values()
+               if m.parent_id == node_id and m.kind in ('function', 'method')),
+              key=lambda m: m.start_line or 0,
+          )
+          for meth in methods:
+              sig = meth.signature or ('def ' + (meth.name or '?'))
+              lines_for_entry.append(
+                  '    [{sid}] {r}  {sig}'.format(
+                      sid=meth.stable_id, r=_fmt_range(meth), sig=sig
+                  )
+              )
+      entries.append('\n'.join(lines_for_entry))
+
+  Step 4 — Assemble result:
+    root_meta = tree.metadata_map.get(tree.root_node_id)
+    module_docstring = (root_meta.docstring or '').strip() if root_meta else ''
+    parts: list[str] = []
+    if module_docstring:
+        parts.append(module_docstring)
+    parts.extend(entries)
+    return '\n\n'.join(parts)
+
+  ## Constraints
+
+  All functions must have complete docstrings with Args and Returns.
+  All parameters must carry type annotations.
+  Do not import libcst directly.
+  File must not exceed 200 lines.

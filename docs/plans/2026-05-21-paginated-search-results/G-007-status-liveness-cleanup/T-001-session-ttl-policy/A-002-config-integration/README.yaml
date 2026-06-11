@@ -1,0 +1,416 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Config generator search_session section
+target_file: ai_editor/core/config_generator.py
+operation: modify_file
+priority: 3
+depends_on:
+  - A-001
+  - A-005
+concepts:
+  - C-007
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/core/config_generator.py
+
+  MRS excerpt (C-007 SessionTTLPolicy):
+  - Drives session expiration and cleanup timing.
+  - Configuration generator must emit search_session TTL and max block size defaults.
+
+  Parent GS (G-007): session TTL policy and cleanup configuration.
+
+  Parent TS (T-001): wire search_session section into config generator after policy defaults exist.
+
+  Precondition: ai_editor/core/search_session/policy.py exists with SEARCH_SESSION_TTL_SECONDS_DEFAULT
+  and SEARCH_MAX_BLOCK_SIZE_BYTES_DEFAULT. ALLOWED_AI_EDITOR_KEYS already includes search_session.
+
+  Full current file content (post-prior-AS state — apply edits to this exact baseline):
+  ```python
+  """
+  Configuration generator for ai-editor-server.
+  
+  Based on mcp-proxy-adapter SimpleConfigGenerator with ai_editor specific extensions.
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  import json
+  from typing import Any, Dict, List, Optional
+  
+  from mcp_proxy_adapter.core.config.simple_config_generator import SimpleConfigGenerator
+  
+  
+  from .constants import DEFAULT_READ_PROJECT_TEXT_JSON_STRUCTURED_MAX_BYTES
+  from .docs_indexing_defaults import default_docs_indexing_dict
+  
+  
+  class CodeAnalysisConfigGenerator(SimpleConfigGenerator):
+      """
+      Configuration generator for ai-editor-server.
+  
+      Extends SimpleConfigGenerator from mcp-proxy-adapter with ai_editor
+      specific configuration sections (database.driver, ai_editor, etc.).
+      """
+  
+      def generate(
+          self,
+          protocol: str,
+          with_proxy: bool = False,
+          out_path: str = "config.json",
+          # Server parameters (from SimpleConfigGenerator)
+          server_host: Optional[str] = None,
+          server_port: Optional[int] = None,
+          server_cert_file: Optional[str] = None,
+          server_key_file: Optional[str] = None,
+          server_ca_cert_file: Optional[str] = None,
+          server_crl_file: Optional[str] = None,
+          server_debug: Optional[bool] = None,
+          server_log_level: Optional[str] = None,
+          server_log_dir: Optional[str] = None,
+          # Registration parameters (from SimpleConfigGenerator)
+          registration_host: Optional[str] = None,
+          registration_port: Optional[int] = None,
+          registration_protocol: Optional[str] = None,
+          registration_cert_file: Optional[str] = None,
+          registration_key_file: Optional[str] = None,
+          registration_ca_cert_file: Optional[str] = None,
+          registration_crl_file: Optional[str] = None,
+          registration_server_id: Optional[str] = None,
+          registration_server_name: Optional[str] = None,
+          instance_uuid: Optional[str] = None,
+          # Queue manager parameters (from SimpleConfigGenerator)
+          queue_enabled: Optional[bool] = None,
+          queue_in_memory: Optional[bool] = None,
+          queue_max_concurrent: Optional[int] = None,
+          queue_retention_seconds: Optional[int] = None,
+          # Code analysis specific parameters
+          ai_editor_db_path: Optional[str] = None,
+          ai_editor_driver_type: Optional[str] = None,
+          ai_editor_driver_path: Optional[str] = None,
+          ai_editor_pg_host: Optional[str] = None,
+          ai_editor_pg_port: Optional[int] = None,
+          ai_editor_pg_dbname: Optional[str] = None,
+          ai_editor_pg_user: Optional[str] = None,
+          ai_editor_pg_password_env: Optional[str] = None,
+          ai_editor_log: Optional[str] = None,
+          ai_editor_faiss_index_path: Optional[str] = None,
+          ai_editor_vector_dim: Optional[int] = None,
+          ai_editor_min_chunk_length: Optional[int] = None,
+          ai_editor_retry_attempts: Optional[int] = None,
+          ai_editor_retry_delay: Optional[float] = None,
+          indexing_worker_enabled: Optional[bool] = None,
+          indexing_worker_poll_interval: Optional[int] = None,
+          indexing_worker_batch_size: Optional[int] = None,
+          indexing_worker_log_path: Optional[str] = None,
+          file_watcher_enabled: Optional[bool] = None,
+          file_watcher_scan_interval: Optional[int] = None,
+          file_watcher_log_path: Optional[str] = None,
+          file_watcher_version_dir: Optional[str] = None,
+          allow_line_commands_on_healthy_files: Optional[bool] = None,
+          ai_editor_docs_indexing_enabled: Optional[bool] = None,
+          ai_editor_docs_indexing_vectorize: Optional[bool] = None,
+          ai_editor_docs_indexing_roots: Optional[str] = None,
+          ai_editor_docs_indexing_include: Optional[str] = None,
+          ai_editor_docs_indexing_exclude: Optional[str] = None,
+      ) -> str:
+          """
+          Generate configuration file for ai-editor-server.
+  
+          Args:
+              protocol: Server protocol (http, https, mtls)
+              with_proxy: Enable proxy registration (default: False)
+              out_path: Output file path (default: config.json)
+              server_host: Server host
+              server_port: Server port
+              server_cert_file: Server certificate file
+              server_key_file: Server key file
+              server_ca_cert_file: Server CA certificate file
+              server_crl_file: Server CRL file
+              server_debug: Enable debug mode
+              server_log_level: Log level
+              server_log_dir: Log directory
+              registration_host: Registration proxy host
+              registration_port: Registration proxy port
+              registration_protocol: Registration protocol
+              registration_cert_file: Registration certificate file
+              registration_key_file: Registration key file
+              registration_ca_cert_file: Registration CA certificate file
+              registration_crl_file: Registration CRL file
+              registration_server_id: Server ID for registration
+              registration_server_name: Server name
+              instance_uuid: Server instance UUID
+              queue_enabled: Enable queue manager
+              queue_in_memory: Use in-memory queue
+              queue_max_concurrent: Maximum concurrent jobs
+              queue_retention_seconds: Completed job retention in seconds
+              ai_editor_db_path: Database path for ai_editor section
+              ai_editor_driver_type: Driver type (sqlite, sqlite_proxy, etc.)
+              ai_editor_driver_path: Driver database path (sqlite only)
+              ai_editor_pg_host: PostgreSQL host (when driver is postgres)
+              ai_editor_pg_port: PostgreSQL port
+              ai_editor_pg_dbname: PostgreSQL database name
+              ai_editor_pg_user: PostgreSQL user
+              ai_editor_pg_password_env: Environment variable name for the DB password (.env)
+              ai_editor_log: Code analysis log file path
+              ai_editor_faiss_index_path: FAISS index file path
+              ai_editor_vector_dim: Vector dimension for embeddings
+              ai_editor_min_chunk_length: Minimum chunk length
+              ai_editor_retry_attempts: Vectorization retry attempts
+              ai_editor_retry_delay: Vectorization retry delay (seconds)
+              indexing_worker_enabled: Enable indexing worker
+              indexing_worker_poll_interval: Indexing worker poll interval
+              indexing_worker_batch_size: Indexing worker batch size
+              indexing_worker_log_path: Indexing worker log path
+              file_watcher_enabled: Enable file watcher
+              file_watcher_scan_interval: File watcher scan interval (seconds)
+              file_watcher_log_path: File watcher log path
+              file_watcher_version_dir: File watcher version directory
+              ai_editor_docs_indexing_enabled: Override docs_indexing.enabled (default False; docs file types)
+              ai_editor_docs_indexing_vectorize: Override docs_indexing.vectorize (eligibility ignores this flag)
+              ai_editor_docs_indexing_roots: Comma-separated project-relative roots (default docs)
+              ai_editor_docs_indexing_include: Comma-separated include globs (each pattern must mention .md/.json/.yaml/.yml)
+              ai_editor_docs_indexing_exclude: Comma-separated exclude globs
+  
+          Returns:
+              Path to generated configuration file
+          """
+          # Generate base config using SimpleConfigGenerator
+          base_config_path = super().generate(
+              protocol=protocol,
+              with_proxy=with_proxy,
+              out_path=out_path,
+              server_host=server_host,
+              server_port=server_port,
+              server_cert_file=server_cert_file,
+              server_key_file=server_key_file,
+              server_ca_cert_file=server_ca_cert_file,
+              server_crl_file=server_crl_file,
+              server_debug=server_debug,
+              server_log_level=server_log_level,
+              server_log_dir=server_log_dir,
+              registration_host=registration_host,
+              registration_port=registration_port,
+              registration_protocol=registration_protocol,
+              registration_cert_file=registration_cert_file,
+              registration_key_file=registration_key_file,
+              registration_ca_cert_file=registration_ca_cert_file,
+              registration_crl_file=registration_crl_file,
+              registration_server_id=registration_server_id,
+              registration_server_name=registration_server_name,
+              instance_uuid=instance_uuid,
+          )
+  
+          # Load generated config
+          with open(base_config_path, "r", encoding="utf-8") as f:
+              config: Dict[str, Any] = json.load(f)
+  
+          # Add ai_editor section
+          if "ai_editor" not in config:
+              config["ai_editor"] = {}
+  
+          # Set database path
+          db_path = ai_editor_db_path or "data/ai_editor.db"
+          config["ai_editor"]["db_path"] = db_path
+  
+          # Add database.driver section if driver type is specified
+          driver_type = ai_editor_driver_type or "sqlite_proxy"
+  
+          if "database" not in config["ai_editor"]:
+              config["ai_editor"]["database"] = {}
+  
+          if driver_type == "postgres":
+              config["ai_editor"]["database"]["driver"] = {
+                  "type": "postgres",
+                  "config": {
+                      "host": ai_editor_pg_host or "127.0.0.1",
+                      "port": (
+                          int(ai_editor_pg_port)
+                          if ai_editor_pg_port is not None
+                          else 5432
+                      ),
+                      "dbname": ai_editor_pg_dbname or "ai_editor",
+                      "user": ai_editor_pg_user or "postgres",
+                      "password_env": ai_editor_pg_password_env
+                      or "AI_EDITOR_POSTGRES_PASSWORD",
+                  },
+              }
+          else:
+              driver_path = ai_editor_driver_path or db_path
+              config["ai_editor"]["database"]["driver"] = {
+                  "type": driver_type,
+                  "config": {
+                      "path": driver_path,
+                  },
+              }
+              if driver_type == "sqlite_proxy":
+                  config["ai_editor"]["database"]["driver"]["config"][
+                      "worker_config"
+                  ] = {
+                      "command_timeout": 30.0,
+                      "poll_interval": 0.01,
+                  }
+  
+          # Add database.rpc section (shm threshold for large payloads)
+          if "rpc" not in config["ai_editor"]["database"]:
+              config["ai_editor"]["database"]["rpc"] = {
+                  "shm_threshold_bytes": 65536,
+                  "shm_enabled": True,
+              }
+  
+          # Apply ai_editor settings from args or defaults (only what is used in code)
+          ca = config["ai_editor"]
+          ca["host"] = (
+              server_host if server_host is not None else ca.get("host", "0.0.0.0")
+          )
+          ca["port"] = server_port if server_port is not None else ca.get("port", 15000)
+          ca["log"] = (
+              ai_editor_log
+              if ai_editor_log is not None
+              else ca.get("log", "logs/ai_editor.log")
+          )
+          ca["faiss_index_path"] = (
+              ai_editor_faiss_index_path
+              if ai_editor_faiss_index_path is not None
+              else ca.get("faiss_index_path", "data/faiss_index.bin")
+          )
+          ca["vector_dim"] = (
+              ai_editor_vector_dim
+              if ai_editor_vector_dim is not None
+              else ca.get("vector_dim", 384)
+          )
+          ca["min_chunk_length"] = (
+              ai_editor_min_chunk_length
+              if ai_editor_min_chunk_length is not None
+              else ca.get("min_chunk_length", 30)
+          )
+          if ai_editor_retry_attempts is not None:
+              ca["vectorization_retry_attempts"] = ai_editor_retry_attempts
+          elif "vectorization_retry_attempts" not in ca:
+              ca["vectorization_retry_attempts"] = 3
+          if ai_editor_retry_delay is not None:
+              ca["vectorization_retry_delay"] = ai_editor_retry_delay
+          elif "vectorization_retry_delay" not in ca:
+              ca["vectorization_retry_delay"] = 1.0
+          if "log_vectorization_chunker_trace" not in ca:
+              ca["log_vectorization_chunker_trace"] = False
+          ca["allow_line_commands_on_healthy_files"] = (
+              allow_line_commands_on_healthy_files
+              if allow_line_commands_on_healthy_files is not None
+              else ca.get("allow_line_commands_on_healthy_files", False)
+          )
+          if "read_project_text_json_structured_max_bytes" not in ca:
+              ca["read_project_text_json_structured_max_bytes"] = (
+                  DEFAULT_READ_PROJECT_TEXT_JSON_STRUCTURED_MAX_BYTES
+              )
+          if "venv_site_packages_index_allowlisted_distributions" not in ca:
+              ca["venv_site_packages_index_allowlisted_distributions"] = []
+  
+          # Indexing worker (from args or default)
+          if "indexing_worker" not in ca:
+              ca["indexing_worker"] = {}
+          iw = ca["indexing_worker"]
+          if indexing_worker_enabled is not None:
+              iw["enabled"] = indexing_worker_enabled
+          else:
+              iw.setdefault("enabled", True)
+          if indexing_worker_poll_interval is not None:
+              iw["poll_interval"] = indexing_worker_poll_interval
+          else:
+              iw.setdefault("poll_interval", 30)
+          if indexing_worker_batch_size is not None:
+              iw["batch_size"] = indexing_worker_batch_size
+          else:
+              iw.setdefault("batch_size", 5)
+          if indexing_worker_log_path is not None:
+              iw["log_path"] = indexing_worker_log_path
+          else:
+              iw.setdefault("log_path", "logs/indexing_worker.log")
+  
+          # File watcher (from args or default block)
+          if (
+              file_watcher_enabled is not None
+              or file_watcher_scan_interval is not None
+              or file_watcher_log_path is not None
+              or file_watcher_version_dir is not None
+          ):
+              if "file_watcher" not in ca:
+                  ca["file_watcher"] = {
+                      "enabled": True,
+                      "scan_interval": 60,
+                      "log_path": "logs/file_watcher.log",
+                      "version_dir": "data/versions",
+                  }
+              fw = ca["file_watcher"]
+              if file_watcher_enabled is not None:
+                  fw["enabled"] = file_watcher_enabled
+              if file_watcher_scan_interval is not None:
+                  fw["scan_interval"] = file_watcher_scan_interval
+              if file_watcher_log_path is not None:
+                  fw["log_path"] = file_watcher_log_path
+              if file_watcher_version_dir is not None:
+                  fw["version_dir"] = file_watcher_version_dir
+          else:
+              # Ensure minimal file_watcher block so server can start (optional)
+              if "file_watcher" not in ca:
+                  ca["file_watcher"] = {
+                      "enabled": True,
+                      "scan_interval": 60,
+                      "log_path": "logs/file_watcher.log",
+                      "version_dir": "data/versions",
+                  }
+  
+          di_block = default_docs_indexing_dict()
+          if ai_editor_docs_indexing_enabled is not None:
+              di_block["enabled"] = bool(ai_editor_docs_indexing_enabled)
+          if ai_editor_docs_indexing_vectorize is not None:
+              di_block["vectorize"] = bool(ai_editor_docs_indexing_vectorize)
+  
+          def _csv_to_list(raw: Optional[str]) -> Optional[List[str]]:
+              if raw is None or not str(raw).strip():
+                  return None
+              return [x.strip() for x in str(raw).split(",") if x.strip()]
+  
+          roots_csv = _csv_to_list(ai_editor_docs_indexing_roots)
+          if roots_csv is not None:
+              di_block["roots"] = roots_csv
+          include_csv = _csv_to_list(ai_editor_docs_indexing_include)
+          if include_csv is not None:
+              di_block["include"] = include_csv
+          exclude_csv = _csv_to_list(ai_editor_docs_indexing_exclude)
+          if exclude_csv is not None:
+              di_block["exclude"] = exclude_csv
+          ca["docs_indexing"] = di_block
+  
+          # Save updated config
+          with open(base_config_path, "w", encoding="utf-8") as f:
+              json.dump(config, f, indent=2, ensure_ascii=False)
+  
+          return base_config_path
+  ```
+
+  Required edits (only these changes):
+  1. After the SimpleConfigGenerator import, add:
+     ```python
+     from ai_editor.core.search_session.policy import (
+         SEARCH_MAX_BLOCK_SIZE_BYTES_DEFAULT,
+         SEARCH_SESSION_TTL_SECONDS_DEFAULT,
+     )
+     ```
+  2. After ``ca["docs_indexing"] = di_block`` and before ``# Save updated config``, add:
+     ```python
+     ca["search_session"] = {
+         "ttl_seconds": SEARCH_SESSION_TTL_SECONDS_DEFAULT,
+         "max_block_size_bytes": SEARCH_MAX_BLOCK_SIZE_BYTES_DEFAULT,
+     }
+     ```
+
+  Forbidden: remove existing keys; change unrelated worker sections.
+
+  Run black/flake8/mypy on config_generator.py.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/config_generator.py
+  expected: Generated config.json includes ai_editor.search_session with both settings and defaults.
+status: ready_for_review

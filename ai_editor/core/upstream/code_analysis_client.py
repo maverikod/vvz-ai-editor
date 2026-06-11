@@ -1,0 +1,394 @@
+"""
+Sync wrapper around mcp-proxy-adapter JsonRpcClient for code-analysis-server.
+
+Author: Vasiliy Zdanovskiy
+email: vasilyvz@gmail.com
+"""
+
+from __future__ import annotations
+
+import asyncio
+import enum
+import logging
+import threading
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from ai_editor.core.exceptions import ValidationError
+from ai_editor.core.storage_paths import load_raw_config
+
+from .code_analysis_file_transfer import (
+    download_bytes_without_lock,
+    download_file_bytes,
+    normalize_rel_path,
+    resolve_file_id_for_path,
+    upload_bytes_transfer_id,
+    upload_create_save,
+)
+
+logger = logging.getLogger(__name__)
+
+try:
+    from mcp_proxy_adapter.client.jsonrpc_client.client import JsonRpcClient
+except Exception:  # pragma: no cover
+    from mcp_proxy_adapter.client.jsonrpc_client import JsonRpcClient
+
+_client_lock = threading.Lock()
+_client_instance: Optional["CodeAnalysisClient"] = None
+
+
+def _resolve_config_path() -> Path:
+    try:
+        from mcp_proxy_adapter.config import get_config
+
+        cfg = get_config()
+        cfg_path = getattr(cfg, "config_path", None)
+        if isinstance(cfg_path, str) and cfg_path.strip():
+            return Path(cfg_path).expanduser().resolve()
+    except Exception:
+        pass
+    return (Path.cwd() / "config.json").resolve()
+
+
+def _expand_path(value: Any) -> Optional[str]:
+    if value is None or value == "":
+        return None
+    return str(Path(str(value)).expanduser().resolve())
+
+
+def _normalized_session_path(
+    session_id: Any, project_id: Any, file_path: str
+) -> tuple[str, str, str]:
+    return (
+        str(session_id or "").strip(),
+        str(project_id or "").strip(),
+        normalize_rel_path(file_path),
+    )
+
+
+def _raise_missing_session_path(
+    session_id: Any, project_id: Any, file_path: str
+) -> None:
+    raise ValidationError(
+        "session_id, project_id, and file_path are required",
+        field="session_id",
+        details={
+            "session_id": session_id,
+            "project_id": project_id,
+            "file_path": file_path,
+        },
+    )
+
+
+def _accepted_upload_bytes(saved: Any, content: bytes) -> bytes:
+    if isinstance(saved, dict):
+        accepted = saved.get("content_bytes") or saved.get("bytes")
+        if isinstance(accepted, (bytes, bytearray)):
+            return bytes(accepted)
+    return content
+
+
+def _load_ca_section(config_path: Optional[Path] = None) -> Dict[str, Any]:
+    path = config_path or _resolve_config_path()
+    raw = load_raw_config(path)
+    section = raw.get("code_analysis_server") or {}
+    if not isinstance(section, dict):
+        section = {}
+    if section:
+        return {
+            **section,
+            "server_id": str(section.get("server_id") or "code-analysis-server"),
+            "command_transport": str(section.get("command_transport") or "direct"),
+        }
+    client = raw.get("client") or {}
+    ssl = client.get("ssl") if isinstance(client, dict) else {}
+    return {
+        "host": "192.168.254.26",
+        "port": 15001,
+        "protocol": "https",
+        "ssl": ssl if isinstance(ssl, dict) else {},
+        "server_id": "code-analysis-server",
+        "command_transport": "direct",
+    }
+
+
+def _build_jsonrpc_kwargs(section: Dict[str, Any]) -> Dict[str, Any]:
+    host = str(section.get("host") or "127.0.0.1")
+    if host in ("0.0.0.0", "::", "[::]"):
+        host = "127.0.0.1"
+    raw_ssl = section.get("ssl")
+    ssl_section: Dict[str, Any] = raw_ssl if isinstance(raw_ssl, dict) else {}
+    cert = _expand_path(ssl_section.get("cert") or ssl_section.get("cert_path"))
+    key = _expand_path(ssl_section.get("key") or ssl_section.get("key_path"))
+    ca = _expand_path(ssl_section.get("ca") or ssl_section.get("ca_path"))
+    timeout = float(section.get("timeout") or 60.0)
+    return {
+        "protocol": str(section.get("protocol") or "https"),
+        "host": host,
+        "port": int(section.get("port") or 15001),
+        "cert": cert,
+        "key": key,
+        "ca": ca,
+        "check_hostname": bool(section.get("check_hostname", False)),
+        "timeout": timeout,
+    }
+
+
+def _unwrap_command_result(response: Any) -> Any:
+    if not isinstance(response, dict):
+        return response
+    if response.get("success") is False:
+        err = response.get("error") or response.get("message") or "upstream command failed"  # fmt: skip
+        raise RuntimeError(str(err))
+    data = response.get("data")
+    if data is not None:
+        return data
+    return response
+
+
+class CaSessionStatus(str, enum.Enum):
+    VALID = "valid"
+    NOT_FOUND = "not_found"
+    INVALID = "invalid"
+
+
+class CodeAnalysisClient:
+    """Synchronous JSON-RPC client for code-analysis-server."""
+
+    def __init__(self, *, config_path: Optional[Path] = None) -> None:
+        self._config_path = config_path
+        self._section = _load_ca_section(config_path)
+        self._rpc: Optional[JsonRpcClient] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._server_id = str(self._section.get("server_id") or "code-analysis-server")
+
+    def _run_async(self, coroutine: Any) -> Any:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+            return self._loop.run_until_complete(coroutine)
+        raise RuntimeError("CodeAnalysisClient.call() cannot run inside an active event loop")  # fmt: skip
+
+    def _ensure_rpc(self) -> JsonRpcClient:
+        if self._rpc is None:
+            self._rpc = JsonRpcClient(**_build_jsonrpc_kwargs(self._section))
+        return self._rpc
+
+    def call(self, command: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        """Execute a command on code-analysis-server and return unwrapped data."""
+        rpc = self._ensure_rpc()
+        response = self._run_async(rpc.execute_command(command=command, params=params or {}))  # fmt: skip
+        return _unwrap_command_result(response)
+
+    def list_projects(self, *, include_deleted: bool = False) -> List[Dict[str, Any]]:
+        data = self.call("list_projects", {"include_deleted": include_deleted})
+        if isinstance(data, dict):
+            projects = data.get("projects")
+            if isinstance(projects, list):
+                return [dict(p) for p in projects if isinstance(p, dict)]
+        if isinstance(data, list):
+            return [dict(p) for p in data if isinstance(p, dict)]
+        return []
+
+    @property
+    def server_id(self) -> str:
+        """Configured MCP proxy downstream server id for logging."""
+        return self._server_id
+
+    def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+        pid = str(project_id or "").strip()
+        if not pid:
+            return None
+        for row in self.list_projects(include_deleted=True):
+            if str(row.get("id") or row.get("project_id") or "").strip() == pid:
+                return row
+        return None
+
+    def get_project_root(self, project_id: str) -> Path:
+        """Deprecated; use C-023 RPC wrappers instead."""
+        project = self.get_project(project_id)
+        if not project:
+            raise ValidationError(
+                f"Project with ID {project_id!r} not found.",
+                field="project_id",
+                details={"project_id": project_id},
+            )
+        stored = str(project.get("root_path") or "").strip()
+        watch_dir = str(
+            project.get("watch_dir") or project.get("watch_dir_path") or ""
+        ).strip()
+        if stored and Path(stored).is_absolute():
+            root = Path(stored).resolve()
+        elif watch_dir and stored:
+            root = (Path(watch_dir) / stored).resolve()
+        elif watch_dir and project.get("name"):
+            root = (Path(watch_dir) / str(project["name"])).resolve()
+        else:
+            raise ValidationError(
+                f"Cannot resolve absolute project root for project_id {project_id!r}",
+                field="project_id",
+                details={"project_id": project_id, "project": project},
+            )
+        if not root.is_dir():
+            raise ValidationError(
+                f"Project root path does not exist: {root}",
+                field="project_id",
+                details={"project_id": project_id, "root_path": str(root)},
+            )
+        return root
+
+    def resolve_file_by_id(
+        self, file_id: str, project_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        fid = str(file_id or "").strip()
+        if not fid:
+            return None
+        if project_id:
+            project_ids = [str(project_id).strip()]
+        else:
+            project_ids = [
+                str(p.get("id") or p.get("project_id") or "").strip()
+                for p in self.list_projects(include_deleted=False)
+            ]
+        for pid in project_ids:
+            if not pid:
+                continue
+            try:
+                data = self.call("list_project_files", {"project_id": pid})
+            except Exception as exc:
+                logger.debug("list_project_files failed for %s: %s", pid, exc)
+                continue
+            files = data.get("files") if isinstance(data, dict) else data
+            if not isinstance(files, list):
+                continue
+            for item in files:
+                if not isinstance(item, dict):
+                    continue
+                row_fid = str(item.get("file_id") or item.get("id") or "").strip()
+                if row_fid != fid:
+                    continue
+                rel = str(
+                    item.get("relative_path")
+                    or item.get("path")
+                    or item.get("file_path")
+                    or ""
+                ).strip()
+                return {
+                    "id": fid,
+                    "project_id": pid,
+                    "relative_path": rel.replace("\\", "/"),
+                    "path": rel.replace("\\", "/"),
+                    "deleted": bool(item.get("deleted")),
+                }
+        return None
+
+    def validate_ca_session(self, session_id: str) -> CaSessionStatus:
+        sid = str(session_id or "").strip()
+        if not sid:
+            return CaSessionStatus.INVALID
+        try:
+            self.call("session_list_file_locks", {"session_id": sid})
+            return CaSessionStatus.VALID
+        except RuntimeError as exc:
+            msg = str(exc).upper()
+            if "SESSION_NOT_FOUND" in msg:
+                return CaSessionStatus.NOT_FOUND
+            return CaSessionStatus.INVALID
+
+    def lock_file_and_download(
+        self, session_id: str, project_id: str, file_path: str
+    ) -> bytes:
+        """Open Stage: session_open_file lock then chunked download (C-023)."""
+        sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
+        if not sid or not pid or not rel:
+            _raise_missing_session_path(session_id, project_id, file_path)
+        file_id = resolve_file_id_for_path(self, pid, rel)
+        self.call(
+            "session_open_file",
+            {"session_id": sid, "project_id": pid, "file_id": file_id},
+        )
+        return download_file_bytes(
+            self, session_id=sid, project_id=pid, file_id=file_id, lock_mode="none"
+        )
+
+    def unlock_session_file(
+        self, *, session_id: str, project_id: str, file_path: str
+    ) -> bool:
+        """Close Stage unlock via session_close_file; best-effort on broken session."""
+        sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
+        if not sid or not pid or not rel:
+            return False
+        try:
+            file_id = resolve_file_id_for_path(self, pid, rel)
+        except (ValidationError, RuntimeError):
+            return False
+        try:
+            self.call(
+                "session_close_file",
+                {"session_id": sid, "project_id": pid, "file_id": file_id},
+            )
+            return True
+        except RuntimeError as exc:
+            msg = str(exc).upper()
+            if "SESSION_NOT_FOUND" in msg or "NOT_LOCKED" in msg or "NO_LOCK" in msg:
+                return False
+            return False
+
+    def upload_session_file_content(
+        self, *, session_id: str, project_id: str, file_path: str, content: bytes
+    ) -> bytes:
+        """Write Stage upload via project_file_transfer_upload_save (C-012)."""
+        sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
+        if not sid or not pid or not rel:
+            _raise_missing_session_path(session_id, project_id, file_path)
+        file_id = resolve_file_id_for_path(self, pid, rel)
+        transfer_id = upload_bytes_transfer_id(
+            self, content, filename=Path(rel).name or "upload.bin"
+        )
+        saved = self.call(
+            "project_file_transfer_upload_save",
+            {
+                "session_id": sid,
+                "project_id": pid,
+                "file_id": file_id,
+                "transfer_id": transfer_id,
+                "unlock_after_write": False,
+                "backup": True,
+                "dry_run": False,
+            },
+        )
+        return _accepted_upload_bytes(saved, content)
+
+    def download_without_lock(self, *, project_id: str, file_path: str) -> bytes:
+        """Edit Stage one-shot preview: download without session_open_file (C-011)."""
+        return download_bytes_without_lock(self, project_id=project_id, file_path=file_path)  # fmt: skip
+
+    def upload_create_and_lock(
+        self, *, session_id: str, project_id: str, file_path: str, content: bytes
+    ) -> bytes:
+        """Open Stage create path: upload, save, lock (C-010)."""
+        sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
+        saved = upload_create_save(
+            self, session_id=sid, project_id=pid, file_path=rel, content=content
+        )
+        file_id = str(saved.get("file_id") or "").strip() or resolve_file_id_for_path(
+            self, pid, rel
+        )
+        self.call(
+            "session_open_file",
+            {"session_id": sid, "project_id": pid, "file_id": file_id},
+        )
+        return _accepted_upload_bytes(saved, content)
+
+
+def get_code_analysis_client(
+    *, config_path: Optional[Path] = None
+) -> CodeAnalysisClient:
+    """Return process-wide CodeAnalysisClient singleton."""
+    global _client_instance
+    with _client_lock:
+        if _client_instance is None:
+            _client_instance = CodeAnalysisClient(config_path=config_path)
+        return _client_instance

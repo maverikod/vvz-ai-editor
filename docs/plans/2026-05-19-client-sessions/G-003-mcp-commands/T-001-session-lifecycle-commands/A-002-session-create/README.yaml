@@ -1,0 +1,60 @@
+concepts:
+- C-001
+- C-004
+- C-005
+depends_on:
+- A-001
+name: Create session_create_command.py
+operation: create_file
+parent_tactical_step: T-001
+priority: 2
+prompt: "Create a new Python file at the exact path:\n  ai_editor/commands/sessions/session_create_command.py\n\
+  \nThis file is new with no pre-existing content.\n\nMRS context:\n- C-001 ClientSession:
+  UUID4, comment, created_at, last_active_at, roles.\n- C-005 SessionMCPCommands:
+  session_create accepts comment and role_ids; no touch; always permitted.\n\nFile-level
+  docstring:\n\"\"\"\nsession_create MCP command: create a new client session.\n\n\
+  Author: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nImports (exact):\n\
+  \  from __future__ import annotations\n  from typing import Any, Dict, List, Optional\n\
+  \  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult\n  from
+  ai_editor.commands.base_mcp_command import BaseMCPCommand\n  from ai_editor.core.client_sessions
+  import create_client_session\n\nClass:\n\nclass SessionCreateCommand(BaseMCPCommand):\n\
+  \    \"\"\"MCP command: create a new client session.\"\"\"\n\n    name = 'session_create'\n\
+  \    version = '1.0.0'\n    descr = 'Create a new client session and return its
+  session_id.'\n    category = 'session_management'\n    author = 'Vasiliy Zdanovskiy'\n\
+  \    email = 'vasilyvz@gmail.com'\n    use_queue = False\n\n    @staticmethod\n\
+  \    def get_name() -> str:\n        \"\"\"Return the MCP command name.\n\n    \
+  \    Returns:\n            MCP command name string.\n        \"\"\"\n        return
+  'session_create'\n\n    @classmethod\n    def get_schema(cls) -> Dict[str, Any]:\n\
+  \        \"\"\"Return the JSON schema for command parameters.\n\n        Returns:\n\
+  \            JSON schema dict.\n        \"\"\"\n        return {\n            'type':
+  'object',\n            'properties': {\n                'comment': {\n         \
+  \           'type': 'string',\n                    'description': 'Human-readable
+  label for this session.',\n                },\n                'role_ids': {\n \
+  \                   'type': 'array',\n                    'items': {'type': 'string'},\n\
+  \                    'description': 'Optional list of role UUID4 strings to assign
+  at creation.',\n                },\n            },\n            'required': ['comment'],\n\
+  \            'additionalProperties': False,\n        }\n\n    async def execute(\
+  \  # type: ignore[override]\n        self,\n        comment: str,\n        role_ids:
+  Optional[List[str]] = None,\n        **kwargs: Any,\n    ) -> SuccessResult | ErrorResult:\n\
+  \        \"\"\"Execute session_create.\n\n        Creates a new ClientSession record
+  with the given comment and optional\n        role assignments. No SessionTouchRule
+  applies (session does not exist yet).\n        No SecurityPolicy check (creation
+  is always permitted).\n\n        Args:\n            comment: Human-readable label
+  for the session.\n            role_ids: Optional list of role UUID4 strings to assign
+  at creation.\n            **kwargs: Adapter context (ignored).\n\n        Returns:\n\
+  \            SuccessResult with session_id, comment, created_at, last_active_at.\n\
+  \        \"\"\"\n        _ = kwargs\n        database = self._open_database_from_config()\n\
+  \        row = create_client_session(database, comment=comment, role_ids=role_ids)\n\
+  \        return SuccessResult(data=row)\n\nConstraints:\n- File must not exceed
+  90 lines.\n- No other functions or classes.\n- All type annotations required.\n\
+  - Google-style docstrings."
+status: done
+step_id: A-002
+target_file: ai_editor/commands/sessions/session_create_command.py
+verification:
+  expected: SessionCreateCommand is importable from 
+    ai_editor.commands.sessions.session_create_command. get_name() returns 
+    'session_create'. get_schema() returns a dict with required=['comment'] and 
+    properties containing 'comment' and 'role_ids'.
+  target: ai_editor/commands/sessions/session_create_command.py
+  type: import

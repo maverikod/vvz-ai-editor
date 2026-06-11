@@ -1,0 +1,99 @@
+description: Concept-to-global-step coverage matrix. Each entry maps a 
+  concept_id to the global step(s) that own it. Derived from spec.yaml concepts 
+  and G-NNN/README.yaml concepts lists.
+plan_name: marked_tree_unification
+entries:
+- concept_id: C-001
+  name: MarkerContract
+  global_steps:
+  - G-001
+- concept_id: C-002
+  name: NodeId
+  global_steps:
+  - G-001
+- concept_id: C-003
+  name: TreeFile
+  global_steps:
+  - G-001
+  - G-002
+- concept_id: C-004
+  name: SourceFile
+  global_steps:
+  - G-001
+  - G-002
+- concept_id: C-005
+  name: AddressableBlock
+  global_steps:
+  - G-001
+- concept_id: C-006
+  name: ChecksumSyncPolicy
+  global_steps:
+  - G-002
+- concept_id: C-007
+  name: FormatHandler
+  global_steps:
+  - G-001
+- concept_id: C-008
+  name: HandlerRegistry
+  global_steps:
+  - G-001
+- concept_id: C-009
+  name: TreeNode
+  global_steps:
+  - G-001
+- concept_id: C-010
+  name: TreeLifecycle
+  global_steps:
+  - G-002
+- concept_id: C-011
+  name: TreeBuilder
+  global_steps:
+  - G-002
+- concept_id: C-012
+  name: EditSession
+  global_steps:
+  - G-003
+- concept_id: C-013
+  name: SessionRepo
+  global_steps:
+  - G-003
+- concept_id: C-014
+  name: SessionGitApi
+  global_steps:
+  - G-003
+- concept_id: C-015
+  name: EditOperation
+  global_steps:
+  - G-004
+- concept_id: C-016
+  name: PreviewNavigation
+  global_steps:
+  - G-004
+- concept_id: C-017
+  name: PreviewSelector
+  global_steps:
+  - G-004
+- concept_id: C-018
+  name: TreeQuery
+  global_steps:
+  - G-004
+- concept_id: C-019
+  name: CstQuerySelector
+  global_steps:
+  - G-004
+- concept_id: C-020
+  name: GrepConsumer
+  global_steps:
+  - G-005
+- concept_id: C-021
+  name: Watcher
+  global_steps:
+  - G-005
+- concept_id: C-022
+  name: Indexer
+  global_steps:
+  - G-005
+- concept_id: C-023
+  name: SidecarLayoutMigration
+  global_steps:
+  - G-000

@@ -1,0 +1,33 @@
+step_id: T-002
+parent_global_step: G-007
+name: SearchStatus model
+description: >
+  Creates the SearchStatus model exposed to clients while search generation
+  proceeds or terminates for one search job execution context. Defines terminal
+  and in-progress states including running, completed, failed, cancelled,
+  timed_out, and dead. Exposes current phase values such as indexed search,
+  dynamic file discovery, tree validation, tree reconstruction, XPath filtering,
+  block writing, and completion. Distinguishes block-not-ready conditions from
+  whole-search failure and binds hard timeout and cancellation rules so
+  timed-out dynamic or structural phases do not contribute partial invalid
+  structural evidence. apply_cancellation is consumed by the search_cancel MCP command;
+  the queue-cancel hook in the search queue cancel tactical step stops underlying queued work.
+concepts:
+  - C-020
+inputs:
+  - name: session_status_context
+    type: SessionStatusContext
+    description: Active search execution context whose status and phase are being reported.
+  - name: execution_phase_event
+    type: ExecutionPhaseEvent
+    description: Phase transition emitted by the active search pipeline.
+  - name: cancellation_or_timeout_signal
+    type: CancellationOrTimeoutSignal
+    description: Explicit cancel request or hard-timeout boundary for the active phase.
+outputs:
+  - name: search_status
+    type: SearchStatus
+    description: Current status, phase, and client-visible termination reason when applicable.
+atomic_steps:
+- A-001
+status: frozen

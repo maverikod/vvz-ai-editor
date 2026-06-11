@@ -1,0 +1,31 @@
+step_id: G-007
+name: JSON Lines file handler
+description: 'JsonLinesFileHandler is the FileHandler family for .jsonl, .ndjson files.
+  At the root it composes a lines representation: the root Node has kind lines and
+  its Block set is the sequence of text lines in file order. A Selector at the root
+  selects line indices without parsing any JSON. When the caller drills into a specific
+  line by passing its index as node_ref, the follow-up request parses that line and
+  treats the resulting JSON value as its own root, delegating per-line structure to
+  the JSON file handler''s parsing logic. This step composes existing lines and JSON
+  capabilities; it does not duplicate JSON parsing.
+
+  '
+concepts:
+- C-019
+relations:
+- from_concept: C-019
+  to_concept: C-003
+  type: extends
+- from_concept: C-019
+  to_concept: C-004
+  type: produces
+source_ranges:
+- start: 163
+  end: 167
+depends_on:
+- G-005
+- G-006
+tactical_steps:
+- T-601
+- T-602
+status: done

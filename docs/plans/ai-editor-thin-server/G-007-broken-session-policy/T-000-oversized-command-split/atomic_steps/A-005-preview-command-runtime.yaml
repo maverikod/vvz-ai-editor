@@ -1,0 +1,16 @@
+step_id: A-005
+parent_tactical_step: T-000
+name: preview_command runtime module
+target_file: ai_editor/commands/universal_file_preview_runtime.py
+operation: create_file
+priority: 5
+depends_on: []
+concepts:
+- C-016
+- C-011
+prompt: "Create `ai_editor/commands/universal_file_preview_runtime.py` (operation: create_file).\n\nThin runtime shell for MCP Workflow Surface file-size split (C-016) with Edit session awareness placeholder (C-011). T-000 is structural only — no behavior change; facade+runtime layout only.\n\n```py\n\"\"\"Runtime for universal_file_preview (C-016, C-011).\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom typing import Any, Union\n\nfrom mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult\n\n\ndef run_preview_execute(\n    command: Any,\n    **kwargs: Any,\n) -> Union[SuccessResult, ErrorResult]:\n    \"\"\"Preview workspace copy orchestration (facade delegates here).\n\n    Structural shell from T-000; one-shot CA read branch extended in G-007/T-002.\n    \"\"\"\n    raise NotImplementedError(\n        \"universal_file_preview workspace orchestration: extend in G-007/T-002\"\n    )\n```\n\nExport `run_preview_execute`. The facade module `ai_editor/commands/universal_file_preview_command.py` calls `run_preview_execute(self, **kwargs)` synchronously.\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview_runtime.run_preview_execute
+  expected: Module parses as valid Python and imports without syntax errors; run_preview_execute is a synchronous callable. This file may serve as embedded baseline content for broken-session preview orchestration runtime steps in later global steps.
+status: draft

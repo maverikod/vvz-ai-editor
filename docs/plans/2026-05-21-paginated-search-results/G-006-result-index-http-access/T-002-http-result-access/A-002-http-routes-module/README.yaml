@@ -1,0 +1,65 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Search job HTTP routes module
+target_file: ai_editor/core/search_session/http_routes.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-005
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/http_routes.py
+
+  MRS (C-005 HTTPResultAccess): non-streaming GET of index, block by position, status; refresh last_access.
+
+  Depends on ai_editor/core/search_session/http_access.py handlers from the same package.
+
+  Routing fork resolution (single registration surface):
+  - Register routes ONLY in this module via register_search_job_routes.
+  - Do NOT register routes in main_server_presentation.py, http_access.py, or AppFactory subclasses.
+  - main_app_factory.create_app_with_events calls register_search_job_routes after OpenAPI patch.
+
+  Route prefix contract (must match PaginatedSearchHandoff.index_url in compatibility.py):
+  - compatibility.py handoff: index_url=f"/search/jobs/{session.search_id}/index"
+  - Register exactly these paths (job_id path param equals search_id from handoff):
+      GET /search/jobs/{job_id}/index
+      GET /search/jobs/{job_id}/blocks/{position}
+      GET /search/jobs/{job_id}/status
+  - Forbidden alternate prefixes: /api/v1/search/..., /jobs/..., versioned variants, or duplicate
+    registrations elsewhere.
+
+  Imports:
+  - from __future__ import annotations
+  - from pathlib import Path
+  - from typing import Any
+  - from fastapi.responses import JSONResponse
+  - from ai_editor.core.search_session.http_access import (
+        HttpAccessContext,
+        handle_get_block,
+        handle_get_index,
+        handle_get_status,
+    )
+
+  Implement:
+  - def _json_response(status_code: int, payload: dict) -> JSONResponse
+  - def register_search_job_routes(app: Any, *, config_dir: Path) -> None
+    Build one HttpAccessContext(config_dir=config_dir) shared by closures.
+    Register the three GET routes via app.add_api_route with sync wrappers:
+      get_index(job_id) -> JSONResponse from handle_get_index
+      get_block(job_id, position) -> JSONResponse from handle_get_block
+      get_status(job_id) -> JSONResponse from handle_get_status
+    Route names: search_job_get_index, search_job_get_block, search_job_get_status.
+
+  Author header. Under 200 lines.
+
+verification:
+  type: import
+  target: ai_editor.core.search_session.http_routes
+  expected: >
+    register_search_job_routes is callable and registers GET /search/jobs/{job_id}/index,
+    GET /search/jobs/{job_id}/blocks/{position}, and GET /search/jobs/{job_id}/status
+    matching the index_url template from compatibility.PaginatedSearchHandoff.
+    No duplicate route registration exists outside http_routes.py.
+status: ready_for_review

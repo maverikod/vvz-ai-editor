@@ -1,0 +1,48 @@
+atomic_steps:
+- A-001
+- A-002
+concepts:
+- C-009
+- C-007
+- C-008
+- C-004
+description: "Define the SecurityPolicy (C-009) config schema entry, its validator,\
+  \ and its policy evaluator.\n\nConfig schema entry created:\n- Section 'security'\
+  \ added to the server config schema with one required field: policy (enum: disabled\
+  \ | allowlist | denylist).\n- Semantics: disabled — no access checks performed,\
+  \ Role and RolePermission ignored; allowlist — only (role_id, command_name, server_uuid)\
+  \ triples present in RolePermission are permitted, all others rejected; denylist\
+  \ — all commands permitted except those present in RolePermission as explicit denials.\
+  \n\nValidator rule created:\n- Config validator rejects any value of security.policy\
+  \ that is not in {disabled, allowlist, denylist}.\n- Config validator rejects a\
+  \ missing security.policy field.\n- Validator error message: 'security.policy must\
+  \ be one of: disabled, allowlist, denylist'.\n\nPolicy evaluator contract created:\
+  \n- is_command_permitted(session_id, command_name, server_uuid, policy_mode) ->\
+  \ bool: evaluates whether a session may execute a command on a server under the\
+  \ given policy mode, using Role (C-007) and RolePermission (C-008) data from SessionService\
+  \ (C-004)."
+inputs:
+- description: get_roles_for_session(session_id) -> list[dict] and 
+    get_permissions_for_roles(role_ids, server_uuid) -> list[str] from 
+    SessionService (C-004) — the pure data-access layer defined in G-001 and 
+    consumed here as a domain contract.
+  name: SessionService role operations
+  type: domain contract
+- description: Existing config validator infrastructure.
+  name: Config schema infrastructure
+  type: existing domain contract
+name: SecurityPolicy config schema, validator, and evaluator contract
+outputs:
+- description: security.policy field added to config schema with enum validation.
+  name: SecurityPolicy config entry
+  type: domain schema
+- description: Validator rule rejecting invalid or missing security.policy values.
+  name: SecurityPolicy validator rule
+  type: domain contract
+- description: is_command_permitted(session_id, command_name, server_uuid,
+    policy_mode) -> bool evaluator.
+  name: Policy evaluator contract
+  type: domain contract
+parent_global_step: G-002
+status: done
+step_id: T-001

@@ -1,0 +1,292 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Add six edit-operation abstract methods to FormatHandler
+target_file: ai_editor/tree/format_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-015
+- C-007
+- C-002
+- C-009
+- C-025
+status: ready_for_review
+prompt: |
+  > Cross-TS and within-TS execution ordering is expressed ONLY via the standard depends_on field plus parallel-waves.yaml. Do not add non-standard cross-TS ordering fields. Cross-TS FILE dependencies must be satisfied by INLINING full post-prior-AS file state into the prompt (a8), NOT by referencing other steps. No atomic, tactical, or global step identifiers may appear in any prompt: prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-015, C-007, C-002, C-009, C-025)
+
+  Modify the file `ai_editor/tree/format_handler.py`.
+  Operation: modify_file (FormatHandler base module must already exist; see a8 below).
+
+  Extend FormatHandler (C-007) with the six EditOperation (C-015) abstract methods.
+  External API addressing uses integer short_id (NodeId = int) only; NodeIdMap.resolve
+  is server-internal (C-025). This step adds abstract signatures and docstrings only.
+
+  ## MRS excerpt
+
+  **C-015 EditOperation**
+  - six operations: insert, delete, replace, move, edit-attributes, edit-content
+  - when tree is valid every target identified by short_id integer, never line number or byte offset
+  - insert places a new block relative to a short_id and assigns a fresh short_id per {a007} using next_free
+  - delete removes block and subtree; retired short_ids never reused
+  - replace substitutes content preserving short_id; move relocates preserving short_id
+  - edit-attributes changes metadata only; edit-content changes leaf text only, rejects non-leaf
+
+  **C-002 NodeId**
+  - per-file monotonic decimal integer short_id; unrecognised short_id → input error (UnknownNodeIdError)
+
+  **C-007 FormatHandler**
+  - implements six tree-edit operations for its format
+  - hide/unhide during mutation is EditSession (C-012), NOT FormatHandler
+
+  **C-025 NodeIdMap**
+  - resolve(short_id=...) / resolve(uuid=...) server-internal only; never at API boundary
+
+  ## Full current file content (a8 — pre-edit baseline inlined)
+
+  COMPLETE expected module BEFORE this edit. Baseline from G-001 create_file spec (113 lines).
+  File may not exist on disk yet; treat this block as the exact pre-edit state.
+
+  ```python
+  """
+  Per-format FormatHandler abstract base (C-007).
+  
+  Handlers embed integer short_id markers in TREE content only.
+  Canonical UUID4 identity lives in the MAP section via NodeIdMap (C-025);
+  handlers never call uuid.uuid4() for markers.
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  from __future__ import annotations
+  
+  from abc import ABC, abstractmethod
+  from pathlib import Path
+  from typing import List, Optional, Protocol, runtime_checkable
+  from uuid import UUID
+  
+  from ai_editor.core.tree_lifecycle.checksum import compute_content_checksum
+  from ai_editor.tree.contracts import NodeId, UnknownNodeIdError
+  from ai_editor.tree.tree_node import TreeNode
+  
+  
+  class ShortIdAllocator:
+      def __init__(self, start: int = 1) -> None:
+          if start < 1:
+              raise ValueError("ShortIdAllocator start must be >= 1")
+          self._next = start
+  
+      def allocate(self) -> int:
+          """Return current short_id and increment internal counter by 1."""
+          sid = self._next
+          self._next += 1
+          return sid
+  
+      @property
+      def next_free(self) -> int:
+          """Lowest short_id not yet issued (for MAP next_free metadata)."""
+          return self._next
+  
+  
+  @runtime_checkable
+  class NodeIdMapResolveResult(Protocol):
+      short_id: int
+      uuid: str
+  
+  
+  @runtime_checkable
+  class NodeIdMapResolver(Protocol):
+      def resolve(
+          self,
+          *,
+          short_id: Optional[int] = None,
+          uuid: Optional[str] = None,
+      ) -> NodeIdMapResolveResult:
+          """Bidirectional short_id↔UUID lookup within one loaded map; exactly one argument must be provided."""
+  
+  
+  class FormatHandler(ABC):
+      def __init__(self, id_map: Optional[NodeIdMapResolver] = None) -> None:
+          self._id_map = id_map
+  
+      @abstractmethod
+      def parse_content(self, file_path: Path, content: str) -> List[TreeNode]:
+          """Build in-memory node tree from unmarked source content."""
+  
+      @abstractmethod
+      def mark(self, content: str) -> str:
+          """Embed integer short_id markers into unmarked source."""
+  
+      @abstractmethod
+      def unmark(self, marked_text: str) -> str:
+          """Strip markers and reproduce original source byte-for-byte."""
+  
+      @abstractmethod
+      def sidecar_path(self, source_abs: Path) -> Path:
+          """Return sibling ``<name>.tree`` path for the source file."""
+  
+      def node_id_for(self, raw: str) -> NodeId:
+          """Parse decimal integer short_id from raw marker token."""
+          try:
+              sid = int(raw.strip())
+          except ValueError as exc:
+              raise ValueError(f"short_id must be int, got {raw!r}") from exc
+          if sid < 1:
+              raise UnknownNodeIdError(sid)
+          return sid
+  
+      def resolve_uuid_for_short_id(self, short_id: NodeId) -> UUID:
+          if self._id_map is None:
+              raise RuntimeError("NodeIdMap required for UUID resolution")
+          from ai_editor.core.tree_lifecycle.node_id_map import UnknownShortIdError
+  
+          try:
+              result = self._id_map.resolve(short_id=short_id)
+          except UnknownShortIdError as exc:
+              raise UnknownNodeIdError(exc.short_id) from exc
+          return UUID(result.uuid)
+  
+      def resolve_short_id_for_uuid(self, node_uuid: UUID) -> NodeId:
+          if self._id_map is None:
+              raise RuntimeError("NodeIdMap required for UUID resolution")
+          result = self._id_map.resolve(uuid=str(node_uuid))
+          return result.short_id
+  
+      def verify_byte_round_trip(self, source: str) -> bool:
+          """Return True when unmark(mark(source)) equals source byte-for-byte."""
+          return self.unmark(self.mark(source)) == source
+  
+      def verify_checksum_round_trip(self, source: str) -> bool:
+          marked = self.mark(source)
+          restored = self.unmark(marked)
+          return compute_content_checksum(restored) == compute_content_checksum(source)
+  ```
+
+  ## Required changes (exactly two change groups)
+
+  ### Change 1 — extend imports
+
+  Replace:
+    from typing import List, Optional, Protocol, runtime_checkable
+  with:
+    from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+
+  ### Change 2 — append six abstract methods inside FormatHandler
+
+  After verify_checksum_round_trip, append:
+
+    @abstractmethod
+    def op_insert(
+        self,
+        marked_text: str,
+        anchor_short_id: NodeId,
+        position: str,
+        new_content: str,
+        next_free: int,
+    ) -> str:
+        """Insert a new addressable block relative to anchor (C-015, {h002}, {a007}).
+
+        Assign fresh short_id equal to next_free; caller updates MAP next_free after.
+        Validates new_content syntactically for this format at insertion point.
+
+        Args:
+            marked_text: Current marked TREE-section text.
+            anchor_short_id: Existing short_id the insertion is relative to.
+            position: One of "before", "after", "first_child", "last_child".
+            new_content: Unmarked content of the new block.
+            next_free: Lowest unused short_id from MAP (per {a007}).
+
+        Returns:
+            New marked TREE text with inserted block and integer short_id marker.
+
+        Raises:
+            UnknownNodeIdError: anchor_short_id not found in marked_text.
+            ValueError: invalid position or syntactically invalid new_content.
+        """
+
+    @abstractmethod
+    def op_delete(self, marked_text: str, short_id: NodeId) -> str:
+        """Delete block and subtree; preserve format validity ({h003}, {a007}).
+
+        Retired short_id is never reused. Raises UnknownNodeIdError when short_id missing.
+        """
+
+    @abstractmethod
+    def op_replace(
+        self, marked_text: str, short_id: NodeId, new_content: str
+    ) -> str:
+        """Replace block content preserving short_id ({h004})."""
+
+    @abstractmethod
+    def op_move(
+        self,
+        marked_text: str,
+        short_id: NodeId,
+        anchor_short_id: NodeId,
+        position: str,
+    ) -> str:
+        """Relocate block atomically preserving short_id ({h005})."""
+
+    @abstractmethod
+    def op_edit_attributes(
+        self, marked_text: str, short_id: NodeId, attributes: Dict[str, Any]
+    ) -> str:
+        """Change node metadata only; content and position unchanged ({h006})."""
+
+    @abstractmethod
+    def op_edit_content(
+        self, marked_text: str, short_id: NodeId, new_content: str
+    ) -> str:
+        """Change leaf-block text only; reject non-leaf targets ({h007})."""
+
+  Each new method body is docstring only (matching existing abstract methods).
+
+  ## Constants
+
+  - position accepted values: "before", "after", "first_child", "last_child"
+  - Parameter name anchor_short_id / short_id — NOT node_id, NOT uuid
+
+  ## Forbidden patterns
+
+  - Do NOT use str or UUID for external edit addressing in signatures
+  - Do NOT reference G-007, non-standard cross-TS ordering fields, {l*}, {m*}, P:/L: markers, 36-char UUID regex
+  - Do NOT implement concrete op_* logic in this file
+  - Do NOT modify existing method bodies except import line change
+  - Do NOT add EditSession hide/unhide hooks
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/format_handler.py
+  flake8 ai_editor/tree/format_handler.py
+  mypy ai_editor/tree/format_handler.py
+  python -c "
+  import inspect
+  from ai_editor.tree.format_handler import FormatHandler
+  names = ['op_insert','op_delete','op_replace','op_move','op_edit_attributes','op_edit_content']
+  for n in names:
+      m = getattr(FormatHandler, n)
+      assert getattr(m, '__isabstractmethod__', False), n
+  sig = inspect.signature(FormatHandler.op_insert)
+  assert 'next_free' in sig.parameters
+  assert 'anchor_short_id' in sig.parameters
+  "
+  pytest -q
+  ```
+
+  Mandatory completion: all validation commands pass; all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/format_handler.py
+  expected: >
+    black, flake8, mypy exit 0; FormatHandler defines six new @abstractmethod op_*
+    methods using NodeId (int) short_id parameters including next_free on op_insert;
+    no UUID or str node references in public edit signatures; existing four contract
+    methods unchanged; estimated post-edit line count ≤ 400 (~310 lines).

@@ -1,0 +1,17 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Экспорт CaSessionStatus из upstream package
+target_file: ai_editor/core/upstream/__init__.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+- G-002/T-002/A-001
+concepts:
+- C-017
+prompt: "CURRENT FILE CONTENT (`ai_editor/core/upstream/__init__.py`):\n```py\n\"\"\"Upstream service clients for ai-editor-server.\"\"\"\n\nfrom .code_analysis_client import CodeAnalysisClient, get_code_analysis_client\n\n__all__ = [\"CodeAnalysisClient\", \"get_code_analysis_client\"]\n```\n\nModify target file.\n\n## Prerequisite\n\nEmbedded `code_analysis_client.py` must already define `CaSessionStatus` (session-validation enum from T-002). T-001 config baseline must be applied. No conditional exports.\n\n## Task\n\nReplace module exports with exactly:\n\n```python\nfrom .code_analysis_client import (\n    CodeAnalysisClient,\n    get_code_analysis_client,\n    CaSessionStatus,\n)\n\n__all__ = [\"CodeAnalysisClient\", \"get_code_analysis_client\", \"CaSessionStatus\"]\n```\n\nNo conditional exports. No fallback if `CaSessionStatus` is missing — import must succeed at module load time.\n"
+verification:
+  type: import
+  target: ai_editor.core.upstream.CaSessionStatus
+  expected: Import succeeds.
+status: draft

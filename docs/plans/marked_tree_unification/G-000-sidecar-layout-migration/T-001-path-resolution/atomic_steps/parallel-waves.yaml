@@ -1,0 +1,7 @@
+# Execution waves for T-001-path-resolution atomic steps.
+# Cross-TS ordering is expressed here only; depends_on within a TS uses plain A-NNN.
+
+waves:
+  - wave: 1
+    steps:
+      - A-001

@@ -1,0 +1,55 @@
+plan: marked_tree_unification
+global_step: G-001
+cross_ts_execution_waves:
+  wave_1:
+    description: T-001 foundation — no cross-TS deps
+    steps:
+      - T-001/A-001
+      - T-001/A-002
+  wave_2:
+    description: FormatHandler base + TreeNode (parallel, different files)
+    steps:
+      - T-002/A-001
+      - T-003/A-001
+    note: T-002/A-001 priority 1; requires contracts.py and tree_node.py from T-001/T-003
+  wave_3:
+    description: Per-format handlers — parallel priorities 2–6; integer short_id markers only
+    steps:
+      - T-002/A-003
+      - T-002/A-004
+      - T-002/A-005
+      - T-002/A-006
+      - T-002/A-007
+    parallel: true
+    requires:
+      - T-002/A-001
+      - T-003/A-001
+  wave_4:
+    description: Handlers package init after all five handler modules (A-002 priority 7)
+    steps:
+      - T-002/A-002
+    requires:
+      - T-002/A-003
+      - T-002/A-004
+      - T-002/A-005
+      - T-002/A-006
+      - T-002/A-007
+  wave_5:
+    description: Python CST deferral tracker resolved-in-plan (A-008 priority 8)
+    steps:
+      - T-002/A-008
+    requires:
+      - T-002/A-007
+  wave_6:
+    description: HandlerRegistry + default_registry bootstrap
+    steps:
+      - T-003/A-002
+      - T-003/A-003
+    requires:
+      - T-002/A-001
+      - T-002/A-002
+      - T-002/A-003
+      - T-002/A-004
+      - T-002/A-005
+      - T-002/A-006
+      - T-002/A-007

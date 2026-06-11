@@ -1,0 +1,60 @@
+step_id: A-002
+parent_tactical_step: T-004
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: YAML serializer round-trip tests
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_serializer_yaml_roundtrip.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-004-source-serializer-round-trip/README.yaml
+concepts:
+- C-006
+- C-001
+- C-004
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_serializer_yaml_roundtrip.py
+  expected: pytest module-only success exit 0 under .venv
+
+prompt: |-
+  EXECUTOR coder_auto CREATE FILE tests/test_tree_temp_serializer_yaml_roundtrip.py ≤400 lines module doc Author Vasiliy Zdanovskiy email vasilyvz@gmail.com.
+
+  IMPORT LIST:
+    from __future__ import annotations
+
+    import pytest
+
+    from ai_editor.core.tree_temp.tree_node import TreeNode
+    from ai_editor.core.tree_temp.yaml_frontend import parse_yaml_source_to_roots
+    from ai_editor.core.tree_temp.yaml_emit import emit_yaml_source_from_roots
+
+  SYMBOL emit_yaml_source_from_roots(roots:list[TreeNode])->str analogous to the JSON serializer round-trip helper.
+
+  TESTS mimic JSON module but YAML comment tokens `#`:
+    test_yaml_roundtrip_inline_hash_comment
+      source literal line: name: alex  #nick
+    
+      After parse→emit→parse path, scalar node keyed `name` MUST have comment_inline containing substring nick; comment_before after strip falsy.
+
+    test_yaml_roundtrip_block_mapping_sequence_mix
+      source triple-line block:
+      items:
+        - 1
+        - two  #lbl
+      Second sequence element textual comment substring `lbl` preserved.
+
+    test_yaml_roundtrip_multiline_above_root
+      source begins with `#banner` line preceding `flat: yes` mapping; flattened root mapping node obtains comment_before substring `banner`.
+
+    test_yaml_double_roundtrip_equals_single
+      Apply parse_emit_parse twice; structural tuples identical ignoring stable ids.
+
+  QUALITY GATE: python -m black; flake8; pytest -q tests/test_tree_temp_serializer_yaml_roundtrip.py; python -m mypy same path.

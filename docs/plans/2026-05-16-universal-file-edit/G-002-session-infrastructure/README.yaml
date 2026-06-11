@@ -1,0 +1,39 @@
+step_id: G-002
+name: Session infrastructure and format groups
+description: 'Define the FormatGroup resolution and DraftFile path model (C-002, C-003),
+  the WriteLockfile path helpers (C-004), and the EditSession entity with its module-level
+  registry (C-001). This infrastructure is the foundation consumed by all four commands:
+  OpenCommand creates sessions, EditCommand and WriteCommand consume them, CloseCommand
+  releases them.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-012
+- C-014
+relations:
+- from_concept: C-002
+  to_concept: C-003
+  type: owns
+- from_concept: C-001
+  to_concept: C-002
+  type: depends_on
+- from_concept: C-001
+  to_concept: C-004
+  type: depends_on
+- from_concept: C-002
+  to_concept: C-012
+  type: uses
+source_ranges:
+- start: 41
+  end: 79
+- start: 247
+  end: 263
+depends_on:
+- G-001
+- G-007
+tactical_steps:
+- T-001
+- T-002
+status: draft

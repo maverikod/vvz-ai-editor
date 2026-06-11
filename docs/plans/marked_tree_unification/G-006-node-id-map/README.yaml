@@ -1,0 +1,25 @@
+step_id: G-006
+name: Node Identity and Map
+depends_on:
+- G-001
+concepts:
+- C-025
+- C-024
+description: 'Defines NodeIdMap (C-025) as a dedicated module with exactly three
+  operations: build, validate_and_repair, and resolve (bidirectional short_id↔TreeNodeUuid
+  within one file). TreeNodeUuid (C-024) is UUID4 stored in the MAP section only —
+  never in the TREE section or external API. No universal-id generation, no native↔universal
+  map, and no UUID embedded in markers. Replaces the former universal-node-id block
+  and the retired identity-remap integration step; identity handling is absorbed
+  across G-001 through G-006.'
+relations:
+- from_concept: C-025
+  to_concept: C-024
+  type: uses
+source_labels:
+- '{n001}'
+- '{n002}'
+- '{n003}'
+tactical_steps:
+- T-001
+status: ready_for_review

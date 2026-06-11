@@ -1,0 +1,201 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create write_command.py with first-call (diff+lockfile) logic
+target_file: ai_editor/commands/universal_file_edit/write_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-009
+- C-012
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/write_command.py
+
+  MRS context:
+  C-009 WriteCommand: Two-phase MCP command.
+    First call: generate code from draft, compute diff, write lockfile, return diff.
+    PID mismatch treated as first call.
+  C-004 WriteLockfile: <file>.write contains server PID. Absent or PID mismatch = first call.
+  C-003 DraftFile: source of generated code.
+  C-012: diff_support, cst_tree.tree_saver, json/yaml tree builders.
+
+  API needed:
+    from ai_editor.core.file_handlers.diff_support import compute_diff
+    from ai_editor.commands.universal_file_edit.format_group import (
+        FORMAT_SIDECAR, FORMAT_TREE_TEMP,
+        read_lockfile_pid, write_lockfile_pid)
+    from ai_editor.commands.universal_file_edit.session import get_session
+    from ai_editor.commands.universal_file_edit.errors import (
+        SESSION_NOT_FOUND, make_error)
+
+  Task: Create write_command.py with UniversalFileWriteCommand.
+  This A-step covers the first call (diff + lockfile) and the second call
+  shell (backup + commit) is added by T-002/A-001.
+
+  Write the following exact content:
+  ```python
+  """
+  UniversalFileWriteCommand: two-phase write with diff and lockfile.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  import os
+  import tempfile
+  from pathlib import Path
+  from typing import Any, Dict, Optional
+
+  from mcp_proxy_adapter.commands.base_command import BaseCommand
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TREE_TEMP,
+      read_lockfile_pid,
+      write_lockfile_pid,
+  )
+  from ai_editor.commands.universal_file_edit.session import get_session
+
+
+  class UniversalFileWriteCommand(BaseCommand):
+      """MCP command implementing the two-phase write protocol.
+
+      First call computes diff and writes lockfile.
+      Second call (matching PID) commits with backup.
+      """
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_write"
+
+      @staticmethod
+      def get_schema() -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id and session_id.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "session_id": {"type": "string"},
+              },
+              "required": ["project_id", "session_id"],
+              "additionalProperties": False,
+          }
+
+      def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          """Execute the write command.
+
+          Args:
+              params: Dict with project_id and session_id.
+
+          Returns:
+              On first call: dict with diff string.
+              On second call: dict with success and diff.
+              On error: error dict.
+          """
+          session_id: str = params["session_id"]
+          project_id: str = params["project_id"]
+          try:
+              session = get_session(session_id)
+          except ValueError:
+              return make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+
+          current_pid = os.getpid()
+          lockfile_pid = read_lockfile_pid(session.abs_path)
+
+          if lockfile_pid != current_pid:
+              return self._first_call(session, current_pid, project_id)
+          return self._second_call(session, project_id)
+
+      def _generate_code(
+          self, session: Any
+      ) -> str:
+          """Generate source code from the draft file.
+
+          Args:
+              session: Active EditSession with format_group and draft_path.
+
+          Returns:
+              Generated source code as a string.
+          """
+          fg = session.format_group
+          if fg == FORMAT_SIDECAR:
+              from ai_editor.core.cst_tree import tree_saver
+              with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as tmp:
+                  tmp_path = tmp.name
+              try:
+                  tree_saver.save_tree_to_file(session.tree_id, tmp_path)
+                  return Path(tmp_path).read_text()
+              finally:
+                  Path(tmp_path).unlink(missing_ok=True)
+          if fg == FORMAT_TREE_TEMP:
+              if session.handler_id == "json":
+                  from ai_editor.core.json_tree import tree_builder as jtb
+                  return jtb.serialize_tree(session.tree_id)
+              from ai_editor.core.yaml_tree import tree_builder as ytb
+              return ytb.serialize_tree(session.tree_id)
+          # text group
+          return session.draft_path.read_text()
+
+      def _first_call(
+          self, session: Any, current_pid: int, project_id: str
+      ) -> Dict[str, Any]:
+          """Handle first write call: generate code, compute diff, write lockfile.
+
+          Args:
+              session: Active EditSession.
+              current_pid: Current server process PID.
+              project_id: UUID of the project.
+
+          Returns:
+              Dict with diff string showing changes.
+          """
+          code = self._generate_code(session)
+          original = session.abs_path.read_text()
+          from ai_editor.core.file_handlers.diff_support import compute_diff
+          diff = compute_diff(original, code)
+          write_lockfile_pid(session.abs_path, current_pid)
+          return {"success": True, "phase": "preview", "diff": diff}
+
+      def _second_call(
+          self, session: Any, project_id: str
+      ) -> Dict[str, Any]:
+          """Handle second write call: backup, commit, cleanup.
+
+          Args:
+              session: Active EditSession.
+              project_id: UUID of the project.
+
+          Returns:
+              Dict with success flag (filled in T-002/A-001).
+          """
+          raise NotImplementedError
+  ```
+
+  Implementation: Write the file with the exact content shown above.
+  Run lint_code and format_code on the file.
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.write_command
+  expected: >
+    Module imports without errors. UniversalFileWriteCommand exists.
+    get_name() returns "universal_file_write".
+status: draft

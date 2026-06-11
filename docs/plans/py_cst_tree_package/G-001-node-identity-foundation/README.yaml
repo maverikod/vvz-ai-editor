@@ -1,0 +1,51 @@
+# Global Step G-001 — Node Identity Foundation
+
+# Level 3 artifact (plan_standard_machine.yaml).
+# Conceptual block. Describes domain objects and operations only — no files,
+# modules, functions, or implementation classes.
+step_id: G-001
+name: Node Identity Foundation
+description: "Establish the foundation of node identity. The domain object is the
+  identified node: a node that mirrors exactly one concrete source syntax-tree node
+  category, carrying the same fields, the same children, and the same order, and additionally
+  bearing a stable identity value as an attribute of the node itself rather than in
+  rendered text or only in an external map. The identified-node form changes only
+  the runtime form of a node to carry identity, never its category, fields, or grammatical
+  position. The stable identity is unique within one tree, is assigned once when a
+  node first enters a tree, and is never regenerated for that node afterward; a duplicated
+  node's copy bears a fresh identity while the original keeps its own. Identity attribution
+  is universal: every node without exception bears an identity, including statement-level,
+  expression-level, structural, and formatting and comment nodes. The identified-node
+  forms are drawn from a complete set of node forms, one static form per concrete
+  source node category, defined in committed package source so they can be serialized
+  and deserialized by reference. That set is produced by a build-time generator which
+  enumerates the concrete source node categories and emits one static form per category,
+  so that no category is omitted and the set tracks the source node category list
+  across source-library versions; the generator runs as a development-time step and
+  not during normal operation. This step defines what an identified node is, what
+  the stable identity guarantees, the completeness and static definition of the node-form
+  set, and the build-time generator that produces it. It does not cover assembling
+  nodes into a tree, conversion to or from the source syntax tree, indexing, persistence,
+  mutation, or query."
+concepts:
+- C-001
+- C-002
+- C-017
+- C-003
+relations:
+- C-001 depends_on C-002
+- C-001 owns C-003
+- C-017 produces C-002
+source_labels:
+- '{cdb1}'
+- '{704c}'
+- '{b1sc}'
+- '{gx4k}'
+- '{we5g}'
+- '{crwt}'
+depends_on: []
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: draft

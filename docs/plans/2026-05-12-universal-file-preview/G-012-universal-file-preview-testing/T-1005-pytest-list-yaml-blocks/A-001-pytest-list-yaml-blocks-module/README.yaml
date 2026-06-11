@@ -1,0 +1,24 @@
+step_id: A-001
+parent_tactical_step: T-1005
+name: pytest module for list_yaml_blocks command
+target_file: tests/test_list_yaml_blocks_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-009
+- C-020
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  `tests/test_list_yaml_blocks_command.py` validates `list_yaml_blocks` command execution
+  (mock DB, tmp_path YAML fixtures), row shape (`node_id`, `yaml_pointer`, kind metadata),
+  and stable id consistency with pointer helpers where asserted.
+implementation_note: >
+  Uses pytest.importorskip("yaml") for environments without PyYAML.
+verification:
+  type: pytest
+  target: tests/test_list_yaml_blocks_command.py
+  expected: All tests in the module PASS.

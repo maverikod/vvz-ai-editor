@@ -1,0 +1,34 @@
+concepts:
+- C-006
+- C-009
+depends_on: []
+name: Add sessions and security default sections to generate_config in config.py
+operation: modify_file
+parent_tactical_step: T-002
+priority: 1
+prompt: "Modify the existing file at the exact path:\n  ai_editor/core/config.py\n\
+  \nOperation: modify_file. The file currently contains generate_config() which builds\n\
+  and returns a config dict. The function currently builds a dict starting with:\n\
+  \    config: Dict[str, Any] = {\n        'host': host,\n        'port': port,\n\
+  \        'dirs': config_dirs,\n        'file_lock': {\n            'timeout_seconds':
+  30.0,\n            'poll_interval_seconds': 0.05,\n            'default_read_mode':
+  'full',\n        },\n    }\n\nRequired change: add two new top-level keys to the
+  config dict inside\ngenerate_config(), alongside the existing 'file_lock' key:\n\
+  \n    'sessions': {\n        'show_session_ids': False,\n    },\n    'security':
+  {\n        'policy': 'disabled',\n    },\n\nThe resulting config dict initializer
+  must be:\n    config: Dict[str, Any] = {\n        'host': host,\n        'port':
+  port,\n        'dirs': config_dirs,\n        'file_lock': {\n            'timeout_seconds':
+  30.0,\n            'poll_interval_seconds': 0.05,\n            'default_read_mode':
+  'full',\n        },\n        'sessions': {\n            'show_session_ids': False,\n\
+  \        },\n        'security': {\n            'policy': 'disabled',\n        },\n\
+  \    }\n\nNo other changes. Do not modify any other function or any imports.\nFile
+  must not exceed 250 lines after modification."
+status: done
+step_id: A-001
+target_file: ai_editor/core/config.py
+verification:
+  expected: "generate_config() called with no arguments returns a dict that contains
+    key 'sessions' with value {'show_session_ids': False} and key 'security' with
+    value {'policy': 'disabled'}."
+  target: ai_editor/core/config.py
+  type: import

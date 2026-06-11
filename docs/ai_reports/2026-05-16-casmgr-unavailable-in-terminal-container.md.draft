@@ -1,0 +1,123 @@
+
+**Session:** `46ce9394-01ca-4440-9c03-c4a7466c4ec5`  
+**Project:** `code_analysis` (`8772a086-688d-4198-a0c4-f03817cc0e6c`)
+
+## Summary
+
+Внутри Docker-контейнера mcp-terminal команда `casmgr status` недоступна
+ни одним из трёх способов. Корневая причина — сломанный shebang в entrypoint
+скрипте и отсутствие `casmgr_entry` в sys.path системного Python контейнера.
+
+## Environment
+
+- Хост: `/home/vasilyvz/projects/tools/code_analysis`
+- Контейнер: проект смонтирован как `/workspace`
+- Python в контейнере: `/usr/local/bin/python3`
+- venv проекта: `/workspace/.venv` (смонтирован из хоста)
+- Диск `/workspace`: 916G total, 790G used, 80G free (91%)
+
+## Воспроизведение
+
+```
+terminal_session_create(project_id=8772a086-..., bootstrap_python_env=false)
+terminal_run(command="casmgr status", execution_kind="shell")
+```
+
+## Симптомы (по порядку обнаружения)
+
+### 1. `casmgr` не в PATH
+
+```bash
+$ casmgr status
+bash: line 1: casmgr: command not found
+```
+
+### 2. Broken shebang в entrypoint скрипте
+
+Файл `/workspace/.venv/bin/casmgr` содержит:
+
+```python
+#!/home/vasilyvz/projects/tools/code_analysis/.venv/bin/python
+import sys
+from casmgr_entry.main import main
+```
+
+Shebang указывает на путь **хоста** (`/home/vasilyvz/...`),
+которого внутри контейнера не существует. Контейнер монтирует
+проект в `/workspace`, а не в `/home/vasilyvz/...`.
+
+Результат при прямом вызове:
+
+```bash
+$ /workspace/.venv/bin/casmgr status
+bash: line 1: /workspace/.venv/bin/casmgr: cannot execute: required file not found
+```
+
+### 3. ModuleNotFoundError при обходе через системный Python
+
+Даже при явном вызове через системный Python контейнера:
+
+```bash
+$ /usr/local/bin/python3 /workspace/.venv/bin/casmgr status
+Traceback (most recent call last):
+  File "/workspace/.venv/bin/casmgr", line 3, in <module>
+    from casmgr_entry.main import main
+ModuleNotFoundError: No module named 'casmgr_entry'
+```
+
+И с явным PYTHONPATH:
+
+```bash
+$ PYTHONPATH=/workspace/.venv/lib/python3.12/site-packages \
+  /usr/local/bin/python3 /workspace/.venv/bin/casmgr status
+ModuleNotFoundError: No module named 'casmgr_entry'
+```
+
+`casmgr_entry` установлен в venv хоста, но:
+- venv хоста собран под Python хоста (другой интерпретатор)
+- системный Python контейнера (`/usr/local/bin/python3`) не видит
+  site-packages этого venv
+
+### 4. Bootstrap упал по несвязанной причине
+
+При `bootstrap_python_env=true`:
+
+```
+Can't add file logs/mcp_server.log to tar: archive/tar: write too long
+The command pip install returned a non-zero code: 1
+```
+
+`mcp_server.log` слишком большой для Docker build context.
+Bootstrap не пересобирает образ — `casmgr` не попадает в контейнер.
+
+## Root causes
+
+1. **Broken shebang** — pip при установке в venv хоста прописывает
+   абсолютный путь хоста в shebang. Внутри контейнера этот путь
+   недоступен (проект смонтирован по другому пути).
+
+2. **Bootstrap не работает** — `mcp_server.log` превышает лимит tar,
+   Docker build падает, кастомный образ с установленным `casmgr_entry`
+   не создаётся.
+
+3. **Архитектурная проблема** — venv хоста и Python контейнера
+   несовместимы; нельзя просто смонтировать venv хоста и использовать
+   его из контейнера с другим Python.
+
+## Expected behavior
+
+`. /workspace/.venv/bin/activate && casmgr status` должна работать
+внутри контейнера и возвращать статус.
+
+## Recommended fixes
+
+1. **Bootstrap fix** — добавить `.dockerignore` или `.mcp_terminal/.dockerignore`
+   исключающий `logs/` из Docker build context. Тогда образ соберётся
+   и `casmgr_entry` будет установлен внутри контейнера.
+
+2. **Альтернатива** — в `requirements.txt` для mcp-terminal явно
+   прописать `casmgr-entry` (или путь к пакету), чтобы bootstrap
+   устанавливал его в образ контейнера.
+
+3. **Долгосрочно** — при монтировании venv хоста перегенерировать
+   shebang под путь внутри контейнера (`/workspace/.venv/bin/python`).

@@ -1,0 +1,90 @@
+concepts:
+- C-003
+- C-004
+- C-006
+- C-007
+- C-008
+- C-010
+- C-011
+depends_on:
+- G-001
+description: 'Establishes the co-located sibling storage convention: a TreeFile is
+  placed as a direct sibling of the SourceFile it describes. Defines the ChecksumSyncPolicy
+  as the single decision mechanism governing four states of tree-to-source alignment:
+  no tree present, checksum match, checksum mismatch outside a session, and checksum
+  mismatch inside an active session. An existing implementation of this policy already
+  exists in the codebase; this step extends and integrates it rather than replacing
+  it. Establishes TreeLifecycle as the single owner of tree validity and tree creation
+  — every consumer routes through it, no ad-hoc per-call-site validation exists. Establishes
+  TreeBuilder as the component that resolves FormatHandler via HandlerRegistry.default_registry().resolve(source_abs)
+  and writes a new TreeFile from source content using FormatHandler.mark — the canonical
+  unified build path per {c005}: TreeBuilder.build(*, content, source_abs, file_path,
+  content_checksum) writes to FormatHandler.sidecar_path(source_abs) and records
+  content_checksum in the tree file AND the returned tree reference. The legacy
+  recreate_tree_from_content plus TreeFormatKind dispatch in checksum.py remains untouched as a parity oracle (strategy: new alongside
+  old); physical legacy removal stays deferred to G-000 (SidecarLayoutMigration, C-023).
+  G-002 defines the canonical sibling convention, lifecycle entities, and unified-pipeline
+  integration only.'
+executor_brief: 'Module ownership: ai_editor/core/tree_lifecycle/ is the single
+  package for tree validity and creation (HRS {c006}). Submodules: checksum.py holds
+  pure checksum helpers (compute_content_checksum, is_tree_valid per HRS {c004})
+  plus ChecksumSyncPolicy (C-006) and validate_or_recreate_* entry points; builder.py
+  holds TreeBuilder (C-011) unified-pipeline writer; lifecycle.py holds TreeLifecycle
+  (C-010). Canonical path function: sibling_tree_path in ai_editor/tree/sibling_convention.py
+  (T-001). Unified build path per {c005}: TreeBuilder.build(*, content, source_abs,
+  file_path, content_checksum) resolves HandlerRegistry.default_registry().resolve(source_abs),
+  calls FormatHandler.mark(content), writes marked bytes to FormatHandler.sidecar_path(source_abs),
+  records content_checksum in the tree file AND exposes it in the returned tree reference.
+  PythonHandler (G-001 A-007) wraps create_tree_from_code from ai_editor/core/cst_tree
+  for parse_content and implements {b005} hybrid mark/unmark into foo.py.tree (SourceFile
+  stays clean). Legacy oracle: recreate_tree_from_content(kind=TreeFormatKind, ...) in
+  checksum.py is NOT modified and NOT called by TreeBuilder.build; parity tests (T-004)
+  diff unified vs legacy on real fixtures. Policy wrapper: ChecksumSyncPolicy.decide
+  delegates to resolve_sha_sync_policy in ai_editor/commands/universal_file_edit/sha_sync_policy.py
+  (HRS {c002}). Path wrapper: validate_or_recreate_tree_file in checksum.py (HRS {c006});
+  T-004 wires validate_or_recreate_from_content to TreeBuilder.build on the canonical
+  path. G-000 deferral: removal of .trees/, .cst/, and .tree_sidecar legacy layouts
+  and redirection of all call sites is exclusively G-000 scope — do not perform legacy
+  removal in G-002.'
+name: Tree Storage and Lifecycle
+relations:
+- from_concept: C-006
+  to_concept: C-003
+  type: uses
+- from_concept: C-006
+  to_concept: C-004
+  type: uses
+- from_concept: C-010
+  to_concept: C-006
+  type: owns
+- from_concept: C-010
+  to_concept: C-011
+  type: owns
+- from_concept: C-010
+  to_concept: C-008
+  type: uses
+- from_concept: C-011
+  to_concept: C-007
+  type: uses
+- from_concept: C-011
+  to_concept: C-008
+  type: uses
+- from_concept: C-011
+  to_concept: C-003
+  type: produces
+source_labels:
+- '{a005}'
+- '{a006}'
+- '{c001}'
+- '{c002}'
+- '{c003}'
+- '{c004}'
+- '{c005}'
+- '{c006}'
+status: needs_review
+step_id: G-002
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004

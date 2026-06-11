@@ -1,0 +1,31 @@
+step_id: A-002
+parent_tactical_step: T-707
+name: Opaque stable node_id parity between YAML and JSON handlers
+target_file: ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-009
+- C-014
+- C-018
+- C-020
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  YAML preview uses the same pattern as JsonFileHandler: stable opaque ids produced
+  by listing / tree builders map through an open-time index; `resolve_node_ref`
+  accepts either JSON Pointer spelling or opaque id (mirroring G-006 T-502).
+
+  Smoke tests compare opaque resolution against stable pointer derivation for both
+  JSON and YAML (`test_json_handler_resolve_opaque_node_id_matches_list_json_blocks`,
+  `test_yaml_handler_resolve_opaque_node_id_matches_stable_pointer`).
+implementation_note: >
+  Keeps agent workflows symmetric across `.json` and `.yaml`/`.yml` for drill-down.
+verification:
+  type: pytest
+  target: tests/test_universal_file_preview_smoke.py
+  expected: >
+    JSON and YAML opaque-node_id resolution smoke tests PASS.

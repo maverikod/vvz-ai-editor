@@ -1,0 +1,39 @@
+step_id: T-003
+parent_global_step: G-004
+name: universal_file_write with preview and commit
+description: 'Extend the universal_file_write operation so that when the session''s
+  format_group is tree-temp, the command distinguishes a preview invocation from a commit
+  invocation via an explicit mode flag on the request. In preview mode, the command
+  derives a textual or structured diff between the on-disk source snapshot and the
+  in-memory TreeNode tree (C-001) held by the EditSession (C-007) without mutating
+  storage. In commit mode, the command runs the EditSession''s tree-temp persistence
+  path so the canonical source payload replaces the prior project-scoped source content,
+  recomputes the checksum, writes
+  the Sidecar (C-002) with the updated source_sha256 and persisted root, clears dirty
+  on success, and returns commit confirmation. The integration does not reopen policy,
+  register a new session, handle close teardown, or answer preview navigation queries.'
+concepts:
+- C-001
+- C-002
+- C-007
+inputs:
+- name: session_handle
+  type: session identifier
+  description: Opaque token binding the call to the tree-temp EditSession whose tree
+    is the write subject.
+- name: write_mode
+  type: enum (preview | commit)
+  description: Selects read-only diff emission versus durable persistence of source
+    and Sidecar state.
+outputs:
+- name: preview_payload
+  type: diff descriptor or null
+  description: Populated only in preview mode; null on commit-mode calls.
+- name: persistence_acknowledgement
+  type: structured status or null
+  description: Populated only in commit mode; reports checksum refresh and Sidecar coherence;
+    null during preview-only calls.
+atomic_steps:
+- A-001
+- A-002
+status: done

@@ -1,0 +1,39 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: G-004 contract slot — tree_temp_edit_batch authored in G-003 (verification / no fork)
+target_file: ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py
+operation: modify_file
+priority: 4
+depends_on:
+  - A-007
+concepts:
+  - C-001
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+  - Authoritative implementation spec (read for contract parity; sequencing follows tactical README):
+      docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/T-003-edit-session-edit/README.yaml
+
+  ## Frozen contract (G-004 + G-003)
+  - **Module:** `ai_editor/commands/universal_file_edit/tree_temp_edit_batch.py` (exact path).
+  - **Public API:** `apply_tree_temp_mutations(session, operations) -> SuccessResult | ErrorResult`.
+  - **Session roots:** read/write **`session.tree_temp_roots`** exclusively (never **`tree_roots`**).
+  - **Checksum field on EditSession:** **`source_sha256_at_open`** only (canonical name vs bare `source_sha256`).
+  - There is **no** `tree_temp_node_editing.py` and **no** `apply_tree_temp_batch` entrypoint in this plan.
+
+  ## Goal for this README / wave slot
+  1. If `tree_temp_edit_batch.py` is **missing**, stop and escalate — the G-003 tree-node edit-engine implementation has not landed; **do not** recreate a divergent batch engine.
+  2. If the file exists after G-003 lands: perform **minimal** reconcile-only edits strictly required for imports after the slim edit-command refactor ordered by `depends_on` (or **no-op**).
+  3. Run validation below; **no behavioural fork** versus the referenced G-003 spec.
+
+  ## Forbidden
+  - Second mutation engine targeting the same **FORMAT_TREE_TEMP** semantics.
+  - Tuple `(bool, dict)` returns from **`apply_tree_temp_mutations`**; MCP integration uses **`SuccessResult`/`ErrorResult`**.
+
+verification:
+  type: pytest
+  target: tests/test_universal_file_edit_command.py
+  expected: pytest -q PASS; escalate if failures reflect missing/incorrect integration with **`apply_tree_temp_mutations`**
+status: done

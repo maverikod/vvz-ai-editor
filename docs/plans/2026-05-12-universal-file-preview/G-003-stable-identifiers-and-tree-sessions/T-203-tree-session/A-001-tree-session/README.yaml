@@ -1,0 +1,50 @@
+step_id: A-001
+parent_tactical_step: T-203
+name: Create session module — TreeSession ownership and lifecycle
+target_file: ai_editor/commands/universal_file_preview/session.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-011
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/session.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  TreeSession (C-011) ownership and lifecycle for universal_file_preview.\n\
+  \n  The command supports two modes:\n    Caller-owned: caller passes tree_id; command\
+  \ reads without creating.\n    Command-owned: no tree_id supplied; command opens\
+  \ a transient session\n                   and returns its tree_id in the response\
+  \ for reuse.\n\n  The command never closes or invalidates a caller-owned session.\n\
+  \n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n\
+  \  from __future__ import annotations\n  import logging\n  from typing import Any\n\
+  \  from .base_handler import FileHandler\n  from .errors import PreviewError\n\n\
+  Module-level:\n  logger = logging.getLogger(__name__)\n\nFunction: resolve_session(\n\
+  \    handler: FileHandler,\n    params: dict[str, Any],\n  ) -> tuple[Any | None,\
+  \ str, str | None] | PreviewError\nReturn type: tuple[Any | None, str, str | None]\
+  \ | PreviewError\nDocstring:\n  \"\"\"\n  Resolve the TreeSession (C-011) for the\
+  \ request.\n\n  Returns a 3-tuple: (session, session_origin, tree_id).\n    session:\
+  \ the in-memory session object (type depends on handler), or None\n            \
+  \ when no session infrastructure is needed by the handler.\n    session_origin:\
+  \ 'caller_owned' when tree_id was supplied by the caller;\n                    'command_created'\
+  \ when the command opened the session;\n                    'none' when no session\
+  \ is used.\n    tree_id: the session UUID when session_origin=='command_created',\
+  \ else None.\n\n  The command never closes a caller_owned session.\n\n  Args:\n\
+  \      handler: The FileHandler that will use the session.\n      params: Validated\
+  \ parameter dict, may contain 'tree_id'.\n\n  Returns:\n      3-tuple or PreviewError.\n\
+  \  \"\"\"\nBody:\n  tree_id_param = params.get('tree_id')\n  if tree_id_param is\
+  \ not None:\n      # Caller-owned: look up via get_tree (global in-memory CST registry,\
+  \ same as other CST commands)\n      from ...core.cst_tree.tree_builder import get_tree\
+  \  # noqa: PLC0415\n      session = get_tree(tree_id_param)\n      if session is\
+  \ None:\n          # Unknown tree_id — treat as CONFLICTING_PARAMETERS\n       \
+  \   from .errors import input_error, INPUT_ERROR_CONFLICTING_PARAMETERS\n      \
+  \    return input_error(\n              INPUT_ERROR_CONFLICTING_PARAMETERS,\n  \
+  \            f'tree_id {tree_id_param!r} not found in session registry.',\n    \
+  \          details={'tree_id': tree_id_param},\n          )\n      return (session,\
+  \ 'caller_owned', None)\n  # Command-owned transient session: defer to handler's\
+  \ open_root; no pre-open.\n  # The handler is responsible for opening its own session\
+  \ internally if needed.\n  return (None, 'none', None)\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.session
+  expected: Module imports without error; resolve_session is callable and accepts
+    (handler, params) arguments; returns a 3-tuple or PreviewError.

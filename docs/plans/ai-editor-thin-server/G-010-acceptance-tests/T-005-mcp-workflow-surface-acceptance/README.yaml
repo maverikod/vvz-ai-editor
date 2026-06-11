@@ -1,0 +1,24 @@
+step_id: T-005
+parent_global_step: G-010
+name: Приёмка MCP Workflow Surface
+description: >
+  Верифицировать критерий C-022 «help без дублирующих семейств» через
+  acceptance-тестирование MCP Workflow Surface (C-016): editor help перечисляет
+  только universal_file_* workflow-команды и health; отсутствуют дублирующие и
+  legacy-семейства (session_*, quarantine-паттерны, снятые MCP-семейства).
+concepts:
+- C-001
+- C-016
+- C-020
+- C-022
+inputs:
+- name: editor_mcp_help_surface
+  type: object
+  description: Ответ help редактора после регистрации MCP Workflow Surface (C-016).
+outputs:
+- name: mcp_surface_acceptance_green
+  type: boolean
+  description: Help содержит только universal_file_* + health; дубликаты и legacy отсутствуют.
+atomic_steps:
+- A-001
+status: ready_for_review

@@ -1,0 +1,43 @@
+step_id: G-001
+name: Public command contract
+description: 'The PreviewCommand exposes one MCP command name with a fixed input schema,
+  a uniform ResponseEnvelope that is structurally identical for every NodeKind and
+  every Selector form, a deterministic ErrorClassification that surfaces three distinct
+  error classes (input, file-structure, file-handler-internal), and an explicit ScopeBoundary
+  of negative invariants. This step fixes WHAT the command is to callers; it does
+  not yet describe internal dispatch, navigation, or file handlers.
+
+  '
+concepts:
+- C-001
+- C-012
+- C-014
+- C-021
+relations:
+- from_concept: C-001
+  to_concept: C-012
+  type: produces
+- from_concept: C-001
+  to_concept: C-014
+  type: produces
+- from_concept: C-001
+  to_concept: C-021
+  type: implements
+source_ranges:
+- start: 5
+  end: 12
+- start: 14
+  end: 22
+- start: 192
+  end: 211
+- start: 229
+  end: 246
+- start: 248
+  end: 260
+depends_on: []
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+status: frozen

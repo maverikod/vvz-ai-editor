@@ -1,0 +1,96 @@
+step_id: A-003
+parent_tactical_step: T-002
+name: Redirect tree_temp_open_support.py sidecar path onto sibling_tree_path
+target_file: 
+  ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-001
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/commands/universal_file_edit/tree_temp_open_support.py\n\
+  \n## Goal\nRedirect the tree-temp open path off the removed .trees/ resolver onto
+  the sibling\nconvention (C-003). On open, the sidecar is located as a sibling <source>.tree
+  next\nto the source file, not under a central .trees/ mirror.\n\n## Dependency (already
+  exists from G-002)\nai_editor/tree/sibling_convention.py provides:\n    def
+  sibling_tree_path(source_abs: Path) -> Path\nmapping <dir>/<name> -> <dir>/<name>.tree
+  in the same directory.\n\n## Required edits\n1. Imports: remove\n       from ai_editor.core.tree_temp.sidecar_paths
+  import resolve_trees_sidecar_path\n   and add\n       from ai_editor.tree.sibling_convention
+  import sibling_tree_path\n\n2. In acquire_tree_temp_for_open, replace the sidecar-path
+  resolution. Currently:\n       current_sha = hashlib.sha256(raw_source_bytes).hexdigest()\n\
+  \       root_resolved = project_root.resolve()\n       source_rel = source_abs.resolve().relative_to(root_resolved)\n\
+  \       sidecar_path = resolve_trees_sidecar_path(root_resolved, source_rel)\n \
+  \  Replace with:\n       current_sha = hashlib.sha256(raw_source_bytes).hexdigest()\n\
+  \       sidecar_path = sibling_tree_path(source_abs.resolve())\n   This removes
+  the now-unused locals root_resolved and source_rel (do not leave\n   them — flake8
+  F841). Everything below (the _read_trees_sidecar_optional call, the\n   SHASyncPolicy
+  decision, the branch handling, and the returned\n   TreeTempOpenAcquisition) stays
+  unchanged.\n\n3. The function keeps its signature unchanged: parameters project_root,
+  source_abs,\n   handler_id, raw_source_bytes all remain. After the edit, project_root
+  is no longer\n   referenced in the body; that is acceptable — do NOT change the
+  signature or\n   callers (flake8 does not flag unused function parameters).\n\n\
+  ## Forbidden\n- No .trees/ path, no central mirror directory, no project-relative
+  computation.\n- Do not change the SHASyncPolicy logic or the returned dataclass
+  fields.\n- Do not touch other files.\n\n## Full current file content (verbatim,
+  125 lines)\n```python\n\"\"\"Helpers to acquire TreeNode roots for tree-temp universal_file_open
+  (G-003).\n\nAuthor: Vasiliy Zdanovskiy\nEmail: vasilyvz@gmail.com\n\"\"\"\n\nfrom
+  __future__ import annotations\n\nimport hashlib\nfrom copy import deepcopy\nfrom
+  dataclasses import dataclass\nfrom enum import Enum\nfrom pathlib import Path\n\
+  from typing import List, Optional, Tuple, cast\n\nfrom ai_editor.commands.universal_file_edit.session
+  import (\n    active_session_uses_abs_path,\n)\nfrom ai_editor.commands.universal_file_edit.sha_sync_policy
+  import (\n    ShaSyncBranch,\n    resolve_sha_sync_policy,\n)\nfrom ai_editor.core.tree_temp.sidecar_payload
+  import (\n    SidecarParseError,\n    parse_sidecar_json_bytes,\n)\nfrom ai_editor.core.tree_temp.sidecar_paths
+  import resolve_trees_sidecar_path\nfrom ai_editor.core.tree_temp.tree_node import
+  TreeNode\n\n\nclass SidecarWriteIntent(str, Enum):\n    NONE = \"none\"\n    CREATE
+  = \"create\"\n    REPLACE = \"replace\"\n\n\n@dataclass(frozen=True)\nclass TreeTempOpenAcquisition:\n\
+  \    roots: List[TreeNode]\n    source_sha256: str\n    sidecar_path: Path\n   \
+  \ sidecar_write_intent: SidecarWriteIntent\n\n\ndef parse_source_bytes_to_roots(handler_id:
+  str, raw: bytes) -> List[TreeNode]:\n    \"\"\"Parse source bytes into root-level
+  TreeNode list (json/yaml handlers).\"\"\"\n    if not raw.strip():\n        return
+  []\n    text = raw.decode(\"utf-8\")\n    if handler_id == \"json\":\n        from
+  ai_editor.core.tree_temp.json_source_parser import parse_json_source\n\n   \
+  \     return cast(List[TreeNode], parse_json_source(text))\n    if handler_id ==
+  \"yaml\":\n        from ai_editor.core.tree_temp.yaml_source_parser import parse_yaml_source\n\
+  \n        return cast(List[TreeNode], parse_yaml_source(text))\n    raise ValueError(f\"\
+  unsupported tree-temp handler_id: {handler_id!r}\")\n\n\ndef _read_trees_sidecar_optional(\n\
+  \    sidecar_path: Path,\n) -> Optional[Tuple[str, List[TreeNode]]]:\n    if not
+  sidecar_path.exists():\n        return None\n    try:\n        raw = sidecar_path.read_bytes()\n\
+  \        return cast(Tuple[str, List[TreeNode]], parse_sidecar_json_bytes(raw))\n\
+  \    except SidecarParseError:\n        return None\n\n\ndef acquire_tree_temp_for_open(\n\
+  \    *,\n    project_root: Path,\n    source_abs: Path,\n    handler_id: str,\n\
+  \    raw_source_bytes: bytes,\n) -> TreeTempOpenAcquisition:\n    \"\"\"Compute
+  SHA, run SHASyncPolicy, return roots + staging intent for session open.\"\"\"\n\
+  \    current_sha = hashlib.sha256(raw_source_bytes).hexdigest()\n    root_resolved
+  = project_root.resolve()\n    source_rel = source_abs.resolve().relative_to(root_resolved)\n\
+  \    sidecar_path = resolve_trees_sidecar_path(root_resolved, source_rel)\n    loaded
+  = _read_trees_sidecar_optional(sidecar_path)\n    sidecar_exists = loaded is not
+  None\n    sidecar_sha = loaded[0] if loaded else None\n    decision = resolve_sha_sync_policy(\n\
+  \        sidecar_exists=sidecar_exists,\n        sidecar_source_sha256=sidecar_sha,\n\
+  \        current_source_sha256=current_sha,\n        active_session_holds_file=active_session_uses_abs_path(source_abs),\n\
+  \    )\n    branch = decision.branch\n\n    if branch == ShaSyncBranch.NO_SIDECAR:\n\
+  \        roots = parse_source_bytes_to_roots(handler_id, raw_source_bytes)\n   \
+  \     intent = SidecarWriteIntent.CREATE\n    elif branch == ShaSyncBranch.SHA_MATCH:\n\
+  \        if loaded is None:\n            raise ValueError(\"SHA_MATCH branch requires
+  a valid loaded sidecar\")\n        roots = deepcopy(loaded[1])\n        intent =
+  SidecarWriteIntent.NONE\n    elif branch == ShaSyncBranch.SHA_MISMATCH_NO_SESSION:\n\
+  \        roots = parse_source_bytes_to_roots(handler_id, raw_source_bytes)\n   \
+  \     intent = SidecarWriteIntent.REPLACE\n    elif branch == ShaSyncBranch.SHA_MISMATCH_ACTIVE_SESSION:\n\
+  \        if loaded is None:\n            raise ValueError(\n                \"SHA_MISMATCH_ACTIVE_SESSION
+  branch requires a valid loaded sidecar\"\n            )\n        roots = deepcopy(loaded[1])\n\
+  \        intent = SidecarWriteIntent.NONE\n    else:\n        raise ValueError(f\"\
+  unexpected ShaSyncBranch: {branch!r}\")\n\n    if raw_source_bytes.strip() and not
+  roots:\n        raise ValueError(\"parser returned empty roots for non-empty source
+  document\")\n\n    return TreeTempOpenAcquisition(\n        roots=roots,\n     \
+  \   source_sha256=current_sha,\n        sidecar_path=sidecar_path,\n        sidecar_write_intent=intent,\n\
+  \    )\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+  expected: black, flake8, mypy exit 0; the module imports sibling_tree_path and
+    no longer imports resolve_trees_sidecar_path; acquire_tree_temp_for_open 
+    resolves the sidecar via sibling_tree_path(source_abs.resolve()) with no 
+    root_resolved or source_rel locals; grep for '.trees' and 
+    'resolve_trees_sidecar_path' in this file returns nothing.

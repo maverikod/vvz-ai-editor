@@ -1,0 +1,90 @@
+step_id: A-001
+parent_tactical_step: T-501
+name: Create JsonFileHandler — open_root with mapping/sequence/scalar root
+target_file: ai_editor/commands/universal_file_preview/handlers/json_handler.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-003
+- C-004
+- C-014
+- C-018
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/handlers/json_handler.py\n\nFile-level\
+  \ docstring (required):\n  \"\"\"\n  JsonFileHandler — FileHandler for .json files\
+  \ (C-018).\n\n  Root NodeKind depends on the top-level JSON value:\n    dict   ->\
+  \ mapping\n    list   -> sequence\n    scalar -> scalar\n  Identifier source: node_id\
+  \ from list_json_blocks OR JSON Pointer string.\n  Lazy materialisation: only root\
+  \ and requested children are produced.\n\n  Author: Vasiliy Zdanovskiy\n  email:\
+  \ vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from __future__ import annotations\n\
+  \  import json\n  import logging\n  from pathlib import Path\n  from typing import\
+  \ Any\n  from ..base_handler import FileHandler\n  from ..errors import (\n    \
+  \  PreviewError, file_structure_error, input_error,\n      INPUT_ERROR_UNKNOWN_NODE_REF,\n\
+  \  )\n  from ..models import Node, NodeKind\n\nModule-level:\n  logger = logging.getLogger(__name__)\n\
+  \nClass: JsonFileHandler(FileHandler)\nDocstring:\n  \"\"\"\n  FileHandler for JSON\
+  \ files (.json) (C-018).\n\n  Root NodeKind: mapping (object), sequence (array),\
+  \ or scalar.\n  Identifier source: JSON Pointer (RFC 6901) path string.\n  Lazy\
+  \ materialisation: only root and needed children are produced.\n  FILE_STRUCTURE_ERROR\
+  \ on invalid JSON with parser name 'json'.\n\n  Attributes:\n      supported_extensions:\
+  \ frozenset({'.json'}).\n  \"\"\"\n\nProperty: supported_extensions -> frozenset[str]\n\
+  \  Body: return frozenset({'.json'})\n\nMethod: open_root(self, file_path, session)\
+  \ -> Node | PreviewError\n  Docstring:\n    \"\"\"\n    Parse the JSON file and\
+  \ return the root Node.\n\n    Root NodeKind is mapping, sequence, or scalar depending\
+  \ on the\n    top-level JSON value type. On invalid JSON returns FILE_STRUCTURE_ERROR.\n\
+  \n    Args:\n        file_path: Project-relative path to the .json file.\n     \
+  \   session: Existing JSON TreeSession or None.\n\n    Returns:\n        Root Node\
+  \ or PreviewError.\n    \"\"\"\n  Body:\n    try:\n        self._last_file_path\
+  \ = file_path\n        if session is not None:\n            doc = session  # assume\
+  \ session is the parsed object\n        else:\n            raw = Path(file_path).read_text(encoding='utf-8',\
+  \ errors='replace')\n            doc = json.loads(raw)\n        self._doc = doc\n\
+  \        return _json_value_to_node(doc, '')\n    except json.JSONDecodeError as\
+  \ exc:\n        return file_structure_error(\n            parser='json',\n     \
+  \       message=str(exc),\n            line_start=exc.lineno,\n            line_end=exc.lineno,\n\
+  \        )\n    except Exception as exc:\n        return file_structure_error(parser='json',\
+  \ message=str(exc))\n\nMethod: resolve_node_ref(self, node_ref, session) -> Node\
+  \ | PreviewError\n  Docstring:\n    \"\"\"\n    Resolve a JSON Pointer or node_id\
+  \ to the addressed JSON Node.\n\n    Accepts either a JSON Pointer string (RFC 6901:\
+  \ '', '/foo', '/a/0/b')\n    or an opaque node_id string from list_json_blocks (treated\
+  \ as JSON\n    Pointer if it starts with '/', else looked up in _doc index).\n\n\
+  \    Args:\n        node_ref: JSON Pointer or node_id string.\n        session:\
+  \ JSON TreeSession or None.\n\n    Returns:\n        Resolved Node or PreviewError(UNKNOWN_NODE_REF).\n\
+  \    \"\"\"\n  Body:\n    doc = getattr(self, '_doc', None)\n    if doc is None:\n\
+  \        return input_error(INPUT_ERROR_UNKNOWN_NODE_REF,\n                    \
+  \       'open_root must be called before resolve_node_ref.')\n    result = _resolve_json_pointer(doc,\
+  \ node_ref)\n    if result is None:\n        return input_error(\n            INPUT_ERROR_UNKNOWN_NODE_REF,\n\
+  \            f'JSON Pointer {node_ref!r} does not exist in document.',\n       \
+  \     details={'node_ref': node_ref},\n        )\n    value, pointer = result\n\
+  \    return _json_value_to_node(value, pointer)\n\nModule-level private function:\
+  \ _json_value_to_node(value: Any, pointer: str) -> Node\nDocstring: \"Convert a\
+  \ JSON value to a preview Node with JSON Pointer as node_ref.\"\nBody:\n  if isinstance(value,\
+  \ dict):\n      def _load_mapping() -> list[Node]:\n          return [\n       \
+  \       _json_pair_to_node(k, v, f'{pointer}/{k}')\n              for k, v in value.items()\n\
+  \          ]\n      return Node(node_kind=NodeKind.MAPPING, node_ref=pointer,\n\
+  \                  _children_loader=_load_mapping)\n  elif isinstance(value, list):\n\
+  \      def _load_seq() -> list[Node]:\n          return [_json_value_to_node(v,\
+  \ f'{pointer}/{i}')\n                  for i, v in enumerate(value)]\n      return\
+  \ Node(node_kind=NodeKind.SEQUENCE, node_ref=pointer,\n                  _children_loader=_load_seq)\n\
+  \  else:\n      return Node(node_kind=NodeKind.SCALAR, node_ref=pointer,\n     \
+  \             attributes={'value': str(value)})\n\nModule-level private function:\
+  \ _json_pair_to_node(key: str, value: Any, pointer: str) -> Node\nDocstring: \"\
+  One mapping key-value pair as a single Block Node.\"\nBody: return Node(node_kind=NodeKind.MAPPING,\
+  \ node_ref=pointer,\n                  name=key, attributes={'value_kind': type(value).__name__})\n\
+  \nModule-level private function:\n  _resolve_json_pointer(doc: Any, pointer: str)\
+  \ -> tuple[Any, str] | None\nDocstring: \"Traverse doc following RFC-6901 pointer;\
+  \ return (value, pointer) or None.\"\nBody:\n  if pointer == '':\n      return (doc,\
+  \ '')\n  if not pointer.startswith('/'):\n      return None  # invalid pointer (non-RFC-6901\
+  \ strings handled as None)\n  parts = pointer[1:].split('/')\n  parts = [p.replace('~1',\
+  \ '/').replace('~0', '~') for p in parts]\n  current = doc\n  path = ''\n  for part\
+  \ in parts:\n      path = f'{path}/{part}'\n      if isinstance(current, dict):\n\
+  \          if part not in current:\n              return None\n          current\
+  \ = current[part]\n      elif isinstance(current, list):\n          try:\n     \
+  \         idx = int(part)\n              current = current[idx]\n          except\
+  \ (ValueError, IndexError):\n              return None\n      else:\n          return\
+  \ None\n  return (current, path)\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.handlers.json_handler
+  expected: Module imports without error; JsonFileHandler instantiates; supported_extensions
+    == frozenset({'.json'}).

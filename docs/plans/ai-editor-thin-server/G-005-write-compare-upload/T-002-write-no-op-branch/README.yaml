@@ -1,0 +1,22 @@
+step_id: T-002
+parent_global_step: G-005
+name: Write no-op ветка
+description: 'В Write Stage (C-012) при write_mode=commit: если канонический экспорт Edit Subdirectory (C-008) побайтово равен Origin Snapshot (C-007) — успешный ответ без вызова Upstream Client для upload; флаг unchanged в ответе; состояние Edit Subdirectory сохраняется для последующего edit, write или close. Соответствует критерию приёмки C-022.
+
+  '
+concepts:
+- C-007
+- C-008
+- C-012
+- C-022
+inputs:
+- name: comparison_equal
+  type: boolean
+  description: Результат canonical-export comparison origin baseline (C-007) и Edit Subdirectory (C-008).
+outputs:
+- name: noop_write_response
+  type: object
+  description: success с unchanged=true, без CA RPC.
+atomic_steps:
+- A-001
+status: ready_for_review

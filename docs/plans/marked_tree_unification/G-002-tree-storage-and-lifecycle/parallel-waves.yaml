@@ -1,0 +1,34 @@
+global_step: G-002
+name: Tree Storage and Lifecycle — cross-TS execution waves
+waves:
+  - wave: 1
+    steps:
+      - T-001/A-001
+    note: sibling_convention module (no file overlap with later steps).
+  - wave: 2
+    steps:
+      - T-002/A-001
+    depends_on_wave: 1
+    note: ChecksumSyncPolicy added to checksum.py.
+  - wave: 3
+    parallel: true
+    steps:
+      - T-003/A-001
+      - T-003/A-002
+    depends_on_wave: 2
+    note: builder.py and lifecycle.py created in parallel (distinct files).
+  - wave: 4
+    steps:
+      - T-003/A-003
+    depends_on_wave: 3
+    note: tree_lifecycle package __init__ re-exports after entity modules exist.
+  - wave: 5
+    steps:
+      - T-004/A-001
+    depends_on_wave: 4
+    note: Wire validate_or_recreate rebuild to TreeBuilder.build; requires T-002/A-001 and T-003/A-001.
+  - wave: 6
+    steps:
+      - T-004/A-002
+    depends_on_wave: 5
+    note: Parity test module after unified pipeline wired.

@@ -1,0 +1,34 @@
+step_id: T-005
+parent_global_step: G-007
+name: BackgroundSessionCleaner
+description: >
+  Creates BackgroundSessionCleaner as the periodic maintenance process that
+  inspects SearchSessionDirectory trees and removes sessions when cleanup policy
+  allows. Deletes expired, closed, completed-beyond-TTL, failed-beyond-TTL,
+  cancelled-beyond-TTL, timed-out-beyond-policy, and dead-or-orphaned sessions
+  using SessionTTLPolicy and DeadSessionDetection. Must not delete a live running
+  session whose ServerProcessIdentity and SessionHeartbeat remain valid. Registers
+  periodic cleanup via register_search_session_cleanup on app startup.
+concepts:
+  - C-011
+inputs:
+  - name: session_directory_inventory
+    type: SessionDirectoryInventory
+    description: Candidate session directories discovered by the cleaner scan.
+  - name: session_ttl_policy
+    type: SessionTTLPolicy
+    description: TTL and related expiration thresholds for inactive sessions.
+  - name: dead_session_verdict
+    type: DeadSessionVerdict
+    description: Liveness outcome from DeadSessionDetection for each candidate session.
+  - name: last_access_timestamp
+    type: LastAccessTimestamp
+    description: Inactivity timestamp used together with TTL for expiration decisions.
+outputs:
+  - name: cleanup_actions
+    type: SessionCleanupActionSet
+    description: Approved deletions or retained sessions after policy evaluation.
+atomic_steps:
+- A-001
+- A-002
+status: frozen

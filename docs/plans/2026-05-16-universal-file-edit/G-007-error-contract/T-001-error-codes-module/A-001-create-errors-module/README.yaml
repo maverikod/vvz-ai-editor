@@ -1,0 +1,86 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Create errors.py with ErrorCodes constants and make_error helper
+target_file: ai_editor/commands/universal_file_edit/errors.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/errors.py
+
+  MRS context:
+  C-014 ErrorCodes: Set of deterministic error codes produced by the four commands
+  when preconditions are violated. The six codes are:
+    SESSION_NOT_FOUND - when session_id is unknown
+    DRAFT_NOT_FOUND - when draft is missing but expected
+    NESTED_BATCH_FORBIDDEN - when ancestor-descendant pair in sidecar batch
+    WRITE_FAILED - when code generation or file write fails; backup restored
+    UNKNOWN_FORMAT - when file extension is not supported
+    PARSE_ERROR - when file cannot be parsed on open
+
+  Task:
+  Create file ai_editor/commands/universal_file_edit/errors.py
+  with the following exact content:
+
+  ```python
+  """
+  ErrorCodes constants and error-construction helper for universal_file_edit commands.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  from typing import Any, Dict, Optional
+
+  SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
+  DRAFT_NOT_FOUND = "DRAFT_NOT_FOUND"
+  NESTED_BATCH_FORBIDDEN = "NESTED_BATCH_FORBIDDEN"
+  WRITE_FAILED = "WRITE_FAILED"
+  UNKNOWN_FORMAT = "UNKNOWN_FORMAT"
+  PARSE_ERROR = "PARSE_ERROR"
+
+
+  def make_error(
+      code: str,
+      message: str,
+      details: Optional[Dict[str, Any]] = None,
+  ) -> Dict[str, Any]:
+      """Build a structured error dict for MCP command responses.
+
+      Args:
+          code: One of the ErrorCodes string constants.
+          message: Human-readable description of the error.
+          details: Optional mapping of additional diagnostic fields.
+
+      Returns:
+          Dict with keys success=False, code, message, and optional details.
+      """
+      result: Dict[str, Any] = {"success": False, "code": code, "message": message}
+      if details:
+          result["details"] = details
+      return result
+  ```
+
+  Implementation:
+  Write the file with the exact content shown above.
+  Run lint_code and format_code on the file.
+
+  Constraints:
+  - The module must have no imports from other new modules (no dependencies).
+  - All functions must have complete docstrings with Args and Returns sections.
+  - All parameters and return types must have type hints.
+  - File must be syntactically valid Python.
+  - File line count must not exceed 400.
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.errors
+  expected: >
+    Module imports without errors. The six constants SESSION_NOT_FOUND,
+    DRAFT_NOT_FOUND, NESTED_BATCH_FORBIDDEN, WRITE_FAILED, UNKNOWN_FORMAT,
+    PARSE_ERROR are all strings. make_error("SESSION_NOT_FOUND", "msg")
+    returns a dict with success=False, code="SESSION_NOT_FOUND", message="msg".
+status: draft

@@ -1,0 +1,24 @@
+step_id: T-001
+parent_global_step: G-009
+name: Удалить in-memory session модули
+description: 'Удалить client_sessions, subordinate_sessions, runtime_lock_sessions, transfer_lock_registry, session_view после того как universal_file_* не ссылаются на них (Legacy Removal Scope C-020).
+
+  '
+concepts:
+- C-020
+- C-019
+inputs:
+- name: dependency_graph
+  type: object
+  description: Импорты из universal_file и hooks.
+outputs:
+- name: removed_modules
+  type: array
+  description: Список удалённых путей core/.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+status: ready_for_review

@@ -1,0 +1,47 @@
+step_id: T-003
+parent_global_step: G-008
+name: OptionalPaginationParameters
+description: "Extends ExistingSearchCommand surfaces with OptionalPaginationParameters
+  as non-required\nrequest and response fields, then adds paginated execute wiring
+  extension modules that\ncall legacy commands, normalize findings into the session
+  raw finding buffer (C-028),\nand publish the first SearchResultBlock (C-004) without
+  modifying monolith command files\nover 400 lines. Schema extension AS (A-001 through
+  A-004) document optional paginated,\njob_id, include_job_id, and block_position
+  fields. Execute wiring AS (A-005 through\nA-009) implement session-backed first-block
+  publication per backend.\n"
+concepts:
+- C-021
+- C-023
+- C-024
+- C-001
+- C-004
+inputs:
+- name: backward_compatible_command_contract
+  type: BackwardCompatibleCommandContract
+  description: Base contract whose optional fields are being extended.
+- name: pagination_field_definitions
+  type: PaginationFieldDefinitionSet
+  description: Named optional fields enabling job-backed paging access.
+- name: raw_finding_buffer
+  type: RawFindingBufferPath
+  description: Path to the session raw finding buffer directory (C-028) 
+    receiving normalized legacy findings.
+outputs:
+- name: optional_pagination_parameters
+  type: OptionalPaginationParameters
+  description: Documented optional fields attached to compatible commands.
+- name: paginated_backend_adapters
+  type: PaginatedBackendAdapterSet
+  description: Extension modules wiring legacy command execution to first-block 
+    publication.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+- A-008
+- A-009
+status: ready_for_review

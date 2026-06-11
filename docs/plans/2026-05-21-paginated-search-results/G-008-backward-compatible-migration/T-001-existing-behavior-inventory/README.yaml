@@ -1,0 +1,26 @@
+step_id: T-001
+parent_global_step: G-008
+name: ExistingBehaviorInventory
+description: >
+  Creates ExistingBehaviorInventory that separates behavior already present in
+  working search, preview, queue, and status commands from behavior introduced
+  by this plan. Identifies which paging and session-backed behaviors are new,
+  prevents the implementation from duplicating working search logic, and directs
+  migration work toward extension rather than greenfield replacement of
+  ExistingSearchCommand behavior.
+concepts:
+  - C-025
+inputs:
+  - name: existing_search_command_catalog
+    type: ExistingSearchCommandCatalog
+    description: Inventory of currently working search-related commands and their public behavior.
+  - name: planned_new_behaviors
+    type: PlannedBehaviorSet
+    description: New session-backed, paging, and structural behaviors introduced by the plan.
+outputs:
+  - name: existing_behavior_inventory
+    type: ExistingBehaviorInventory
+    description: Marked catalog of existing versus new behaviors for migration planning.
+atomic_steps:
+- A-001
+status: ready_for_review

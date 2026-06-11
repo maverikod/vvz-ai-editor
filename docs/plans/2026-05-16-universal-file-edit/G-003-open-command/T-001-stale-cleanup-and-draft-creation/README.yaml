@@ -1,0 +1,33 @@
+step_id: T-001
+parent_global_step: G-003
+name: Implement stale artefact cleanup and draft creation
+description: Implement the stale-artefact cleanup and DraftFile creation phase of
+  OpenCommand (C-005). Delete any stale WriteLockfile (C-004) and stale DraftFile
+  (C-003) from a previous session; for Python files the sidecar draft is not deleted.
+  Resolve the FormatGroup (C-002) from the file extension using ExistingInfrastructure
+  (C-012). Create the DraftFile (C-003) appropriate for the resolved format group.
+  On unsupported extension or parse failure return the corresponding ErrorCodes (C-014).
+concepts:
+- C-002
+- C-003
+- C-004
+- C-005
+- C-012
+- C-014
+inputs:
+- name: project_id
+  type: str
+  description: Project UUID for path resolution.
+- name: file_path
+  type: str
+  description: Project-relative path to the file to open.
+outputs:
+- name: format_descriptor
+  type: FormatDescriptor
+  description: Resolved format group, draft path, and lockfile path for the file.
+- name: draft_written
+  type: bool
+  description: True when the draft file was successfully written for the resolved format group.
+atomic_steps:
+- A-001
+status: draft

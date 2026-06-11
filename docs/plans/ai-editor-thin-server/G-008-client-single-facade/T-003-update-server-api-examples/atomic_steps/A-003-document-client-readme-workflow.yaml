@@ -1,0 +1,344 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: Document client README workflow
+target_file: client/README.md
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-003
+- C-009
+- C-016
+- C-022
+prompt: |
+  Modify `client/README.md` only (operation: modify_file).
+
+  **Prerequisite:** All command-set references in this README must match the current exports in `client/ai_editor_client/server_api.py` (see §Authoritative server_api constants below).
+
+  ## Parent links (mandatory)
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-008-client-single-facade/README.yaml` (G-008)
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-008-client-single-facade/T-003-update-server-api-examples/README.yaml` (T-003)
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml`
+
+  ## MRS excerpt (concepts for this step only)
+
+  - **C-003 Agent Model**: модель-агент управляет жизненным циклом сессии СА и последовательностью вызовов; создаёт и закрывает сессию на СА; передаёт `session_id` во **все** команды редактора; решает о write/close.
+  - **C-009 File Workflow**: обязательный четырёхстадийный цикл open → edit → write → close для одного файла в контексте CA Session; реализуется командами `universal_file_open`, `universal_file_edit`, `universal_file_write`, `universal_file_close`; блокировка/разблокировка — через СА; локальные артефакты — только в Editor Session Directory.
+  - **C-016 MCP Workflow Surface**: единственный публичный MCP-контракт редактора для файлового workflow и health — `universal_file_open`, `universal_file_edit`, `universal_file_write`, `universal_file_close`, `universal_file_preview`, плюс `health` только; `queue_health` не регистрируется; дублирующие семейства команд запрещены; вызовы СА не экспонируются модели отдельно.
+  - **C-022 Product Acceptance Criteria** (релевантно README): `help` без дублирующих семейств команд; клиентский контракт согласован со суженной MCP-поверхностью (C-016).
+
+  ## Authoritative server_api constants (for README command tables)
+
+  The module `ai_editor_client.server_api` defines:
+
+  - `UNIVERSAL_FILE_COMMANDS`: `universal_file_open`, `universal_file_edit`, `universal_file_write`, `universal_file_close`, `universal_file_preview`
+  - `INFRASTRUCTURE_COMMANDS`: `health` only
+  - `CLIENT_FACADE_COMMANDS`: `UNIVERSAL_FILE_COMMANDS | INFRASTRUCTURE_COMMANDS` — **the supported thin-server public surface**
+  - `DEPRECATED_CLIENT_FACADE_COMMANDS`: `FILE_SESSION_COMMANDS | TRANSFER_AND_LOCK_COMMANDS` — legacy client modules only; **not registered on thin AI Editor Server**
+  - `REMOVED_COMMANDS`: includes legacy file I/O, CST commands, and `DEPRECATED_CLIENT_FACADE_COMMANDS`
+  - Facade property for file workflow: `client.universal_files` (`UniversalFileClient`)
+
+  README must document `CLIENT_FACADE_COMMANDS` as the supported set and mark `file_sessions` / transfer families as deprecated (C-022 / C-020 legacy scope).
+
+  ## Problem statement
+
+  The current README still presents `client.file_sessions` (session_*, subordinate_session_*, project_file_transfer_*) as a **peer** facade alongside `client.universal_files`. That contradicts C-016 thin MCP surface. This step closes the T-003 a10 coverage gap: document the unified File Workflow (C-009) and agent-supplied CA `session_id` contract (C-003) in the client library README.
+
+  ## CURRENT FILE CONTENT (`client/README.md`)
+
+  ```markdown
+  # code-analysis-client
+
+  Async Python client for the **code-analysis** server. It wraps `mcp-proxy-adapter`'s `JsonRpcClient`, so you get the adapter's built-in methods (queue, transfer, `help`, `health`, …) plus thin helpers to run any registered server command.
+
+  ## Install
+
+  ```bash
+  pip install code-analysis-client
+  ```
+
+  ## Usage
+
+  ```python
+  import asyncio
+  from code_analysis_client import CodeAnalysisAsyncClient
+
+
+  async def main() -> None:
+      client = CodeAnalysisAsyncClient(
+          protocol="https",
+          host="127.0.0.1",
+          port=15001,
+          cert="/path/client.crt",
+          key="/path/client.key",
+          ca="/path/ca.crt",
+          timeout=120.0,
+      )
+      async with client:
+          h = await client.rpc.help()
+          r = await client.call("list_projects", {"include_deleted": False})
+      print(h, r)
+
+
+  asyncio.run(main())
+  ```
+
+  Build client settings from the same JSON shape as the pipeline adapter settings (`host`, `port`, `protocol`, optional `ssl` with `cert` / `key` / `ca` or `*_path` aliases), or from a full server `config.json` object.
+
+  ```python
+  from code_analysis_client import CodeAnalysisAsyncClient
+
+  client = CodeAnalysisAsyncClient.from_server_config(config_dict, timeout=60.0)
+  ```
+
+  Queued/long commands: use `client.call_unified(..., expect_queue=True, auto_poll=True)` or the underlying `client.rpc.execute_command_unified(...)`.
+
+  ## Validation using the server schema
+
+  The authoritative input schema is whatever the running server returns from **`help`** with `cmdname` set to the command. The client calls that, optionally caches the result, performs the same shallow checks as the server's `BaseMCPCommand` (types, `required`, `enum`, `additionalProperties`), then runs the command.
+
+  ```python
+  async with CodeAnalysisAsyncClient(host="127.0.0.1", port=15001) as client:
+      # Explicit
+      out = await client.call_validated(
+          "list_projects",
+          {"include_deleted": False},
+      )
+      # Dynamic wrapper: same as call_validated("list_projects", {...})
+      out = await client.commands.list_projects(include_deleted=False)
+      # After server reload
+      client.clear_command_schema_cache()
+  ```
+
+  Use `call_unified_validated` when you need queue polling. Pass `refresh_schema=True` on a single call to bypass the in-memory schema cache.
+
+  ## High-level facades (aligned with live server registry)
+
+  The client does **not** wrap CST commands (`cst_load_file`, …) or legacy file I/O
+  (`universal_file_read`, `read_project_text_file`, …). Those commands are removed
+  from the server registry. Use the facades below or generic `call` / `commands.*`.
+
+  | Facade | Property | Server commands |
+  |--------|----------|-----------------|
+  | Client DB sessions + transfer | `client.file_sessions` | `session_*`, `subordinate_session_*`, `project_file_transfer_*`, `project_file_advisory_lock_batch` |
+  | Universal edit sessions | `client.universal_files` | `universal_file_open`, `edit`, `write`, `close`, `preview` |
+  | Any registered command | `client.call` / `client.commands.<name>` | schema from live `help()` |
+
+  Canonical command lists: `code_analysis_client.server_api` — exported as
+  `FILE_SESSION_COMMANDS`, `FILE_SESSION_FACADE_METHODS`, `CLIENT_FACADE_COMMANDS`,
+  `REMOVED_COMMANDS`.
+
+  Sync checks (in-process registry):
+
+  ```bash
+  pytest tests/test_client_server_api_sync.py tests/test_code_analysis_client.py -k session
+  ```
+
+  Package version is in ``client/code_analysis_client/version.txt`` (synced with the
+  root ``code-analysis`` project via ``scripts/sync_code_analysis_client_version.py``).
+
+  ## Examples (this repository)
+
+  Runnable scripts live under `client/examples/`. **Long-form "man page" style
+  documentation** is embedded in the **module docstrings** of those Python files
+  (see `client/examples/README.md` for how to read them).
+
+  | Script | Purpose |
+  |--------|---------|
+  | `run_all_examples.py` | Full API tour + runs all live sibling scripts |
+  | `ex_minimal_validated.py` | Smallest validated RPC example |
+  | `ex_universal_files.py` | All `UniversalFileClient` methods (open/edit/write/close/preview) |
+  | `ex_session_view_subordinates.py` | `session_view` and subordinate CRUD |
+  | `ex_file_sessions.py` | Sessions, locks, transfer roundtrip |
+  | `ex_config_only.py` | Parse `config.json` without TCP |
+
+  ```bash
+  casmgr --config config.json start
+  python client/examples/run_all_examples.py
+  ```
+
+  ## Development
+
+  From the repository root:
+
+  ```bash
+  pip install -e ./client
+  pytest tests/test_code_analysis_client.py
+  ```
+
+  ### Releasing to PyPI (version = root ``code-analysis`` project)
+
+  The client wheel version is read from ``client/code_analysis_client/version.txt``.
+  That file must match ``[project].version`` in the **repository root**
+  ``pyproject.toml``. Sync before build:
+
+  ```bash
+  python scripts/sync_code_analysis_client_version.py
+  cd client && python -m build && twine check dist/* && twine upload dist/*
+  ```
+  ```
+
+  ## Required changes — section-by-section
+
+  Apply edits only inside `client/README.md`. Preserve Install, Usage, Validation, Development, and Releasing sections unless a sentence directly contradicts C-016 (see §4 and §6). **Do not** change PyPI package naming paths in Development/Releasing unless they are factually wrong for this repo (`ai_editor_client` vs legacy names — leave legacy PyPI branding if present; fix only facade/workflow/command-reference content).
+
+  ### 1. Add new section `## File Workflow (C-009)` immediately after `## Validation using the server schema`
+
+  Insert a dedicated section documenting the four-stage workflow. Required substructure:
+
+  **Heading:** `## File Workflow (C-009)`
+
+  **Intro paragraph (exact meaning, prose may vary slightly but must cover all points):**
+  - Thin AI Editor Server exposes file editing only through `UniversalFileClient` (`client.universal_files`).
+  - One file at a time follows: **open → edit → write → close**.
+  - Optional read-only inspection during an open file uses `preview` (`universal_file_preview`).
+  - Every stage requires the same CA Session `session_id`, `project_id`, and (where applicable) `file_path`.
+
+  **Subheading:** `### Workflow stages`
+
+  Numbered list (exact stage names and server commands):
+
+  1. **Open** (`universal_file_open`) — agent supplies CA `session_id`; server locks file on upstream CA, creates local Editor Session Directory and File Subtree, stores Origin Snapshot, creates Edit Subdirectory. Use `create=True` with `initial_content` for new files.
+  2. **Edit** (`universal_file_edit`) — mutations apply only to the Edit Subdirectory; Origin Snapshot unchanged.
+  3. **Write** (`universal_file_write`) — compares Origin Snapshot to edited content; `write_mode="preview"` returns local diff without upstream upload; commit mode uploads to CA on change and refreshes Origin Snapshot on success.
+  4. **Close** (`universal_file_close`) — unlocks file on CA, removes local File Subtree; removes Editor Session Directory when last file in session closes.
+
+  **Subheading:** `### Minimal async example`
+
+  Provide a fenced Python code block demonstrating the workflow with `ai_editor_client` imports (match sibling examples, not legacy `code_analysis_client` if the code block is new). The example must:
+
+  - Obtain `ca_session_id` **before** any `universal_file_*` call (comment: created upstream via CA `session_create`, outside this client package).
+  - Pass the same `ca_session_id` to `uf.open(...)`, `uf.preview(...)`, `uf.edit(...)`, `uf.write(...)`, `uf.close(...)`.
+  - **Not** assign `session_id` from the `open` response for subsequent calls.
+  - Use `write_mode="preview"` in the sample unless showing commit explicitly.
+  - End with pointer: full runnable script — `client/examples/ex_universal_files.py`.
+
+  ### 2. Add new section `### CA Session ID contract (C-003)` inside the File Workflow section (after Minimal async example)
+
+  **Heading:** `### CA Session ID contract (C-003)`
+
+  Bulleted rules (all required):
+
+  - The **agent** creates the CA Session on Code Analysis Server (`session_create`) **before** calling any editor `universal_file_*` command. That RPC is **not** part of the thin editor MCP surface and is **not** wrapped by `UniversalFileClient`.
+  - The agent passes the **same** `session_id` string to every `universal_file_open`, `universal_file_edit`, `universal_file_write`, `universal_file_close`, and `universal_file_preview` call for the workflow.
+  - Do **not** treat the `open` response as the source of `session_id` for later calls. If the server echoes `session_id`, it must match the agent-supplied value; the agent already owns the identifier.
+  - The agent decides when to `write` (commit or preview) and `close`; the client library does not manage CA session lifecycle.
+
+  ### 3. Rewrite section `## High-level facades (aligned with live server registry)`
+
+  Replace the entire section (heading through sync-check bash block) with thin-server–accurate content:
+
+  **New heading:** `## High-level facades (thin AI Editor Server / C-016)`
+
+  **Opening paragraph must state:**
+  - Supported public MCP commands for file workflow: `UNIVERSAL_FILE_COMMANDS` plus `health` only (`CLIENT_FACADE_COMMANDS` in `ai_editor_client.server_api`).
+  - CST commands (`cst_*`, `list_cst_blocks`, `query_cst`) and legacy direct file I/O are in `REMOVED_COMMANDS` — not on thin server, not documented as supported.
+  - `client.universal_files` is the **only** supported high-level facade for file editing.
+
+  **New facade table (replace old three-row table):**
+
+  | Facade | Property | Server commands | Status |
+  |--------|----------|-----------------|--------|
+  | Universal file workflow | `client.universal_files` | `universal_file_open`, `universal_file_edit`, `universal_file_write`, `universal_file_close`, `universal_file_preview` | **Supported** (C-009 / C-016) |
+  | Infrastructure | `client.call("health", {})` or adapter `health` | `health` | **Supported** |
+  | Generic RPC | `client.call` / `client.commands.<name>` | any command returned by live `help()` on connected server | Escape hatch; thin server exposes only rows above for files |
+  | Legacy sessions + transfer | `client.file_sessions` | `session_*`, `subordinate_session_*`, `project_file_transfer_*`, `project_file_advisory_lock_batch` | **Deprecated** — `DEPRECATED_CLIENT_FACADE_COMMANDS`; not registered on thin editor server |
+
+  **Canonical constants paragraph** — replace `code_analysis_client.server_api` reference with:
+
+  `ai_editor_client.server_api` exports: `UNIVERSAL_FILE_COMMANDS`, `INFRASTRUCTURE_COMMANDS`, `CLIENT_FACADE_COMMANDS`, `DEPRECATED_CLIENT_FACADE_COMMANDS`, `REMOVED_COMMANDS`.
+
+  **Sync checks** — replace bash line with:
+
+  ```bash
+  pytest tests/test_client_server_api_sync.py -v
+  ```
+
+  Explain in one sentence: tests assert `CLIENT_FACADE_COMMANDS` matches live server registry (C-016) and `REMOVED_COMMANDS` absent from server (C-022).
+
+  ### 4. Update opening paragraph (top of README) if it implies queue/transfer as editor workflow
+
+  If the first paragraph lists "queue, transfer" as primary editor capabilities, add one clarifying sentence after it: thin AI Editor Server file editing uses `universal_file_*` only; queue polling helpers remain for generic RPC but are not part of the file workflow surface.
+
+  Do **not** document or recommend `queue_health`.
+
+  ### 5. Rewrite `## Examples (this repository)` table rows
+
+  Keep the section structure. Update the table:
+
+  | Script | Purpose |
+  |--------|---------|
+  | `ex_universal_files.py` | **Primary:** C-009 File Workflow demo — all `UniversalFileClient` methods with agent-supplied CA `session_id` (C-003) |
+  | `ex_minimal_validated.py` | Smallest validated RPC example (`health` / generic call) |
+  | `ex_config_only.py` | Parse `config.json` without TCP |
+  | `run_all_examples.py` | Runs sibling live scripts (includes universal files demo) |
+  | `ex_session_view_subordinates.py` | **Deprecated** — legacy CA session API; not thin editor MCP |
+  | `ex_file_sessions.py` | **Deprecated** — legacy sessions/transfer; not thin editor MCP |
+
+  Add one sentence after the table: for file editing on thin AI Editor Server, start with `ex_universal_files.py`; do not use `ex_file_sessions.py` or `ex_session_view_subordinates.py` as file workflow templates.
+
+  Update the bash snippet to use `aiedmgr` (not `casmgr`) if present:
+
+  ```bash
+  aiedmgr --config config.json start
+  python client/examples/ex_universal_files.py
+  ```
+
+  ### 6. Forbidden content (must NOT appear anywhere in README after edit)
+
+  - Recommending `queue_health` as an editor command or health check for thin server workflow.
+  - Presenting `client.file_sessions` or `project_file_transfer_*` as **supported** paths for file open/edit/write/close workflow.
+  - Documenting CST commands (`cst_*`, `list_cst_blocks`, `query_cst`) as available on thin AI Editor Server.
+  - Instructing readers to obtain `session_id` from `universal_file_open` response for subsequent workflow calls.
+  - Listing `session_*` / `subordinate_session_*` in `CLIENT_FACADE_COMMANDS` or implying they are registered on thin editor server.
+
+  ### 7. Optional minor fix (apply if path appears in edited sections)
+
+  Where the rewritten facade/constants paragraph references the version file, use `client/ai_editor_client/version.txt` (actual repo path).
+
+  ## Forbidden (this step)
+
+  - Do NOT modify any file other than `client/README.md`.
+  - Do NOT modify `client/ai_editor_client/server_api.py` or `client/examples/ex_universal_files.py`.
+  - Do NOT modify planning artifacts under `docs/plans/ai-editor-thin-server/G-008-client-single-facade/T-003-update-server-api-examples/` (including `README.yaml` and any file in `atomic_steps/`).
+  - Do NOT add implementation code — documentation prose and fenced examples only.
+
+  ## Validation
+
+  Manual review of `client/README.md`:
+
+  1. Section `## File Workflow (C-009)` exists with open → edit → write → close stages mapped to `universal_file_*`.
+  2. Section `### CA Session ID contract (C-003)` states agent obtains `session_id` upstream and passes it to every call; open response is not the source of truth.
+  3. Facade table marks `client.universal_files` as supported and `client.file_sessions`/transfer as deprecated; `CLIENT_FACADE_COMMANDS` described as universal_file_* + health only.
+  4. Examples table points to `ex_universal_files.py` as primary file workflow demo.
+  5. No forbidden content from §6 above.
+
+  Optional static check (no failures required beyond readability):
+
+  ```bash
+  grep -n 'queue_health' client/README.md || true
+  grep -n 'file_sessions' client/README.md
+  ```
+
+  Expected: `queue_health` absent; `file_sessions` appears only in deprecated/legacy context.
+
+  All repository tests must still pass after documentation-only change:
+
+  ```bash
+  source .venv/bin/activate
+  pytest tests/ -q --tb=short
+  ```
+verification:
+  type: manual
+  target: client/README.md
+  expected: >
+    README documents C-009 four-stage File Workflow via UniversalFileClient;
+    C-016 thin MCP surface (universal_file_* + health only, no queue_health);
+    C-003 agent-supplied CA session_id passed to every universal_file_* call
+    (not sourced from open response); command reference aligned with the
+    CLIENT_FACADE_COMMANDS constant defined in the client facade module step of this
+    tactical step; ex_universal_files.py cited as primary example;
+    file_sessions/transfer facades marked deprecated.
+status: draft

@@ -1,0 +1,25 @@
+step_id: T-002
+parent_global_step: G-005
+name: AtomicBlockPublication protocol
+description: >
+  Creates the AtomicBlockPublication protocol shared by result block writes.
+  Requires writing complete content to a temporary intermediate path and
+  publishing only by atomic rename after the payload is finalized. Prevents HTTP
+  readers and internal consumers from observing partially written blocks or
+  partially appended index updates during publication.
+concepts:
+  - C-026
+inputs:
+  - name: finalized_block_payload
+    type: BlockPayload
+    description: Complete serialized content ready for publication.
+  - name: publication_target
+    type: PublicationTarget
+    description: Destination block or index slot within the session directory.
+outputs:
+  - name: published_artifact
+    type: PublishedArtifact
+    description: Atomically visible block or index update after rename completes.
+atomic_steps:
+- A-001
+status: frozen

@@ -1,0 +1,110 @@
+step_id: A-002
+parent_tactical_step: T-005
+name: Register periodic session cleanup in app factory
+target_file: ai_editor/main_app_factory.py
+operation: modify_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-011
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/main_app_factory.py
+
+  MRS (C-011 BackgroundSessionCleaner): periodic background cleanup runs on server startup.
+
+  Precondition: ai_editor/core/search_session/cleaner.py defines register_search_session_cleanup.
+
+  Baseline state before this step: search HTTP routes already registered; background session cleanup
+  not yet registered.
+
+  Current full file content (apply edits to this baseline):
+
+  ```python
+  """
+  Create FastAPI app and register worker startup/shutdown events.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import logging
+  from pathlib import Path
+  from typing import Any
+
+  from mcp_proxy_adapter.api.core.app_factory import AppFactory
+
+  from ai_editor.core.search_session.http_routes import register_search_job_routes
+  from ai_editor.main_app_events import register_startup_shutdown_events
+  from ai_editor.main_server_presentation import resolve_server_presentation
+  from ai_editor.openapi_mcp_proxy_compat import patch_app_openapi_for_mcp_proxy
+
+
+  def create_app_with_events(
+      app_config: dict[str, Any],
+      config_path: Path,
+      worker_manager: Any,
+  ) -> Any:
+      """Create FastAPI app, register startup/shutdown events, set app.state.worker_manager."""
+      title, description, version = resolve_server_presentation(app_config)
+      app_factory = AppFactory()
+      app = app_factory.create_app(
+          title=title,
+          description=description,
+          version=version,
+          app_config=app_config,
+          config_path=str(config_path),
+      )
+
+      register_startup_shutdown_events(app, app_config, worker_manager)
+      app.state.worker_manager = worker_manager
+      patch_app_openapi_for_mcp_proxy(app)
+      config_dir = config_path.parent
+      register_search_job_routes(app, config_dir=config_dir)
+
+      return app
+
+
+  def setup_main_logger_file_handler(app_config: dict[str, Any]) -> logging.Logger:
+      """Configure main logger with file handler if not already configured. Returns logger."""
+      main_logger = logging.getLogger(__name__)
+      if not main_logger.handlers:
+          from pathlib import Path
+
+          from ai_editor.logging import (
+              create_unified_formatter,
+              install_unified_record_factory,
+          )
+
+          install_unified_record_factory()
+          log_dir = Path(app_config.get("server", {}).get("log_dir", "./logs"))
+          log_dir.mkdir(parents=True, exist_ok=True)
+          log_file = log_dir / "mcp_server.log"
+
+          handler = logging.FileHandler(log_file, encoding="utf-8")
+          handler.setLevel(logging.INFO)
+          handler.setFormatter(create_unified_formatter())
+          main_logger.addHandler(handler)
+          main_logger.setLevel(logging.INFO)
+      return main_logger
+  ```
+
+  Required edits:
+  1. Import register_search_session_cleanup from ai_editor.core.search_session.cleaner.
+  2. After register_search_job_routes(...), call:
+       register_search_session_cleanup(app, config_dir=config_dir, app_config=app_config)
+
+  Forbidden: remove register_search_job_routes or startup/shutdown registration; duplicate cleanup loops.
+
+  Run black/flake8/mypy on main_app_factory.py.
+
+verification:
+  type: import
+  target: ai_editor.main_app_factory
+  expected: >
+    create_app_with_events calls register_search_session_cleanup after register_search_job_routes.
+    register_search_session_cleanup receives config_dir and app_config.
+status: frozen

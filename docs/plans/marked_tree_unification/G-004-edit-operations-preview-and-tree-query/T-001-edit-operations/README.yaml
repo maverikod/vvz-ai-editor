@@ -1,0 +1,78 @@
+step_id: T-001
+parent_global_step: G-004
+name: EditOperation Six-Operation Contract
+description: 'Define the EditOperation entity (C-015) as the uniform set of six tree-edit
+  operations addressed at the API boundary by short_id integer only ({n003}), with
+  NodeIdMap (C-025) resolving short_id to internal TreeNodeUuid when the in-session
+  tree is valid. Define each of the six operations and its invariants. insert: places
+  a new block relative to a target short_id and assigns a fresh short_id per {a007}
+  (next_free allocation; never reuses retired ids). delete: removes the block identified
+  by short_id together with its subtree, preserving format validity; retired short_ids
+  are never reused ({a007}). replace: substitutes content while preserving the short_id.
+  move: relocates a block atomically, preserving its short_id. edit-attributes: changes
+  node metadata without changing content or position. edit-content: changes leaf-block
+  text only; rejects non-leaf targets with an input error. Establish that every valid-tree
+  target is identified by short_id integer, never by line number or byte offset. Establish
+  that the six operations are available for all five formats without format-specific
+  variations at the operation level. Tree-validity edit gate ({h008}, {h009}): while
+  VALID, only short_id operations via the six edit operations with marker hide/unhide
+  and tree write; while INVALID, only plain-text string or line-range edits to in-session
+  source with short_id addressing, marker hide/unhide, and tree writes forbidden;
+  re-validation rebuilds the tree and resumes short_id mode when source parses again.'
+concepts:
+- C-015
+- C-002
+- C-012
+- C-009
+- C-025
+source_labels:
+- '{h001}'
+- '{h002}'
+- '{h003}'
+- '{h004}'
+- '{h005}'
+- '{h006}'
+- '{h007}'
+- '{h008}'
+- '{h009}'
+- '{a007}'
+- '{n003}'
+inputs:
+- name: short_id API contract
+  type: domain constraint (C-002, {n003})
+  description: Integer short_id token from the tree file MAP/TREE context; sole
+    external handle for edit targets in valid-tree mode.
+- name: NodeIdMap entity definition
+  type: domain entity definition (C-025)
+  description: Resolves short_id to internal UUID and enforces next_free allocation
+    per {a007}; no map mutation outside its three operations.
+- name: EditSession entity definition
+  type: domain entity definition (C-012)
+  description: Owning context; edit operations execute inside an active EditSession
+    and each produces one SessionRepo commit.
+outputs:
+- name: EditOperation entity definition
+  type: domain entity definition
+  description: Uniform six operations (insert, delete, replace, move, edit-attributes,
+    edit-content) addressed by short_id integer at the API boundary; available for
+    all formats; no line-number or byte-offset addressing in valid-tree mode.
+- name: Per-operation invariants
+  type: domain constraint definition
+  description: insert assigns fresh short_id per {a007}; delete retires short_id
+    without reuse; replace and move preserve short_id; edit-content rejects non-leaf
+    targets.
+- name: Tree-validity edit gate
+  type: domain constraint definition
+  description: VALID — short_id six-operation mode with full per-mutation invariant
+    per {h008}. INVALID — plain-text-only edits per {h008}; re-validation per {h009}
+    restores short_id mode via tree rebuild and NodeIdMap build while preserving MAP
+    UUID entries and next_free.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+status: ready_for_review

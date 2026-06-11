@@ -1,0 +1,33 @@
+step_id: A-003
+parent_tactical_step: T-005
+name: Preview session resolve — include json tree registry for caller-owned tree_id
+target_file: ai_editor/commands/universal_file_preview/session.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+  - C-009
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-005-universal-file-preview-drill-down-stable-id/README.yaml
+
+  ## Goal
+  In `resolve_session`, after `cst_get_tree` fails, try `from ai_editor.core.json_tree.tree_builder import get_tree as json_get_tree`
+  before yaml_get_tree so JSON tree-temp sessions registered only under json tree id still resolve for preview.
+
+  ## Parallel note
+  This atomic step is priority 1 and independent of tree-temp focus and navigation edits on other files; it can ship first.
+
+  ## a8
+  Full file content with change applied.
+
+  ## Forbidden
+  - Do not alter merge_edit_session_into_preview_params semantics except if needed for tree_temp_roots injection
+    (optional follow-up — prefer injection in universal_file_preview_command when sidecar read).
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_preview/session.py
+  expected: flake8/black clean
+status: done

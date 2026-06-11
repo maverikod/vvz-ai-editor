@@ -1,0 +1,99 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: YAML round-trip SourceParser module
+target_file: ai_editor/core/tree_temp/yaml_source_parser.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+concepts:
+- C-001
+- C-004
+- C-005
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/tree_temp/yaml_source_parser.py
+
+  Prerequisite: ai_editor.core.tree_temp.tree_node.TreeNode exists (G-001 T-001).
+  Prerequisite: ruamel.yaml installed in the active venv (`pip install -e .` completed).
+
+  MRS excerpts: same C-001, C-004, C-005 as T-001; YAML branch uses ruamel round-trip and # comments.
+
+  Module docstring (exact):
+  """
+  Round-trip YAML SourceParser: text to TreeNode forest with comment fields (C-005, C-004).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  Imports (exact):
+  from __future__ import annotations
+  import uuid
+  from typing import Any, List, Optional
+
+  from ruamel.yaml import YAML
+  from ruamel.yaml.comments import CommentedBase, CommentedMap, CommentedSeq
+
+  from ai_editor.core.tree_temp.tree_node import TreeNode
+
+  Public API:
+  def parse_yaml_source(source_text: str) -> List[TreeNode]:
+      """Parse YAML (round-trip) into root-level TreeNode list (C-005).
+
+      Raises:
+          ValueError: message starts \"Invalid YAML:\" on ruamel scanner/parser errors or unsupported
+          document shape when a document is empty of nodes after parse.
+      """
+
+  Forbidden:
+  - No Sidecar, EditSession, universal_file_*.
+  - Do not use yaml.safe_load from PyYAML for this parser; use ruamel YAML(typ='rt').
+  - File max 400 lines.
+
+  Implementation (deterministic):
+
+  1. Configure: `yaml = YAML(typ='rt')`; `yaml.preserve_quotes = True`; load single document from
+     source_text into `data` using yaml.load on a StringIO of source_text.
+
+  2. Root list shape (same as JSON source_spec): if top is CommentedMap (mapping) or plain dict treated as
+     mapping, return [one TreeNode type object whose children are key entries in stable insertion order as
+     ruamel exposes]. If top is CommentedSeq or list, return **one TreeNode per top-level element in order**
+     (no wrapper array node). If top is scalar, return [one scalar TreeNode].
+
+  3. For each constructed TreeNode: stable_id = str(uuid.uuid4()); set type to object|array|string|number|boolean|null
+     using Python type detection: None -> null; bool -> boolean; int/float -> number (bool excluded first);
+     str -> string; CommentedMap/dict -> object; CommentedSeq/list -> array.
+
+  4. Object children: each key-value pair becomes a child TreeNode with .key set to string key; value field
+     rules same as C-001 (only scalars have value).
+
+  5. Comment extraction from ruamel: use CommentedBase public API available in ruamel.yaml.comments — inspect
+     `.ca` (comment attribute structure) on CommentedMap, CommentedSeq, and scalar leaves. For each node you
+     create, map:
+     - Same-line / end-of-line # comment attached to the mapping entry or sequence element -> that child
+       node's comment_inline; store text including `#` and leading space as in source substring when practical,
+       or the comment value ruamel exposes prefixed with `# ` if only body is available (choose ruamel's
+       `.comment` eformat if present; must be deterministic).
+     - Comment lines above a key or sequence item -> comment_before on the TreeNode for that following item.
+
+  6. Apply C-004 identically to JSON: top comments before first root mapping key or first sequence item ->
+     comment_before on first root node; consecutive comment-only lines accumulate with newline separators into
+     comment_before on the next node.
+
+  7. If load raises any exception, wrap or replace with ValueError(\"Invalid YAML: ...\") preserving cause via
+     `from e`.
+
+  8. Blank document / None load: raise ValueError(\"Invalid YAML: empty document\").
+
+  Edge cases:
+  - YAML merge keys, tags, anchors: preserve structure as ruamel resolves; TreeNode reflects loaded Python
+    structure only (no special anchor metadata required by this step).
+
+  Validation:
+  - black, flake8, mypy on this file after pip install -e .
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/yaml_source_parser.py
+  expected: Linters pass; ruamel round-trip load used; parse_yaml_source exported; file at most 400 lines.
+status: done

@@ -1,0 +1,34 @@
+step_id: T-003
+parent_global_step: G-001
+name: SubclassGenerator Build-time Tool
+description: "Define the SubclassGenerator entity (C-017) as the build-time tool that
+  enumerates concrete LibCST node categories and emits the NodeSubclassSet (C-002)
+  committed source module. The SubclassGenerator is a development-time tool that does
+  not run during normal package operation. The generator introspects the LibCST type
+  hierarchy, identifies every concrete node category that can appear in a parsed tree,
+  and for each emits one static subclass definition into a committed source module.
+  The emitted module is the authoritative source of the NodeSubclassSet (C-002). Re-running
+  the SubclassGenerator with a newer version of LibCST produces an updated NodeSubclassSet
+  that tracks the new type list. This step realizes the C-017 produces C-002 relation:
+  the SubclassGenerator (C-017) produces the NodeSubclassSet (C-002) source module
+  as its output artifact.\n"
+concepts:
+- C-017
+- C-002
+inputs:
+- name: LibCST type hierarchy
+  type: LibCST package introspection result
+  description: The set of all concrete LibCST node classes discoverable at build
+    time; used to drive complete enumeration of the NodeSubclassSet.
+outputs:
+- name: SubclassGenerator entity
+  type: domain entity definition
+  description: A build-time tool that produces the NodeSubclassSet source 
+    module; versioned and re-runnable as LibCST evolves.
+- name: NodeSubclassSet source module
+  type: committed source artifact
+  description: The generated, static source module containing one subclass per 
+    LibCST concrete category; the committed realization of NodeSubclassSet 
+    (C-002).
+atomic_steps: []
+status: draft

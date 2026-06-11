@@ -1,0 +1,33 @@
+step_id: G-004
+name: Python file handler
+description: 'PythonFileHandler is the FileHandler family for .py, .pyi, .pyw files.
+  It opens a Python source file and produces a tree_node root representing the Module.
+  Interior nodes follow the CST: FunctionDef and ClassDef are tree_node, their bodies
+  are sequences of further tree_node statements, leaf values are scalar. The handler
+  resolves node_ref values that are stable_id UUIDs produced by the project''s existing
+  cst_load_file infrastructure. It does not implement navigation; it only opens, produces
+  the root Node, and resolves identifiers to Nodes.
+
+  '
+concepts:
+- C-016
+relations:
+- from_concept: C-016
+  to_concept: C-003
+  type: extends
+- from_concept: C-016
+  to_concept: C-004
+  type: produces
+- from_concept: C-016
+  to_concept: C-009
+  type: depends_on
+source_ranges:
+- start: 150
+  end: 156
+depends_on:
+- G-002
+- G-003
+tactical_steps:
+- T-301
+- T-302
+status: frozen

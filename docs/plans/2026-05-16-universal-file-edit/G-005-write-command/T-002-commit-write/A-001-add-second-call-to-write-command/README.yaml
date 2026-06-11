@@ -1,0 +1,117 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Add _second_call implementation to UniversalFileWriteCommand
+target_file: ai_editor/commands/universal_file_edit/write_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-009
+- C-011
+- C-012
+- C-014
+prompt: "Operation: modify_file\nTarget: ai_editor/commands/universal_file_edit/write_command.py\n\
+  \nMRS context:\nC-009 WriteCommand second call: backup pair then rename temp to\
+  \ original then\n  delete lockfile then git commit.\n  write failure after backup\
+  \ restores original from backup.\nC-011 BackupPair: Atomic backup of original file\
+  \ and draft as one history entry.\nC-014 ErrorCodes: WRITE_FAILED when code generation\
+  \ or file write fails.\nC-012: BackupManager, git_integration.commit_after_write.\n\
+  \nAPI needed:\n  from ai_editor.core.backup_manager import BackupManager\n \
+  \ from ai_editor.core.git_integration import commit_after_write\n  from ai_editor.commands.universal_file_edit.errors\
+  \ import WRITE_FAILED\n  from ai_editor.commands.universal_file_edit.format_group\
+  \ import delete_lockfile\n\nCurrent full file content (after T-001/A-001, ~200 lines):\n\
+  \"\"\"\nUniversalFileWriteCommand: two-phase write with diff and lockfile.\n\nAuthor:\
+  \ Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\nfrom __future__ import\
+  \ annotations\n\nimport os\nimport tempfile\nfrom pathlib import Path\nfrom typing\
+  \ import Any, Dict, Optional\n\nfrom mcp_proxy_adapter.commands.base_command import\
+  \ BaseCommand\n\nfrom ai_editor.commands.universal_file_edit.errors import (\n\
+  \    SESSION_NOT_FOUND,\n    make_error,\n)\nfrom ai_editor.commands.universal_file_edit.format_group\
+  \ import (\n    FORMAT_SIDECAR,\n    FORMAT_TREE_TEMP,\n    read_lockfile_pid,\n\
+  \    write_lockfile_pid,\n)\nfrom ai_editor.commands.universal_file_edit.session\
+  \ import get_session\n\n\nclass UniversalFileWriteCommand(BaseCommand):\n    \"\"\
+  \"MCP command implementing the two-phase write protocol.\n\n    First call computes\
+  \ diff and writes lockfile.\n    Second call (matching PID) commits with backup.\n\
+  \    \"\"\"\n\n    @staticmethod\n    def get_name() -> str:\n        \"\"\"Return\
+  \ the MCP command name.\n\n        Returns:\n            MCP command name string.\n\
+  \        \"\"\"\n        return \"universal_file_write\"\n\n    @staticmethod\n\
+  \    def get_schema() -> Dict[str, Any]:\n        \"\"\"Return the JSON schema for\
+  \ command parameters.\n\n        Returns:\n            JSON schema dict describing\
+  \ project_id and session_id.\n        \"\"\"\n        return {\n            \"type\"\
+  : \"object\",\n            \"properties\": {\n                \"project_id\": {\"\
+  type\": \"string\"},\n                \"session_id\": {\"type\": \"string\"},\n\
+  \            },\n            \"required\": [\"project_id\", \"session_id\"],\n \
+  \           \"additionalProperties\": False,\n        }\n\n    def execute(self,\
+  \ params: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Execute the write command.\n\
+  \n        Args:\n            params: Dict with project_id and session_id.\n\n  \
+  \      Returns:\n            On first call: dict with diff string.\n           \
+  \ On second call: dict with success and diff.\n            On error: error dict.\n\
+  \        \"\"\"\n        session_id: str = params[\"session_id\"]\n        project_id:\
+  \ str = params[\"project_id\"]\n        try:\n            session = get_session(session_id)\n\
+  \        except ValueError:\n            return make_error(SESSION_NOT_FOUND, f\"\
+  Unknown session: {session_id}\")\n\n        current_pid = os.getpid()\n        lockfile_pid\
+  \ = read_lockfile_pid(session.abs_path)\n\n        if lockfile_pid != current_pid:\n\
+  \            return self._first_call(session, current_pid, project_id)\n       \
+  \ return self._second_call(session, project_id)\n\n    def _generate_code(\n   \
+  \     self, session: Any\n    ) -> str:\n        \"\"\"Generate source code from\
+  \ the draft file.\n\n        Args:\n            session: Active EditSession with\
+  \ format_group and draft_path.\n\n        Returns:\n            Generated source\
+  \ code as a string.\n        \"\"\"\n        fg = session.format_group\n       \
+  \ if fg == FORMAT_SIDECAR:\n            from ai_editor.core.cst_tree import\
+  \ tree_saver\n            with tempfile.NamedTemporaryFile(suffix=\".py\", delete=False)\
+  \ as tmp:\n                tmp_path = tmp.name\n            try:\n             \
+  \   tree_saver.save_tree_to_file(session.tree_id, tmp_path)\n                return\
+  \ Path(tmp_path).read_text()\n            finally:\n                Path(tmp_path).unlink(missing_ok=True)\n\
+  \        if fg == FORMAT_TREE_TEMP:\n            if session.handler_id == \"json\"\
+  :\n                from ai_editor.core.json_tree import tree_builder as jtb\n\
+  \                return jtb.serialize_tree(session.tree_id)\n            from ai_editor.core.yaml_tree\
+  \ import tree_builder as ytb\n            return ytb.serialize_tree(session.tree_id)\n\
+  \        # text group\n        return session.draft_path.read_text()\n\n    def\
+  \ _first_call(\n        self, session: Any, current_pid: int, project_id: str\n\
+  \    ) -> Dict[str, Any]:\n        \"\"\"Handle first write call: generate code,\
+  \ compute diff, write lockfile.\n\n        Args:\n            session: Active EditSession.\n\
+  \            current_pid: Current server process PID.\n            project_id: UUID\
+  \ of the project.\n\n        Returns:\n            Dict with diff string showing\
+  \ changes.\n        \"\"\"\n        code = self._generate_code(session)\n      \
+  \  original = session.abs_path.read_text()\n        from ai_editor.core.file_handlers.diff_support\
+  \ import compute_diff\n        diff = compute_diff(original, code)\n        write_lockfile_pid(session.abs_path,\
+  \ current_pid)\n        return {\"success\": True, \"phase\": \"preview\", \"diff\"\
+  : diff}\n\n    def _second_call(\n        self, session: Any, project_id: str\n\
+  \    ) -> Dict[str, Any]:\n        \"\"\"Handle second write call: backup, commit,\
+  \ cleanup.\n\n        Args:\n            session: Active EditSession.\n        \
+  \    project_id: UUID of the project.\n\n        Returns:\n            Dict with\
+  \ success flag (filled in T-002/A-001).\n        \"\"\"\n        raise NotImplementedError\n\
+  \nTask: Replace _second_call body (raise NotImplementedError) with backup + commit\
+  \ logic.\n\nReplace _second_call body with:\n```python\nfrom ai_editor.core.backup_manager\
+  \ import BackupManager\nfrom ai_editor.core.git_integration import commit_after_write\n\
+  from ai_editor.commands.universal_file_edit.errors import WRITE_FAILED\nfrom\
+  \ ai_editor.commands.universal_file_edit.format_group import delete_lockfile\n\
+  root_dir = self._get_project_root(project_id)\nbm = BackupManager(root_dir=str(root_dir))\n\
+  rel = session.abs_path.relative_to(root_dir)\nbm.create_backup(session.abs_path,\
+  \ command=\"universal_file_write\")\ntry:\n    code = self._generate_code(session)\n\
+  except Exception as exc:\n    bm.restore_file(str(rel))\n    return make_error(WRITE_FAILED,\
+  \ f\"Code generation failed: {exc}\")\nimport tempfile, os as _os\nwith tempfile.NamedTemporaryFile(\n\
+  \    mode=\"w\", suffix=session.abs_path.suffix,\n    dir=str(session.abs_path.parent),\
+  \ delete=False\n) as tmp:\n    tmp.write(code)\n    tmp_path = tmp.name\ntry:\n\
+  \    _os.replace(tmp_path, str(session.abs_path))\nexcept OSError as exc:\n    bm.restore_file(str(rel))\n\
+  \    Path(tmp_path).unlink(missing_ok=True)\n    return make_error(WRITE_FAILED,\
+  \ f\"Write failed: {exc}\")\ndelete_lockfile(session.abs_path)\noriginal_before\
+  \ = session.abs_path.read_text()\nfrom ai_editor.core.file_handlers.diff_support\
+  \ import compute_diff\ndiff = compute_diff(original_before, code)\ntry:\n    commit_after_write(root_dir,\
+  \ str(rel), config={})\nexcept Exception:\n    pass\nreturn {\"success\": True,\
+  \ \"phase\": \"committed\", \"diff\": diff}\n```\n\nImplementation:\n1. cst_load_file,\
+  \ locate _second_call body.\n2. cst_modify_tree replace raise NotImplementedError.\n\
+  3. cst_save_tree(validate=true, backup=true).\n4. lint_code then format_code.\n\n\
+  Constraints:\n- Do not modify any other method.\n- Resulting file must be syntactically\
+  \ valid Python.\n- File line count must not exceed 400.\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/write_command.py
+  expected: 'flake8 reports no errors. _second_call no longer contains NotImplementedError.
+    It calls BackupManager.create_backup and delete_lockfile.
+
+    '
+status: draft

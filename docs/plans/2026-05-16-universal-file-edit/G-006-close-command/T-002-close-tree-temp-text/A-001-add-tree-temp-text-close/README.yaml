@@ -1,0 +1,108 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Add _close_tree_temp_or_text implementation to UniversalFileCloseCommand
+target_file: ai_editor/commands/universal_file_edit/close_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-010
+- C-012
+- C-014
+prompt: "Operation: modify_file\nTarget: ai_editor/commands/universal_file_edit/close_command.py\n\
+  \nMRS context:\nC-010 CloseCommand:\n  tree-temp: sha256 compare draft vs original;\
+  \ mismatch rebuilds draft; draft deleted\n    on match; in-memory tree freed.\n\
+  \  text: delete draft; always clean.\n  lockfile deleted in all cases (handled in\
+  \ execute()).\n  SESSION_NOT_FOUND (C-014) returned on unknown session_id.\nC-012:\
+  \ json_tree and yaml_tree builders have remove_tree(tree_id: str) -> bool.\n  load_file_to_tree(file_path:\
+  \ str) -> str (returns tree_id)\n  serialize_tree(tree_id: str) -> str\n\nCurrent\
+  \ full file content (after T-001/A-001, ~185 lines):\n\"\"\"\nUniversalFileCloseCommand:\
+  \ ends an editing session with group-specific cleanup.\n\nAuthor: Vasiliy Zdanovskiy\n\
+  email: vasilyvz@gmail.com\n\"\"\"\nfrom __future__ import annotations\n\nfrom pathlib\
+  \ import Path\nfrom typing import Any, Dict\n\nfrom mcp_proxy_adapter.commands.base_command\
+  \ import BaseCommand\n\nfrom ai_editor.commands.universal_file_edit.errors import\
+  \ (\n    SESSION_NOT_FOUND,\n    make_error,\n)\nfrom ai_editor.commands.universal_file_edit.format_group\
+  \ import (\n    FORMAT_SIDECAR,\n    delete_lockfile,\n)\nfrom ai_editor.commands.universal_file_edit.session\
+  \ import (\n    get_session,\n    release_session,\n)\n\n\nclass UniversalFileCloseCommand(BaseCommand):\n\
+  \    \"\"\"MCP command that ends a session with format-group-specific cleanup.\n\
+  \n    Sidecar: verify checksum; rebuild on mismatch; never delete sidecar.\n   \
+  \ Tree-temp: sha256 compare draft vs original; delete or rebuild draft; free tree.\n\
+  \    Text: delete draft unconditionally.\n    Lockfile deleted in all cases.\n \
+  \   \"\"\"\n\n    @staticmethod\n    def get_name() -> str:\n        \"\"\"Return\
+  \ the MCP command name.\n\n        Returns:\n            MCP command name string.\n\
+  \        \"\"\"\n        return \"universal_file_close\"\n\n    @staticmethod\n\
+  \    def get_schema() -> Dict[str, Any]:\n        \"\"\"Return the JSON schema for\
+  \ command parameters.\n\n        Returns:\n            JSON schema dict describing\
+  \ project_id and session_id.\n        \"\"\"\n        return {\n            \"type\"\
+  : \"object\",\n            \"properties\": {\n                \"project_id\": {\"\
+  type\": \"string\"},\n                \"session_id\": {\"type\": \"string\"},\n\
+  \            },\n            \"required\": [\"project_id\", \"session_id\"],\n \
+  \           \"additionalProperties\": False,\n        }\n\n    def execute(self,\
+  \ params: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Execute the close command.\n\
+  \n        Args:\n            params: Dict with project_id and session_id.\n\n  \
+  \      Returns:\n            Dict with success flag and draft_rebuilt bool.\n  \
+  \      \"\"\"\n        session_id: str = params[\"session_id\"]\n        try:\n\
+  \            session = get_session(session_id)\n        except ValueError:\n   \
+  \         return make_error(SESSION_NOT_FOUND, f\"Unknown session: {session_id}\"\
+  )\n\n        fg = session.format_group\n        if fg == FORMAT_SIDECAR:\n     \
+  \       result = self._close_sidecar(session)\n        else:\n            result\
+  \ = self._close_tree_temp_or_text(session)\n\n        delete_lockfile(session.abs_path)\n\
+  \        release_session(session_id)\n        return result\n\n    def _close_sidecar(self,\
+  \ session: Any) -> Dict[str, Any]:\n        \"\"\"Close a sidecar group session.\n\
+  \n        Verifies sidecar checksum. On mismatch rebuilds sidecar from source.\n\
+  \        Sidecar is never deleted.\n\n        Args:\n            session: Active\
+  \ sidecar group EditSession.\n\n        Returns:\n            Dict with success=True\
+  \ and draft_rebuilt flag.\n        \"\"\"\n        from ai_editor.core.cst_tree.tree_sidecar\
+  \ import (\n            sidecar_path_for_py,\n            verify_sidecar_against_source,\n\
+  \            write_sidecar_atomic,\n        )\n        from ai_editor.core.cst_tree\
+  \ import tree_builder as cst_builder\n        sidecar_path = sidecar_path_for_py(session.abs_path)\n\
+  \        source_text = session.abs_path.read_text()\n        draft_rebuilt = False\n\
+  \        if sidecar_path.exists():\n            import json\n            try:\n\
+  \                payload = json.loads(sidecar_path.read_text())\n            except\
+  \ Exception:\n                payload = {}\n            if not verify_sidecar_against_source(source_text,\
+  \ payload):\n                tree = cst_builder.load_file(str(session.abs_path))\n\
+  \                write_sidecar_atomic(session.abs_path, tree)\n                draft_rebuilt\
+  \ = True\n        else:\n            tree = cst_builder.load_file(str(session.abs_path))\n\
+  \            write_sidecar_atomic(session.abs_path, tree)\n            draft_rebuilt\
+  \ = True\n        return {\"success\": True, \"draft_rebuilt\": draft_rebuilt}\n\
+  \n    def _close_tree_temp_or_text(self, session: Any) -> Dict[str, Any]:\n    \
+  \    \"\"\"Close a tree-temp or text group session (stub; filled in T-002).\n\n\
+  \        Args:\n            session: Active tree-temp or text group EditSession.\n\
+  \n        Returns:\n            Result dict (filled in T-002).\n        \"\"\"\n\
+  \        raise NotImplementedError\n\nTask: Replace _close_tree_temp_or_text body\
+  \ (raise NotImplementedError)\nwith real implementation.\n\nReplace _close_tree_temp_or_text\
+  \ body with:\n```python\nimport hashlib\nfg = session.format_group\nabs_path = session.abs_path\n\
+  \nif fg == \"text\":\n    session.draft_path.unlink(missing_ok=True)\n    return\
+  \ {\"success\": True, \"draft_rebuilt\": False}\n\n# tree-temp group\ndraft_rebuilt\
+  \ = False\ndraft_exists = session.draft_path.exists()\nif draft_exists:\n    draft_sha\
+  \ = hashlib.sha256(session.draft_path.read_bytes()).hexdigest()\n    orig_sha =\
+  \ hashlib.sha256(abs_path.read_bytes()).hexdigest()\n    if draft_sha == orig_sha:\n\
+  \        session.draft_path.unlink(missing_ok=True)\n    else:\n        if session.handler_id\
+  \ == \"json\":\n            from ai_editor.core.json_tree import tree_builder\
+  \ as jtb\n            new_tree_id = jtb.load_file_to_tree(str(abs_path))\n     \
+  \       session.draft_path.write_text(jtb.serialize_tree(new_tree_id))\n       \
+  \     jtb.remove_tree(new_tree_id)\n        else:\n            from ai_editor.core.yaml_tree\
+  \ import tree_builder as ytb\n            new_tree_id = ytb.load_file_to_tree(str(abs_path))\n\
+  \            session.draft_path.write_text(ytb.serialize_tree(new_tree_id))\n  \
+  \          ytb.remove_tree(new_tree_id)\n        draft_rebuilt = True\n\n# Free\
+  \ in-memory tree\nif session.tree_id:\n    if session.handler_id == \"json\":\n\
+  \        from ai_editor.core.json_tree import tree_builder as jtb\n        jtb.remove_tree(session.tree_id)\n\
+  \    else:\n        from ai_editor.core.yaml_tree import tree_builder as ytb\n\
+  \        ytb.remove_tree(session.tree_id)\n\nreturn {\"success\": True, \"draft_rebuilt\"\
+  : draft_rebuilt}\n```\n\nImplementation:\n1. cst_load_file, locate _close_tree_temp_or_text\
+  \ body.\n2. cst_modify_tree replace raise NotImplementedError with new body.\n3.\
+  \ cst_save_tree(validate=true, backup=true).\n4. lint_code then format_code.\n\n\
+  Constraints:\n- Do not modify any other method.\n- Resulting file must be syntactically\
+  \ valid Python.\n- File line count must not exceed 400.\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/close_command.py
+  expected: 'flake8 reports no errors. _close_tree_temp_or_text no longer contains
+    NotImplementedError. It calls remove_tree and handles both json and yaml.
+
+    '
+status: draft

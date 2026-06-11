@@ -1,0 +1,47 @@
+step_id: T-002
+parent_global_step: G-001
+name: Response envelope contract
+status: frozen
+concepts:
+- C-001
+- C-012
+description: "Define the ResponseEnvelope (C-012) as the single top-level shape of\
+  \ every successful response from PreviewCommand (C-001). The envelope shape is constant\
+  \ regardless of NodeKind and regardless of selector form used.\nEnvelope fields:\
+  \ - focus: object describing the focus node\n    - node_kind: one of scalar | lines\
+  \ | mapping | sequence | tree_node\n    - node_ref: StableIdentifier of the focus\
+  \ node (caller may pass this\n      back as node_ref in a follow-up request)\n \
+  \   - type: optional type label (present for tree_node kind; e.g. 'FunctionDef')\n\
+  \    - name: optional name (present when node carries a named identifier)\n    -\
+  \ attributes: optional key-value map of compact node-specific metadata\n      (e.g.\
+  \ params, returns for a function tree_node)\n- selector_applied: the selector echoed\
+  \ back in normalised form\n  (slice string, integer list, or string list), or null\
+  \ when no\n  selector was provided.\n- total_blocks: integer count of all blocks\
+  \ in the focus node's block\n  set, including those not returned in this response.\n\
+  - blocks: ordered list of selected blocks; each block carries:\n    - node_kind\n\
+  \    - node_ref (for follow-up drill-down)\n    - summary: output of the BlockHandler\
+  \ for this block's node_kind\n- tree_id: UUID of the TreeSession used, present only\
+  \ when the command\n  created the session internally and the caller may benefit\
+  \ from reusing it;\n  absent when the caller supplied tree_id or when no session\
+  \ was needed.\n\nInvariant: the envelope shape does not vary. A caller parsing the\
+  \ response never needs to branch on file type or node kind at the envelope level.\n"
+inputs:
+- name: navigation_result
+  type: internal navigation output
+  description: The focus node metadata, the ordered list of rendered blocks, and the
+    total block count produced by the NavigationProcedure.
+- name: session_context
+  type: TreeSession reference or null
+  description: The tree_id of an internally-created TreeSession, or null if none was
+    created or the caller supplied one.
+- name: applied_selector
+  type: normalised selector value or null
+  description: The selector as normalised (slice string / int list / string list)
+    or null when selector was omitted.
+outputs:
+- name: response_envelope
+  type: ResponseEnvelope (C-012)
+  description: Fully populated envelope ready for serialisation and return to the
+    MCP caller.
+atomic_steps:
+- A-001

@@ -1,0 +1,33 @@
+step_id: T-002
+parent_global_step: G-007
+name: Отказ open edit preview при broken session
+description: 'Только поведенческая интеграция (граница с T-000): вызов Session Guard
+  (C-024) в командах Open Stage (C-010), Edit Stage (C-011) и preview внутри Edit
+  Stage. T-000 уже вынес runtime и оставил slim facade-модули — этот шаг не выполняет
+  структурное разбиение command-модулей.
+
+  Session Guard делегирует Session Validation (C-014) через touch на СА; при
+  not_found/invalid CA Session и Broken Session Policy (C-015) — ErrorResult без
+  побочных эффектов; open нового файла запрещён ({6z8a}).
+
+  '
+concepts:
+- C-010
+- C-011
+- C-014
+- C-015
+- C-024
+- C-004
+inputs:
+- name: guard_reject
+  type: boolean
+  description: guard_decision=reject.
+outputs:
+- name: session_invalid_error
+  type: object
+  description: Стабильный код ошибки для агента.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: ready_for_review

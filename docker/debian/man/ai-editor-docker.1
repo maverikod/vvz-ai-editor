@@ -1,0 +1,52 @@
+.TH AI-EDITOR-DOCKER 1 "@VERSION@" "ai-editor-docker" "User Commands"
+.SH NAME
+ai-editor-docker \- control AI Editor Docker container on the host
+.SH SYNOPSIS
+.B ai-editor-docker
+.I command
+.SH DESCRIPTION
+.B ai-editor-docker
+wraps systemd and \fB/usr/lib/ai-editor/docker-run.sh\fR for the AI Editor
+MCP server container (HTTPS port 15000 by default).
+.SH COMMANDS
+.TP
+.B start
+Start \fBai-editor-docker.service\fR.
+.TP
+.B stop
+Stop the service and container.
+.TP
+.B restart
+Restart the same container instance.
+.TP
+.B recreate
+Remove and recreate the container (after config, certificate, or mount changes).
+.TP
+.B status
+Show systemd and container status.
+.TP
+.B info
+Show host paths, image tag, and container state (\fBai-editor-info\fR).
+.SH PURGE
+On \fBapt purge ai-editor-docker\fR, maintainer scripts stop systemd, remove the
+container, remove the Docker image saved at uninstall time, and remove host log/data
+directories when they contain no additional files.
+.SH FILES
+.TP
+.B /etc/default/ai-editor
+Host-visible settings (port, paths, networks).
+.TP
+.B /etc/ai-editor/ai_editor_container.json
+Service configuration bind-mounted read-only into the container.
+.TP
+.B /var/log/ai-editor
+Application logs.
+.TP
+.B /var/ai-editor
+Editor workspaces and version data.
+.SH SEE ALSO
+.BR ai-editor-info (1),
+.BR docker (1),
+.BR systemctl (1)
+.SH AUTHOR
+Vasiliy Zdanovskiy <vasilyvz@gmail.com>

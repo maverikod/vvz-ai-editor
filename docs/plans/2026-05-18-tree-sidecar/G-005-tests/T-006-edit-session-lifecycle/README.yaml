@@ -1,0 +1,33 @@
+step_id: T-006
+parent_global_step: G-005
+name: EditSession lifecycle tests
+status: done
+description: 'Establish verification obligations on EditSession (C-007) coordinated
+  with SourceParser (C-005), SourceSerializer (C-006), Sidecar (C-002), and TreeNode (C-001)
+  through the universal file edit workflow. Prove open registers a session with session_id,
+  format_group tree-temp, dirty false, tree matching policy-selected load, and source_sha256
+  reflecting loaded bytes. Prove edit transitions dirty true and preserves stable_id on
+  nodes that survive structural edits while assigning fresh stable_ids only to newly
+  introduced nodes. Prove write serialises via SourceSerializer, updates on-disk source,
+  refreshes sidecar source_sha256 to the post-write digest, and persists stable_ids.
+  Prove close after write ends the session leaving disk coherent. Prove close without
+  prior write discards in-memory mutations and leaves source and sidecar bytes unchanged
+  relative to pre-open disk state. Prove multiple edits accumulate dirty until write.'
+concepts:
+- C-007
+- C-001
+- C-002
+- C-005
+- C-006
+inputs:
+- name: lifecycle_sequences
+  type: ordered open-edit-write-close and open-edit-close scenarios
+  description: Sequences including surviving-node edits, node insertion and deletion,
+    and absence of write before close.
+outputs:
+- name: session_and_disk_verdict
+  type: verification outcome
+  description: Session field evolution and filesystem artefacts match the lifecycle rules
+    for dirty flag, stable_id preservation or renewal, and sidecar digest updates.
+atomic_steps:
+- A-001

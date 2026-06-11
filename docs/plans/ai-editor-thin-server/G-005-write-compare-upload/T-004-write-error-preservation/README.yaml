@@ -1,0 +1,22 @@
+step_id: T-004
+parent_global_step: G-005
+name: Ошибка write без порчи локального состояния
+description: 'При write_mode=commit и ошибке upstream upload (C-012): Origin Snapshot (C-007) и Edit Subdirectory (C-008) остаются без изменений; ответ с кодом ошибки СА; сессия остаётся открытой для повторного write или close.
+
+  '
+concepts:
+- C-007
+- C-008
+- C-012
+- C-015
+inputs:
+- name: upstream_error
+  type: object
+  description: Ошибка RPC СА при upload.
+outputs:
+- name: failed_write_response
+  type: object
+  description: ErrorResult без изменения Origin Snapshot и Edit Subdirectory.
+atomic_steps:
+- A-001
+status: ready_for_review

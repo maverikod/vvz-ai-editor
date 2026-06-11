@@ -1,0 +1,54 @@
+[Unit]
+Description=Code Analysis Server - MCP server for code analysis and refactoring
+Documentation=https://github.com/vasilyvz/code_analysis
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=code-analysis
+Group=code-analysis
+WorkingDirectory=/usr/lib/code-analysis-server
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=/usr/lib/code-analysis-server/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Executable
+ExecStart=/usr/lib/code-analysis-server/.venv/bin/python -m code_analysis.main --config /etc/code-analysis-server/config.json --daemon
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/code-analysis-server /var/log/code-analysis-server /var/run/code-analysis-server
+PrivateDevices=false
+ProtectKernelTunables=false
+ProtectKernelModules=false
+ProtectControlGroups=false
+RestrictRealtime=true
+RestrictNamespaces=false
+MemoryDenyWriteExecute=false
+RestrictSUIDSGID=false
+LockPersonality=false
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=code-analysis-server
+
+[Install]
+WantedBy=multi-user.target
+

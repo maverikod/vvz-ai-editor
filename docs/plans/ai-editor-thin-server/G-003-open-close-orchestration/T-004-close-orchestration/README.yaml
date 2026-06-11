@@ -1,0 +1,24 @@
+step_id: T-004
+parent_global_step: G-003
+name: Оркестрация universal_file_close
+description: 'Реализовать Close Stage (C-013) в команде universal_file_close (C-016): unlock через Upstream Client (C-017) по C-023; при успехе удалить File Subtree (C-006) целиком — origin и edit subdir; снять регистрацию из CA Session bundle registry; если открытых файлов не осталось — удалить Editor Session Directory (C-005).
+
+  '
+concepts:
+- C-005
+- C-006
+- C-013
+- C-016
+- C-017
+- C-023
+inputs:
+- name: close_params
+  type: object
+  description: session_id, project_id, file_path.
+outputs:
+- name: close_response
+  type: object
+  description: Подтверждение закрытия и очистки локальных путей.
+atomic_steps:
+- A-001
+status: ready_for_review

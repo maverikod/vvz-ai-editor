@@ -1,0 +1,29 @@
+step_id: T-005
+parent_global_step: G-003
+name: EditSession close — discard in-memory, leave sidecar intact
+description: 'Implement universal_file_close: remove the EditSession (C-007) from
+  the registry and discard the in-memory tree owned by that session. The command performs
+  no disk writes; uncommitted edits are discarded without altering the source file or
+  the Sidecar (C-002). This matches source_spec for close without write. This step does
+  not invoke SourceParser or SourceSerializer, does not evaluate SHASyncPolicy, and
+  does not delete companion files.'
+concepts:
+- C-001
+- C-002
+- C-007
+inputs:
+- name: session_id
+  type: UUID
+  description: EditSession to release from the active registry.
+outputs:
+- name: session_released
+  type: boolean
+  description: True when a session was found and removed; false when session_id unknown
+    per registry rules.
+- name: no_disk_writes_performed
+  type: boolean
+  description: True on success; close never serializes or persists source or sidecar
+    bytes.
+atomic_steps:
+  - A-001
+status: done

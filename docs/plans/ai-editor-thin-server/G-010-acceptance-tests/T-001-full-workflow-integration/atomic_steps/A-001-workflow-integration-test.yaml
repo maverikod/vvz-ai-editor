@@ -1,0 +1,308 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Full workflow integration mock CA
+target_file: tests/integration/test_thin_editor_workflow.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-005
+- C-008
+- C-009
+- C-010
+- C-011
+- C-012
+- C-013
+- C-022
+prompt: |
+  Create `tests/integration/test_thin_editor_workflow.py` (operation: create_file).
+
+  ## Parent links (mandatory)
+
+  - Global step: `docs/plans/ai-editor-thin-server/G-010-acceptance-tests/README.yaml` (G-010)
+  - Tactical step: `docs/plans/ai-editor-thin-server/G-010-acceptance-tests/T-001-full-workflow-integration/README.yaml` (T-001)
+  - Machine spec: `docs/plans/ai-editor-thin-server/spec.yaml`
+
+  ## Scope (T-001 — full workflow integration only)
+
+  Acceptance verification for **C-022** criteria (1)–(4) via one integration test exercising
+  **File Workflow (C-009)** stages with mock **Upstream Client (C-017)**:
+
+  - **C-005** Editor Session Directory under `workspace_root/{ca_session_id}/`
+  - **C-010** Open Stage — lock+download, Origin Snapshot + Edit Subdirectory
+  - **C-011** Edit Stage — minimal in-workflow edit sufficient to prove C-022 workflow
+    segment; Edit Subdirectory layout depth (C-008, C-022-2) is **out of scope** for this
+    step — assert only that `draft_path` mutates while origin bytes stay pre-upload
+  - **C-012** Write Stage — pre-edit no-op without CA upload; post-edit upload + Origin sync
+  - **C-013** Close Stage — CA unlock + File Subtree removal
+
+  ## Executable stage order (resolved for C-012 semantics)
+
+  T-001 lists conceptual lifecycle `open → edit → write (unchanged) → write (changed) → close`.
+  Because **C-012** no-op requires exported draft bytes equal **Origin Snapshot (C-007)** and
+  **C-011** edit mutates the draft, the **unchanged write MUST run after open and before edit**.
+  The single test executes:
+
+  1. open (C-010)
+  2. write commit — unchanged no-op (C-012); no `upload_session_file_content`
+  3. edit — mutate draft (C-011)
+  4. write commit — changed upload (C-012); origin bytes updated
+  5. close (C-013); unlock + workspace subtree removed
+
+  All five stages are asserted in one test function.
+
+  ## MRS concepts (relevant excerpt)
+
+  - **C-005**: `workspace_root/{session_id}/` holds all session artefacts.
+  - **C-008**: Edit Subdirectory `{basename}-{uuid}/` under File Subtree; draft at
+    `edit_subdir / basename`.
+  - **C-009**: Commands `universal_file_open`, `universal_file_edit`, `universal_file_write`,
+    `universal_file_close`.
+  - **C-010**: Open downloads via CA mock, writes Origin Snapshot, allocates Edit Subdirectory.
+  - **C-011**: Edit mutates draft inside Edit Subdirectory only.
+  - **C-012**: `write_mode=commit` + equal bytes → `unchanged=True`, no upload RPC;
+    diff → `upload_session_file_content`, then `session.abs_path.write_bytes(accepted)`.
+  - **C-013**: Close calls `unlock_session_file`; removes File Subtree via `remove_file_subtree`;
+    removes Editor Session Directory when last file closed.
+  - **C-022**: Product checklist — session paths, open, write no-op, write upload, close cleanup.
+
+  ## Workspace path helpers (assertions only)
+
+  From `ai_editor.core.editor_workspace_paths`:
+
+  ```python
+  layout = file_workspace_layout(workspace_root, ca_session_id, project_id, file_path)
+  # layout.session_dir        — Editor Session Directory (C-005)
+  # layout.file_subtree_dir   — File Subtree root (C-006)
+  # layout.origin_path        — Origin Snapshot path (C-007)
+  ```
+
+  Edit Subdirectory: `Path(open_res.data["draft_path"]).parent` (no `layout.edit_subdir` field).
+
+  ## File header (exact module docstring)
+
+  ```python
+  """Acceptance: full open → write no-op → edit → write upload → close (C-022).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list)
+
+  ```python
+  from __future__ import annotations
+
+  from contextlib import contextmanager
+  from pathlib import Path
+  from unittest.mock import MagicMock, patch
+
+  import pytest
+
+  from ai_editor.commands.universal_file_edit.close_command import UniversalFileCloseCommand
+  from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
+  from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+  from ai_editor.commands.universal_file_edit.write_command import UniversalFileWriteCommand
+  from ai_editor.core.editor_workspace_paths import file_workspace_layout
+  ```
+
+  ## Module-level helpers (implement exactly)
+
+  ### `_mock_upstream(*, origin_bytes: bytes) -> MagicMock`
+
+  1. `upstream = MagicMock()`
+  2. `upstream.validate_ca_session.return_value = MagicMock(name="VALID")`
+  3. `upstream.lock_file_and_download.return_value = origin_bytes`
+  4. `upstream.upload_session_file_content.side_effect = lambda **kwargs: kwargs["content"]`
+     — return uploaded bytes unchanged (simulates CA accept).
+  5. `upstream.unlock_session_file.return_value = True`
+  6. Return `upstream`.
+
+  ### `_patch_context(*, workspace: Path, upstream: MagicMock)`
+
+  ```python
+  @contextmanager
+  def _patch_context(*, workspace: Path, upstream: MagicMock):
+      with patch(
+          "ai_editor.core.editor_workspace_paths.resolve_workspace_root",
+          return_value=workspace,
+      ), patch(
+          "ai_editor.core.upstream.code_analysis_client.get_code_analysis_client",
+          return_value=upstream,
+      ):
+          yield
+  ```
+
+  Patch exactly these module paths (must not vary):
+  `ai_editor.core.editor_workspace_paths.resolve_workspace_root` and
+  `ai_editor.core.upstream.code_analysis_client.get_code_analysis_client`.
+
+  ## Test constants
+
+  - `workspace = tmp_path / "workspace"`
+  - `sid = "ca-flow"`
+  - `project_id = "p1"`
+  - `file_path = "flow.txt"`  — plain text (FORMAT_TEXT); use this path only in this module
+  - `origin_bytes = b"line one\n"`
+  - `origin_text = origin_bytes.decode("utf-8")`
+  - `edited_text = "line edited\n"`
+  - `edited_bytes = edited_text.encode("utf-8")`
+
+  ## Test: `test_full_workflow_open_edit_write_close_mock_upstream`
+
+  Decorator: `@pytest.mark.asyncio`
+
+  ### Algorithm
+
+  1. `upstream = _mock_upstream(origin_bytes=origin_bytes)`
+  2. Inside `_patch_context(workspace=workspace, upstream=upstream)`:
+
+  **Step A — Open (C-010, C-005, C-022-1/2)**
+
+  3. `open_cmd = UniversalFileOpenCommand()`
+  4. `open_res = await open_cmd.execute(session_id=sid, project_id=project_id, file_path=file_path)`
+  5. Assert `open_res.success` is True.
+  6. Assert `open_res.data["session_id"] == sid`.
+  7. Assert `str(workspace / sid) in open_res.data["session_dir"]`.
+  8. `layout = file_workspace_layout(workspace, sid, project_id, file_path)`
+  9. Assert `layout.origin_path.is_file()` and `layout.origin_path.read_bytes() == origin_bytes`.
+  10. `draft_path = Path(open_res.data["draft_path"])`
+  11. Assert `draft_path.is_file()` and `draft_path.read_bytes() == origin_bytes`.
+  12. Assert `upstream.lock_file_and_download.assert_called_once()`.
+
+  **Step B — Write unchanged no-op (C-012, C-022-3) — before edit**
+
+  13. `write_cmd = UniversalFileWriteCommand()`
+  14. `noop_res = await write_cmd.execute(
+          session_id=sid,
+          project_id=project_id,
+          file_path=file_path,
+          write_mode="commit",
+      )`
+  15. Assert `noop_res.success` is True.
+  16. Assert `noop_res.data.get("unchanged") is True`.
+  17. Assert `noop_res.data.get("uploaded") is False`.
+  18. Assert `upstream.upload_session_file_content.call_count == 0`.
+  19. Assert `layout.origin_path.read_bytes() == origin_bytes` — origin not rewritten on no-op.
+
+  **Step C — Edit (C-011) — minimal workflow segment**
+
+  20. `edit_cmd = UniversalFileEditCommand()`
+  21. `edit_res = await edit_cmd.execute(
+          session_id=sid,
+          project_id=project_id,
+          file_path=file_path,
+          operations=[
+              {
+                  "type": "replace",
+                  "start_line": 1,
+                  "end_line": 1,
+                  "content": edited_text,
+              }
+          ],
+      )`
+  22. Assert `edit_res.success` is True.
+  23. Assert `draft_path.read_text(encoding="utf-8") == edited_text`.
+  24. Assert `layout.origin_path.read_bytes() == origin_bytes` — origin still pre-upload snapshot.
+
+  **Step D — Write changed upload (C-012, C-022-4)**
+
+  25. `upload_res = await write_cmd.execute(
+          session_id=sid,
+          project_id=project_id,
+          file_path=file_path,
+          write_mode="commit",
+      )`
+  26. Assert `upload_res.success` is True.
+  27. Assert `upload_res.data.get("unchanged") is False`.
+  28. Assert `upload_res.data.get("uploaded") is True`.
+  29. Assert `upstream.upload_session_file_content.call_count == 1`.
+  30. `upload_call = upstream.upload_session_file_content.call_args`
+  31. Assert `upload_call.kwargs["session_id"] == sid`.
+  32. Assert `upload_call.kwargs["project_id"] == project_id`.
+  33. Assert `upload_call.kwargs["file_path"] == file_path`.
+  34. Assert `upload_call.kwargs["content"] == edited_bytes`.
+  35. Assert `layout.origin_path.read_bytes() == edited_bytes` — Origin Snapshot synced after upload.
+
+  **Step E — Close (C-013, C-022-5)**
+
+  36. Assert `layout.file_subtree_dir.is_dir()` — subtree exists before close.
+  37. Assert `layout.session_dir.is_dir()` — session dir exists before close.
+  38. `close_cmd = UniversalFileCloseCommand()`
+  39. `close_res = await close_cmd.execute(
+          session_id=sid,
+          project_id=project_id,
+          file_path=file_path,
+      )`
+  40. Assert `close_res.success` is True.
+  41. Assert `upstream.unlock_session_file.call_count == 1`.
+  42. `unlock_call = upstream.unlock_session_file.call_args`
+  43. Assert `unlock_call.kwargs["session_id"] == sid`.
+  44. Assert `unlock_call.kwargs["project_id"] == project_id`.
+  45. Assert `unlock_call.kwargs["file_path"] == file_path`.
+  46. Assert `close_res.data.get("workspace_subtree_removed") is True` (when implemented).
+  47. Assert `not layout.file_subtree_dir.exists()` — File Subtree removed from disk.
+  48. Assert `not layout.session_dir.exists()` — Editor Session Directory removed (single-file session).
+
+  ### Error handling expectations
+
+  - Any command returning `ErrorResult`: fail via `assert result.success` (pytest shows payload).
+  - Do not catch exceptions; no retry/skip logic.
+
+  ### Edge cases covered
+
+  - Plain `.txt` file — FORMAT_TEXT write compare uses draft bytes directly.
+  - Pre-edit no-op then post-edit upload in one session.
+  - Single-file session — both subtree and session directory removed on close.
+  - Mock upload returns same bytes as sent — origin sync assertion uses `edited_bytes`.
+
+  ## Forbidden patterns
+
+  - Do NOT modify any file other than `tests/integration/test_thin_editor_workflow.py`.
+  - Do NOT modify any file under `docs/plans/`.
+  - Do NOT use `close_session_file` on mock — Close Stage uses `unlock_session_file` (G-003).
+  - Do NOT import from `ai_editor.commands.universal_file_close_command` (nonexistent thin path).
+  - Do NOT use direct HTTP, MCP proxy, or project disk paths outside `workspace / sid`.
+  - Do NOT use `print()` for diagnostics.
+  - Do NOT use bare `except:`.
+  - Do NOT reference `layout.edit_subdir` (field does not exist).
+  - Do NOT add a second test file — all workflow assertions live in this module.
+
+  ## Validation commands (mandatory after implementation)
+
+  ```bash
+  source .venv/bin/activate
+  black tests/integration/test_thin_editor_workflow.py
+  flake8 tests/integration/test_thin_editor_workflow.py
+  mypy tests/integration/test_thin_editor_workflow.py
+  pytest tests/integration/test_thin_editor_workflow.py -v
+  pytest tests/ -v --ignore=tests/integration/test_workers.py
+  ```
+
+  Expected:
+  - black: "reformatted" or "All done!" / no changes needed
+  - flake8: no output (exit 0)
+  - mypy: "Success: no issues found" on touched file
+  - `pytest tests/integration/test_thin_editor_workflow.py -v`: `test_full_workflow_open_edit_write_close_mock_upstream` PASSED
+  - full pytest suite: all tests PASSED
+
+  **All tests must pass.**
+
+  ## Expected deliverable
+
+  One self-contained pytest module proving C-022 (1)–(4) and C-009 full workflow with mock
+  upstream: open, pre-edit write no-op, edit, changed write with upload + origin sync, close
+  with unlock and filesystem cleanup.
+verification:
+  type: pytest
+  target: tests/integration/test_thin_editor_workflow.py
+  expected: >
+    test_full_workflow_open_edit_write_close_mock_upstream passes: open creates session under
+    workspace_root/session_id with origin and draft bytes from mock download; first write
+    commit returns unchanged=True and uploaded=False without calling upload_session_file_content;
+    edit mutates draft_path only while origin bytes stay pre-upload; second write commit returns
+    uploaded=True, calls upload_session_file_content once with edited_bytes, and updates
+    layout.origin_path to edited_bytes; close calls unlock_session_file once and removes
+    layout.file_subtree_dir and layout.session_dir from disk.
+status: ready_for_review

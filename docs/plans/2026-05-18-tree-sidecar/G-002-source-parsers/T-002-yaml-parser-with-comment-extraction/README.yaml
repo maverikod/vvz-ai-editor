@@ -1,0 +1,31 @@
+step_id: T-002
+parent_global_step: G-002
+name: YAML parser with comment extraction
+description: 'Create the YAML-facing SourceParser (C-005): parse YAML source text with
+  ruamel.yaml in round-trip mode so structure and `#` comments are available for mapping
+  onto TreeNode instances (C-001). Apply CommentOwnershipRule (C-004) identically to
+  JSON: same-line hash commentary maps to comment_inline on the node for the associated
+  mapping entry, sequence element, or scalar; standalone-line commentary above the next
+  node maps to comment_before on that successor node; commentary above the first document
+  construct maps to comment_before on that first root node. Operational scope is consuming
+  source text and emitting an in-memory tree only: no sidecar file reads or writes, no
+  EditSession registration or mutation, and no coupling to universal file open, preview,
+  or write lifecycle hooks.'
+concepts:
+- C-005
+- C-001
+- C-004
+inputs:
+- name: source_text
+  type: string
+  description: UTF-8 text of a YAML document; structural forms and comment preservation
+    follow C-005 YAML SourceParser properties (ruamel.yaml round-trip, `#` line comments).
+outputs:
+- name: tree_root_nodes
+  type: ordered list of TreeNode (C-001)
+  description: Root-level nodes mirroring YAML document structure (ordered mappings and
+    sequences), with comment_inline and comment_before populated per C-004.
+atomic_steps:
+- A-001
+- A-002
+status: done

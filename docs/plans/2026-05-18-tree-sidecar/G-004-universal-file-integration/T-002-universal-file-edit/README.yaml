@@ -1,0 +1,42 @@
+step_id: T-002
+parent_global_step: G-004
+name: universal_file_edit for tree-temp
+description: 'Extend the universal_file_edit operation so that when the session''s
+  format_group is tree-temp, the command resolves the session_handle to an EditSession
+  (C-007), validates a batch of structural and scalar mutations against the TreeNode
+  rules (C-001) before applying any change, applies replacements to value and children
+  where permitted, inserts new nodes with freshly assigned stable identifiers, removes
+  nodes as requested, preserves stable_id on surviving nodes, marks the session dirty
+  after the first successful mutation, and returns structured validation or application
+  errors. The integration does not produce persisted source payloads, persist Sidecar
+  changes, evaluate SHASyncPolicy, or implement preview drill-down.'
+concepts:
+- C-001
+- C-007
+inputs:
+- name: session_handle
+  type: session identifier
+  description: Opaque token selecting the active EditSession established by a prior
+    successful open in the tree-temp pathway.
+- name: mutation_batch
+  type: ordered edit operations
+  description: Replace, insert, and delete operations targeting nodes by stable_id and
+    parent relationships; validated as a unit before mutation.
+outputs:
+- name: application_result
+  type: success or structured error envelope
+  description: Confirmation that either the full batch committed in-memory or the first
+    validation failure halted the batch with no partial mutation.
+- name: session_dirty_state
+  type: boolean
+  description: Post-condition dirty flag reflecting whether the tree diverges from the
+    last persisted snapshot.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+status: done

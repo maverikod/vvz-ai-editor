@@ -1,0 +1,7 @@
+plan: marked_tree_unification
+global_step: G-006
+cross_ts_execution_waves:
+  wave_1:
+    description: T-001 NodeIdMap module — foundation for G-006; no cross-TS deps in BATCH 1 Phase E
+    steps:
+      - T-001/A-001

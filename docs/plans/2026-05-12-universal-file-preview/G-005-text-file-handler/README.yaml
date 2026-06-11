@@ -1,0 +1,27 @@
+step_id: G-005
+name: Text file handler
+description: 'TextFileHandler is the FileHandler family for .md, .txt, .rst, .adoc
+  files. It opens a text file and produces a lines root whose Block set is the sequence
+  of text lines in file order. Each line Block has kind scalar and carries no further
+  children. node_ref values for line Blocks are zero-based line indices; no separate
+  identifier scheme is introduced.
+
+  '
+concepts:
+- C-017
+relations:
+- from_concept: C-017
+  to_concept: C-003
+  type: extends
+- from_concept: C-017
+  to_concept: C-004
+  type: produces
+source_ranges:
+- start: 163
+  end: 167
+depends_on:
+- G-002
+tactical_steps:
+- T-401
+- T-402
+status: frozen

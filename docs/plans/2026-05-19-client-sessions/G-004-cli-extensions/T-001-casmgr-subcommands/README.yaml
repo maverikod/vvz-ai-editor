@@ -1,0 +1,45 @@
+atomic_steps: A-001
+concepts:
+- C-010
+- C-004
+- C-001
+- C-002
+description: "Extend the existing casmgr CLI operator interface (C-010) with two new
+  subcommands: 'sessions' and 'locks'. Both subcommands bypass MCP, SessionTouchRule,
+  and SecurityPolicy and read the DB directly via config path without a running server.\n\
+  \nsubcommand 'casmgr sessions':\n- Reads all ClientSession (C-001) records via SessionService
+  (C-004): list_client_sessions() with no stale filter.\n- Enriches each row with
+  open_lock_count via count_session_file_locks().\n- Prints an aligned table to stdout:
+  session_id | comment | created_at (ISO datetime) | last_active_at (ISO datetime)
+  | locks.\n- session_id is always shown regardless of show_session_ids config (operator
+  tool).\n- Accepts optional --config PATH argument; falls back to default config
+  discovery.\n\nsubcommand 'casmgr locks':\n- Reads all SessionFileLock (C-002) records
+  via SessionService (C-004): list_locked_files().\n- Prints an aligned table to stdout:
+  project_id | file_id | locked_at (ISO datetime).\n- session_id is intentionally
+  omitted from output.\n- Accepts optional --config PATH argument.\n\nDB access contract:\n\
+  - Both subcommands open a read-only SQLite connection via config path (no server
+  process required).\n- Connection uses the same DB path resolution as the existing
+  casmgr subcommands (status, restart, etc.).\n- No writes performed; no session created;
+  no locks acquired."
+inputs:
+- description: list_client_sessions, count_session_file_locks, list_locked_files
+    from SessionService (C-004).
+  name: SessionService read operations
+  type: domain contract
+- description: Existing config path resolution and DB open pattern from casmgr 
+    CLI.
+  name: casmgr CLI infrastructure
+  type: existing domain contract
+name: casmgr sessions and casmgr locks CLI subcommands
+outputs:
+- description: casmgr sessions subcommand printing ClientSession table with 
+    session_id always visible.
+  name: casmgr sessions subcommand
+  type: CLI command
+- description: casmgr locks subcommand printing SessionFileLock table without 
+    session_id.
+  name: casmgr locks subcommand
+  type: CLI command
+parent_global_step: G-004
+status: done
+step_id: T-001

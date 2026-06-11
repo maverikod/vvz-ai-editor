@@ -1,0 +1,27 @@
+step_id: T-004
+parent_global_step: G-004
+name: universal_file_close delegating session teardown
+description: 'Extend the universal_file_close operation so that it resolves session_handle
+  to the corresponding EditSession (C-007) for any format_group, and for tree-temp
+  sessions discards in-memory TreeNode state without writing source bytes or Sidecar
+  when no successful commit occurred after the last mutation, or finalises bookkeeping
+  when the session is already clean. The command integration returns a closed status
+  to the client and ensures the session slot is released for future open calls. It
+  does not perform SHASyncPolicy evaluation, edit batching, write preview or commit,
+  or preview navigation.'
+concepts:
+- C-001
+- C-002
+- C-007
+inputs:
+- name: session_handle
+  type: session identifier
+  description: Opaque token selecting the EditSession to tear down.
+outputs:
+- name: close_status
+  type: structured status
+  description: Indicates successful release and whether uncommitted tree-temp changes
+    were abandoned versus an already clean session.
+atomic_steps:
+- A-001
+status: done

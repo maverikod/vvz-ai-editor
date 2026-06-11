@@ -1,0 +1,32 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: file_sets package init
+target_file: ai_editor/core/search_session/file_sets/__init__.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/file_sets/__init__.py
+
+  Required imports:
+  ```python
+  from __future__ import annotations
+  ```
+
+  Task:
+  Create package initializer with module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+  Docstring: file-set classification helpers for paginated search (freshness, indexed, dynamic).
+  Set __all__: list[str] = [] (submodules imported explicitly by callers).
+
+  Constraints:
+  - Under 30 lines.
+  - No imports from sibling modules.
+
+verification:
+  type: import
+  target: ai_editor.core.search_session.file_sets
+  expected: Package imports without error.
+status: frozen

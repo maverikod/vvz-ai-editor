@@ -1,0 +1,18 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Unit-тесты upstream session methods
+target_file: tests/unit/test_code_analysis_client_session.py
+operation: create_file
+priority: 6
+depends_on:
+- A-001
+concepts:
+- C-014
+- C-017
+prompt: "Create `tests/unit/test_code_analysis_client_session.py` (operation: create_file).\n\n```py\n\"\"\"Unit tests for CodeAnalysisClient.validate_ca_session (C-002, C-014).\"\"\"\n\nfrom __future__ import annotations\n\nfrom pathlib import Path\nfrom typing import Any\nfrom unittest.mock import MagicMock\n\nimport pytest\n\ndef test_validate_valid(monkeypatch: pytest.MonkeyPatch) -> None:\n    from ai_editor.core.upstream.code_analysis_client import (\n        CaSessionStatus,\n        CodeAnalysisClient,\n    )\n\n    client = CodeAnalysisClient(config_path=Path(\"config.json\"))\n    monkeypatch.setattr(client, \"call\", lambda cmd, params=None: {\"locks\": []})\n    assert client.validate_ca_session(\"ok\") == CaSessionStatus.VALID\n\ndef test_validate_not_found(monkeypatch: pytest.MonkeyPatch) -> None:\n    from ai_editor.core.upstream.code_analysis_client import (\n        CaSessionStatus,\n        CodeAnalysisClient,\n    )\n\n    client = CodeAnalysisClient(config_path=Path(\"\
+  config.json\"))\n\n    def boom(cmd: str, params: dict[str, Any] | None = None) -> Any:\n        raise RuntimeError(\"SESSION_NOT_FOUND\")\n\n    monkeypatch.setattr(client, \"call\", boom)\n    assert client.validate_ca_session(\"missing\") == CaSessionStatus.NOT_FOUND\n\ndef test_validate_empty() -> None:\n    from ai_editor.core.upstream.code_analysis_client import (\n        CaSessionStatus,\n        CodeAnalysisClient,\n    )\n\n    client = CodeAnalysisClient(config_path=Path(\"config.json\"))\n    assert client.validate_ca_session(\"\") == CaSessionStatus.INVALID\n```\n"
+verification:
+  type: pytest
+  target: tests/unit/test_code_analysis_client_session.py
+  expected: All tests pass.
+status: draft

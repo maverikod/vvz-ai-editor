@@ -1,0 +1,154 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Register four new universal_file_edit commands in hooks_register_part2
+target_file: ai_editor/hooks_register_part2.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-005
+- C-006
+- C-009
+- C-010
+- C-013
+prompt: "Operation: modify_file\nTarget: ai_editor/hooks_register_part2.py\n\n\
+  MRS context:\nC-013 RegistrationCleanup: register the four new commands once they\
+  \ exist.\nC-005 OpenCommand: class UniversalFileOpenCommand in\n  ai_editor.commands.universal_file_edit.open_command\n\
+  \  MCP name: universal_file_open\nC-006 EditCommand: class UniversalFileEditCommand\
+  \ in\n  ai_editor.commands.universal_file_edit.edit_command\n  MCP name: universal_file_edit\n\
+  C-009 WriteCommand: class UniversalFileWriteCommand in\n  ai_editor.commands.universal_file_edit.write_command\n\
+  \  MCP name: universal_file_write\nC-010 CloseCommand: class UniversalFileCloseCommand\
+  \ in\n  ai_editor.commands.universal_file_edit.close_command\n  MCP name: universal_file_close\n\
+  \nCurrent full file content (220 lines):\n\"\"\"\nRegister second part of code analysis\
+  \ commands (backup, file, log, workers, DB, projects).\n\nAuthor: Vasiliy Zdanovskiy\n\
+  email: vasilyvz@gmail.com\n\"\"\"\n\nimport logging\n\nfrom mcp_proxy_adapter.commands.command_registry\
+  \ import registry\n\nlogger = logging.getLogger(__name__)\n\n\ndef register_commands_part2(reg:\
+  \ registry) -> None:\n    \"\"\"Register backup, file management, log viewer, workers,\
+  \ DB integrity, restore, projects.\"\"\"\n    from .commands.backup_mcp_commands\
+  \ import (\n        ClearAllBackupsMCPCommand,\n        DeleteBackupMCPCommand,\n\
+  \        ListBackupFilesMCPCommand,\n        ListBackupVersionsMCPCommand,\n   \
+  \     RestoreBackupFileMCPCommand,\n    )\n\n    reg.register(ListBackupFilesMCPCommand,\
+  \ \"custom\")\n    reg.register(ListBackupVersionsMCPCommand, \"custom\")\n    reg.register(RestoreBackupFileMCPCommand,\
+  \ \"custom\")\n    reg.register(DeleteBackupMCPCommand, \"custom\")\n    reg.register(ClearAllBackupsMCPCommand,\
+  \ \"custom\")\n\n    try:\n        from .commands.file_management_mcp_commands import\
+  \ (\n            CleanupDeletedFilesMCPCommand,\n            CollapseVersionsMCPCommand,\n\
+  \            CreateTextFileMCPCommand,\n            DeleteFileMCPCommand,\n    \
+  \        DeleteFilesByMaskMCPCommand,\n            ListDeletedFilesMCPCommand,\n\
+  \            RepairDatabaseMCPCommand,\n            RunUuidIdentityMigrationMCPCommand,\n\
+  \            RestoreDeletedFilesMCPCommand,\n            UnmarkDeletedFileMCPCommand,\n\
+  \        )\n\n        reg.register(CleanupDeletedFilesMCPCommand, \"custom\")\n\
+  \        reg.register(CreateTextFileMCPCommand, \"custom\")\n        reg.register(DeleteFileMCPCommand,\
+  \ \"custom\")\n        reg.register(DeleteFilesByMaskMCPCommand, \"custom\")\n \
+  \       reg.register(ListDeletedFilesMCPCommand, \"custom\")\n        reg.register(UnmarkDeletedFileMCPCommand,\
+  \ \"custom\")\n        reg.register(RestoreDeletedFilesMCPCommand, \"custom\")\n\
+  \        reg.register(CollapseVersionsMCPCommand, \"custom\")\n        reg.register(RepairDatabaseMCPCommand,\
+  \ \"custom\")\n        reg.register(RunUuidIdentityMigrationMCPCommand, \"custom\"\
+  )\n        logger.info(\"Registered repair_database command\")\n        logger.info(\"\
+  Registered run_uuid_identity_migration command\")\n    except ImportError as e:\n\
+  \        logger.warning(\"Failed to import file management commands: %s\", e)\n\
+  \    except Exception as e:\n        logger.error(\n            \"Failed to register\
+  \ file management commands: %s\", e, exc_info=True\n        )\n\n    from .commands.log_viewer_mcp_commands\
+  \ import (\n        AnalyzeTimingBottlenecksMCPCommand,\n        ListLogsMCPCommand,\n\
+  \        ListWorkerLogsMCPCommand,\n        RotateAllLogsMCPCommand,\n        RotateWorkerLogsMCPCommand,\n\
+  \        ViewWorkerLogsMCPCommand,\n    )\n\n    reg.register(ViewWorkerLogsMCPCommand,\
+  \ \"custom\")\n    reg.register(ListLogsMCPCommand, \"custom\")\n    reg.register(ListWorkerLogsMCPCommand,\
+  \ \"custom\")\n    reg.register(RotateWorkerLogsMCPCommand, \"custom\")\n    reg.register(RotateAllLogsMCPCommand,\
+  \ \"custom\")\n    reg.register(AnalyzeTimingBottlenecksMCPCommand, \"custom\")\n\
+  \n    from .commands.worker_status_mcp_commands import (\n        GetDatabaseStatusMCPCommand,\n\
+  \        GetWorkerStatusMCPCommand,\n        ListIndexingErrorsMCPCommand,\n   \
+  \ )\n\n    reg.register(GetWorkerStatusMCPCommand, \"custom\")\n    reg.register(GetDatabaseStatusMCPCommand,\
+  \ \"custom\")\n    reg.register(ListIndexingErrorsMCPCommand, \"custom\")\n\n  \
+  \  try:\n        from .commands.repair_worker_mcp_commands import (\n          \
+  \  RepairWorkerStatusMCPCommand,\n            StartRepairWorkerMCPCommand,\n   \
+  \         StopRepairWorkerMCPCommand,\n        )\n\n        reg.register(StartRepairWorkerMCPCommand,\
+  \ \"custom\")\n        reg.register(StopRepairWorkerMCPCommand, \"custom\")\n  \
+  \      reg.register(RepairWorkerStatusMCPCommand, \"custom\")\n        logger.info(\"\
+  Registered repair worker commands\")\n    except ImportError as e:\n        logger.warning(\"\
+  Failed to import repair worker commands: %s\", e)\n    except Exception as e:\n\
+  \        logger.error(\"Failed to register repair worker commands: %s\", e, exc_info=True)\n\
+  \n    try:\n        from .commands.worker_management_mcp_commands import (\n   \
+  \         StartWorkerMCPCommand,\n            StopWorkerMCPCommand,\n        )\n\
+  \n        reg.register(StartWorkerMCPCommand, \"custom\")\n        reg.register(StopWorkerMCPCommand,\
+  \ \"custom\")\n        logger.info(\"Registered worker management commands\")\n\
+  \    except ImportError as e:\n        logger.warning(\"Failed to import worker\
+  \ management commands: %s\", e)\n    except Exception as e:\n        logger.error(\n\
+  \            \"Failed to register worker management commands: %s\", e, exc_info=True\n\
+  \        )\n\n    try:\n        from .commands.database_integrity_mcp_commands import\
+  \ (\n            BackupDatabaseMCPCommand,\n            GetDatabaseCorruptionStatusMCPCommand,\n\
+  \            RepairSQLiteDatabaseMCPCommand,\n        )\n\n        reg.register(GetDatabaseCorruptionStatusMCPCommand,\
+  \ \"custom\")\n        reg.register(BackupDatabaseMCPCommand, \"custom\")\n    \
+  \    reg.register(RepairSQLiteDatabaseMCPCommand, \"custom\")\n        logger.info(\"\
+  Registered database_integrity commands\")\n    except ImportError as e:\n      \
+  \  logger.warning(\"Failed to import database_integrity commands: %s\", e)\n   \
+  \ except Exception as e:\n        logger.error(\n            \"Failed to register\
+  \ database_integrity commands: %s\", e, exc_info=True\n        )\n\n    try:\n \
+  \       from .commands.database_restore_mcp_commands import (\n            RestoreDatabaseFromConfigMCPCommand,\n\
+  \        )\n\n        reg.register(RestoreDatabaseFromConfigMCPCommand, \"custom\"\
+  )\n        logger.info(\"Registered restore_database command\")\n    except ImportError\
+  \ as e:\n        logger.warning(\"Failed to import restore_database command: %s\"\
+  , e)\n    except Exception as e:\n        logger.error(\n            \"Failed to\
+  \ register restore_database command: %s\", e, exc_info=True\n        )\n\n    try:\n\
+  \        from .commands.project_management_mcp_commands import (\n            ChangeProjectIdMCPCommand,\n\
+  \            ClearTrashMCPCommand,\n            CreateProjectMCPCommand,\n     \
+  \       DeleteProjectMCPCommand,\n            DeleteUnwatchedProjectsMCPCommand,\n\
+  \            ListProjectsMCPCommand,\n            ListTrashedProjectsMCPCommand,\n\
+  \            ListWatchDirsMCPCommand,\n            PermanentlyDeleteFromTrashMCPCommand,\n\
+  \            RestoreProjectFromTrashMCPCommand,\n            SetProjectProcessingPausedMCPCommand,\n\
+  \        )\n        from .commands.run_project_script_command import RunProjectScriptCommand\n\
+  \        from .commands.run_project_module_command import RunProjectModuleCommand\n\
+  \        from .commands.project_pip_commands import (\n            ProjectPipCheckCommand,\n\
+  \            ProjectPipInstallCommand,\n            ProjectPipListCommand,\n   \
+  \         ProjectPipSearchCommand,\n            ProjectPipShowCommand,\n       \
+  \     ProjectPipUninstallCommand,\n        )\n\n        reg.register(ChangeProjectIdMCPCommand,\
+  \ \"custom\")\n        reg.register(CreateProjectMCPCommand, \"custom\")\n     \
+  \   reg.register(ListWatchDirsMCPCommand, \"custom\")\n        reg.register(DeleteProjectMCPCommand,\
+  \ \"custom\")\n        reg.register(DeleteUnwatchedProjectsMCPCommand, \"custom\"\
+  )\n        reg.register(ListProjectsMCPCommand, \"custom\")\n        reg.register(ListTrashedProjectsMCPCommand,\
+  \ \"custom\")\n        reg.register(PermanentlyDeleteFromTrashMCPCommand, \"custom\"\
+  )\n        reg.register(RestoreProjectFromTrashMCPCommand, \"custom\")\n       \
+  \ reg.register(SetProjectProcessingPausedMCPCommand, \"custom\")\n        reg.register(ClearTrashMCPCommand,\
+  \ \"custom\")\n        reg.register(RunProjectScriptCommand, \"custom\")\n     \
+  \   reg.register(RunProjectModuleCommand, \"custom\")\n        reg.register(ProjectPipInstallCommand,\
+  \ \"custom\")\n        reg.register(ProjectPipListCommand, \"custom\")\n       \
+  \ reg.register(ProjectPipShowCommand, \"custom\")\n        reg.register(ProjectPipUninstallCommand,\
+  \ \"custom\")\n        reg.register(ProjectPipCheckCommand, \"custom\")\n      \
+  \  reg.register(ProjectPipSearchCommand, \"custom\")\n        logger.info(\"Registered\
+  \ project management commands\")\n    except ImportError as e:\n        logger.warning(\"\
+  Failed to import project management commands: %s\", e)\n    except Exception as\
+  \ e:\n        logger.error(\n            \"Failed to register project management\
+  \ commands: %s\", e, exc_info=True\n        )\n\n    try:\n        from .commands.universal_file_preview_command\
+  \ import (\n            UniversalFilePreviewCommand,\n        )\n\n        reg.register(UniversalFilePreviewCommand,\
+  \ \"custom\")\n        logger.info(\"Registered universal_file_preview command\"\
+  )\n    except ImportError as e:\n        logger.warning(\"Failed to import universal_file_preview\
+  \ command: %s\", e)\n    except Exception as e:\n        logger.error(\n       \
+  \     \"Failed to register universal_file_preview command: %s\",\n            e,\n\
+  \            exc_info=True,\n        )\n\nTask:\nInsert a new try/except registration\
+  \ block AFTER the universal_file_preview block\n(at the end of the register_commands_part2\
+  \ function) that registers the four\nnew commands:\n\n```python\ntry:\n    from\
+  \ .commands.universal_file_edit.open_command import UniversalFileOpenCommand\n \
+  \   from .commands.universal_file_edit.edit_command import UniversalFileEditCommand\n\
+  \    from .commands.universal_file_edit.write_command import UniversalFileWriteCommand\n\
+  \    from .commands.universal_file_edit.close_command import UniversalFileCloseCommand\n\
+  \n    reg.register(UniversalFileOpenCommand, \"custom\")\n    reg.register(UniversalFileEditCommand,\
+  \ \"custom\")\n    reg.register(UniversalFileWriteCommand, \"custom\")\n    reg.register(UniversalFileCloseCommand,\
+  \ \"custom\")\n    logger.info(\"Registered universal_file_edit commands\")\nexcept\
+  \ ImportError as e:\n    logger.warning(\"Failed to import universal_file_edit commands:\
+  \ %s\", e)\nexcept Exception as e:\n    logger.error(\n        \"Failed to register\
+  \ universal_file_edit commands: %s\",\n        e,\n        exc_info=True,\n    )\n\
+  ```\n\nImplementation:\n1. cst_load_file(project_id, \"ai_editor/hooks_register_part2.py\"\
+  )\n2. Locate the last statement of register_commands_part2 (the preview block).\n\
+  3. cst_modify_tree insert after that node with the new block above.\n4. cst_save_tree(validate=true,\
+  \ backup=true).\n5. lint_code then format_code.\n\nConstraints:\n- Insert AFTER\
+  \ the universal_file_preview block, not before.\n- Do not modify any existing block.\n\
+  - Resulting file must be syntactically valid Python.\n- File line count must not\
+  \ exceed 400 (220 + ~18 = 238 < 400).\n"
+verification:
+  type: static_analysis
+  target: ai_editor/hooks_register_part2.py
+  expected: 'flake8 reports no errors. The following reg.register() calls exist in
+    the file: reg.register(UniversalFileOpenCommand, ...), reg.register(UniversalFileEditCommand,
+    ...), reg.register(UniversalFileWriteCommand, ...), reg.register(UniversalFileCloseCommand,
+    ...).
+
+    '
+status: draft

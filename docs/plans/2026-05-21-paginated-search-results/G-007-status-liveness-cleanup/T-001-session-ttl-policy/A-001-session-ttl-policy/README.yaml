@@ -1,0 +1,60 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: SessionTTLPolicy constants and config
+target_file: ai_editor/core/search_session/policy.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-007
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/policy.py
+
+  MRS (C-007 SessionTTLPolicy): search response TTL + max block size bytes; code defaults;
+  generator emits; validator rejects invalid values; block size distinct from preview limit.
+
+  Implement constants (pin bounds — use these names everywhere validation references limits):
+  - SEARCH_SESSION_TTL_SECONDS_DEFAULT = 1800
+  - SEARCH_MAX_BLOCK_SIZE_BYTES_DEFAULT = 1_048_576  (1 MiB)
+  - TTL_SECONDS_MIN = 60
+  - TTL_SECONDS_MAX = 604_800  (7 days)
+  - MAX_BLOCK_SIZE_BYTES_MIN = 1024  (1 KiB)
+  - MAX_BLOCK_SIZE_BYTES_MAX = 16_777_216  (16 MiB)
+
+  - @dataclass(frozen=True) SessionTTLPolicy: ttl_seconds: int; max_block_size_bytes: int
+
+  - def _validate_positive_int(value: object, *, name: str, minimum: int, maximum: int) -> None
+    Strict int validation rules:
+    - Reject bool (isinstance(value, bool) is True) even though bool is an int subclass.
+    - Reject non-int types with message ``{name} must be int, got {type}``.
+    - Reject zero and negative values.
+    - Reject values below minimum or above maximum; message must name minimum and maximum bounds.
+
+  - def _coerce_config_int(raw: object, *, name: str) -> int
+    Call _validate_positive_int on raw before returning it as int (no silent bool-to-int coercion).
+
+  - def load_session_ttl_policy(config_data: dict) -> SessionTTLPolicy
+    Reads ai_editor.search_session.ttl_seconds and max_block_size_bytes with code defaults.
+    Coerce each present value via _coerce_config_int (defaults bypass coercion).
+    After load, call validate_session_ttl_policy before return.
+
+  - def validate_session_ttl_policy(policy: SessionTTLPolicy) -> None
+    _validate_positive_int(policy.ttl_seconds, name="ttl_seconds",
+        minimum=TTL_SECONDS_MIN, maximum=TTL_SECONDS_MAX)
+    _validate_positive_int(policy.max_block_size_bytes, name="max_block_size_bytes",
+        minimum=MAX_BLOCK_SIZE_BYTES_MIN, maximum=MAX_BLOCK_SIZE_BYTES_MAX)
+
+  This step creates policy.py only.
+
+  Under 200 lines for policy.py. Author header.
+
+verification:
+  type: import
+  target: ai_editor.core.search_session.policy
+  expected: >
+    Defaults load with SEARCH_SESSION_TTL_SECONDS_DEFAULT and SEARCH_MAX_BLOCK_SIZE_BYTES_DEFAULT.
+    validate rejects zero TTL, zero block size, bool inputs, non-int types, and out-of-range values
+    using TTL_SECONDS_MIN/MAX and MAX_BLOCK_SIZE_BYTES_MIN/MAX bounds.
+    load_session_ttl_policy rejects bool config values before int coercion.
+status: ready_for_review

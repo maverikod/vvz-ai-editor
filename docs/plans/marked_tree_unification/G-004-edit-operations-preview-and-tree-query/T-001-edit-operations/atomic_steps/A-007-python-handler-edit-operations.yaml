@@ -1,0 +1,230 @@
+step_id: A-007
+parent_tactical_step: T-001
+name: PythonHandler edit-operations with CST delegation and gate
+target_file: ai_editor/tree/handlers/python_handler.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-001
+concepts:
+- C-015
+- C-007
+- C-002
+- C-012
+- C-009
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-015, C-007, C-002, C-012, C-009)
+
+  Modify `ai_editor/tree/handlers/python_handler.py`.
+  Operation: modify_file.
+
+  Add six edit operations with tree-validity gate ({h008}/{h009}) delegating to
+  `ai_editor.core.cst_tree` mutation APIs. Integer short_id markers only:
+  metadata `___id___` int or trailing `# ___id___:<int>` comments in TREE text.
+
+  ## Full current file content (a8 — pre-edit baseline inlined)
+
+  COMPLETE expected module BEFORE this edit. Baseline from G-001 create_file spec (145 lines).
+  File may not exist on disk yet; treat this block as the exact pre-edit state.
+
+  ```python
+  """
+  Python FormatHandler — hybrid integer marker contract per {b005} (C-007).
+  
+  Markers for ``.py.tree`` TREE section only; SourceFile ``.py`` never modified on disk.
+  Uses cst_tree builder oracle with persist_sidecar=False (no ``.cst/`` JSON sidecar).
+  G1-13 deferral resolved in marked_tree_unification.
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  from __future__ import annotations
+  
+  import re
+  from pathlib import Path
+  from typing import List, Optional, Set
+  
+  import libcst as cst
+  
+  from ai_editor.core.cst_tree.models import CSTTree
+  from ai_editor.core.cst_tree.node_type_utils import get_node_kind
+  from ai_editor.core.cst_tree.tree_builder import create_tree_from_code
+  from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  from ai_editor.tree.tree_node import TreeNode
+  
+  _METADATA_ID_KEY = "___id___"
+  _TRAILING_ID_COMMENT_RE = re.compile(r"\s+# ___id___:(\d+)\s*$")
+  _ADDRESSABLE_TYPES: Set[str] = {
+      "FunctionDef",
+      "AsyncFunctionDef",
+      "ClassDef",
+      "Decorator",
+      "SimpleStatementLine",
+      "Expr",
+      "AnnAssign",
+      "Assign",
+      "AugAssign",
+  }
+  
+  
+  class _IdCommentStripper(cst.CSTTransformer):
+      def leave_Comment(self, original_node: cst.Comment) -> cst.RemovalSentinel | cst.Comment:
+          if _TRAILING_ID_COMMENT_RE.search(original_node.value):
+              return cst.RemovalSentinel.REMOVE
+          return original_node
+  
+  
+  class _IdCommentAppender(cst.CSTVisitor):
+      def __init__(self, allocator: ShortIdAllocator) -> None:
+          self._allocator = allocator
+          self._lines: dict[int, int] = {}
+  
+      def on_visit(self, node: cst.CSTNode) -> bool:
+          return True
+  
+      def on_leave(self, node: cst.CSTNode) -> None:
+          if not hasattr(node, "metadata"):
+              return
+          meta = getattr(node, "metadata", None)
+          if meta is None:
+              return
+          tname = type(node).__name__
+          if tname not in _ADDRESSABLE_TYPES:
+              return
+          pos = node.start_line if hasattr(node, "start_line") else None
+          if pos is None:
+              return
+          self._lines[pos] = self._allocator.allocate()
+  
+  
+  class PythonHandler(FormatHandler):
+      def parse_content(self, file_path: Path, content: str) -> List[TreeNode]:
+          if content.strip() == "":
+              return []
+          tree: CSTTree = create_tree_from_code(
+              str(file_path),
+              content,
+              persist_sidecar=False,
+              register_in_memory=True,
+          )
+          allocator = ShortIdAllocator(1)
+          lines = content.splitlines()
+          nodes: List[TreeNode] = []
+          for internal_id, meta in tree.metadata_map.items():
+              if meta.node_type not in _ADDRESSABLE_TYPES:
+                  continue
+              if meta.start_line == 1 and lines and lines[0].lstrip().startswith("#!"):
+                  continue
+              sid = allocator.allocate()
+              kind = get_node_kind(tree.index.get_node(internal_id)) or meta.node_type
+              start = max(meta.start_line - 1, 0)
+              end = meta.end_line
+              content_slice = "\n".join(lines[start:end])
+              nodes.append(
+                  TreeNode(
+                      short_id=sid,
+                      kind=kind,
+                      content=content_slice,
+                      attributes={
+                          "start_line": meta.start_line,
+                          "end_line": meta.end_line,
+                          "node_type": meta.node_type,
+                          "internal_node_id": internal_id,
+                      },
+                      parent_short_id=None,
+                  )
+              )
+          nodes.sort(key=lambda n: n.attributes.get("start_line", 0))
+          return nodes
+  
+      def mark(self, content: str) -> str:
+          if content == "":
+              return content
+          module = cst.parse_module(content)
+          allocator = ShortIdAllocator(1)
+          lines = content.splitlines(keepends=True)
+          marked_lines: List[str] = []
+          # Simplified: append trailing id comments on non-empty lines for addressable blocks
+          # Full CST metadata injection deferred to op_* layer; round-trip uses comment suffix.
+          line_ids: dict[int, int] = {}
+          for i, line in enumerate(lines, start=1):
+              stripped = line.rstrip("\n")
+              if stripped and not stripped.lstrip().startswith("#!"):
+                  line_ids[i] = allocator.allocate()
+          for i, line in enumerate(lines, start=1):
+              if i in line_ids and line.rstrip("\n"):
+                  body = line.rstrip("\n")
+                  suffix = line[len(body) :]
+                  marked_lines.append(f"{body} # ___id__:{line_ids[i]}{suffix}")
+              else:
+                  marked_lines.append(line)
+          return "".join(marked_lines)
+  
+      def unmark(self, marked_text: str) -> str:
+          lines = marked_text.splitlines(keepends=True)
+          out: List[str] = []
+          for line in lines:
+              body = line.rstrip("\n")
+              suffix = line[len(body) :]
+              body = _TRAILING_ID_COMMENT_RE.sub("", body)
+              out.append(body + suffix)
+          return "".join(out)
+  
+      def sidecar_path(self, source_abs: Path) -> Path:
+          return source_abs.parent / (source_abs.name + ".tree")
+  ```
+
+  ## Tree-validity gate
+
+  _tree_is_valid: bool = True
+  set_tree_validity(is_valid: bool) -> None
+  _enforce_short_id_edit_gate() -> None raises PythonEditGateError(ValueError) when invalid
+  Each op_* calls gate before cst_tree delegation.
+
+  ## op_* delegation
+
+  Signatures match FormatHandler (short_id: NodeId int, anchor_short_id, next_free on insert).
+
+  After gate:
+  1. Parse marked_text to CST module / CSTTree handle (reuse existing handler utilities).
+  2. Resolve short_id to CST node via MAP/metadata integer ___id___ — NOT UUID.
+  3. Delegate insert/delete/replace/move/attribute/content edits to cst_tree edit functions.
+  4. op_insert: pass next_free as assigned short_id for new block per {a007}.
+  5. op_edit_content: reject non-leaf CST nodes with ValueError.
+  6. Return updated marked TREE string from CST serializer.
+
+  Unknown short_id → UnknownNodeIdError.
+
+  Re-validation ({h009}): EditSession rebuilds via TreeBuilder.build; handler does not re-validate.
+
+  ## Forbidden
+
+  - NO UUID in API parameters or marker comments (# @node-id UUID legacy is stripped at preview, not used here)
+  - NO IndentedBlock as edit target — address statement nodes inside
+  - NO G-007, non-standard cross-TS ordering fields, {l*}/{m*}, P:/L: text markers
+  - Do NOT expose UUID at handler op_* boundary
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/handlers/python_handler.py
+  flake8 ai_editor/tree/handlers/python_handler.py
+  mypy ai_editor/tree/handlers/python_handler.py
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/handlers/python_handler.py
+  expected: >
+    Six op_* with int short_id gate and cst_tree delegation; insert uses next_free;
+    PythonEditGateError when invalid; no UUID API; estimated ~390 lines (≤400).

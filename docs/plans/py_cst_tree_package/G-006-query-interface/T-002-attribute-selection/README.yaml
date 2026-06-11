@@ -1,0 +1,24 @@
+step_id: T-002
+parent_global_step: G-006
+name: Attribute Selection
+description: Define the attribute selection operation of the QueryInterface 
+  entity (C-008). Given an attribute dimension (node type, node kind, simple 
+  name, or qualified name) and a value, the operation returns all nodes in the 
+  Tree that carry that attribute value by delegating to the AttributeIndex 
+  (C-006). The selection resolves against the index rather than scanning every 
+  node.
+concepts:
+- C-008
+- C-006
+inputs:
+- name: attribute selector
+  type: attribute dimension and value pair
+  description: The attribute dimension (type, kind, name, or qualname) and the 
+    value to match against the AttributeIndex.
+outputs:
+- name: attribute selection result
+  type: set of IdentifiedNodes
+  description: All nodes in the Tree whose specified attribute matches the given
+    value.
+atomic_steps: []
+status: draft

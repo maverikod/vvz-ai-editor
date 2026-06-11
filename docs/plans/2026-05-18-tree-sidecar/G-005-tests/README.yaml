@@ -1,0 +1,47 @@
+step_id: G-005
+name: Tests
+status: done
+description: 'Verify all domain objects and integration through the universal file
+  command surface. TreeNode model: every type, sidecar JSON round-trip, stable_id
+  preserved. SourceParser JSON: // and /* */ comments, CommentOwnershipRule inline
+  and above-line, all scalar types, edge cases. SourceParser YAML: # comments, same
+  coverage. SourceSerializer: round-trip identity for all parser cases, comments at
+  correct positions. SHASyncPolicy: all four branches. EditSession lifecycle: open->edit->write->close
+  with source and sidecar updated; open->edit->close without write leaves both unchanged;
+  surviving stable_ids preserved, new nodes get new UUIDs. Universal file command
+  integration for JSON and YAML: all operation types, all position variants, diff
+  preview, drill-down via stable_id, stable_id persistence across two sessions.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-006
+- C-007
+- C-009
+relations:
+- C-005 produces C-001
+- C-005 uses C-004
+- C-006 consumes C-001
+- C-003 uses C-002
+- C-003 uses C-007
+- C-007 uses C-005
+- C-007 uses C-006
+- C-009 uses C-002
+- C-009 uses C-001
+- C-004 produces C-001
+source_ranges:
+- end: 154
+  start: 27
+depends_on:
+- G-004
+tactical_steps:
+- 'T-001: TreeNode model unit tests'
+- 'T-002: SourceParser unit tests (JSON)'
+- 'T-003: SourceParser unit tests (YAML)'
+- 'T-004: SourceSerializer round-trip tests'
+- 'T-005: SHASyncPolicy unit tests'
+- 'T-006: EditSession lifecycle tests'
+- 'T-007: Universal file command integration tests (JSON)'
+- 'T-008: Universal file command integration tests (YAML)'

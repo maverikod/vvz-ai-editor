@@ -1,0 +1,31 @@
+step_id: G-003
+name: Universal tree representation and preview
+description: "Defines the uniform tree representation for all supported file formats
+  and the preview reference used to inspect any result node. Tree and text formats
+  are both represented as trees with stable node identifiers held in a tree file or
+  sidecar, validated by checksum and recreated when missing or invalid. Stable node
+  identity must hold across indexer, database-backed search, dynamic search, and preview,
+  and every result node must be representable through the canonical universal_file_preview
+  mechanism. This step defines the structural representation and its preview contract
+  only; it does not define the filtering queries that select nodes or how results
+  are paged.\n"
+concepts:
+- C-015
+- C-017
+relations:
+- from_concept: C-017
+  to_concept: C-015
+  type: depends_on
+source_labels:
+- '{7qgh}'
+- '{cgms}'
+- '{ygmh}'
+- '{heid}'
+- '{8c3h}'
+- '{dim0}'
+depends_on:
+- G-001
+tactical_steps:
+- T-001
+- T-002
+status: frozen

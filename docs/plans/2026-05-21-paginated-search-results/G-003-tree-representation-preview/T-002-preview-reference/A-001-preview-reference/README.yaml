@@ -1,0 +1,68 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: PreviewReference builder
+target_file: ai_editor/core/search_session/preview_reference.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-017
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/preview_reference.py
+
+  MRS excerpt (C-017 PreviewReference):
+  - Reference sufficient to inspect a result through universal_file_preview.
+  - Includes file path and node identifier or selector.
+  - Includes draft session identifier for draft-session results.
+  - Must not expose unstable node identifiers.
+  - Canonical result presentation mechanism for structural results ({8c3h}, {dim0}, {heid}).
+
+  Required imports:
+  - from __future__ import annotations
+  - from dataclasses import dataclass
+  - from typing import Any, Optional
+
+  Implement:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com) stating
+     PreviewReference is the canonical presentation contract for structural search results.
+
+  2. Module constant _UNSTABLE_NODE_ID = "UNSTABLE_NODE_ID" (private; used as ValueError message).
+
+  3. @dataclass(frozen=True) class PreviewReference:
+       file_path: str
+       node_id: Optional[str]
+       selector: Optional[str]
+       draft_session_id: Optional[str]
+     Class docstring: Preview-compatible reference for one structural search result node.
+     Field docstrings on each attribute.
+
+  4. def build_preview_reference(
+        *,
+        file_path: str,
+        node_id: Optional[str],
+        selector: Optional[str] = None,
+        draft_session_id: Optional[str] = None,
+        stable_id_verified: bool,
+     ) -> PreviewReference
+     Docstring must document:
+     - Raises ValueError with message _UNSTABLE_NODE_ID when node_id is set and stable_id_verified is False.
+     - Raises ValueError when neither node_id nor selector is provided.
+     - Returns frozen PreviewReference on success.
+
+  5. def preview_reference_to_dict(ref: PreviewReference) -> dict[str, Any]
+     Docstring: serialize for search result JSON payloads; omit None optional keys;
+     always include file_path.
+
+  6. __all__ = ["PreviewReference", "build_preview_reference", "preview_reference_to_dict"]
+
+  Under 150 lines. All public symbols fully typed and documented.
+
+verification:
+  type: pytest
+  target: tests/unit/test_preview_reference.py
+  expected: >
+    Stable refs serialize via preview_reference_to_dict; unstable node_id raises ValueError UNSTABLE_NODE_ID;
+    build_preview_reference requires at least one of node_id or selector; module __all__ exports three symbols.
+status: frozen

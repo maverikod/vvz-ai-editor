@@ -1,0 +1,66 @@
+step_id: G-007
+name: Broken session policy
+description: 'Реализовать Session Guard (C-024) как внутреннюю сущность AI Editor Server (C-001), не экспонируемую на MCP. Session Guard — единая точка Session Validation (C-014) через Upstream Client (C-017): перед normal-операциями (Open Stage C-010, Edit Stage C-011, read-only preview внутри открытой CA Session C-004) проверять валидность session_id на СА; при отсутствии или невалидности — отказ с SESSION_NOT_FOUND.
+
+  Broken Session Policy (C-015): когда CA Session на СА отсутствует или признана невалидной, редактор отклоняет все normal-операции (открытие нового файла, правки, preview), но допускает terminating-операции Write Stage (C-012) и Close Stage (C-013). Write — best-effort попытка сохранить локальный draft на СА; при NOT_FOUND ответ с ошибкой СА, draft сохраняется. Close — best-effort unlock на СА и освобождение локальных ресурсов.
+
+  При подтверждённом отсутствии сессии на СА Workspace Session Cleanup (C-025) удаляет Editor Session Directory (C-005) и связанные in-memory метаданные (зомби-каталоги). Session Guard классифицирует операции normal vs terminating и делегирует cleanup C-025.
+
+  '
+concepts:
+- C-001
+- C-004
+- C-005
+- C-008
+- C-010
+- C-011
+- C-012
+- C-013
+- C-014
+- C-015
+- C-016
+- C-017
+- C-019
+- C-024
+- C-025
+relations:
+- from_concept: C-001
+  to_concept: C-024
+  type: owns
+- from_concept: C-014
+  to_concept: C-024
+  type: consumes
+- from_concept: C-015
+  to_concept: C-005
+  type: consumes
+- from_concept: C-015
+  to_concept: C-025
+  type: uses
+- from_concept: C-024
+  to_concept: C-004
+  type: consumes
+- from_concept: C-024
+  to_concept: C-015
+  type: implements
+- from_concept: C-024
+  to_concept: C-017
+  type: uses
+- from_concept: C-025
+  to_concept: C-005
+  type: consumes
+source_ranges:
+- start: 51
+  end: 53
+- start: 55
+  end: 55
+- start: 57
+  end: 57
+depends_on:
+- G-002
+tactical_steps:
+- T-000
+- T-001
+- T-002
+- T-003
+- T-004
+status: ready_for_review

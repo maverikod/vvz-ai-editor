@@ -1,0 +1,319 @@
+step_id: A-002
+parent_tactical_step: T-003
+name: universal_file_write schema and execute modes for tree-temp preview vs commit
+target_file: ai_editor/commands/universal_file_edit/write_command.py
+operation: modify_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-002
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-003-universal-file-write/README.yaml
+
+  ## Goal
+  Add `write_mode` to `get_schema` with enum strings `preview` and `commit` (default `preview`).
+  Replace PID two-phase lockfile protocol **for FORMAT_TREE_TEMP only** with explicit mode:
+  - preview: compute diff via `build_tree_temp_preview_text` vs disk; never write source; no lockfile side effects.
+  - commit: run `commit_tree_temp_to_disk`; then optional git hook as today.
+  Other format groups keep existing two-phase PID behaviour unchanged.
+
+  ## Imports
+  - from ai_editor.commands.universal_file_edit.tree_temp_write_commit import (
+        build_tree_temp_preview_text,
+        commit_tree_temp_to_disk,
+    )
+
+  ## execute signature
+  Add `write_mode: str = "preview"` after normalizing in validate_params.
+
+  ## Branching
+  After session resolved: if session.format_group == FORMAT_TREE_TEMP dispatch on write_mode; else existing logic.
+
+  ## Cross-G a8 (modify_file)
+  Prior GS: **G-003** `G-003-sha-sync-and-session/T-004-edit-session-write/A-001-write-source-and-sidecar`. Pre-step
+  state = output of that AS when applied.
+
+  **Workspace (2026-05-18):** `wc -l` → **267** lines.
+
+  ```python
+  """
+  UniversalFileWriteCommand: two-phase write with diff and lockfile.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import json
+  import os
+  import tempfile
+  from pathlib import Path
+  from typing import Any, Dict, Optional, Type
+
+  import yaml
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      WRITE_FAILED,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TREE_TEMP,
+      delete_lockfile,
+      read_lockfile_pid,
+      write_lockfile_pid,
+  )
+  from ai_editor.commands.universal_file_edit.session import EditSession, get_session
+  from ai_editor.core.backup_manager import BackupManager
+  from ai_editor.core.cst_tree.tree_builder import get_tree as get_cst_tree
+  from ai_editor.core.file_handlers.diff_support import unified_diff_text
+  from ai_editor.core.git_integration import commit_after_write
+  from ai_editor.core.cst_tree.node_stable_id import strip_inline_node_id_lines_from_source
+
+
+  class UniversalFileWriteCommand(BaseMCPCommand):
+      """MCP command implementing the two-phase write protocol.
+
+      First call computes diff and writes lockfile.
+      Second call (matching PID) commits with backup.
+      """
+
+      name = "universal_file_write"
+
+      version = "1.0.0"
+
+      descr = "Two-phase write of universal file edit session draft to disk."
+
+      category = "file_management"
+
+      author = "Vasiliy Zdanovskiy"
+
+      email = "vasilyvz@gmail.com"
+
+      use_queue = False
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_write"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id and session_id.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "session_id": {"type": "string"},
+              },
+              "required": ["project_id", "session_id"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls: Type["UniversalFileWriteCommand"]) -> Dict[str, Any]:
+          return {}
+
+      async def execute(
+          self,
+          project_id: str,
+          session_id: str,
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          """Execute the write command.
+
+          Args:
+              project_id: Project UUID (validated by handler; reserved for path checks).
+              session_id: Active session identifier.
+              **kwargs: Adapter context.
+
+          Returns:
+              On first call: SuccessResult with diff preview.
+              On second call: SuccessResult with committed diff.
+              On error: ErrorResult.
+          """
+          _ = project_id, kwargs
+          try:
+              session = get_session(session_id)
+          except ValueError:
+              err = make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+              return ErrorResult(
+                  message=str(err["message"]),
+                  code=str(err["code"]),
+                  details=err.get("details"),
+              )
+
+          current_pid = os.getpid()
+          lockfile_pid = read_lockfile_pid(session.abs_path)
+
+          if lockfile_pid != current_pid:
+              return self._first_call(session, current_pid)
+          return self._second_call(session)
+
+      def _generate_code(self, session: EditSession) -> str:
+          """Generate source code from the draft file.
+
+          Args:
+              session: Active EditSession with format_group and draft_path.
+
+          Returns:
+              Generated source code as a string.
+          """
+          fg = session.format_group
+          if fg == FORMAT_SIDECAR:
+              tid = session.tree_id
+              if not tid:
+                  raise SessionError(
+                      SESSION_INVALID,
+                      "Session has no registered tree id for sidecar format.",
+                  )
+              tree = get_cst_tree(tid)
+              if tree is None:
+                  raise SessionError(
+                      SESSION_NOT_FOUND,
+                      f"CST tree {tid!r} not found in memory.",
+                  )
+              return strip_inline_node_id_lines_from_source(str(tree.module.code))
+          if fg == FORMAT_TREE_TEMP:
+              if session.handler_id == "json":
+                  from ai_editor.core.json_tree.tree_builder import (
+                      get_tree as get_json_tree,
+                  )
+
+                  jtree = get_json_tree(session.tree_id) if session.tree_id else None
+                  if jtree is None:
+                      return str(session.draft_path.read_text())
+                  return str(
+                      json.dumps(jtree.root_data, indent=2, ensure_ascii=False) + "\n"
+                  )
+              from ai_editor.core.yaml_tree.tree_builder import (
+                  get_tree as get_yaml_tree,
+              )
+
+              ytree = get_yaml_tree(session.tree_id) if session.tree_id else None
+              if ytree is None:
+                  return str(session.draft_path.read_text())
+              return str(
+                  yaml.safe_dump(
+                      ytree.root_data,
+                      sort_keys=False,
+                      allow_unicode=True,
+                  )
+              )
+          return str(session.draft_path.read_text())
+
+      def _first_call(
+          self, session: EditSession, current_pid: int
+      ) -> SuccessResult | ErrorResult:
+          """Handle first write call: generate code, compute diff, write lockfile.
+
+          Args:
+              session: Active EditSession.
+              current_pid: Current server process PID.
+
+          Returns:
+              SuccessResult with diff string showing changes.
+          """
+          code = self._generate_code(session)
+          original = session.abs_path.read_text()
+          diff = unified_diff_text(
+              original,
+              code,
+              before_label=str(session.abs_path),
+              after_label=str(session.abs_path),
+          )
+          write_lockfile_pid(session.abs_path, current_pid)
+          return SuccessResult(data={"success": True, "phase": "preview", "diff": diff})
+
+      def _second_call(self, session: EditSession) -> SuccessResult | ErrorResult:
+          """Handle second write call: backup, commit, cleanup.
+
+          Args:
+              session: Active EditSession.
+
+          Returns:
+              SuccessResult with success flag and committed-phase diff.
+          """
+          fp_parts = Path(session.file_path).parts
+          root_dir = session.abs_path.parents[len(fp_parts) - 1]
+          rel = session.abs_path.relative_to(root_dir)
+          rel_str = str(rel)
+          bm = BackupManager(root_dir)
+          bm.create_backup(session.abs_path, command="universal_file_write")
+          original_content = session.abs_path.read_text()
+          try:
+              code = self._generate_code(session)
+          except Exception as exc:
+              bm.restore_file(rel_str)
+              err = make_error(WRITE_FAILED, f"Code generation failed: {exc}")
+              return ErrorResult(
+                  message=str(err["message"]),
+                  code=str(err["code"]),
+                  details=err.get("details"),
+              )
+          tmp_path: Optional[str] = None
+          try:
+              with tempfile.NamedTemporaryFile(
+                  mode="w",
+                  suffix=session.abs_path.suffix,
+                  dir=str(session.abs_path.parent),
+                  delete=False,
+                  encoding="utf-8",
+              ) as tmp:
+                  tmp.write(code)
+                  tmp_path = tmp.name
+              os.replace(tmp_path, str(session.abs_path))
+          except OSError as exc:
+              bm.restore_file(rel_str)
+              if tmp_path:
+                  Path(tmp_path).unlink(missing_ok=True)
+              err = make_error(WRITE_FAILED, f"Write failed: {exc}")
+              return ErrorResult(
+                  message=str(err["message"]),
+                  code=str(err["code"]),
+                  details=err.get("details"),
+              )
+          delete_lockfile(session.abs_path)
+          diff = unified_diff_text(
+              original_content,
+              code,
+              before_label=str(session.abs_path),
+              after_label=str(session.abs_path),
+          )
+          try:
+              commit_after_write(
+                  root_dir,
+                  [rel],
+                  command_name="universal_file_write",
+                  config_data={},
+              )
+          except Exception:
+              pass
+          return SuccessResult(data={"success": True, "phase": "committed", "diff": diff})
+  ```
+
+  ## Forbidden
+  - File must remain ≤ 400 lines after edit; extract helpers to `tree_temp_write_commit.py` if close to limit.
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/write_command.py
+  expected: black/flake8 clean; schema includes write_mode with enum documentation
+status: done

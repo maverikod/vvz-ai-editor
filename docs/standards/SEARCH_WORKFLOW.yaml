@@ -1,0 +1,92 @@
+meta:
+  title: Search and Analysis Workflow
+  version: '1.1'
+  locale: en
+  author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  description: Mandatory project-wide search lifecycle. Cross-search first; grep
+    only when indexed sources are insufficient and only via queue.
+trigger: Before any project-wide search, code lookup, or entity locate operation.
+primary_command: project_cross_search
+paginated_alternative:
+  command: search_start
+  when: Large result sets or block-by-block paging is required.
+  params:
+    search_type: cross
+    paginated: true
+    grep_patterns: []
+    grep_limit: 0
+cross_search_lifecycle:
+  1_fast_cross_no_grep:
+    command: project_cross_search
+    rule: Always start here. Grep is off by default — it is slow and can block
+      the server. Use semantic + fulltext only on the first attempt.
+    required_params:
+      project_id: '<from list_projects>'
+      query: '<non-empty>'
+      grep_patterns: []
+      grep_limit: 0
+      semantic_limit: 30
+      fulltext_limit: 30
+      mode: union
+      auto_queue_on_inline_timeout: true
+      inline_timeout_seconds: 3.0
+    note: grep_limit=0 skips the grep phase even when the server would derive
+      patterns from query. Do not pass explicit grep_patterns on this step.
+  2_slow_response_disable_grep:
+    trigger: >
+      Inline attempt exceeds inline_timeout_seconds, returns job_id with
+      execution_mode=queued, or warnings include GREP_BUDGET_EXCEEDED /
+      GREP_HARD_TIMEOUT while waiting for results.
+    rule: >
+      Do not wait for a grep-heavy queued job to finish. Retry immediately with
+      grep disabled (grep_limit=0, grep_patterns=[]). Accept semantic/fulltext
+      hits only; verify with universal_file_preview before acting.
+    required_params:
+      grep_limit: 0
+      grep_patterns: []
+      semantic_limit: 30
+      fulltext_limit: 30
+      mode: union
+      auto_queue_on_inline_timeout: true
+    poll: If a prior job_id was returned, abandon it for this retry unless the
+      user explicitly asked for exhaustive filesystem grep.
+  3_grep_fallback:
+    command: project_cross_search
+    trigger: >
+      Step 1 returned no usable results, or indexed evidence is insufficient
+      and the user needs filesystem traces (exact string / audit markers).
+    rule: Enable grep explicitly. Always use use_queue=true. Poll
+      queue_get_job_status afterward — never run heavy grep inline.
+    required_params:
+      grep_patterns: ['<explicit markers>']
+      grep_limit: 200
+      require_structural_grep: true
+      grep_scope: index_gap
+      auto_queue_on_inline_timeout: true
+      use_queue: true
+    note: require_structural_grep=true means only enriched hits with a
+      preview-compatible node_ref/selector count as evidence. Line-only grep
+      hits are excluded.
+  supplements:
+    when: Targeted follow-up after cross-search identified a symbol or entity.
+    commands:
+      - get_code_entity_info
+      - find_usages
+      - search_ast_nodes
+      - list_code_entities
+session_tree_search:
+  command: universal_file_search
+  scope: Open edit session CST tree only (Python sidecar).
+  when: Find nodes inside one file draft — not project-wide search.
+  requires: session_id from universal_file_open
+forbidden:
+  - Calling fulltext_search, semantic_search, or fs_grep directly without first
+    trying project_cross_search (step 1).
+  - Running grep inline on large projects — use_queue=true on step 3 only.
+  - Passing grep_patterns or grep_limit>0 on the first attempt (step 1).
+  - Waiting on a slow grep-heavy job when step 2 applies — retry with grep off.
+  - Assuming file content without reading it via universal_file_preview.
+  - Using cst_find_node or query_cst for AI edit workflows — use
+    universal_file_search inside an open edit session (Python) or
+    universal_file_preview drill-down.

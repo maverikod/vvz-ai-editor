@@ -1,0 +1,19 @@
+import asyncio, json, pathlib, sys
+ROOT = pathlib.Path('/home/vasilyvz/projects/tools/code_analysis')
+sys.path.insert(0, str(ROOT))
+from code_analysis.commands.project_creation import CreateProjectCommand
+PROJECT_PATH = pathlib.Path('/home/vasilyvz/projects/tools/plan_manager')
+TEMPLATE_ZIP = str(ROOT / 'rules_template.zip')
+SLUG = 'plan_manager'
+
+class FakeDB:
+    def execute(self, *a, **k): pass
+
+async def main():
+    cmd = CreateProjectCommand(database=FakeDB(), watch_dir_id='x', project_name=SLUG,
+        description='MCP server for managing project plans', scaffold=True,
+        create_venv=True, template_zip=TEMPLATE_ZIP)
+    report = await cmd._run_bootstrap(PROJECT_PATH, SLUG)
+    print(json.dumps(report, indent=2))
+
+asyncio.run(main())

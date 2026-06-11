@@ -1,0 +1,54 @@
+step_id: A-003
+parent_tactical_step: T-006
+name: Fulltext pagination order unit tests
+target_file: tests/unit/test_fulltext_search_pagination.py
+operation: create_file
+priority: 3
+depends_on:
+  - T-004
+  - T-005
+concepts:
+  - C-022
+prompt: |
+  Operation: create_file
+  Target: tests/unit/test_fulltext_search_pagination.py
+
+  Precondition: G-008/T-004 search_start and G-008/T-005 search_get_page implemented.
+
+  Author: Vasiliy Zdanovskiy, vasilyvz@gmail.com.
+  Covers tests_required: fulltext_pagination_preserves_order.
+
+  G-008 contract: multi-block continuation uses job_id + incrementing block_position (not next_cursor).
+
+  MRS (C-022 / pagination_policy.ordering.fulltext): results ordered bm25 desc; stable across blocks.
+
+  IMPORTS:
+    from __future__ import annotations
+    import uuid
+    from unittest.mock import AsyncMock, MagicMock, patch
+    import pytest
+    from ai_editor.commands.search_start_command import SearchStartCommand
+    from ai_editor.commands.search_get_page_command import SearchGetPageCommand
+    from mcp_proxy_adapter.commands.result import SuccessResult
+
+  Helper _fulltext_hits() returns six dicts with descending bm25_score field (10.0 down to 5.0),
+  distinct entity_name and chunk_uuid.
+
+  TEST test_fulltext_pagination_preserves_order:
+  1. Mock FulltextSearchMCPCommand.execute to return all hits in bm25 order; configure block assembler
+     or mock to publish multiple blocks (e.g. page_size=2 yields blocks at positions 1..3).
+  2. SearchStartCommand.run search_type=fulltext, paginated=true, page_size=2, query="foo".
+  3. Collect items from block_position=1, then 2, then 3 via SearchGetPageCommand.run(job_id=..., block_position=n).
+  4. Concatenate all block items; assert bm25_score strictly non-increasing.
+  5. Assert no duplicate chunk_uuid across blocks.
+  6. Re-fetch block_position=1; ranks and chunk_uuids identical to first fetch.
+
+  File under 220 lines.
+
+verification:
+  type: pytest
+  target: tests/unit/test_fulltext_search_pagination.py
+  expected: >
+    Multi-block fulltext results maintain bm25 desc order across block_position advances; no duplicates;
+    block 1 stable on repeated read.
+status: ready_for_review

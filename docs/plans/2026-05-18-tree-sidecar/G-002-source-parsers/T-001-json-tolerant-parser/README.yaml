@@ -1,0 +1,31 @@
+step_id: T-001
+parent_global_step: G-002
+name: JSON tolerant parser with comment extraction
+description: 'Create the JSON-facing SourceParser (C-005): parse tolerant JSON source
+  text that accepts standard JSON plus line comments and block comments (`//`, `/*
+  */`) while extracting structure into TreeNode instances (C-001). During construction,
+  apply CommentOwnershipRule (C-004): same-line trailing commentary becomes comment_inline
+  on the node for that token line; commentary on its own line above the next structural
+  or scalar element becomes comment_before on that following node; commentary above
+  the document''s first root construct becomes comment_before on that first root node.
+  Operational scope is consuming source text and emitting an in-memory tree only: no
+  sidecar file reads or writes, no EditSession registration or mutation, and no coupling
+  to universal file open, preview, or write lifecycle hooks.'
+concepts:
+- C-005
+- C-001
+- C-004
+inputs:
+- name: source_text
+  type: string
+  description: UTF-8 text of a JSON document; grammar accepts standard JSON plus `//`
+    and `/* */` comments as defined for SourceParser JSON in C-005.
+outputs:
+- name: tree_root_nodes
+  type: ordered list of TreeNode (C-001)
+  description: Root-level nodes for the parsed document (single object node when the
+    root is an object; ordered element nodes when the root is an array), with comment_inline
+    and comment_before populated per C-004.
+atomic_steps:
+- A-001
+status: done

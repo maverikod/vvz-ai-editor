@@ -1,0 +1,162 @@
+step_id: A-011
+parent_tactical_step: T-003
+name: Extract tree_builder_index module from tree_builder.py
+target_file: ai_editor/core/cst_tree/tree_builder_index.py
+operation: create_file
+priority: 10
+depends_on:
+- A-009
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/cst_tree/tree_builder_index.py
+
+  ## Parent scope (inlined — do not read external README files)
+
+  Global step G-000 Sidecar Layout Migration: final cutover to sibling_tree_path;
+  removes .cst/, .trees/, .tree_sidecar layouts and pending-sidecar mechanism.
+
+  Parent tactical scope: split tree_builder.py when it exceeds 400 lines — extract
+  indexing helpers into tree_builder_index.py; slim wiring follows in a separate step.
+
+  Machine spec: docs/plans/marked_tree_unification/spec.yaml (C-023, C-003)
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover; CST sidecars persist as sibling `<source>.py.tree`.
+  - properties:
+    - write_sidecar_atomic / read_sidecar_payload use sibling_tree_path only
+    - hard cutover; no backward-compatibility shim
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact stored as a sibling file next to the source.
+  - properties:
+    - stored as a sibling file placed directly next to the source file it describes
+
+  ## Goal
+  Split the 704-line `tree_builder.py` to satisfy the 400-line atomic-step file cap.
+  Create `tree_builder_index.py` holding sidecar-finalize and CST index-build helpers.
+  Move the four functions below verbatim (same logic, signatures, and docstrings except
+  the `_finalize_cst_tree` docstring edit in §Docstring edit). Do not change
+  `tree_builder.py` in this step — the slim import wiring is the tree_builder slim wiring step.
+
+  ## a8 file-state contract (cross-GS ordering without non-standard dependency fields)
+  - `ai_editor/tree/sibling_convention.py` exists (sibling_tree_path baseline).
+  - `ai_editor/core/cst_tree/tree_sidecar.py` on disk: no sidecar_path_for_py,
+    no promote_pending_sidecar_to_final, no `.cst/` paths; write_sidecar_atomic and
+    read_sidecar_payload use sibling_tree_path only.
+  - `tree_builder.py` on disk is PRE-split (704 lines) — copy bodies from this file only.
+
+  ## Source extraction from tree_builder.py (verbatim line ranges)
+  Copy these contiguous blocks from `ai_editor/core/cst_tree/tree_builder.py`:
+  - lines 73-120: `_attach_disk_snapshot`, `_strip_legacy_trailer_from_disk`
+  - lines 122-209: `_finalize_cst_tree` (apply docstring edit when pasting)
+  - lines 313-510: `_build_tree_index`
+  Do not copy `load_file_to_tree`, `create_tree_from_code`, or public API functions.
+
+  ## Module header (exact)
+  ```python
+  """
+  CST tree indexing helpers — sidecar finalize and tree index build.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (exact list for tree_builder_index.py)
+  - from __future__ import annotations
+  - import hashlib
+  - import logging
+  - import os
+  - from pathlib import Path
+  - from typing import Any, Dict, List, Optional, Set, Tuple
+  - import libcst as cst
+  - from libcst.metadata import MetadataWrapper, ParentNodeProvider, PositionProvider
+  - from .models import CSTTree, TreeNodeMetadata
+  - from .node_id_markers import (
+        PersistedNodeIds,
+        build_marker_path,
+        build_exact_key_to_id_from_metadata,
+        build_exact_node_key,
+        strip_persisted_node_ids,
+    )
+  - from .node_type_utils import (
+        decorator_stable_id,
+        get_node_kind,
+        get_node_name,
+        get_node_qualname,
+    )
+  - from .node_stable_id import (
+        get_stable_id as _get_stable_id_from_node,
+        logical_source_from_module,
+        strip_inline_node_id_lines_from_source,
+    )
+  - from .tree_stable_data import (
+        _STATEMENT_STABLE_TYPES,
+        build_statement_stable_key,
+        normalized_source_span,
+    )
+  - from .tree_sidecar import (
+        aliases_from_payload,
+        metadata_map_from_payload,
+        persisted_node_ids_from_payload,
+        read_sidecar_payload,
+        sidecar_matches_built_tree,
+        verify_sidecar_against_source,
+        write_sidecar_atomic,
+    )
+
+  - logger = logging.getLogger(__name__)
+
+  ## Functions to move from tree_builder.py (copy bodies verbatim)
+
+  1. `_attach_disk_snapshot(tree: CSTTree, source: str) -> None`
+  2. `_strip_legacy_trailer_from_disk(py_path: Path, logical_source: str) -> None`
+  3. `_finalize_cst_tree(...)` — full signature and body from tree_builder.py
+  4. `_build_tree_index(...)` — full signature and body from tree_builder.py
+
+  Internal calls among moved functions stay in this module (`_build_tree_index` called
+  from `_finalize_cst_tree`, etc.).
+
+  ## Docstring edit (only change while moving `_finalize_cst_tree`)
+
+  Replace the opening docstring line:
+  FROM:
+      Parse-time CST index: try ``.cst/*.tree`` sidecar when SHA matches; else full
+  TO:
+      Parse-time CST index: try the sibling ``<source>.py.tree`` sidecar when SHA matches; else full
+
+  Leave the second line of that docstring unchanged.
+
+  ## Post-move line-count target
+  New file should be ≤400 lines. If still over 400 after move, stop and report —
+  do not split further in this step.
+
+  ## Forbidden
+  - Do not modify `tree_builder.py` in this step.
+  - Do not change executable logic inside moved functions (docstring edit above only).
+  - Do not introduce `.cst/` path resolution — sibling layout only in docstrings.
+  - Do not add `non-standard dependency fields`.
+
+  ## Validation
+  - black ai_editor/core/cst_tree/tree_builder_index.py → exit 0
+  - flake8 ai_editor/core/cst_tree/tree_builder_index.py → exit 0
+  - mypy ai_editor/core/cst_tree/tree_builder_index.py → Success
+  - python -c "from ai_editor.core.cst_tree.tree_builder_index import _finalize_cst_tree, _build_tree_index" → exit 0
+  - wc -l tree_builder_index.py ≤ 400
+
+  All tests must pass before marking this step complete.
+
+verification:
+  type: static_analysis
+  target: ai_editor/core/cst_tree/tree_builder_index.py
+  expected: >
+    New module exists with _attach_disk_snapshot, _strip_legacy_trailer_from_disk,
+    _finalize_cst_tree, and _build_tree_index moved from tree_builder.py;
+    _finalize_cst_tree docstring references sibling <source>.py.tree not .cst;
+    file ≤400 lines; black/flake8/mypy exit 0; tree_builder.py unchanged on disk.

@@ -1,0 +1,44 @@
+# T-003 atomic parallel execution waves
+# Resynced for session_root/file_subtree base binding only (F-026 overlap removal)
+
+waves:
+  - wave: 1
+    parallel: false
+    steps: [A-001]
+    note: workspace_layout helper — no dependencies
+
+  - wave: 2
+    parallel: false
+    steps: [A-006]
+    depends_on: [A-001]
+    note: mutations module — mechanical extract
+
+  - wave: 3
+    parallel: false
+    steps: [A-002]
+    depends_on: [A-001, A-006]
+    note: edit_session_impl — legacy open only
+
+  - wave: 4
+    parallel: false
+    steps: [A-005]
+    depends_on: [A-002]
+    note: delete monolith — brief import break until A-003
+
+  - wave: 5
+    parallel: false
+    steps: [A-003]
+    depends_on: [A-005]
+    note: recreate facade
+
+  - wave: 6
+    parallel: false
+    steps: [A-004]
+    depends_on: [A-003]
+    note: workspace open mode in edit_session_impl
+
+scope_boundary:
+  in_scope: [C-005, C-006, C-007, C-008, C-018, C-019]
+  deferred:
+    T-004: [draft_path, lockfile_path]
+    T-006: [sidecar_path, tree_temp_paths]

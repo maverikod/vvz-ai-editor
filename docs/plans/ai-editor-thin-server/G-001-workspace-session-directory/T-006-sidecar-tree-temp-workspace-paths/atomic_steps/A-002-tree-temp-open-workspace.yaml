@@ -1,0 +1,355 @@
+step_id: A-002
+parent_tactical_step: T-006
+name: Tree-temp open paths в Edit Subdirectory
+target_file: ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-006
+- C-007
+- C-008
+- C-019
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/tree_temp_open_support.py` (operation: modify_file).
+
+  Parent tactical step:
+  `docs/plans/ai-editor-thin-server/G-001-workspace-session-directory/T-006-sidecar-tree-temp-workspace-paths/README.yaml`
+
+  Parent global step:
+  `docs/plans/ai-editor-thin-server/G-001-workspace-session-directory/README.yaml`
+
+  Machine spec:
+  `docs/plans/ai-editor-thin-server/spec.yaml`
+
+  Consistency reference (workspace open kwargs): `EditSession.open` in `edit_session_impl.py`
+  accepts `workspace_session_root`, `workspace_file_subtree_root`, `workspace_origin_path`, and
+  `workspace_edit_subdir` together.
+
+  ## MRS excerpt
+
+  **C-006 File Subtree** — поддерево каталога сессии для одного открытого файла; содержит Origin Snapshot (C-007) и Edit Subdirectory (C-008).
+
+  **C-008 Edit Subdirectory** — подкаталог File Subtree с рабочей копией для правок (draft/CST/tree-temp).
+
+  **C-019 Internal Edit Engine** — INVARIANT: артефакты редактирования (sidecar, tree-temp) размещаются относительно подкаталога редактирования в файловом поддереве сессии, а не относительно канонического пути проекта на диске upstream-сервера.
+
+  ## Scope (T-006 A-002 — fixes F-026 tree-temp slice, F-036 tree-temp anchor)
+
+  **IN scope:** tree-temp JSON sidecar paths in `acquire_tree_temp_for_open`:
+  - SHASync **read** path: beside **Origin Snapshot** inside File Subtree (C-006/C-007)
+  - Sidecar **write** path (returned `TreeTempOpenAcquisition.sidecar_path`): beside working copy inside **Edit Subdirectory (C-008)**
+
+  Path anchor rule (resolved — no "or"):
+  - Read: `sibling_tree_path(workspace_origin_path)`
+  - Write: `sibling_tree_path(workspace_edit_root / workspace_origin_path.name)`
+  - Legacy (no workspace kwargs): `sibling_tree_path(source_abs)` for both read and write (unchanged)
+
+  **OUT of scope — deferred to T-004:**
+  - `draft_path` and `lockfile_path`
+  - `draft_path_for_edit_source`, `resolve_format_group_for_edit_source`
+
+  **OUT of scope — other modules:**
+  - `open_command.py` wiring (passes workspace kwargs — separate orchestration TS)
+  - CST `.tree` sidecar in `edit_session_impl.py`
+
+  Do NOT modify `format_group.py` or `edit_session_impl.py`.
+
+  ## CURRENT FILE CONTENT (`ai_editor/commands/universal_file_edit/tree_temp_open_support.py`)
+
+  ```python
+  """Helpers to acquire TreeNode roots for tree-temp universal_file_open (G-003).
+
+  Author: Vasiliy Zdanovskiy
+  Email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  import hashlib
+  from copy import deepcopy
+  from dataclasses import dataclass
+  from enum import Enum
+  from pathlib import Path
+  from typing import List, Optional, Tuple, cast
+
+  from ai_editor.commands.universal_file_edit.session import (
+      active_session_uses_abs_path,
+  )
+  from ai_editor.commands.universal_file_edit.sha_sync_policy import (
+      ShaSyncBranch,
+      resolve_sha_sync_policy,
+  )
+  from ai_editor.core.tree_temp.sidecar_payload import (
+      SidecarParseError,
+      parse_sidecar_json_bytes,
+  )
+  from ai_editor.tree.sibling_convention import sibling_tree_path
+  from ai_editor.core.tree_temp.tree_node import TreeNode
+
+
+  class SidecarWriteIntent(str, Enum):
+      NONE = "none"
+      CREATE = "create"
+      REPLACE = "replace"
+
+
+  @dataclass(frozen=True)
+  class TreeTempOpenAcquisition:
+      roots: List[TreeNode]
+      source_sha256: str
+      sidecar_path: Path
+      sidecar_write_intent: SidecarWriteIntent
+
+
+  def parse_source_bytes_to_roots(handler_id: str, raw: bytes) -> List[TreeNode]:
+      """Parse source bytes into root-level TreeNode list (json/yaml handlers)."""
+      if not raw.strip():
+          return []
+      text = raw.decode("utf-8")
+      if handler_id == "json":
+          from ai_editor.core.tree_temp.json_source_parser import parse_json_source
+
+          return cast(List[TreeNode], parse_json_source(text))
+      if handler_id == "yaml":
+          from ai_editor.core.tree_temp.yaml_source_parser import parse_yaml_source
+
+          return cast(List[TreeNode], parse_yaml_source(text))
+      raise ValueError(f"unsupported tree-temp handler_id: {handler_id!r}")
+
+
+  def _read_trees_sidecar_optional(
+      sidecar_path: Path,
+  ) -> Optional[Tuple[str, List[TreeNode]]]:
+      if not sidecar_path.exists():
+          return None
+      try:
+          raw = sidecar_path.read_bytes()
+          return cast(Tuple[str, List[TreeNode]], parse_sidecar_json_bytes(raw))
+      except SidecarParseError:
+          return None
+
+
+  def acquire_tree_temp_for_open(
+      *,
+      project_root: Path,
+      source_abs: Path,
+      handler_id: str,
+      raw_source_bytes: bytes,
+  ) -> TreeTempOpenAcquisition:
+      """Compute SHA, run SHASyncPolicy, return roots + staging intent for session open."""
+      current_sha = hashlib.sha256(raw_source_bytes).hexdigest()
+      sidecar_path = sibling_tree_path(source_abs.resolve())
+      loaded = _read_trees_sidecar_optional(sidecar_path)
+      sidecar_exists = loaded is not None
+      sidecar_sha = loaded[0] if loaded else None
+      decision = resolve_sha_sync_policy(
+          sidecar_exists=sidecar_exists,
+          sidecar_source_sha256=sidecar_sha,
+          current_source_sha256=current_sha,
+          active_session_holds_file=active_session_uses_abs_path(source_abs),
+      )
+      branch = decision.branch
+
+      if branch == ShaSyncBranch.NO_SIDECAR:
+          roots = parse_source_bytes_to_roots(handler_id, raw_source_bytes)
+          intent = SidecarWriteIntent.CREATE
+      elif branch == ShaSyncBranch.SHA_MATCH:
+          if loaded is None:
+              raise ValueError("SHA_MATCH branch requires a valid loaded sidecar")
+          roots = deepcopy(loaded[1])
+          intent = SidecarWriteIntent.NONE
+      elif branch == ShaSyncBranch.SHA_MISMATCH_NO_SESSION:
+          roots = parse_source_bytes_to_roots(handler_id, raw_source_bytes)
+          intent = SidecarWriteIntent.REPLACE
+      elif branch == ShaSyncBranch.SHA_MISMATCH_ACTIVE_SESSION:
+          if loaded is None:
+              raise ValueError(
+                  "SHA_MISMATCH_ACTIVE_SESSION branch requires a valid loaded sidecar"
+              )
+          roots = deepcopy(loaded[1])
+          intent = SidecarWriteIntent.NONE
+      else:
+          raise ValueError(f"unexpected ShaSyncBranch: {branch!r}")
+
+      if raw_source_bytes.strip() and not roots:
+          raise ValueError("parser returned empty roots for non-empty source document")
+
+      return TreeTempOpenAcquisition(
+          roots=roots,
+          source_sha256=current_sha,
+          sidecar_path=sidecar_path,
+          sidecar_write_intent=intent,
+      )
+  ```
+
+  ## Imports (unchanged — no new imports)
+
+  Complete import list remains as in CURRENT FILE CONTENT above.
+
+  ## Extended `acquire_tree_temp_for_open` signature
+
+  Add optional keyword-only parameters after `raw_source_bytes`:
+
+  ```python
+  def acquire_tree_temp_for_open(
+      *,
+      project_root: Path,
+      source_abs: Path,
+      handler_id: str,
+      raw_source_bytes: bytes,
+      workspace_origin_path: Optional[Path] = None,
+      workspace_edit_root: Optional[Path] = None,
+  ) -> TreeTempOpenAcquisition:
+  ```
+
+  Update docstring to one line: `Compute SHA, run SHASyncPolicy, return roots + staging intent; workspace mode reads sidecar beside origin snapshot.`
+
+  ## Workspace mode predicate
+
+  ```python
+  _ws_pair = (workspace_origin_path, workspace_edit_root)
+  if any(p is not None for p in _ws_pair) and not all(p is not None for p in _ws_pair):
+      raise ValueError(
+          "workspace_origin_path and workspace_edit_root must be provided together"
+      )
+  workspace_mode = all(p is not None for p in _ws_pair)
+  ```
+
+  ## Path resolution (replace single `sidecar_path = sibling_tree_path(...)` line)
+
+  Algorithm at start of `acquire_tree_temp_for_open` after `current_sha` computed:
+
+  1. `current_sha = hashlib.sha256(raw_source_bytes).hexdigest()` (unchanged).
+  2. If `workspace_mode`:
+     - `origin_resolved = workspace_origin_path.resolve()`
+     - `edit_resolved = workspace_edit_root.resolve()`
+     - `edit_source_path = edit_resolved / origin_resolved.name`
+     - `read_sidecar_path = sibling_tree_path(origin_resolved)`
+     - `write_sidecar_path = sibling_tree_path(edit_source_path)`
+     - `active_session_path = origin_resolved`
+  3. Else (legacy):
+     - `read_sidecar_path = sibling_tree_path(source_abs.resolve())`
+     - `write_sidecar_path = read_sidecar_path`
+     - `active_session_path = source_abs.resolve()`
+  4. `loaded = _read_trees_sidecar_optional(read_sidecar_path)` — use **read** path only.
+  5. `resolve_sha_sync_policy(..., active_session_holds_file=active_session_uses_abs_path(active_session_path))` — use `active_session_path`.
+  6. Branch handling (NO_SIDECAR, SHA_MATCH, etc.) — **unchanged** logic using `loaded`.
+  7. Return `TreeTempOpenAcquisition(..., sidecar_path=write_sidecar_path, ...)` — use **write** path.
+
+  Return value specification:
+  - `roots`: unchanged semantics.
+  - `source_sha256`: SHA-256 hex of `raw_source_bytes`.
+  - `sidecar_path`: **write** path (edit subdir in workspace mode; legacy sibling path otherwise).
+  - `sidecar_write_intent`: unchanged enum.
+
+  ## Unchanged functions (do not modify)
+
+  `SidecarWriteIntent`, `TreeTempOpenAcquisition`, `parse_source_bytes_to_roots`, `_read_trees_sidecar_optional`.
+
+  ## Error handling
+
+  | Condition | Exception |
+  |-----------|-----------|
+  | Only one of `workspace_origin_path` / `workspace_edit_root` set | `ValueError("workspace_origin_path and workspace_edit_root must be provided together")` |
+  | SHA_MATCH / SHA_MISMATCH_ACTIVE_SESSION without loaded sidecar | existing `ValueError` messages (unchanged) |
+  | Empty roots for non-empty source | existing `ValueError` (unchanged) |
+  | Unsupported handler_id in `parse_source_bytes_to_roots` | existing `ValueError` (unchanged) |
+
+  ## Edge cases
+
+  - Workspace mode, no read sidecar at origin → `NO_SIDECAR` branch; `write_sidecar_path` under edit subdir; intent `CREATE`.
+  - Workspace mode, read sidecar SHA matches → `SHA_MATCH`; `sidecar_path` in result still `write_sidecar_path` (edit subdir) even when intent `NONE`.
+  - Legacy callers omitting workspace kwargs → identical behavior to CURRENT FILE CONTENT.
+  - `project_root` parameter retained for signature compatibility; not used for sidecar path in workspace mode (do not reintroduce `resolve_trees_sidecar_path` or `.trees` paths).
+  - `source_abs` still required for legacy; in workspace mode callers may pass upstream canonical path but sidecar resolution ignores it.
+
+  ## Constants and literals
+
+  - Partial workspace kwargs error message: `"workspace_origin_path and workspace_edit_root must be provided together"`.
+  - SHA algorithm: `hashlib.sha256` (unchanged).
+  - Sidecar suffix: `.tree` via `sibling_tree_path` / `TREE_FILE_SUFFIX`.
+
+  ## Forbidden patterns
+
+  - Do NOT import or use `resolve_trees_sidecar_path` or `.trees` directory layout.
+  - Do NOT read sidecar from canonical `source_abs` path when `workspace_mode` is True.
+  - Do NOT write sidecar beside `source_abs` on CA host when `workspace_mode` is True.
+  - Do NOT implement `draft_path` or `lockfile_path` (T-004).
+  - Do NOT modify `format_group.py`, `open_command.py`, or `edit_session_impl.py`.
+  - Do NOT add `Any` type annotations.
+  - Do NOT add functions not listed in this step.
+
+  ## Tests — create `tests/unit/test_tree_temp_workspace_paths.py`
+
+  ```python
+  """Tree-temp workspace path tests (T-006 A-002)."""
+  ```
+
+  Use `json` handler with minimal JSON bytes `b'{"a": 1}'`.
+
+  ### `test_workspace_mode_reads_sidecar_beside_origin_writes_under_edit_subdir`
+
+  - Layout:
+    - `subtree = tmp_path / "sid" / "files" / "proj"`
+    - `origin = subtree / "data.json"` with `{"a": 1}`
+    - `edit_root = subtree / "edit-uuid"`; `edit_root.mkdir()`
+    - Pre-create read sidecar at `origin.with_suffix(".json.tree")` with valid tree-temp sidecar JSON matching SHA (or omit for NO_SIDECAR test variant).
+  - Call `acquire_tree_temp_for_open(project_root=tmp_path, source_abs=tmp_path/"canonical"/"data.json", handler_id="json", raw_source_bytes=origin.read_bytes(), workspace_origin_path=origin, workspace_edit_root=edit_root)`.
+  - Assert result `sidecar_path == (edit_root / "data.json.tree").resolve()`.
+  - Assert read used origin-side path: if read sidecar existed, loaded roots non-empty; if not, `sidecar_write_intent == CREATE`.
+  - Assert `(tmp_path / "canonical" / "data.json.tree")` was NOT read (canonical path has no sidecar file).
+
+  ### `test_legacy_mode_unchanged_sibling_path`
+
+  - `source = tmp_path / "proj" / "data.json"`; write minimal JSON.
+  - Call without workspace kwargs.
+  - Assert `result.sidecar_path == sibling_tree_path(source.resolve())`.
+
+  ### `test_partial_workspace_kwargs_raises`
+
+  - Expect `ValueError` with message containing `must be provided together` when only `workspace_origin_path` is set.
+
+  ## Validation commands (from project root, `.venv` activated)
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/tree_temp_open_support.py tests/unit/test_tree_temp_workspace_paths.py
+  flake8 ai_editor/commands/universal_file_edit/tree_temp_open_support.py tests/unit/test_tree_temp_workspace_paths.py
+  mypy ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+  pytest tests/unit/test_tree_temp_workspace_paths.py tests/test_tree_temp_universal_json_preview_sessions.py -v
+  ```
+
+  Expected:
+  - black: "reformatted" or "would be left unchanged"
+  - flake8: no output, exit 0
+  - mypy: "Success: no issues found"
+  - pytest: all PASSED; legacy tree-temp tests unchanged
+
+  Post-implementation spot check:
+
+  ```bash
+  python -c "
+  from pathlib import Path
+  from ai_editor.commands.universal_file_edit.tree_temp_open_support import acquire_tree_temp_for_open
+  from ai_editor.tree.sibling_convention import sibling_tree_path
+  # partial kwargs
+  try:
+      acquire_tree_temp_for_open(project_root=Path('.'), source_abs=Path('x.json'), handler_id='json', raw_source_bytes=b'{}', workspace_origin_path=Path('o.json'))
+  except ValueError as e:
+      assert 'together' in str(e)
+  print('ok')
+  "
+  ```
+
+  Expected: prints `ok`, exit 0.
+
+  **Mandatory:** all project tests must pass before handoff.
+verification:
+  type: pytest
+  target: tests/unit/test_tree_temp_workspace_paths.py
+  expected: >
+    SHASync reads tree-temp sidecar beside workspace origin snapshot; returned sidecar_path
+    targets edit subdir working copy; legacy sibling_tree_path(source_abs) unchanged;
+    draft_path and lockfile_path not implemented (T-004).
+status: draft

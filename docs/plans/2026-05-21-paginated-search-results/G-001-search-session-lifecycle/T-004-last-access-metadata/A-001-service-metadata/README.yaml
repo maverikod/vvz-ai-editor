@@ -1,0 +1,42 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: LastAccessTimestamp service metadata
+target_file: ai_editor/core/search_session/service_metadata.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-006
+prompt: "Operation: create_file\nTarget: ai_editor/core/search_session/service_metadata.py\n\
+  \nMRS excerpt (C-006 LastAccessTimestamp):\n- Drives TTL cleanup.\n- Refreshed by
+  HTTPResultAccess on index/block/status reads.\n- Must not be confused with heartbeat_at.\n\
+  \nParent GS (G-001): service metadata lives in SearchSessionDirectory alongside
+  manifest and index.\n\nParent TS (T-004): last-access timestamp only; heartbeat_at
+  remains in the session manifest\nand is distinct from last_access_at.\n\nRequired
+  imports:\n```python\nfrom __future__ import annotations\n\nimport json\nimport os\n\
+  from dataclasses import dataclass\nfrom pathlib import Path\n\nfrom ai_editor.core.search_session.directory
+  import SearchSessionDirectoryLayout\n```\n\nSearchSessionDirectoryLayout excerpt
+  (from ai_editor/core/search_session/directory.py):\n```python\n@dataclass(frozen=True)\n\
+  class SearchSessionDirectoryLayout:\n    root: Path\n    manifest_path: Path\n \
+  \   index_path: Path\n    service_metadata_path: Path\n    blocks_dir: Path\n```\n\
+  \nTask:\nCreate service_metadata.py with:\n\n1. Module docstring (Author: Vasiliy
+  Zdanovskiy, email: vasilyvz@gmail.com).\n\n2. @dataclass(frozen=True) SessionServiceMetadata:\n\
+  \     last_access_at: float\n\n3. def initialize_service_metadata(layout: SearchSessionDirectoryLayout,
+  *, now: float) -> SessionServiceMetadata:\n     Writes {\"last_access_at\": now}
+  atomically (tmp + replace) to layout.service_metadata_path.\n\n4. def read_service_metadata(layout:
+  SearchSessionDirectoryLayout) -> SessionServiceMetadata:\n     Loads JSON; if file
+  missing raises FileNotFoundError.\n\n5. def refresh_last_access(layout: SearchSessionDirectoryLayout,
+  *, now: float) -> SessionServiceMetadata:\n     Atomic read-update-write of last_access_at
+  only via tmp + os.replace.\n     Must remain safe when multiple HTTP handlers refresh
+  concurrently (last writer wins;\n     file must never be left partial or invalid
+  JSON).\n\nConstraints:\n- Separate file from manifest.py — last access is distinct
+  from heartbeat.\n- last_access_at uses wall-clock time.time() values.\n- Under 150
+  lines.\n"
+verification:
+  type: pytest
+  target: tests/unit/test_service_metadata.py
+  expected: "initialize_service_metadata creates service_metadata.json with last_access_at.
+    refresh_last_access updates timestamp atomically. Concurrent refresh_last_access
+    calls from multiple threads leave valid JSON and a last_access_at equal to the
+    latest supplied now value.\n"
+status: ready_for_review

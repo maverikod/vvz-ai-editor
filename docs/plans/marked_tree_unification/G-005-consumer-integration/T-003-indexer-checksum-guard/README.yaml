@@ -1,0 +1,37 @@
+step_id: T-003
+parent_global_step: G-005
+name: Indexer Checksum-Based Skip Guard
+description: 'Define the Indexer entity (C-022) as the indexer that replaces its modification-time-based
+  skip guard with a checksum-based guard using ChecksumSyncPolicy (C-006) ({g003}). Establish
+  the two-branch guard. Branch 1: if the current source SHA-256 checksum equals the
+  stored tree_checksum value on the file row, skip reindexing — content has not changed.
+  Branch 2: if the checksums differ, reindexing proceeds — content has changed. Establish
+  that the mtime-based skip guard is removed entirely; the checksum guard is the only
+  allowed skip criterion. Establish that reindexing is content-driven: file touches without
+  content changes no longer trigger reindexing. Establish that indexer paths do not attach
+  file mtime to search-session findings — finding shape and ranking remain governed by
+  SearchSessionFinding (C-026) in the grep/search layer, not by indexer skip logic.'
+concepts:
+- C-022
+- C-006
+source_labels:
+- '{g003}'
+inputs:
+- name: ChecksumSyncPolicy definition
+  type: domain entity definition (C-006)
+  description: SHA-256 checksum mechanism; Indexer compares current source checksum against
+    stored tree_checksum to decide whether to reindex.
+outputs:
+- name: Indexer entity definition
+  type: domain entity definition
+  description: Indexer with checksum-based skip guard replacing mtime guard; equal checksum
+    skips reindex; differing checksum triggers reindex; content-driven, not mtime-driven.
+- name: Mtime-guard removal constraint
+  type: domain constraint definition
+  description: Modification-time-based skip guard removed entirely; checksum guard is
+    the sole skip criterion; no mtime fields introduced on search findings from indexer
+    work.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

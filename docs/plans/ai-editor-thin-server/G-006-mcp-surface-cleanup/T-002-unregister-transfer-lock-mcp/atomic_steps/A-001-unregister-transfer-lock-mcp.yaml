@@ -1,0 +1,105 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Снять transfer и lock MCP
+target_file: ai_editor/commands/registration.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-016
+- C-017
+- C-020
+prompt: |
+  CURRENT FILE CONTENT (`ai_editor/commands/registration.py`):
+  ```py
+  """
+  Central MCP registration for ``file_management`` universal and legacy commands.
+
+  Registers :mod:`ai_editor.commands.universal_file_*` first-class commands and legacy
+  compat wrappers (**``read_project_text_file``**, **``write_project_text_lines``**).
+
+  Handlers and documentation-oriented schema fragments live in
+  ``ai_editor.core.file_handlers.registry``: **``get_handler_schema(handler_id, operation)``**,
+  ``list_handler_mappings()``, ``HANDLER_IDS``.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from typing import Any
+
+
+  # Appended to MCP descr / schemas so models steer to handler routing vs plain-text pitfalls.
+  MCP_FILE_MANAGEMENT_REGISTRY_HELP = (
+      "Use ``ai_editor.core.file_handlers.registry.get_handler_schema(handler_id, operation)`` "
+      "for per-handler request hints and ``list_handler_mappings()`` for suffix→handler rows "
+      "(handler ids: text, json, yaml, python). "
+      "Legacy **read_project_text_file** / **write_project_text_lines** are compatibility "
+      "wrappers — they **must not** be treated as alternate editors for source code "
+      "(``.py``, ``.pyi``, …), ``.json``, ``.yaml``, or other structured formats; route those "
+      "through universal_file_read, universal_file_save, universal_file_replace, "
+      "universal_file_delete, and JSON/YAML/Python/CST tooling as documented."
+  )
+
+  # Compact line for embedding in JSON-schema ``description`` fields (helps MCP help payloads).
+  REGISTRY_SCHEMA_DISCOVERY_SHORT = (
+      "Discovery: ai_editor.core.file_handlers.registry.get_handler_schema(handler_id, operation) "
+      "and list_handler_mappings(); handler ids text, json, yaml, python."
+  )
+
+
+  def register_file_management_commands(reg: Any) -> None:
+      """Register universal file commands and legacy text compat commands.
+
+      Commands use ``category = 'file_management'`` on classes; MCP help groups by category.
+
+      Args:
+          reg: ``mcp_proxy_adapter.commands.command_registry.registry`` implementation.
+      """
+      from .project_file_transfer_by_id_commands import (
+          ProjectFileTransferDownloadBeginCommand,
+          ProjectFileTransferUploadSaveCommand,
+      )
+      from .project_file_advisory_lock_batch_command import (
+          ProjectFileAdvisoryLockBatchCommand,
+      )
+      from .project_file_lock_status_command import ProjectFileLockStatusCommand
+
+      reg.register(ProjectFileAdvisoryLockBatchCommand, "custom")
+      reg.register(ProjectFileLockStatusCommand, "custom")
+      reg.register(ProjectFileTransferDownloadBeginCommand, "custom")
+      reg.register(ProjectFileTransferUploadSaveCommand, "custom")
+  ```
+
+  Modify `ai_editor/commands/registration.py` only.
+
+  Remove from `register_file_management_commands`:
+  - all four `from .project_file_*` imports (transfer and lock command classes),
+  - all four `reg.register(...)` calls for those classes.
+
+  Leave module-level constants `MCP_FILE_MANAGEMENT_REGISTRY_HELP` and `REGISTRY_SCHEMA_DISCOVERY_SHORT` unchanged.
+
+  After edit, `register_file_management_commands` must be a no-op stub (function body contains only `return None` or `pass` after removing registrations). Do not delete the function.
+
+  Transfer and lock remain available only via Upstream Client (C-017 consuming C-023); do not add alternate MCP paths.
+
+  Do NOT edit `ai_editor/hooks_register_part2.py` in this step.
+
+  Forbidden:
+  - Do NOT delete command class modules on disk.
+  - Do NOT register replacement MCP commands for transfer/lock.
+
+  Validation (project root, .venv active):
+  - black ai_editor/commands/registration.py
+  - flake8 ai_editor/commands/registration.py
+  - mypy ai_editor/commands/registration.py
+  - python -c "from ai_editor.commands.registration import register_file_management_commands" (exit 0)
+verification:
+  type: manual
+  target: ai_editor/commands/registration.py
+  expected: >
+    register_file_management_commands is a no-op with no MCP transfer/lock registration;
+    module constants unchanged; no imports of project_file_transfer_* or project_file_*lock* commands.
+status: draft

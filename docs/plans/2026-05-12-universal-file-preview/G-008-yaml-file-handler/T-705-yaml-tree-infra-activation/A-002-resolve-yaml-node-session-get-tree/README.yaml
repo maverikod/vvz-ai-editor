@@ -1,0 +1,31 @@
+step_id: A-002
+parent_tactical_step: T-705
+name: resolve_yaml_node and YAML get_tree session lookup
+target_file: ai_editor/core/yaml_tree/resolve.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-009
+- C-011
+- C-020
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  `resolve_yaml_node(tree, node_ref)` in `ai_editor/core/yaml_tree/resolve.py`
+  resolves either an RFC 6901-style pointer (`''` or starts with `/`) or an opaque
+  stable id via `tree.pointer_by_id`, then reads the value from `root_data`.
+
+  Caller-owned sessions: `resolve_session` in `session.py` resolves `tree_id` against
+  CST `get_tree` first, then `ai_editor.core.yaml_tree.tree_builder.get_tree`.
+implementation_note: >
+  Parallels JSON tree session lookup pattern; unknown `tree_id` remains a preview
+  input error (CONFLICTING_PARAMETERS).
+verification:
+  type: static_analysis
+  target: ai_editor/core/yaml_tree/resolve.py
+  expected: >
+    resolve_yaml_node delegates pointer vs opaque id as documented; session.py imports
+    yaml_get_tree alongside cst_get_tree for caller-owned tree_id.

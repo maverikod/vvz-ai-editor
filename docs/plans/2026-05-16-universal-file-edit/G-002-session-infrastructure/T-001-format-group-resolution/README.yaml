@@ -1,0 +1,30 @@
+step_id: T-001
+parent_global_step: G-002
+name: Define FormatGroup resolution and draft/lockfile path helpers
+description: Create the FormatGroup resolution entity (C-002) that maps a file's
+  extension to a FormatDescriptor containing the resolved group ('sidecar',
+  'tree-temp', or 'text'), handler_id, draft path (C-003), and lockfile path (C-004).
+  Implement the resolution by wrapping the existing handler registry (C-012).
+  Provide lockfile path helpers that compute, read, write, and delete the WriteLockfile
+  (C-004) for a given file path. On unsupported extension raise UNKNOWN_FORMAT (C-014).
+concepts:
+- C-002
+- C-003
+- C-004
+- C-012
+- C-014
+inputs:
+- name: abs_path
+  type: Path
+  description: Absolute path to the original file being opened for editing.
+outputs:
+- name: format_descriptor
+  type: FormatDescriptor dataclass
+  description: Contains format_group ('sidecar'|'tree-temp'|'text'), handler_id, draft_path
+    (Path), lockfile_path (Path), available_operations (list[str]).
+- name: unknown_format_error
+  type: ErrorCodes entry
+atomic_steps:
+- A-001
+- A-002
+status: draft

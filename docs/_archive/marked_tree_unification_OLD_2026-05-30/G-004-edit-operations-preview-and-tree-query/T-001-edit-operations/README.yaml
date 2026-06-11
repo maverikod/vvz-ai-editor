@@ -1,0 +1,42 @@
+step_id: T-001
+parent_global_step: G-004
+name: EditOperation Six-Operation Contract
+description: "Define the EditOperation entity (C-015) as the uniform set of six tree-edit
+  operations addressed by NodeId (C-002), available for all formats. Define each of
+  the six operations and its invariants. insert: places a new block relative to a
+  target NodeId and assigns a fresh NodeId to the inserted block. delete: removes
+  a block and its subtree, preserving format validity; no dangling references remain.
+  replace: substitutes content of a block while preserving its NodeId. move: relocates
+  a block atomically, preserving the block's NodeId. edit-attributes: changes node
+  metadata without changing content or position. edit-content: changes leaf-block
+  text only; rejects non-leaf targets with an input error. Establish that every target
+  is identified by NodeId, never by line number or byte offset. Establish that the
+  six operations are available for all five formats without format-specific variations
+  at the operation level."
+concepts:
+- C-015
+- C-002
+- C-012
+- C-009
+inputs:
+- name: NodeId entity definition
+  type: domain entity definition (C-002)
+  description: The identifier format used to address every edit operation 
+    target.
+- name: EditSession entity definition
+  type: domain entity definition (C-012)
+  description: The owning context; edit operations execute inside an active 
+    EditSession and each produces one SessionRepo commit.
+outputs:
+- name: EditOperation entity definition
+  type: domain entity definition
+  description: Uniform set of six operations (insert, delete, replace, move, 
+    edit-attributes, edit-content) addressed by NodeId; available for all 
+    formats; no line-number or byte-offset addressing.
+- name: Per-operation invariants
+  type: domain constraint definition
+  description: insert assigns fresh NodeId; delete leaves no dangling 
+    references; replace preserves NodeId; move preserves NodeId; edit-content 
+    rejects non-leaf targets.
+atomic_steps: []
+status: draft

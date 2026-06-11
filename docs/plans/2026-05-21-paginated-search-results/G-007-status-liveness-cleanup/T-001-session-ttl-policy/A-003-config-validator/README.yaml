@@ -1,0 +1,49 @@
+step_id: A-003
+parent_tactical_step: T-001
+name: Config validator search_session section module
+target_file: ai_editor/core/config_validator/section_search_session.py
+operation: create_file
+priority: 4
+depends_on:
+  - A-001
+concepts:
+  - C-007
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/config_validator/section_search_session.py
+
+  MRS (C-007 SessionTTLPolicy): validator rejects missing, invalid, non-integer, zero, negative,
+  or out-of-range ttl_seconds and max_block_size_bytes under ai_editor.search_session.
+
+  Precondition: ai_editor/core/search_session/policy.py exists with load_session_ttl_policy,
+  validate_session_ttl_policy, and pinned TTL_SECONDS_MIN/MAX and MAX_BLOCK_SIZE_BYTES_MIN/MAX bounds.
+
+  Imports:
+  - from typing import Any
+  - from ai_editor.core.config_validator.result import ValidationResult
+  - from ai_editor.core.search_session.policy import (
+        load_session_ttl_policy,
+        validate_session_ttl_policy,
+    )
+
+  Implement:
+  - def validate_search_session_section_impl(
+        config_data: dict[str, Any],
+        validation_results: list[ValidationResult],
+    ) -> None
+    When ai_editor.search_session is absent, append info-level ValidationResult suggesting defaults apply.
+    When present, call load_session_ttl_policy(config_data) then validate_session_ttl_policy(policy).
+    On ValueError, append ValidationResult level error with section="ai_editor", key="search_session",
+    message from the ValueError (covers bool, non-int, zero, negative, and out-of-range via policy bounds).
+
+  Do not modify section_ai_editor.py (551 lines — outside atomic step scope).
+
+  Under 120 lines. Author header.
+
+verification:
+  type: import
+  target: ai_editor.core.config_validator.section_search_session
+  expected: >
+    validate_search_session_section_impl importable; rejects bool ttl_seconds, zero TTL,
+    and out-of-range max_block_size_bytes via policy validation bounds.
+status: ready_for_review

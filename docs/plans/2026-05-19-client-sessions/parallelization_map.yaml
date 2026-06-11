@@ -1,0 +1,252 @@
+meta:
+  author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  plan: 2026-05-19-client-sessions
+  title: Parallelization Map
+legend:
+  wave: all items within a wave can run concurrently
+  depends: must wait for all listed IDs to finish
+  serial: items within the group must run in listed order (same target file 
+    constraint)
+global_step_waves:
+- wave: 1
+  steps:
+  - G-001
+  note: Foundation. No dependencies. Must complete before G-002, G-003, G-004.
+- wave: 2
+  steps:
+  - G-002
+  - G-004
+  depends:
+  - G-001
+  note: G-002 (SecurityPolicy config) and G-004 (CLI Extensions) depend only on 
+    G-001 and share no target files. Run in parallel.
+- wave: 3
+  steps:
+  - G-003
+  depends:
+  - G-001
+  - G-002
+  note: G-003 (MCP Commands) requires G-001 (SessionService) and G-002 (config 
+    models + policy evaluator). G-004 may still be running — no conflict.
+tactical_step_waves:
+- group: G-001
+  wave: 1
+  steps:
+  - G-001/T-001
+  note: DB schema and migration. No dependencies within G-001.
+- group: G-001
+  wave: 2
+  steps:
+  - G-001/T-002
+  depends:
+  - G-001/T-001
+  note: SessionService depends on schema produced by T-001.
+- group: G-002
+  wave: 1
+  steps:
+  - G-002/T-001
+  - G-002/T-002
+  depends:
+  - G-001
+  note: T-001 (SecurityPolicy config models in config_server.py) and T-002 
+    (generate_config defaults in config.py) touch different files. Run in 
+    parallel.
+- group: G-003
+  wave: 1
+  steps:
+  - G-003/T-001
+  - G-003/T-002
+  depends:
+  - G-001
+  - G-002
+  note: T-001 (lifecycle commands) and T-002 (file lock commands) create 
+    separate command files. They share hooks_register_part2.py and hooks.py — 
+    T-001 writes first, T-002 appends after. If running truly in parallel, 
+    executor must serialize the hooks writes.
+- group: G-003
+  wave: 2
+  steps:
+  - G-003/T-003
+  depends:
+  - G-003/T-001
+  - G-003/T-002
+  note: Policy enforcement guard integrates into command boundaries from T-001 
+    and T-002. Must follow both.
+- group: G-004
+  wave: 1
+  steps:
+  - G-004/T-001
+  depends:
+  - G-001
+  note: CLI subcommands depend only on SessionService (G-001). Independent of 
+    G-002 and G-003.
+atomic_step_waves:
+- group: G-001/T-001
+  constraint: serial
+  reason: A-001 creates client_sessions.py; A-002 modifies a different file but 
+    imports from A-001 — must run after.
+  sequence:
+  - step: G-001/T-001/A-001
+    target_file: ai_editor/core/client_sessions.py
+    op: create_file
+  - step: G-001/T-001/A-002
+    target_file: 
+      ai_editor/core/database_driver_pkg/drivers/sqlite_migrations.py
+    op: modify_file
+    depends:
+    - G-001/T-001/A-001
+- group: G-001/T-002
+  constraint: serial
+  reason: All three AS modify the same file (client_sessions.py) in append 
+    order.
+  sequence:
+  - step: G-001/T-002/A-001
+    target_file: ai_editor/core/client_sessions.py
+    op: modify_file
+    depends:
+    - G-001/T-001/A-001
+  - step: G-001/T-002/A-002
+    target_file: ai_editor/core/client_sessions.py
+    op: modify_file
+    depends:
+    - G-001/T-002/A-001
+  - step: G-001/T-002/A-003
+    target_file: ai_editor/core/client_sessions.py
+    op: modify_file
+    depends:
+    - G-001/T-002/A-002
+- group: G-002/T-001
+  waves:
+  - wave: 1
+    steps:
+    - step: G-002/T-001/A-001
+      target_file: ai_editor/core/config_server.py
+      op: modify_file
+  - wave: 2
+    steps:
+    - step: G-002/T-001/A-002
+      target_file: ai_editor/core/security_policy.py
+      op: create_file
+      depends:
+      - G-002/T-001/A-001
+      note: Different file — could be parallel with A-001, but ordered after for
+        conceptual coherence.
+- group: G-002/T-002
+  constraint: single_step
+  steps:
+  - step: G-002/T-002/A-001
+    target_file: ai_editor/core/config.py
+    op: modify_file
+- group: G-003/T-001
+  waves:
+  - wave: 1
+    steps:
+    - step: G-003/T-001/A-001
+      target_file: ai_editor/commands/sessions/__init__.py
+      op: create_file
+      note: Package init. No dependencies.
+  - wave: 2
+    steps:
+    - step: G-003/T-001/A-002
+      target_file: ai_editor/commands/sessions/session_create_command.py
+      op: create_file
+      depends:
+      - G-003/T-001/A-001
+    - step: G-003/T-001/A-003
+      target_file: ai_editor/commands/sessions/session_delete_command.py
+      op: create_file
+      depends:
+      - G-003/T-001/A-001
+    - step: G-003/T-001/A-004
+      target_file: ai_editor/commands/sessions/session_list_command.py
+      op: create_file
+      depends:
+      - G-003/T-001/A-001
+    note: A-002, A-003, A-004 create separate files — fully parallel.
+  - wave: 3
+    steps:
+    - step: G-003/T-001/A-005
+      target_file: ai_editor/hooks_register_part2.py
+      op: modify_file
+      depends:
+      - G-003/T-001/A-002
+      - G-003/T-001/A-003
+      - G-003/T-001/A-004
+    - step: G-003/T-001/A-006
+      target_file: ai_editor/hooks.py
+      op: modify_file
+      depends:
+      - G-003/T-001/A-005
+      note: Different file from A-005 — can parallelize with A-005; ordered 
+        after for consistency.
+- group: G-003/T-002
+  waves:
+  - wave: 1
+    steps:
+    - step: G-003/T-002/A-001
+      target_file: ai_editor/commands/sessions/session_open_file_command.py
+      op: create_file
+    - step: G-003/T-002/A-002
+      target_file: ai_editor/commands/sessions/session_close_file_command.py
+      op: create_file
+    - step: G-003/T-002/A-003
+      target_file: 
+        ai_editor/commands/sessions/session_list_file_locks_command.py
+      op: create_file
+    note: Three separate files — fully parallel.
+  - wave: 2
+    steps:
+    - step: G-003/T-002/A-004
+      target_file: ai_editor/hooks_register_part2.py
+      op: modify_file
+      depends:
+      - G-003/T-002/A-001
+      - G-003/T-002/A-002
+      - G-003/T-002/A-003
+      note: Must run AFTER G-003/T-001/A-005 (same file, append order).
+    - step: G-003/T-002/A-005
+      target_file: ai_editor/hooks.py
+      op: modify_file
+      depends:
+      - G-003/T-002/A-004
+      note: Must run AFTER G-003/T-001/A-006 (same file, append order).
+- group: G-003/T-003
+  constraint: single_step
+  steps:
+  - step: G-003/T-003/A-001
+    target_file: ai_editor/core/security_policy_guard.py
+    op: create_file
+- group: G-004/T-001
+  constraint: single_step
+  steps:
+  - step: G-004/T-001/A-001
+    target_file: ai_editor/cli/server_manager_cli.py
+    op: modify_file
+shared_file_write_order:
+  ai_editor/core/client_sessions.py:
+  - G-001/T-001/A-001
+  - G-001/T-002/A-001
+  - G-001/T-002/A-002
+  - G-001/T-002/A-003
+  ai_editor/hooks_register_part2.py:
+  - G-003/T-001/A-005
+  - G-003/T-002/A-004
+  ai_editor/hooks.py:
+  - G-003/T-001/A-006
+  - G-003/T-002/A-005
+critical_path:
+- G-001/T-001/A-001
+- G-001/T-001/A-002
+- G-001/T-002/A-001
+- G-001/T-002/A-002
+- G-001/T-002/A-003
+- G-002/T-001/A-001
+- G-002/T-001/A-002
+- G-003/T-001/A-001
+- G-003/T-001/A-002
+- G-003/T-001/A-005
+- G-003/T-001/A-006
+- G-003/T-002/A-004
+- G-003/T-002/A-005
+- G-003/T-003/A-001

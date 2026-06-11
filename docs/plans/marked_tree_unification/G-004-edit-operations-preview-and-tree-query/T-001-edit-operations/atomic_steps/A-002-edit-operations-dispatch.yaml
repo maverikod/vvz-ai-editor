@@ -1,0 +1,171 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Create uniform EditOperation dispatch layer
+target_file: ai_editor/tree/edit_operations.py
+operation: create_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-015
+- C-008
+- C-007
+- C-002
+- C-012
+- C-025
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-015, C-008, C-007, C-002, C-012, C-025)
+
+  Create `ai_editor/tree/edit_operations.py`.
+  Operation: create_file.
+
+  Uniform EditOperation (C-015) dispatch: resolve FormatHandler via HandlerRegistry,
+  enforce tree-validity edit gate ({h008}), validate operation kind and integer short_id
+  arguments, dispatch to handler op_* methods. External API uses (file_path, short_id int)
+  only; NodeIdMap.resolve is never called here (caller's internal concern).
+
+  ## MRS excerpt
+
+  C-015: six ops addressed by short_id when tree valid; plain-text when invalid (caller path).
+  C-002: unrecognised short_id → input error.
+  C-012: tree-validity gate — valid → short_id ops only; invalid → short_id ops forbidden.
+
+  ## Inlined dependency — FormatHandler op_* signatures (post abstract-method extension)
+
+  ```python
+  def op_insert(self, marked_text, anchor_short_id: NodeId, position: str, new_content: str, next_free: int) -> str
+  def op_delete(self, marked_text, short_id: NodeId) -> str
+  def op_replace(self, marked_text, short_id: NodeId, new_content: str) -> str
+  def op_move(self, marked_text, short_id: NodeId, anchor_short_id: NodeId, position: str) -> str
+  def op_edit_attributes(self, marked_text, short_id: NodeId, attributes: Dict[str, Any]) -> str
+  def op_edit_content(self, marked_text, short_id: NodeId, new_content: str) -> str
+  ```
+
+  NodeId = int NewType from ai_editor.tree.contracts.
+
+  HandlerRegistry.resolve(source_path: Path) -> FormatHandler; raises HandlerNotFoundError.
+
+  Optional handler hook: if hasattr(handler, "set_tree_validity"): call before op_*.
+
+  ## Module docstring (exact)
+
+  """
+  Uniform EditOperation dispatch layer (C-015).
+
+  Resolves FormatHandler via HandlerRegistry, enforces tree-validity edit gate,
+  validates integer short_id arguments, dispatches to handler op_* methods.
+  External addressing is short_id int only ({n003}).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (exact)
+
+  - from __future__ import annotations
+  - from dataclasses import dataclass, field
+  - from enum import Enum
+  - from pathlib import Path
+  - from typing import Any, Dict, Optional
+  - from ai_editor.tree.contracts import NodeId, validate_short_id
+  - from ai_editor.tree.format_handler import FormatHandler
+  - from ai_editor.tree.handler_registry import HandlerRegistry
+
+  ## Constants
+
+  - VALID_POSITIONS = ("before", "after", "first_child", "last_child")
+
+  ## Classes and functions
+
+  ### EditOperationKind(str, Enum)
+  INSERT, DELETE, REPLACE, MOVE, EDIT_ATTRIBUTES, EDIT_CONTENT
+
+  ### EditOperationError(ValueError)
+  Input errors: invalid gate, unknown kind, missing args, invalid position, invalid short_id int.
+
+  ### @dataclass EditOperation
+  Fields:
+    kind: EditOperationKind
+    short_id: Optional[NodeId] = None          # primary target (not insert)
+    anchor_short_id: Optional[NodeId] = None     # insert/move anchor
+    position: Optional[str] = None
+    new_content: Optional[str] = None
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    next_free: Optional[int] = None              # required for insert
+
+  ### _require(value, name, kind) -> Any
+  Raise EditOperationError if None.
+
+  ### _check_position(position, kind) -> str
+  Require membership in VALID_POSITIONS.
+
+  ### _normalize_short_id(value: int, name: str) -> NodeId
+  Algorithm:
+  1. Call validate_short_id(value) from contracts.
+  2. On ValueError wrap as EditOperationError(f"{name} must be positive int short_id, got {value!r}").
+
+  ### apply_edit_operation(*, registry, source_path, marked_text, operation, tree_is_valid, next_free=None) -> tuple[str, int]
+  Returns (new_marked_text, updated_next_free).
+
+  Algorithm:
+  1. If not tree_is_valid: raise EditOperationError("tree is invalid (text mode); short_id edit operations forbidden until re-validation").
+  2. handler = registry.resolve(source_path).
+  3. If hasattr(handler, "set_tree_validity"): handler.set_tree_validity(True).
+  4. kind = operation.kind
+  5. INSERT:
+     a. anchor = _normalize_short_id(_require(operation.anchor_short_id, "anchor_short_id", kind), "anchor_short_id")
+     b. nf = _require(operation.next_free if operation.next_free is not None else next_free, "next_free", kind)
+     c. if nf < 1: raise EditOperationError("next_free must be >= 1")
+     d. pos = _check_position(operation.position, kind)
+     e. content = _require(operation.new_content, "new_content", kind)
+     f. result = handler.op_insert(marked_text, anchor, pos, content, nf)
+     g. return result, nf + 1
+  6. DELETE: normalize short_id; return handler.op_delete(...), next_free unchanged (pass through operation.next_free or next_free arg or 1)
+  7. REPLACE: normalize short_id + new_content
+  8. MOVE: normalize short_id + anchor_short_id + position
+  9. EDIT_ATTRIBUTES: normalize short_id; attributes default {}
+  10. EDIT_CONTENT: normalize short_id + new_content
+  11. Unknown kind → EditOperationError
+
+  For steps 6-10 when next_free not supplied for return tuple: use `next_free if next_free is not None else (operation.next_free or 1)`.
+
+  ## Edge cases
+
+  - short_id 0 → EditOperationError via validate_short_id
+  - bool passed as short_id → EditOperationError (validate_short_id rejects bool)
+  - insert without next_free → EditOperationError
+  - tree_is_valid False → always EditOperationError before handler call
+
+  ## Forbidden
+
+  - NO UUID parameters or return values at this layer
+  - NO line number / byte offset parameters
+  - NO NodeIdMap import or resolve calls
+  - NO non-standard cross-TS ordering fields, G-007, {l*}/{m*}
+  - NO plain-text edit implementation (EditSession path)
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/edit_operations.py
+  flake8 ai_editor/tree/edit_operations.py
+  mypy ai_editor/tree/edit_operations.py
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/edit_operations.py
+  expected: >
+    Defines EditOperationKind, EditOperationError, EditOperation dataclass with integer
+    short_id fields, apply_edit_operation returning (str, int) with next_free increment
+    on insert; rejects all ops when tree_is_valid is False; uses validate_short_id;
+    no UUID or line-number API; estimated ~240 lines (≤400).

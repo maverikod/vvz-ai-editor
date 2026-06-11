@@ -1,0 +1,29 @@
+step_id: T-002
+parent_global_step: G-003
+name: PreviewReference contract
+description: >
+  Creates the PreviewReference contract for search result nodes backed by
+  TreeRepresentation. Requires file path plus node identifier or selector
+  sufficient for universal_file_preview inspection, and draft session identifier
+  for draft-session results. Forbids exposing unstable node identifiers as
+  preview-compatible. Establishes universal_file_preview as the canonical
+  presentation mechanism so search results do not invent a separate display model.
+concepts:
+  - C-017
+inputs:
+  - name: tree_representation
+    type: TreeRepresentation
+    description: Validated tree containing the result node with stable identifiers.
+  - name: matched_node
+    type: TreeNode
+    description: Structural node selected as a search result.
+  - name: draft_session_context
+    type: DraftSessionContext
+    description: Optional draft session binding when the result originates from draft content.
+outputs:
+  - name: preview_reference
+    type: PreviewReference
+    description: Preview-compatible reference safe for client inspection via universal_file_preview.
+atomic_steps:
+- A-001
+status: frozen

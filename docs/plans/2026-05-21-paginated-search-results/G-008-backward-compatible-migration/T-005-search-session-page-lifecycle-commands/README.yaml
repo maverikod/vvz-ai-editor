@@ -1,0 +1,54 @@
+step_id: T-005
+parent_global_step: G-008
+name: SearchSessionPageLifecycleCommands
+description: "Creates MCP commands search_get_page, search_get_status, search_cancel,
+  and search_close\nper plan README new_commands mapped to G-008 contract (job_id
+  parameter on all lifecycle\ncommands; block_position on search_get_page). Commands
+  use the job_id and block_position\nsession model per plan README.md G-008 contract
+  decision (job_id, block_position,\nindex_url — not README opaque cursor). search_get_page
+  reads published SearchResultBlock\nrows by block position; search_get_status exposes
+  SearchStatus without result rows over\nMCP (distinct from HTTPResultAccess); search_cancel
+  transitions running sessions to\ncancelled via snapshot_from_manifest and apply_cancellation,
+  invokes the queue-cancel\nhook when manifest carries queue_job_id, and stops queued
+  work when possible;\nsearch_close releases buffer scratch files, sets manifest closed,
+  and invalidates\nblock_position continuation while blocks remain until cleaner TTL.\n"
+concepts:
+- C-001
+- C-003
+- C-004
+- C-005
+- C-007
+- C-011
+- C-020
+- C-027
+inputs:
+- name: search_session
+  type: SearchSession
+  description: Target session identified by job_id parameter.
+- name: search_result_index
+  type: SearchResultIndex
+  description: Directory index listing published block positions and 
+    completeness.
+- name: search_status_snapshot
+  type: SearchStatusSnapshot
+  description: Manifest-derived status for MCP status reads.
+outputs:
+- name: search_get_page_command
+  type: SearchGetPageCommand
+  description: MCP command fetching a result block by job_id and block_position.
+- name: search_get_status_command
+  type: SearchGetStatusCommand
+  description: MCP command returning status and progress without result rows.
+- name: search_cancel_command
+  type: SearchCancelCommand
+  description: MCP command cancelling a running search session.
+- name: search_close_command
+  type: SearchCloseCommand
+  description: MCP command closing a session and releasing buffers.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+status: ready_for_review

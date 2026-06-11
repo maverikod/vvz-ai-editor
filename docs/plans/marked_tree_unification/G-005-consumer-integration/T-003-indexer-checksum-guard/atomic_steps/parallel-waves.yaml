@@ -1,0 +1,14 @@
+global_step: G-005
+tactical_step: T-003
+name: Indexer Checksum-Based Skip Guard
+waves:
+  - wave: 1
+    steps:
+      - A-001
+    note: Create update_checksum_guard.py (extract from update.py).
+  - wave: 2
+    steps:
+      - A-002
+    requires:
+      - A-001
+    note: update.py delegates skip guard; target ≤400 lines.

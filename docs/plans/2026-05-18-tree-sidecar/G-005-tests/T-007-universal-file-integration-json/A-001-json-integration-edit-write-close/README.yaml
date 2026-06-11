@@ -1,0 +1,93 @@
+step_id: A-001
+parent_tactical_step: T-007
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: JSON universal integration edit/write matrix
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_universal_json_edit_write_close.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-007-universal-file-integration-json/README.yaml
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-006
+- C-007
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_universal_json_edit_write_close.py
+  expected: Pytest module exit 0 (.venv)
+
+prompt: |-
+  EXECUTOR coder_auto CREATE tests/test_tree_temp_universal_json_edit_write_close.py capped 400 LOC. Docstring Author Vasiliy Zdanovskiy vasilyvz@gmail.com — JSON tree-temp integration matrix for universal_file_open/edit/write/close.
+
+  HARD TREE-TEMP OPERATION BINDING excerpt (frozen from json_tree `_op_*` semantics):
+    - REPLACE uses `json_pointer` per `_resolve_pointer` rules (RFC6901-like root `""`).
+    - DELETE similarly uses `json_pointer`.
+    - INSERT requires `parent_json_pointer` referencing container; for arrays append omitted `index`/sibling selectors → append path per `_op_insert` lines handling `elif idx is None`.
+
+  IMPORTS:
+    from __future__ import annotations
+
+    import asyncio
+    import hashlib
+    import json
+    from pathlib import Path
+    from unittest.mock import MagicMock, patch
+
+    import pytest
+
+    from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+    from ai_editor.commands.base_mcp_command import BaseMCPCommand
+    from ai_editor.commands.universal_file_edit.close_command import UniversalFileCloseCommand
+    from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
+    from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+    from ai_editor.commands.universal_file_edit.write_command import UniversalFileWriteCommand
+
+  CONST `_PROJECT_UUID = "cafebabe-cafe-4caf-babe-cafebabecafe"`.
+
+  MOCK DB FACTORY `_db_for(tmp: Path)` mimics prior atomic step.
+
+  CLEANUP CLEAR json_tree registry each test setup.
+
+  ASYNC STYLE `@pytest.mark.asyncio` definitions.
+
+  WRITE DUAL PHASE: patch `write_command.os.getpid` fixed 9100 both writes expecting preview then committed phases.
+
+  BASE DOCUMENT `records/items.json`:
+    Relative path `'records/items.json'`. Initial text:
+      "{\"items\":[{\"id\":1,\"active\":false}],\"meta\":{\"tag\":\"old\"}}\n"
+
+  TESTS:
+
+  test_replace_via_json_pointer_updates_draft_then_commits
+     Flow: patch db, await open capturing session; await edit replace `/items/0/active` True; dual write commits; filesystem contains `"active\": true`; await close Success.
+
+  test_delete_scalar_property_meta_tag
+      Delete `{ "type":"delete","json_pointer":"/meta/tag" }` verifying key absent post commit JSON load.
+
+  test_insert_array_element_appends_via_append_semantics
+      Operation `{ "type":"insert","parent_json_pointer":"/items","value":{"id":2,"active":true} }` guaranteeing array length 2 afterwards.
+
+  test_object_key_insert_relative_after_key_orders
+       Starting nested structure ensure property order using after_key similar prior atomic readme.
+
+  test_batch_abort_on_second_invalid_operation
+       operations list GOOD replace then BAD delete unknown pointer verifying ErrorResult classification and untouched source hash comparing sha256.
+
+
+  CLOSE hooking release_session.
+
+  SIDE ASSERTION: After successful commit, sidecar filesystem path MUST be `(tmp_path / '.trees' / 'records' / 'items.json.tree').resolve()`; file exists; JSON includes `source_sha256` lowercase hex length 64 and `root` list.
+  QUALITY GATE black flake8 pytest q mypy.

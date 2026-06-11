@@ -1,0 +1,31 @@
+step_id: A-001
+parent_tactical_step: T-704
+name: Register YAML handler on dispatcher; navigation and smoke coverage
+target_file: ai_editor/commands/universal_file_preview/dispatcher.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-002
+- C-020
+status: done
+prompt: |
+  Retrospective (implemented):
+
+  YamlFileHandler is wired on HandlerDispatcher for `.yaml` and `.yml`
+  (`ai_editor/commands/universal_file_preview/dispatcher.py`).
+  Universal preview flow opens the handler and resolves optional `node_ref` via the
+  shared navigation path (`navigation.py`, `UniversalFilePreviewCommand`).
+
+  Behavior is covered by `tests/test_universal_file_preview_smoke.py` (YAML mapping/scalar/
+  sequence open, pointer resolution, invalid YAML, UNKNOWN_NODE_REF, optional YAML
+  session resolution).
+implementation_note: >
+  No separate YAML-only preview MCP command; integration is through
+  `universal_file_preview` plus existing handler tests in the smoke module.
+verification:
+  type: pytest
+  target: tests/test_universal_file_preview_smoke.py
+  expected: >
+    Tests touching YamlFileHandler and dispatcher registration pass; YAML cases
+    exercise open_root and resolve_node_ref within the universal preview stack.

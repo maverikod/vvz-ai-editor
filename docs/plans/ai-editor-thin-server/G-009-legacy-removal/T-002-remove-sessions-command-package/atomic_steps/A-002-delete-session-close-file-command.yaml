@@ -1,0 +1,18 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Удалить session_close_file_command.py
+target_file: ai_editor/commands/sessions/session_close_file_command.py
+operation: delete_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-020
+prompt: 'Delete file `ai_editor/commands/sessions/session_close_file_command.py` only. Do not modify other files in this step.
+
+  '
+verification:
+  type: static_analysis
+  target: ai_editor/commands/sessions/session_close_file_command.py
+  expected: File ai_editor/commands/sessions/session_close_file_command.py absent from repository.
+status: draft

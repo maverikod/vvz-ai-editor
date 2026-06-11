@@ -1,0 +1,37 @@
+step_id: G-004
+name: Universal file command integration
+status: done
+description: 'Wire the sidecar-backed TreeNode tree into the five universal file commands.
+  universal_file_open: for tree-temp (JSON/YAML), invoke SHASyncPolicy, register EditSession,
+  return session_id. node_ref values are stable_id from the sidecar, persistent across
+  sessions and server restarts. universal_file_edit: replace updates value/children
+  in-memory; insert adds new TreeNode with fresh UUID; delete removes node. Batch
+  validation before any mutation. universal_file_write: first call produces diff preview;
+  second call commits source file and sidecar. universal_file_close: delegates to
+  EditSession close. universal_file_preview: PreviewNavigation (C-009)—container stable_id
+  returns that node''s children; scalar stable_id uses the nearest object/array ancestor as
+  effective focus (or root_view if none); omit node_ref for root_view.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-007
+- C-009
+relations:
+- C-007 uses C-002
+- C-007 owns C-001
+- C-009 uses C-002
+- C-009 uses C-001
+source_ranges:
+- end: 134
+  start: 124
+- end: 187
+  start: 147
+depends_on:
+- G-003
+tactical_steps:
+- 'T-001: universal-file-open-tree-temp-sidecar'
+- 'T-002: universal-file-edit'
+- 'T-003: universal-file-write'
+- 'T-004: universal-file-close'
+- 'T-005: universal-file-preview-drill-down-stable-id'

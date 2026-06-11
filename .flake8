@@ -1,0 +1,8 @@
+[flake8]
+max-line-length = 88
+extend-ignore = E203,W503,E501,W291,W293,F401,W391,F541,F841
+exclude = .git,__pycache__,build,dist,.venv,venv,env,ENV,env.bak,venv.bak,.eggs
+per-file-ignores =
+    scripts/*.py: E402
+    tests/test_invalid_imports.py: E402
+    tests/test_main_process_integration.py: E402

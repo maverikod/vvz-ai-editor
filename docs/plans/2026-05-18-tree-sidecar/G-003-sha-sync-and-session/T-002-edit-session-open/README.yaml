@@ -1,0 +1,53 @@
+step_id: T-002
+parent_global_step: G-003
+name: EditSession open — load or build tree via policy
+description: 'Implement the universal_file_open acquisition path for tree-temp formats:
+  compute current_source_sha256 from disk; load or parse the Sidecar (C-002) when
+  the sync decision allows; invoke SourceParser (C-005) to build a fresh TreeNode
+  tree when the decision requires rebuild or first sidecar creation; when sha_match,
+  deserialize persisted root nodes without reassigning stable_id values. Register
+  a new EditSession (C-007) with session_id, in-memory tree copy, source_sha256 at
+  load time, dirty=false, and format_group tree-temp. Apply each SHASyncPolicy branch:
+  no sidecar — parse source, assign new stable_ids, stage initial sidecar write after
+  future commit; SHA matches — load sidecar JSON root as authoritative tree; SHA
+  mismatch without active session — parse source, assign new stable_ids, stage sidecar
+  overwrite after future commit; SHA mismatch with active session — load sidecar as-is,
+  do not parse source for replacement. This step does not define edit mutations, serializer
+  bytes production, or close teardown.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-005
+- C-007
+inputs:
+- name: sync_decision
+  type: SHASyncPolicy outcome (C-003)
+  description: Deterministic branch produced from sidecar presence, recorded and current
+    SHA-256 values, and active-session predicate; selects how the tree is acquired.
+- name: source_file_bytes
+  type: octets
+  description: Current on-disk source content for the tree-temp file; used when parsing
+    or when computing SHA-256.
+- name: sidecar_document
+  type: Sidecar JSON payload or null
+  description: Parsed Sidecar (C-002) when present and loaded; null when no_sidecar
+    or when read skipped per session-priority mismatch rule.
+- name: format_kind
+  type: enum (json | yaml)
+  description: Selects the SourceParser and comment rules for the target file.
+outputs:
+- name: edit_session_open
+  type: EditSession (C-007)
+  description: Registered session with session_id, tree root list (TreeNode), source_sha256
+    reflecting disk at open, dirty=false, format_group tree-temp.
+- name: sidecar_write_intent
+  type: enum (none | create | replace)
+  description: 'Staging signal for a later write/commit step: create when first sidecar,
+    replace when rebuild from source, none when loading existing sidecar without pending
+    structural rebuild at open.'
+atomic_steps:
+  - A-001
+  - A-002
+  - A-003
+status: done

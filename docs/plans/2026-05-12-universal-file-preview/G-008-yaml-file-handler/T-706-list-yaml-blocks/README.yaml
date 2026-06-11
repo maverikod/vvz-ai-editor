@@ -1,0 +1,26 @@
+step_id: T-706
+parent_global_step: G-008
+name: MCP command list_yaml_blocks
+status: done
+implementation_note: >
+  Command implementation `ai_editor/commands/list_yaml_blocks_command.py`
+  (registration via hooks); enumerates blocks with pointer-aligned stable ids, consistent
+  with yaml handler / `yaml_tree`. Tester assumed PASS for plan close-out.
+concepts:
+- C-009
+- C-020
+description: |
+  Add an optional MCP command `list_yaml_blocks` for project-relative `.yaml` and
+  `.yml` files, parallel to `list_json_blocks` for `.json`. Each listed row should
+  expose an opaque `node_id` and the corresponding yaml/JSON Pointer path
+  (`yaml_pointer` or equivalent field name aligned with project conventions) so
+  agents can discover stable references before calling `universal_file_preview`.
+
+  Scope stays read-oriented: parsing via the same safe-load semantics as the YAML
+  file handler unless the tactical task narrows exceptions. Registration, schema,
+  and metadata follow the project command-metadata standard.
+
+  Depends on YAML tree infra (T-705) or a minimal adapter that can walk the parsed
+  document and assign ids consistently with pointer paths.
+atomic_steps:
+- A-001

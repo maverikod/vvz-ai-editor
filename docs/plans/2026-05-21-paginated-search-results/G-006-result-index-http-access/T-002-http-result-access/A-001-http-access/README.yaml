@@ -1,0 +1,159 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: HTTP search job result routes
+target_file: ai_editor/core/search_session/http_access.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-005
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/http_access.py
+
+  MRS (C-005 HTTPResultAccess): non-streaming read of index and blocks by job_id; block-not-ready;
+  refresh last_access on successful reads.
+
+  Imports:
+  - from __future__ import annotations
+  - import json
+  - import time
+  - from dataclasses import dataclass
+  - from pathlib import Path
+  - from typing import Any
+  - from ai_editor.core.search_session.directory import (
+        SearchSessionDirectoryLayout,
+        resolve_search_sessions_root,
+    )
+  - from ai_editor.core.search_session.manifest import read_manifest
+  - from ai_editor.core.search_session.result_index import (
+        COMPLETENESS_FINISHED,
+        COMPLETENESS_RUNNING,
+        read_index,
+    )
+  - from ai_editor.core.search_session.service_metadata import (
+        initialize_service_metadata,
+        refresh_last_access,
+    )
+  - from ai_editor.core.search_session.status import snapshot_from_manifest
+
+  snapshot_from_manifest excerpt (from ai_editor/core/search_session/status.py — read-only contract):
+  ```python
+  @dataclass(frozen=True)
+  class SearchStatusSnapshot:
+      status: str
+      phase: SearchPhase
+      block_not_ready: bool
+      message: Optional[str]
+
+  def snapshot_from_manifest(manifest: SearchSessionManifest) -> SearchStatusSnapshot:
+      """Build a status snapshot from persisted manifest fields."""
+  ```
+
+  Module-level error codes:
+  - BLOCK_NOT_READY = "BLOCK_NOT_READY"
+  - SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
+  - BLOCK_NOT_FOUND = "BLOCK_NOT_FOUND"
+
+  Routing fork resolution: this module exposes handler callables only. Do not register HTTP
+  routes here, do not modify main_server_presentation.py, and do not call register_search_job_routes.
+  Route registration belongs exclusively in http_routes.register_search_job_routes.
+
+  Implement handlers (framework-agnostic callables returning (status_code, payload dict)):
+
+  ```python
+  @dataclass(frozen=True)
+  class HttpAccessContext:
+      config_dir: Path
+
+
+  def resolve_session_layout(ctx: HttpAccessContext, job_id: str) -> SearchSessionDirectoryLayout:
+      root = resolve_search_sessions_root(ctx.config_dir) / job_id
+      return SearchSessionDirectoryLayout(
+          root=root,
+          manifest_path=root / "manifest.json",
+          index_path=root / "index.json",
+          service_metadata_path=root / "service_metadata.json",
+          blocks_dir=root / "blocks",
+          buffer_dir=root / "buffer",
+      )
+
+
+  def handle_get_index(ctx: HttpAccessContext, job_id: str) -> tuple[int, dict[str, Any]]:
+      layout = resolve_session_layout(ctx, job_id)
+      if not _session_exists(layout):
+          return _not_found(SESSION_NOT_FOUND, f"Search session not found: {job_id}")
+      if layout.index_path.is_file():
+          index = read_index(layout.index_path)
+          payload = {"blocks": list(index.blocks), "completeness": index.completeness}
+      else:
+          payload = {"blocks": [], "completeness": COMPLETENESS_RUNNING}
+      _refresh_access(layout)
+      return 200, payload
+
+
+  def handle_get_block(ctx: HttpAccessContext, job_id: str, position: int) -> tuple[int, dict[str, Any]]:
+      layout = resolve_session_layout(ctx, job_id)
+      if not _session_exists(layout):
+          return _not_found(SESSION_NOT_FOUND, f"Search session not found: {job_id}")
+      index = read_index(layout.index_path) if layout.index_path.is_file() else None
+      indexed_positions: set[int] = set()
+      completeness = COMPLETENESS_RUNNING
+      if index is not None:
+          indexed_positions = {
+              int(entry["position"]) for entry in index.blocks if "position" in entry
+          }
+          completeness = index.completeness
+      block_path = layout.blocks_dir / f"block_{position}.json"
+      if position not in indexed_positions:
+          if completeness == COMPLETENESS_RUNNING:
+              return _conflict(BLOCK_NOT_READY, f"Block {position} is not published yet for job {job_id}")
+          return _not_found(BLOCK_NOT_FOUND, f"Block {position} not found for job {job_id}")
+      if not block_path.is_file():
+          if completeness == COMPLETENESS_RUNNING:
+              return _conflict(BLOCK_NOT_READY, f"Block {position} is not published yet for job {job_id}")
+          return _not_found(BLOCK_NOT_FOUND, f"Block {position} not found for job {job_id}")
+      with open(block_path, "r", encoding="utf-8") as handle:
+          payload = json.load(handle)
+      _refresh_access(layout)
+      return (200, payload) if isinstance(payload, dict) else (200, {"block": payload})
+
+
+  def handle_get_status(ctx: HttpAccessContext, job_id: str) -> tuple[int, dict[str, Any]]:
+      layout = resolve_session_layout(ctx, job_id)
+      if not _session_exists(layout):
+          return _not_found(SESSION_NOT_FOUND, f"Search session not found: {job_id}")
+      if not layout.manifest_path.is_file():
+          return _not_found(SESSION_NOT_FOUND, f"Search manifest not found: {job_id}")
+      manifest = read_manifest(layout)
+      snapshot = snapshot_from_manifest(manifest)
+      _refresh_access(layout)
+      return 200, {
+          "search_id": manifest.search_id,
+          "status": snapshot.status,
+          "phase": snapshot.phase.value,
+          "block_not_ready": snapshot.block_not_ready,
+          "message": snapshot.message,
+          "metrics": dict(manifest.metrics),
+          "block_ready_count": manifest.block_ready_count,
+      }
+  ```
+
+  Private helpers:
+  - _session_exists(layout) -> bool  (layout.root.is_dir())
+  - _refresh_access(layout) -> None  (refresh_last_access when service_metadata exists, else initialize_service_metadata; use time.time())
+  - _not_found(code, message) -> tuple[int, dict]  (404 with {"error": {"code", "message"}})
+  - _conflict(code, message) -> tuple[int, dict]  (409 with same error envelope)
+
+  Under 280 lines. Author header.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_http_access.py
+  expected: >
+    Index read refreshes service_metadata last_access_at.
+    Missing session returns 404 SESSION_NOT_FOUND.
+    Block request before index lists position returns 409 BLOCK_NOT_READY while completeness is running.
+    Block request after search finished with missing position returns 404 BLOCK_NOT_FOUND.
+    Status handler returns snapshot fields and refreshes last_access.
+status: ready_for_review

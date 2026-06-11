@@ -1,0 +1,135 @@
+step_id: A-001
+parent_tactical_step: T-001
+parent_global_step_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/README.yaml
+parent_tactical_task_document: docs/plans/2026-05-18-tree-sidecar/G-003-sha-sync-and-session/T-001-sha-sync-policy-resolver/README.yaml
+machine_spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+source_spec: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+name: SHASyncPolicy resolver module
+target_file: ai_editor/commands/universal_file_edit/sha_sync_policy.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-003
+status: done
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/sha_sync_policy.py
+  expected: >-
+    black reports reformatted or unchanged; flake8 exits 0; mypy reports success;
+    pytest for this package passes when a focused test module is added in a later
+    wave or when existing universal_file_edit tests cover imports (no import errors).
+
+prompt: |
+  Executor role: coder_auto (medium tier). One new file only.
+
+  Canonical docs (do not edit): machine_spec at docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  concept C-003 SHASyncPolicy; parent TS T-001 README; global G-003 README.
+
+  target_file: ai_editor/commands/universal_file_edit/sha_sync_policy.py
+  operation: create_file
+
+  Module docstring (exact):
+    """SHA sync branch resolver for tree sidecar open workflow.
+
+    Author: Vasiliy Zdanovskiy
+    Email: vasilyvz@gmail.com
+    """
+
+  Imports (exact list):
+    from __future__ import annotations
+
+    from dataclasses import dataclass
+    from enum import Enum
+    from typing import Optional
+
+  Types and API:
+
+  1) class ShaSyncBranch(str, Enum):
+       NO_SIDECAR = "no_sidecar"
+       SHA_MATCH = "sha_match"
+       SHA_MISMATCH_NO_SESSION = "sha_mismatch_no_session"
+       SHA_MISMATCH_ACTIVE_SESSION = "sha_mismatch_active_session"
+
+  2) @dataclass(frozen=True)
+     class ShaSyncDecision:
+         branch: ShaSyncBranch
+         missing_sidecar: bool
+         sha_equal: bool
+         sha_unequal_without_active_session: bool
+         sha_unequal_with_active_session: bool
+
+  3) Function (exact signature):
+     def resolve_sha_sync_policy(
+         *,
+         sidecar_exists: bool,
+         sidecar_source_sha256: Optional[str],
+         current_source_sha256: str,
+         active_session_holds_file: bool,
+     ) -> ShaSyncDecision:
+         ...
+
+  Algorithm (must follow exactly, no extra branches):
+    1. If sidecar_exists is False:
+         return ShaSyncDecision(
+           branch=ShaSyncBranch.NO_SIDECAR,
+           missing_sidecar=True,
+           sha_equal=False,
+           sha_unequal_without_active_session=False,
+           sha_unequal_with_active_session=False,
+         )
+    2. If sidecar_exists is True but sidecar_source_sha256 is None
+       or not str(sidecar_source_sha256).strip():
+         a) If active_session_holds_file is True:
+              return SHA_MISMATCH_ACTIVE_SESSION decision (missing_sidecar=False,
+              sha_equal=False, sha_unequal_without_active_session=False,
+              sha_unequal_with_active_session=True).
+         b) Else:
+              return SHA_MISMATCH_NO_SESSION decision (missing_sidecar=False,
+              sha_equal=False, sha_unequal_without_active_session=True,
+              sha_unequal_with_active_session=False).
+    3. Normalize comparison strings: compare sidecar_source_sha256.strip().lower()
+       to current_source_sha256.strip().lower(). If equal:
+         return ShaSyncDecision(
+           branch=ShaSyncBranch.SHA_MATCH,
+           missing_sidecar=False,
+           sha_equal=True,
+           sha_unequal_without_active_session=False,
+           sha_unequal_with_active_session=False,
+         )
+    4. If hashes differ and active_session_holds_file is True:
+         return ShaSyncDecision(
+           branch=ShaSyncBranch.SHA_MISMATCH_ACTIVE_SESSION,
+           missing_sidecar=False,
+           sha_equal=False,
+           sha_unequal_without_active_session=False,
+           sha_unequal_with_active_session=True,
+         )
+    5. Otherwise (hashes differ, no active session):
+         return ShaSyncDecision(
+           branch=ShaSyncBranch.SHA_MISMATCH_NO_SESSION,
+           missing_sidecar=False,
+           sha_equal=False,
+           sha_unequal_without_active_session=True,
+           sha_unequal_with_active_session=False,
+         )
+
+  Exceptions: this module raises no exceptions for valid inputs; all parameters
+  are trusted booleans/strings from caller. No I/O, logging, or session registry.
+
+  Constants: none beyond enum values.
+
+  File size: keep total file at most 400 lines (expect under 120 lines).
+
+  Validation commands (run from repo root with .venv active):
+    black ai_editor/commands/universal_file_edit/sha_sync_policy.py
+    flake8 ai_editor/commands/universal_file_edit/sha_sync_policy.py
+    mypy ai_editor/commands/universal_file_edit/sha_sync_policy.py
+
+  Forbidden:
+    - Do not import or reference EditSession, file paths, or parsers.
+    - Do not add public symbols beyond Enum ShaSyncBranch members above, dataclass ShaSyncDecision,
+      and resolve_sha_sync_policy.
+    - Do not use Any or bare except.
+
+  Tests: if no test file exists yet, skip pytest; otherwise all tests must pass.

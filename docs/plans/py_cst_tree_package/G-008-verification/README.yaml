@@ -1,0 +1,42 @@
+# Global Step G-008 — Verification
+# Level 3 artifact (plan_standard_machine.yaml).
+# Conceptual block. Describes domain objects and operations only — no files,
+# modules, functions, or implementation classes.
+step_id: G-008
+name: Verification
+description: "Establish the automated verification harness that stands as the executable
+  evidence for the package's identity and fidelity guarantees. The harness exercises
+  the identity invariants of all four mutation operations: that insert gives fresh
+  identities to inserted nodes while every pre-existing node keeps its identity, that
+  delete leaves every surviving node's identity unchanged, that replace gives fresh
+  identities to substitutes while every other node keeps its identity, and that move
+  preserves the identity of the moved node and every descendant however deeply nested
+  while leaving outside nodes unchanged. The harness also exercises the lossless round
+  trip of persistence — that a write followed by a read reproduces structure and every
+  stable identity without alteration — and the textual-fidelity round trip — that
+  a parse, inbound convert, no mutation, outbound convert, and render reproduces the
+  original source text exactly. This step defines the verification harness and the
+  guarantees it must demonstrate over the mutation operations, the persistence round
+  trip, and the fidelity round trip. It does not define the internals of those operations,
+  the tree object, conversion, or persistence — it consumes them as already-defined
+  behaviors and asserts their guarantees.\n"
+concepts:
+- C-018
+relations:
+- C-018 uses C-011
+- C-018 uses C-012
+- C-018 uses C-013
+- C-018 uses C-014
+- C-018 uses C-010
+- C-018 uses C-015
+source_labels:
+- '{v6hd}'
+depends_on:
+- G-003
+- G-004
+- G-005
+- G-006
+tactical_steps:
+- T-001
+- T-002
+status: draft

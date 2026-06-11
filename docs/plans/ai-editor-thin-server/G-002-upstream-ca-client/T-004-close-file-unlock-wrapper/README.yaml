@@ -1,0 +1,28 @@
+step_id: T-004
+parent_global_step: G-002
+name: Обёртка close file и unlock
+description: 'Добавить в Upstream Client (C-017) вызов Close Stage (C-013) на СА: разблокировка по контракту C-023 для file_path в CA Session. Граница C-017: core-клиент выполняет RPC-оркестрацию unlock и публичную thin-обёртку; при необходимости resolve file_path→file_id делегируется sibling transfer-слою. Поддержать best-effort при Broken Session Policy (C-015).
+
+  '
+concepts:
+- C-013
+- C-015
+- C-017
+- C-023
+inputs:
+- name: ca_session_id
+  type: string
+  description: CA Session.
+- name: project_id
+  type: string
+  description: Проект.
+- name: file_path
+  type: string
+  description: Закрываемый файл.
+outputs:
+- name: unlock_success
+  type: boolean
+  description: СА подтвердил разблокировку.
+atomic_steps:
+- A-001
+status: ready_for_review

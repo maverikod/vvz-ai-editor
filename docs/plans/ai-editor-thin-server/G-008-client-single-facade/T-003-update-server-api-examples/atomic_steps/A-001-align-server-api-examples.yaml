@@ -1,0 +1,275 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: server_api и примеры клиента
+target_file: client/ai_editor_client/server_api.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-009
+- C-016
+- C-022
+prompt: |
+  CURRENT FILE CONTENT (`client/ai_editor_client/server_api.py`):
+  ```py
+  """
+  Canonical command names for the high-level client API vs the live server registry.
+
+  The generic client (:class:`CodeAnalysisAsyncClient.call`) can invoke any command
+  returned by server ``help``. Facade modules (:mod:`file_session`, :mod:`universal_file`)
+  must only reference commands listed here — and every name in
+  :data:`CLIENT_FACADE_COMMANDS` must be registered on the server.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from typing import Callable, Dict, FrozenSet, Tuple
+
+  # Removed from the public server surface — do not use in client facades or docs.
+  LEGACY_REMOVED_COMMANDS: FrozenSet[str] = frozenset(
+      {
+          "universal_file_read",
+          "universal_file_save",
+          "universal_file_replace",
+          "universal_file_delete",
+          "read_project_text_file",
+          "write_project_text_lines",
+          "create_text_file",
+          "replace_file_lines",
+      }
+  )
+
+  # CST tree MCP workflow — modules may exist in the repo but commands are not registered.
+  CST_REMOVED_COMMANDS: FrozenSet[str] = frozenset(
+      {
+          "cst_load_file",
+          "cst_save_tree",
+          "cst_modify_tree",
+          "cst_create_file",
+          "cst_find_node",
+          "cst_get_node_info",
+          "cst_get_node_by_range",
+          "cst_get_node_at_line",
+          "cst_reload_tree",
+          "cst_convert_and_save",
+          "list_cst_blocks",
+          "query_cst",
+      }
+  )
+
+  REMOVED_COMMANDS: FrozenSet[str] = LEGACY_REMOVED_COMMANDS | CST_REMOVED_COMMANDS
+
+  FILE_SESSION_COMMANDS: FrozenSet[str] = frozenset(
+      {
+          "session_create",
+          "session_delete",
+          "session_list",
+          "session_view",
+          "session_open_file",
+          "session_close_file",
+          "session_list_file_locks",
+          "subordinate_session_create",
+          "subordinate_session_get",
+          "subordinate_session_update",
+          "subordinate_session_delete",
+          "subordinate_session_list",
+      }
+  )
+
+  TRANSFER_AND_LOCK_COMMANDS: FrozenSet[str] = frozenset(
+      {
+          "project_file_transfer_download_begin",
+          "project_file_transfer_upload_save",
+          "project_file_advisory_lock_batch",
+      }
+  )
+
+  UNIVERSAL_FILE_COMMANDS: FrozenSet[str] = frozenset(
+      {
+          "universal_file_open",
+          "universal_file_edit",
+          "universal_file_write",
+          "universal_file_close",
+          "universal_file_preview",
+      }
+  )
+
+  CLIENT_FACADE_COMMANDS: FrozenSet[str] = (
+      FILE_SESSION_COMMANDS
+      | TRANSFER_AND_LOCK_COMMANDS
+      | UNIVERSAL_FILE_COMMANDS
+  )
+
+  # ``FileSessionClient`` method names for each ``FILE_SESSION_COMMANDS`` entry.
+  # ``session_list_file_locks`` is also used by ``assert_session_exists``.
+  FILE_SESSION_FACADE_METHODS: Dict[str, str] = {
+      "session_create": "create_session",
+      "session_delete": "delete_session",
+      "session_list": "list_sessions",
+      "session_view": "view_session",
+      "session_open_file": "lock_file",
+      "session_close_file": "unlock_file",
+      "session_list_file_locks": "list_file_locks",
+      "subordinate_session_create": "create_subordinate_session",
+      "subordinate_session_get": "get_subordinate_session",
+      "subordinate_session_update": "update_subordinate_session",
+      "subordinate_session_delete": "delete_subordinate_session",
+      "subordinate_session_list": "list_subordinate_sessions",
+  }
+
+  # Transfer / advisory-lock commands may map to more than one façade method.
+  TRANSFER_FACADE_METHODS: Dict[str, Tuple[str, ...]] = {
+      "project_file_transfer_download_begin": ("download",),
+      "project_file_transfer_upload_save": ("upload", "upload_new"),
+      "project_file_advisory_lock_batch": (
+          "lock_files_advisory",
+          "unlock_files_advisory",
+      ),
+  }
+
+
+  def assert_file_session_facade_complete() -> None:
+      """Raise ``AssertionError`` if ``FILE_SESSION_FACADE_METHODS`` is incomplete."""
+      missing_cmds = FILE_SESSION_COMMANDS - set(FILE_SESSION_FACADE_METHODS)
+      extra_cmds = set(FILE_SESSION_FACADE_METHODS) - FILE_SESSION_COMMANDS
+      if missing_cmds or extra_cmds:
+          raise AssertionError(
+              "FILE_SESSION_FACADE_METHODS out of sync with FILE_SESSION_COMMANDS: "
+              f"missing={sorted(missing_cmds)!r} extra={sorted(extra_cmds)!r}"
+          )
+      from ai_editor_client.file_session import FileSessionClient
+
+      for command, method_name in FILE_SESSION_FACADE_METHODS.items():
+          if not hasattr(FileSessionClient, method_name):
+              raise AssertionError(
+                  f"FileSessionClient missing method {method_name!r} for command {command!r}"
+              )
+
+
+  def assert_transfer_facade_complete() -> None:
+      """Raise ``AssertionError`` if ``TRANSFER_FACADE_METHODS`` is incomplete."""
+      missing_cmds = TRANSFER_AND_LOCK_COMMANDS - set(TRANSFER_FACADE_METHODS)
+      extra_cmds = set(TRANSFER_FACADE_METHODS) - TRANSFER_AND_LOCK_COMMANDS
+      if missing_cmds or extra_cmds:
+          raise AssertionError(
+              "TRANSFER_FACADE_METHODS out of sync with TRANSFER_AND_LOCK_COMMANDS: "
+              f"missing={sorted(missing_cmds)!r} extra={sorted(extra_cmds)!r}"
+          )
+      from ai_editor_client.file_session import FileSessionClient
+
+      for command, method_names in TRANSFER_FACADE_METHODS.items():
+          for method_name in method_names:
+              if not hasattr(FileSessionClient, method_name):
+                  raise AssertionError(
+                      f"FileSessionClient missing method {method_name!r} "
+                      f"for command {command!r}"
+                  )
+
+
+  def _command_registered(get_command: Callable[[str], object], name: str) -> bool:
+      try:
+          get_command(name)
+          return True
+      except KeyError:
+          return False
+
+
+  def assert_facade_commands_registered(get_command: Callable[[str], object]) -> None:
+      """Raise ``KeyError`` if any facade command is missing from the server registry."""
+      missing = [
+          name
+          for name in sorted(CLIENT_FACADE_COMMANDS)
+          if not _command_registered(get_command, name)
+      ]
+      if missing:
+          raise KeyError(f"Client facade commands not registered on server: {missing}")
+
+
+  def assert_removed_commands_absent(get_command: Callable[[str], object]) -> None:
+      """Raise ``AssertionError`` if a removed command is still registered."""
+      present = [
+          name
+          for name in sorted(REMOVED_COMMANDS)
+          if _command_registered(get_command, name)
+      ]
+      if present:
+          raise AssertionError(f"Removed commands still registered: {present}")
+  ```
+
+  Modify `client/ai_editor_client/server_api.py` only.
+
+  ## MRS excerpt
+
+  - **C-009 File Workflow**: open → edit → write → close implemented by `universal_file_*` commands.
+  - **C-016 MCP Workflow Surface**: public commands are `universal_file_open`, `universal_file_edit`, `universal_file_write`, `universal_file_close`, `universal_file_preview`, plus `health` only (no `queue_health`).
+  - **C-022 Product Acceptance Criteria**: `help` must not expose duplicate command families; client contract must match slim server surface.
+
+  ## Required changes
+
+  1. Add constant:
+     ```py
+     INFRASTRUCTURE_COMMANDS: FrozenSet[str] = frozenset({"health"})
+     ```
+
+  2. Add constant for deprecated client-only families (not registered on thin server):
+     ```py
+     DEPRECATED_CLIENT_FACADE_COMMANDS: FrozenSet[str] = (
+         FILE_SESSION_COMMANDS | TRANSFER_AND_LOCK_COMMANDS
+     )
+     ```
+
+  3. Redefine:
+     ```py
+     CLIENT_FACADE_COMMANDS: FrozenSet[str] = (
+         UNIVERSAL_FILE_COMMANDS | INFRASTRUCTURE_COMMANDS
+     )
+     ```
+     This is the set `assert_facade_commands_registered` checks (C-016 thin surface).
+
+  4. Extend `REMOVED_COMMANDS`:
+     ```py
+     REMOVED_COMMANDS = (
+         LEGACY_REMOVED_COMMANDS
+         | CST_REMOVED_COMMANDS
+         | DEPRECATED_CLIENT_FACADE_COMMANDS
+     )
+     ```
+     So `assert_removed_commands_absent` fails if session/transfer commands reappear on server (C-022 help invariant).
+
+  5. Update module docstring: `:mod:`universal_file`` is the supported facade; `file_session` mappings are deprecated legacy only.
+
+  6. Add `assert_universal_file_facade_complete() -> None`:
+     - Import `UniversalFileClient`.
+     - For each command in `UNIVERSAL_FILE_COMMANDS`, assert a public method exists mapping: open→`open`, edit→`edit`, write→`write`, close→`close`, preview→`preview`.
+     - Raise `AssertionError` with command/method detail on mismatch.
+
+  7. Keep `FILE_SESSION_COMMANDS`, `TRANSFER_AND_LOCK_COMMANDS`, `FILE_SESSION_FACADE_METHODS`, `TRANSFER_FACADE_METHODS`, and their `assert_*_complete` helpers unchanged (deprecated modules still import them).
+
+  8. Export `INFRASTRUCTURE_COMMANDS` and `DEPRECATED_CLIENT_FACADE_COMMANDS` — update `client/ai_editor_client/__init__.py` is **out of scope** for this step; only add names in `server_api.py`.
+
+  ## Forbidden
+
+  - Do NOT register or reference `queue_health`.
+  - Do NOT include `session_*` or `project_file_transfer_*` in `CLIENT_FACADE_COMMANDS`.
+  - Do NOT modify example scripts or README in this step.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black client/ai_editor_client/server_api.py
+  flake8 client/ai_editor_client/server_api.py
+  mypy client/ai_editor_client/server_api.py
+  pytest tests/test_client_server_api_sync.py -v
+  pytest tests/ -q --tb=short
+  ```
+
+  `test_client_facade_commands_registered_on_server` and `test_removed_commands_absent_from_server` must pass. All tests must pass.
+verification:
+  type: pytest
+  target: tests/test_client_server_api_sync.py
+  expected: CLIENT_FACADE_COMMANDS equals universal_file_* plus health (C-016); session/transfer commands absent from server registry (C-022).
+status: draft

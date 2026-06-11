@@ -1,0 +1,154 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: BlockAssembler protocol
+target_file: ai_editor/core/search_session/block_assembler.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-029
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/block_assembler.py
+
+  MRS excerpt (C-029 BlockAssembler):
+  - Parallel thread draining RawFindingBuffer under buffer lock ({g9xv}).
+  - Acquires lock on entry; exits if live owner holds it; reclaims stale lock when owner PID dead.
+  - Loops under lock: forms result block when buffered volume reaches maximum block size or search completed.
+  - Atomically publishes each block, appends index entry, updates manifest, deletes assembled findings.
+  - Releases lock and exits when volume below limit and search not completed.
+  - On completed status with empty buffer: sets index completeness marker to search finished; deletes buffer via delete_buffer.
+  - Never deletes session directory; final assembler run by main thread after status completed drains trailing findings.
+
+  Dependency excerpt — RawFindingBuffer (G-005/T-001):
+  ```python
+  LOCK_FILENAME = "assembler.lock"
+
+  class RawFindingBuffer:
+      def __init__(self, buffer_dir: Path) -> None: ...
+      @property
+      def buffer_dir(self) -> Path: ...
+      @property
+      def lock_path(self) -> Path: ...
+      def append_finding(self, finding_id: str, payload: dict) -> Path: ...
+      def list_findings(self) -> list[Path]: ...
+      def total_bytes(self) -> int: ...
+      def remove_findings(self, paths: list[Path]) -> None: ...
+      def try_acquire_lock(self) -> bool: ...
+      def release_lock(self) -> None: ...
+      def delete_buffer(self) -> None: ...
+  ```
+  Import from ``ai_editor.core.search_session.raw_finding_buffer``.
+
+  Dependency excerpt — AtomicBlockPublication (G-005/T-002):
+  ```python
+  def atomic_write_bytes(target: Path, data: bytes) -> None: ...
+  def atomic_write_json(target: Path, obj: Any) -> None: ...
+  def atomic_publish_rename(staging_path: Path, final_path: Path) -> None: ...
+  ```
+  Import atomic_write_bytes from ``ai_editor.core.search_session.atomic_publication``.
+
+  Dependency excerpt — SearchResultBlock (G-005/T-003):
+  ```python
+  @dataclass(frozen=True)
+  class SearchResultBlock:
+      position: int
+      results: tuple[dict[str, Any], ...]
+      serialized_size_bytes: int
+
+  def assemble_block(
+      findings: list[dict[str, Any]], *, max_block_size_bytes: int, position: int
+  ) -> SearchResultBlock: ...
+
+  def serialize_block(block: SearchResultBlock) -> bytes: ...
+  ```
+  On-disk JSON schema: ``{"position": int, "results": [dict, ...]}``.
+  Import from ``ai_editor.core.search_session.result_block``.
+
+  Dependency excerpt — SearchSessionDirectoryLayout (G-001):
+  ```python
+  @dataclass(frozen=True)
+  class SearchSessionDirectoryLayout:
+      root: Path
+      manifest_path: Path
+      index_path: Path
+      service_metadata_path: Path
+      blocks_dir: Path
+      buffer_dir: Path
+  ```
+  Import from ``ai_editor.core.search_session.directory``.
+
+  Required imports for block_assembler.py:
+  - from __future__ import annotations
+  - import json, re
+  - from collections.abc import Callable
+  - from pathlib import Path
+  - from typing import Any, Optional
+  - from ai_editor.core.search_session.raw_finding_buffer import RawFindingBuffer
+  - from ai_editor.core.search_session.atomic_publication import atomic_write_bytes
+  - from ai_editor.core.search_session.result_block import (
+        SearchResultBlock, assemble_block, serialize_block,
+    )
+  - from ai_editor.core.search_session.directory import SearchSessionDirectoryLayout
+
+  Module constant COMPLETENESS_RUNNING = "search_still_running"
+  Module regex _BLOCK_NAME_PATTERN = re.compile(r"^block_(\d+)\.json$")
+
+  Implement class BlockAssembler:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. __init__(
+        self,
+        layout: SearchSessionDirectoryLayout,
+        buffer: RawFindingBuffer,
+        max_block_size_bytes: int,
+        *,
+        append_index_entry: Callable[[int, str], None],
+        update_manifest_metrics: Callable[[dict], None],
+        finalize_index: Callable[[], None],
+     ) -> None
+     Docstring: store layout, buffer, size limit, and injected callbacks.
+
+  3. def run_once(self, *, search_completed: bool) -> int
+     Docstring and algorithm ({g9xv}):
+     - Return 0 when buffer_dir missing or try_acquire_lock() is False.
+     - try/finally always release_lock().
+     - Loop: while volume >= max_block_size_bytes OR search_completed:
+       * break when volume == 0 (if search_completed call _finalize_if_empty then break).
+       * load findings JSON from list_findings() paths in order.
+       * position = _next_block_position() scanning layout.blocks_dir for block_(\d+).json.
+       * block = assemble_block(findings, max_block_size_bytes=..., position=position).
+       * break inner loop when block.results empty.
+       * atomic_write_bytes(blocks_dir / f"block_{position}.json", serialize_block(block)).
+       * append_index_entry(position, COMPLETENESS_RUNNING).
+       * update_manifest_metrics({"produced_results": n, "written_blocks": 1, "block_size_bytes": block.serialized_size_bytes}).
+       * remove_findings(assembled paths for block.results count).
+       * increment blocks_published.
+       * when search_completed and total_bytes()==0: _finalize_if_empty(); break.
+       * when not search_completed and total_bytes() < max: break.
+     - Return blocks_published count.
+
+  4. def run_until_idle(self, *, search_completed: bool) -> int
+     Docstring: repeat run_once until it returns 0; stop early when search_completed and buffer_dir gone.
+
+  5. def _finalize_if_empty(self) -> None
+     Docstring: when total_bytes()==0 call finalize_index() then buffer.delete_buffer().
+
+  6. def _next_block_position(self) -> int
+     Docstring: highest existing block number in blocks_dir plus one (minimum 1).
+
+  7. @staticmethod def _load_finding(path: Path) -> dict
+     Docstring: json.load; raise ValueError when not a JSON object.
+
+  __all__ = ["BlockAssembler", "COMPLETENESS_RUNNING"]
+
+  Under 350 lines. All public methods documented.
+
+verification:
+  type: pytest
+  target: tests/unit/test_block_assembler.py
+  expected: >
+    Publishes block when threshold reached; final run drains trailing findings;
+    _finalize_if_empty calls finalize_index and buffer.delete_buffer; releases lock in finally.
+status: frozen

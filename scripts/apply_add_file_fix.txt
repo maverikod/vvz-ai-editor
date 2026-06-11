@@ -1,0 +1,45 @@
+Apply add_file fix: replace TOCTOU get+insert with atomic INSERT OR REPLACE.
+import pathlib
+import shutil
+import datetime
+
+PROJECT_ROOT = pathlib.Path("/home/vasilyvz/projects/tools/code_analysis")
+TARGET = PROJECT_ROOT / "code_analysis/core/database_client/client_api_files.py"
+
+def main():
+    src = TARGET.read_text(encoding="utf-8")
+    lines = src.splitlines(keepends=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = TARGET.with_suffix(f".py.bak_{ts}")
+    shutil.copy2(TARGET, backup)
+    print(f"Backup: {backup}")
+    new_body = [
+        "        result = self.execute(\n",
+        "            \"INSERT OR REPLACE INTO files \"\n",
+        "            \"(project_id, path, relative_path, lines, last_modified, has_docstring, deleted, watch_dir_id) \"\n",
+        "            \"VALUES (?, ?, ?, ?, ?, ?, 0, ?)\",\n",
+        "            (\n",
+        "                project_id,\n",
+        "                abs_path,\n",
+        "                str(relative_path),\n",
+        "                lines,\n",
+        "                last_modified,\n",
+        "                1 if has_docstring else 0,\n",
+        "                watch_dir_id,\n",
+        "            ),\n",
+        "        )\n",
+        "        row_id = result.get(\"lastrowid\") if result else None\n",
+        "        if row_id is None:\n",
+        "            existing = self.get_file_by_path(abs_path, project_id)\n",
+        "            if existing:\n",
+        "                return str(existing[\"id\"])\n",
+        "            raise ValueError(f\"INSERT OR REPLACE into files did not return a row id for {abs_path}\")\n",
+        "        return str(row_id)\n",
+    ]
+    lines[131] = "        Uses atomic INSERT OR REPLACE to avoid TOCTOU race between get and insert.\n"
+    new_lines = lines[:153] + new_body + lines[184:]
+    TARGET.write_text("".join(new_lines), encoding="utf-8")
+    print(f"Done. Lines: {len(new_lines)}")
+    import ast; ast.parse(TARGET.read_text()); print("Syntax OK")
+
+main()

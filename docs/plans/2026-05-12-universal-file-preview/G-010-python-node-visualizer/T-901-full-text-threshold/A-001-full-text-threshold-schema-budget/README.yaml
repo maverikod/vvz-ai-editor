@@ -1,0 +1,31 @@
+step_id: A-001
+parent_tactical_step: T-901
+name: full_text_max_lines on PreviewBudget and universal_file_preview schema
+target_file: ai_editor/commands/universal_file_preview/budget.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-013
+- C-023
+status: done
+prompt: |
+  Retrospective (implemented before atomic authoring):
+
+  `PreviewBudget` in `budget.py` includes `full_text_max_lines` (default 200,
+  validated in `__post_init__`).
+
+  `UniversalFilePreviewCommand` exposes optional `full_text_max_lines` in
+  `get_schema()`, parses it in `validate_params()`, and passes it into `PreviewBudget`
+  in `execute()`. PythonHandler uses the threshold for small-file full-text fallback
+  (`full_text_max_lines == 0` disables the shortcut).
+implementation_note: >
+  No further code changes were required when this atomic was recorded; verifies
+  shipped wiring end-to-end.
+verification:
+  type: pytest
+  target: tests/test_universal_file_preview_smoke.py
+  expected: >
+    Async test `test_universal_file_preview_execute_budget_py_mock_db` reaches execute
+    with budget.py path and observes non-empty `focus.text` (full-text path).

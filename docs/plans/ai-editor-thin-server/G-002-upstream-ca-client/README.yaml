@@ -1,0 +1,72 @@
+step_id: G-002
+name: Upstream-клиент к Code Analysis Server
+description: 'Расширить Upstream Client (C-017) внутренними обёртками над CA API Contract (C-023): Session Validation (C-014) через touch session_id; Open Stage (C-010) — блокировка и передача содержимого с СА; Close Stage (C-013) — разблокировка; Write Stage (C-012) — chunked upload/save; Edit Stage preview-path (C-011) — передача содержимого без блокировки; create-path Open Stage — upload затем lock. Resolve file_path→file_id через контракт C-023. В контракте C-023 на СА имена open/close означают lock/unlock, не editor workflow (свойство C-017). Централизовать конфигурацию подключения (host, port, TLS, timeout, server_id). Upstream Client — единственный путь изменения блокировок и содержимого на стороне СА; прямой SQL и файловый доступ к дереву проекта СА запрещены (свойства C-017).
+
+  '
+executor_brief: 'Модульная граница C-017: реализация разделена на два sibling-модуля без изменения публичного API Upstream Client — downstream workflow импортирует только code_analysis_client. Модуль code_analysis_client — ядро клиента: singleton, конфигурация и RPC, discovery проектов и файлов, Session Validation (C-014), публичные thin-обёртки lock/unlock/upload/download; делегирует byte-transfer sibling-модулю. Модуль code_analysis_file_transfer — вспомогательный transfer-слой: нормализация относительного пути, resolve file_path→file_id, chunked download/upload bytes; не экспортируется из пакетного __init__; обращается к client только через TYPE_CHECKING / отложенный импорт во избежание циклической зависимости. Распределение по контракту C-023: session/file контекст и RPC-оркестрация Open (C-010), Preview (C-011), Write (C-012), Close (C-013) — code_analysis_client; pipeline передачи содержимого — code_analysis_file_transfer.
+
+  '
+concepts:
+- C-002
+- C-004
+- C-007
+- C-010
+- C-011
+- C-012
+- C-013
+- C-014
+- C-015
+- C-017
+- C-023
+relations:
+- from_concept: C-001
+  to_concept: C-002
+  type: depends_on
+- from_concept: C-001
+  to_concept: C-017
+  type: uses
+- from_concept: C-002
+  to_concept: C-023
+  type: owns
+- from_concept: C-014
+  to_concept: C-004
+  type: consumes
+- from_concept: C-014
+  to_concept: C-017
+  type: uses
+- from_concept: C-014
+  to_concept: C-023
+  type: uses
+- from_concept: C-017
+  to_concept: C-002
+  type: depends_on
+- from_concept: C-017
+  to_concept: C-023
+  type: consumes
+- from_concept: C-010
+  to_concept: C-023
+  type: uses
+- from_concept: C-013
+  to_concept: C-023
+  type: uses
+source_ranges:
+- start: 9
+  end: 9
+- start: 13
+  end: 13
+- start: 65
+  end: 65
+- start: 67
+  end: 69
+- start: 79
+  end: 79
+depends_on: []
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+- T-006
+- T-007
+status: ready_for_review

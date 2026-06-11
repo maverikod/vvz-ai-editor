@@ -1,0 +1,46 @@
+step_id: G-005
+name: Write compare-and-upload
+description: 'Реализовать Write Stage (C-012): перед любым RPC к СА экспортировать текущее состояние Edit Subdirectory (C-008) в каноническую сериализованную форму и сравнивать этот канонический экспорт побайтово с байтами Origin Snapshot (C-007) как baseline origin.
+
+  write_mode=preview: сформировать только локальный diff (результат сравнения канонического экспорта с origin baseline); upload на СА не выполняется.
+
+  write_mode=commit: compare-and-upload — при равенстве канонического экспорта и origin baseline успешный no-op без вызова СА; при отличии — отправка через Upstream Client (C-017) по контракту C-023; при успехе СА — перезапись Origin Snapshot (C-007) принятым содержимым. При ошибке СА локальное состояние (Origin Snapshot и Edit Subdirectory) не меняется. Изменение содержимого файла на СА — только через upload API; прямая запись в дерево проекта на диске СА запрещена.
+
+  '
+concepts:
+- C-007
+- C-008
+- C-009
+- C-012
+- C-015
+- C-016
+- C-017
+- C-022
+- C-023
+relations:
+- from_concept: C-009
+  to_concept: C-012
+  type: owns
+- from_concept: C-012
+  to_concept: C-007
+  type: consumes
+- from_concept: C-012
+  to_concept: C-008
+  type: consumes
+- from_concept: C-012
+  to_concept: C-017
+  type: uses
+source_ranges:
+- start: 39
+  end: 45
+depends_on:
+- G-003
+- G-004
+- G-007
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+status: ready_for_review

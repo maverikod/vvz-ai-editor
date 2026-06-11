@@ -1,0 +1,105 @@
+step_id: A-001
+parent_tactical_step: T-002
+parent_global_step: G-005
+model_tier: medium
+target_file_max_lines: 400
+status: done
+name: JSON SourceParser pytest module
+operation: create_file
+priority: 1
+depends_on: []
+target_file: tests/test_tree_temp_source_parser_json.py
+parent_links:
+  tech_spec_yaml: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  human_readable_spec_md: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  parent_global_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/README.yaml
+  parent_tactical_step_readme: docs/plans/2026-05-18-tree-sidecar/G-005-tests/T-002-source-parser-json/README.yaml
+concepts:
+- C-005
+- C-001
+- C-004
+
+mrs_excerpt_this_step_only: >
+  SourceParser JSON C-005 parses tolerant JSON with // line and /* */ block comments producing TreeNode C-001. CommentOwnershipRule C-004 attaches same-line comments as comment_inline on that node and above-line standalone comments as comment_before on the next node; comments above first root attach to first root; source order preserved for object members and array elements.
+
+verification:
+  type: pytest
+  target: tests/test_tree_temp_source_parser_json.py
+  expected: >-
+    Activate .venv from repo root, run pytest targeting this module path only with exit status 0.
+
+prompt: |-
+  EXECUTOR: coder_auto. CREATE tests/test_tree_temp_source_parser_json.py (≤400 lines).
+
+  MODULE DOCSTRING:
+    """Unit tests for JSON SourceParser tolerant grammar and CommentOwnershipRule (tree-temp plan).
+
+    Author: Vasiliy Zdanovskiy
+    email: vasilyvz@gmail.com
+    """
+
+  IMPORT LIST (verbatim, after from __future__ import annotations):
+
+    import pytest
+
+    from ai_editor.core.tree_temp.json_frontend import parse_json_source_to_roots
+    from ai_editor.core.tree_temp.tree_node import TreeNode, kind_as_str
+
+  PRODUCTION SYMBOL CONTRACT (must exist after G-002):
+    def parse_json_source_to_roots(source_text: str) -> list[TreeNode]:
+      Parse tolerant JSON text with comments into ordered root TreeNode forest per Sidecar semantic (object root returns single OBJECT node wrapping members; array root returns flattened element nodes ordered).
+
+    def kind_as_str(node: TreeNode) -> str:
+      Return textual discriminator lowercase matching C-001 (object|array|string|number|boolean|null).
+
+    If identifiers differ STOP — planner must reconcile.
+
+  INTERNAL TEST HELPERS (define in this module only):
+    def _find_member(root_list: list[TreeNode], key: str) -> TreeNode:
+      Preconditions: caller supplies roots from parse_json_source_to_roots. Locate first descendant child with matching key assuming standard structure (tests structure inputs so search is shallow one-level lookup from single OBJECT root). Raise AssertionError when missing.
+
+
+  REQUIRED PYTEST FUNCTIONS AND EXACT ASSERTIONS:
+
+  test_top_level_above_comment_maps_to_before_on_first_root_object
+    Source literal EXACT THREE lines UTF-8:
+      Line1: '// file head'
+      Line2: '{'
+      Line3: '}'
+    Parsed roots len==1. Let r=roots[0]. Assert kind_as_str(r)=="object". Assert r.comment_before is not None and "// file head" in r.comment_before. Children empty permissible.
+
+  test_inline_comment_maps_to_scalar_member
+    Source one line ASCII: '{"a": 1}// tail'
+    Let m=_find_member(roots,'a'); assert float(m.value)==1.0 or int(m.value)==1 (either accepted) AND m.comment_inline is not None AND "tail" in m.comment_inline.
+
+  test_above_line_comment_before_next_member
+    Source EXACT:\n '{"x":true,\n// between\n"y":false}\n'
+    Member y node must have comment_before containing "between".
+
+  test_array_root_order_three_elements
+    Source: '[ {"k":9}, false , null ]' (collapse spaces exactly as typed but trimming outer spaces allowed if parser trims leading trailing whitespace uniformly — use minimal '[{"k":9},false,null]' ).
+    Roots len MUST==3 verifying array-root flatten rule. kind_as_str order: object,boolean,null. object child keyed k numeric 9.
+
+  test_object_member_order_not_sorted
+    Source: '{"z":0,"y":1,"x":2}'
+    Children key order extraction list must equal ['z','y','x'] iterating children list order field key.
+
+  test_scalar_types_number_bool_null_string
+    Source: '{"n":42,"t":false,"u":null,"s":"hi"}' — assert numeric==42, boolean false, null value None in Python binding, string==hi via TreeNode.value.
+
+  test_block_comment_before_key_maps_inline_on_member_same_line
+    Source EXACT string (single-line): '{/*solo*/ "b": 2}'
+    Parsed member TreeNode keyed b MUST have comment_inline not None containing substring `solo`. comment_before must evaluate to falsy after strip (either None or whitespace-only string permitted before strip but final stripped length must be zero).
+
+  test_truncated_document_raises_value_error
+    Source '{' triggers ValueError subclass (type ValueError adequate) raised from parse invocation.
+
+  FORBIDDEN:
+    Reading parent README files at runtime. Using MCP. Importing unrelated modules. Parsing JSON with trailing structural tokens beyond tolerant grammar without expecting exception.
+
+
+  QUALITY GATE (repo root):
+    python -m black tests/test_tree_temp_source_parser_json.py
+    python -m flake8 tests/test_tree_temp_source_parser_json.py
+    python -m pytest tests/test_tree_temp_source_parser_json.py -q
+    python -m mypy tests/test_tree_temp_source_parser_json.py

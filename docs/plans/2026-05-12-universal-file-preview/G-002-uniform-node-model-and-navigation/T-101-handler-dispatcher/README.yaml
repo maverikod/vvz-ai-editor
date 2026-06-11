@@ -1,0 +1,37 @@
+step_id: T-101
+parent_global_step: G-002
+name: Handler dispatcher
+status: frozen
+concepts:
+- C-002
+- C-003
+- C-014
+description: "Define the HandlerDispatcher (C-002) as the single routing entity that\
+  \ selects a FileHandler (C-003) for a given file based solely on its extension.\n\
+  Dispatch rules: - The dispatch key is the file extension extracted from file_path\n\
+  \  (e.g. '.py', '.json', '.yaml'). Extension matching is case-insensitive.\n- Exactly\
+  \ one FileHandler is registered per extension. Two extensions\n  may map to the\
+  \ same FileHandler (e.g. '.yaml' and '.yml' both map to\n  YamlFileHandler), but\
+  \ one extension never maps to two FileHandlers.\n- If the extension has no registered\
+  \ FileHandler, the dispatcher produces\n  an UNKNOWN_EXTENSION error of class ErrorClassification\
+  \ (C-014); it\n  does not attempt to open the file with a fallback handler.\n- The\
+  \ dispatcher does not read file content; it only resolves the handler. - Adding\
+  \ a new FileHandler (a new extension registration) does not change\n  the public\
+  \ command schema and does not affect the dispatcher's routing\n  logic for existing\
+  \ extensions.\n"
+inputs:
+- name: file_path
+  type: string
+  description: Project-relative path to the file, as provided in the validated input.
+    The dispatcher extracts the extension from this value.
+outputs:
+- name: selected_handler
+  type: FileHandler (C-003) instance
+  description: The FileHandler registered for the extracted extension, ready to open
+    the file and produce the root Node.
+- name: dispatch_error
+  type: ErrorClassification (C-014) UNKNOWN_EXTENSION error
+  description: Returned instead of selected_handler when the extension has no registered
+    FileHandler.
+atomic_steps:
+- A-001

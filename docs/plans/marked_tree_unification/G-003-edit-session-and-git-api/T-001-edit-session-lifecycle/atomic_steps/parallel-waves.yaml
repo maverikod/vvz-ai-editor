@@ -1,0 +1,21 @@
+global_step: G-003
+tactical_step: T-001
+name: EditSession Lifecycle
+waves:
+  - wave: 1
+    steps:
+      - A-001
+    note: EditSession entity module (depends on cross-TS A-004 via depends_on field).
+  - wave: 2
+    steps:
+      - A-003
+    requires:
+      - A-001
+    note: Active-session registry and get_active_session defined in edit_session.py.
+  - wave: 3
+    steps:
+      - A-002
+    requires:
+      - A-001
+      - A-003
+    note: Package __init__ exports get_active_session only after A-003 creates the symbol.

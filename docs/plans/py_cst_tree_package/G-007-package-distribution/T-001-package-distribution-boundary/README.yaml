@@ -1,0 +1,29 @@
+step_id: T-001
+parent_global_step: G-007
+name: Package Distribution Boundary
+description: Define the PackageDistribution entity (C-016) as the boundary that 
+  frames the package for independent release. The distribution lives in its own 
+  subdirectory inside the repository, carries its own packaging metadata, and 
+  declares LibCST as its only runtime dependency. It must not import anything 
+  from the code analysis server, its database, or its internal modules. LibCST 
+  is used only to parse Python text into a LibCST tree and to render a LibCST 
+  tree back to text. The public surface yields Tree objects (C-004) and the 
+  QueryInterface (C-008); callers obtain a Tree and interact with it through the
+  QueryInterface. This step realizes the C-016 produces C-004 and C-016 produces
+  C-008 relations.
+concepts:
+- C-016
+- C-004
+- C-008
+inputs:
+- name: repository layout
+  type: directory structure convention
+  description: The convention that the package resides in its own subdirectory 
+    of the repository.
+outputs:
+- name: PackageDistribution boundary
+  type: domain boundary definition
+  description: A defined distribution boundary with single-runtime-dependency 
+    rule, server-import prohibition, and public surface contract.
+atomic_steps: []
+status: draft

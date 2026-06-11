@@ -1,0 +1,55 @@
+step_id: A-001
+parent_tactical_step: T-005
+name: search_get_page MCP command
+target_file: ai_editor/commands/search_get_page_command.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-001
+  - C-004
+  - C-005
+  - C-027
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_get_page_command.py
+
+  MRS (C-001 SearchSession): search_id equals client job_id; owns blocks and index.
+  MRS (C-004 SearchResultBlock): immutable block read by position number.
+  MRS (C-027 SearchResultIndex): lists block positions and completeness marker.
+  MRS (C-005 HTTPResultAccess): block-not-ready when running search has not published requested position;
+  refresh last_access on successful reads (reuse service_metadata helper).
+
+  Implement class SearchGetPageCommand(BaseMCPCommand):
+  - name = "search_get_page"
+  - category = "search"
+  - get_schema() properties:
+      job_id: {type: string, required: true, description: SearchSession search_id from search_start handoff}
+      block_position: {type: integer, minimum: 1, default: 1, description: 1-based block position from job index}
+      wait_for_new_results: {type: boolean, default: false}
+      wait_timeout_seconds: {type: number, default: 0, minimum: 0, maximum: 30}
+    Do not expose README opaque cursor as primary parameter; block_position is canonical.
+  - validate_params(): job_id non-empty; block_position >= 1.
+  - execute():
+      Resolve session layout from config_dir + job_id via resolve_session_layout pattern from http_access.
+      Load SearchResultIndex JSON; if block_position not yet listed and manifest status is running,
+      return ErrorResult BLOCK_NOT_READY when wait_for_new_results false; optionally poll until timeout when true.
+      Read block JSON from blocks_dir/block_{position}.json; refresh last_access via initialize/update service_metadata.
+      Return SuccessResult with job_id, status from manifest, block_position, items (results list from block),
+      has_more derived from index completeness and position count, progress metrics from manifest,
+      warnings and errors lists from manifest.
+  - metadata() with detailed_description, usage_examples, error_cases (SESSION_NOT_FOUND, BLOCK_NOT_READY),
+    best_practices noting block_position continuation instead of cursor.
+
+  Constraints:
+  - Under 300 lines; split _schema/_metadata modules only if needed.
+  - Author header.
+  - Reuse http_access helpers where possible without duplicating HTTP route logic.
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_get_page_command.py
+  expected: >
+    Returns block items for published position; BLOCK_NOT_READY when running session lacks requested block;
+    wait_for_new_results polls until block appears or timeout; last_access metadata updates on success.
+status: ready_for_review

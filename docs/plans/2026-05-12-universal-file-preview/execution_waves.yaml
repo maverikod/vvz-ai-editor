@@ -1,0 +1,271 @@
+plan: 2026-05-12-universal-file-preview
+critical_path:
+- T-201/A-001
+- T-202/A-001
+- T-203/A-001
+- T-103/A-001
+- T-001/A-002
+- T-001/A-003
+- T-001/A-004
+waves:
+- wave: 1
+  parallel: true
+  step_count: 13
+  note: 'All create_file steps with no inter-dependencies. All 13 may run simultaneously.
+
+    '
+  steps:
+  - step: T-003/A-001
+    name: Create error codes module
+    target_file: ai_editor/commands/universal_file_preview/errors.py
+    operation: create_file
+    depends_on: []
+  - step: T-102/A-001
+    name: Create models (NodeKind, Node, Block, NavigationResult)
+    target_file: ai_editor/commands/universal_file_preview/models.py
+    operation: create_file
+    depends_on: []
+  - step: T-106/A-001
+    name: Create PreviewBudget dataclass
+    target_file: ai_editor/commands/universal_file_preview/budget.py
+    operation: create_file
+    depends_on: []
+  - step: T-104/A-001
+    name: Create selector module
+    target_file: ai_editor/commands/universal_file_preview/selector.py
+    operation: create_file
+    depends_on: []
+  - step: T-101/A-001
+    name: Create HandlerDispatcher
+    target_file: ai_editor/commands/universal_file_preview/dispatcher.py
+    operation: create_file
+    depends_on: []
+  - step: T-105/A-001
+    name: Create block_handlers module (five rendering rules)
+    target_file: ai_editor/commands/universal_file_preview/block_handlers.py
+    operation: create_file
+    depends_on: []
+  - step: T-201/A-001
+    name: Create FileHandler ABC
+    target_file: ai_editor/commands/universal_file_preview/base_handler.py
+    operation: create_file
+    depends_on: []
+    file_sequence: 1
+  - step: T-301/A-000
+    name: Create handlers package __init__
+    target_file: ai_editor/commands/universal_file_preview/handlers/__init__.py
+    operation: create_file
+    depends_on: []
+  - step: T-401/A-001
+    name: Create TextFileHandler open_root
+    target_file: ai_editor/commands/universal_file_preview/handlers/text_handler.py
+    operation: create_file
+    depends_on: []
+    file_sequence: 1
+  - step: T-501/A-001
+    name: Create JsonFileHandler open_root
+    target_file: ai_editor/commands/universal_file_preview/handlers/json_handler.py
+    operation: create_file
+    depends_on: []
+    file_sequence: 1
+  - step: T-601/A-001
+    name: Create JsonLinesFileHandler open_root
+    target_file: ai_editor/commands/universal_file_preview/handlers/jsonl_handler.py
+    operation: create_file
+    depends_on: []
+    file_sequence: 1
+  - step: T-701/A-001
+    name: Create YamlFileHandler open_root
+    target_file: ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+    operation: create_file
+    depends_on: []
+    file_sequence: 1
+  - step: T-002/A-001
+    name: Create response envelope module
+    target_file: ai_editor/commands/universal_file_preview/response.py
+    operation: create_file
+    depends_on: []
+    note: Depends only on models.py (same wave); safe to run here.
+- wave: 2
+  parallel: true
+  step_count: 5
+  note: '5 steps. Each depends on exactly one wave-1 output. All five are independent
+    of each other and may run in parallel.
+
+    '
+  steps:
+  - step: T-202/A-001
+    name: Add default_focus concrete method to FileHandler ABC
+    target_file: ai_editor/commands/universal_file_preview/base_handler.py
+    operation: modify_file
+    depends_on:
+    - T-201/A-001
+    file_sequence: 2
+  - step: T-301/A-001
+    name: Create PythonFileHandler with open_root
+    target_file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+    operation: create_file
+    depends_on:
+    - T-301/A-000
+    file_sequence: 1
+  - step: T-402/A-001
+    name: Add __init__ and fix resolve_node_ref in TextFileHandler
+    target_file: ai_editor/commands/universal_file_preview/handlers/text_handler.py
+    operation: modify_file
+    depends_on:
+    - T-401/A-001
+    file_sequence: 2
+  - step: T-502/A-001
+    name: Fix JsonFileHandler resolve_node_ref (JSON Pointer dispatch)
+    target_file: ai_editor/commands/universal_file_preview/handlers/json_handler.py
+    operation: modify_file
+    depends_on:
+    - T-501/A-001
+    file_sequence: 2
+  - step: T-602/A-001
+    name: Add delegation comment to JsonLinesFileHandler
+    target_file: ai_editor/commands/universal_file_preview/handlers/jsonl_handler.py
+    operation: modify_file
+    depends_on:
+    - T-601/A-001
+    file_sequence: 2
+- wave: 3
+  parallel: true
+  step_count: 3
+  note: '3 steps, independent of each other. session depends on base_handler (fully
+    built after wave 2). yaml_infra depends on yaml_handler (wave 1). python_resolve
+    depends on python_handler (wave 2).
+
+    '
+  steps:
+  - step: T-203/A-001
+    name: Create session module (resolve_session)
+    target_file: ai_editor/commands/universal_file_preview/session.py
+    operation: create_file
+    depends_on:
+    - T-202/A-001
+  - step: T-702/A-001
+    name: Add _try_infra_resolve to YamlFileHandler
+    target_file: ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+    operation: modify_file
+    depends_on:
+    - T-701/A-001
+    file_sequence: 2
+  - step: T-302/A-001
+    name: Harden PythonFileHandler resolve_node_ref
+    target_file: ai_editor/commands/universal_file_preview/handlers/python_handler.py
+    operation: modify_file
+    depends_on:
+    - T-301/A-001
+    file_sequence: 2
+- wave: 4
+  parallel: true
+  step_count: 2
+  note: '2 steps, independent of each other. navigation needs session (wave 3) + models/budget/selector/block_handlers/errors
+    (wave 1). yaml_pointer needs yaml_infra (wave 3). Not on critical path for core
+    functionality.
+
+    '
+  steps:
+  - step: T-103/A-001
+    name: Create navigation module (three-phase navigate function)
+    target_file: ai_editor/commands/universal_file_preview/navigation.py
+    operation: create_file
+    depends_on:
+    - T-203/A-001
+    - T-102/A-001
+    - T-106/A-001
+    - T-104/A-001
+    - T-105/A-001
+    - T-003/A-001
+  - step: T-703/A-001
+    name: Harden _resolve_yaml_pointer (RFC-6901 edge cases)
+    target_file: ai_editor/commands/universal_file_preview/handlers/yaml_handler.py
+    operation: modify_file
+    depends_on:
+    - T-702/A-001
+    file_sequence: 3
+- wave: 5
+  parallel: true
+  step_count: 2
+  note: '2 steps, independent of each other. UniversalFilePreviewCommand needs navigation
+    (wave 4) + dispatcher/budget/errors/response (wave 1). stability_check has no
+    code dependencies; placed here so it is confirmed before wave 7 whitelist.
+
+    '
+  steps:
+  - step: T-001/A-002
+    name: Create UniversalFilePreviewCommand (get_schema, validate_params, execute)
+    target_file: ai_editor/commands/universal_file_preview_command.py
+    operation: create_file
+    depends_on:
+    - T-103/A-001
+    - T-101/A-001
+    - T-106/A-001
+    - T-002/A-001
+    - T-003/A-001
+    file_sequence: 1
+  - step: T-801/A-001
+    name: Stability check gate (markdown review doc, no code change)
+    target_file: docs/plans/2026-05-12-universal-file-preview/G-009-readonly-batch-integration/T-801-stability-gate.md
+    operation: create_file
+    depends_on: []
+    note: 'No code dependencies. Placed in wave 5 so the gate is confirmed before
+      the whitelist edit in wave 7.
+
+      '
+- wave: 6
+  parallel: true
+  step_count: 2
+  note: '2 steps, both depend on T-001/A-002 (wave 5). Independent of each other.
+
+    '
+  steps:
+  - step: T-001/A-001
+    name: Create universal_file_preview package __init__
+    target_file: ai_editor/commands/universal_file_preview/__init__.py
+    operation: create_file
+    depends_on:
+    - T-001/A-002
+  - step: T-004/A-001
+    name: Add _SCOPE_INVARIANTS constant to universal_file_preview_command
+    target_file: ai_editor/commands/universal_file_preview_command.py
+    operation: modify_file
+    depends_on:
+    - T-001/A-002
+    file_sequence: 2
+- wave: 7
+  parallel: false
+  step_count: 3
+  note: 'Final integration. Two independent sequential sub-chains (A and B). Sub-chains
+    A and B may run in parallel with each other, but steps within each sub-chain are
+    strictly sequential.
+
+    '
+  steps:
+  - step: T-001/A-003
+    name: Register UniversalFilePreviewCommand in hooks_register_part2
+    target_file: ai_editor/hooks_register_part2.py
+    operation: modify_file
+    depends_on:
+    - T-001/A-001
+    - T-001/A-002
+    sub_chain: A
+    sequence: 1
+  - step: T-001/A-004
+    name: Add auto-import for universal_file_preview_command in hooks.py
+    target_file: ai_editor/hooks.py
+    operation: modify_file
+    depends_on:
+    - T-001/A-003
+    sub_chain: A
+    sequence: 2
+  - step: T-802/A-001
+    name: Add universal_file_preview to READ_ONLY_BATCH_WHITELIST
+    target_file: ai_editor/commands/read_only_batch_whitelist.py
+    operation: modify_file
+    depends_on:
+    - T-801/A-001
+    sub_chain: B
+    sequence: 1
+    precondition: T-801 stability gate must be confirmed before executing this step.

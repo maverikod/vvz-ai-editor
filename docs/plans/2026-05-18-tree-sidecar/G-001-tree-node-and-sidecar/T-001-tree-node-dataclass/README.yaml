@@ -1,0 +1,27 @@
+step_id: T-001
+parent_global_step: G-001
+name: TreeNode dataclass
+description: |
+  Establish TreeNode (C-001) as the in-memory domain entity for one node in the
+  structured tree: assign once stable_id (UUID v4, never reassigned); type discriminator
+  among object, array, string, number, boolean, and null; optional key string for
+  object members only; optional scalar value on string, number, boolean, and null
+  nodes; ordered children as a list of TreeNode on object and array nodes; optional
+  comment_before and optional comment_inline strings as defined for C-001. Specify
+  consistency rules binding which fields are present for which type values so that
+  object and array nodes expose children, scalar types expose value where applicable,
+  and key appears only in the object-member case.
+concepts:
+- C-001
+inputs:
+- name: tree_node_specification
+  type: concept (C-001)
+  description: Authoritative property set and type enumeration for TreeNode from the MRS.
+outputs:
+- name: tree_node_entity
+  type: domain entity contract
+  description: Complete TreeNode entity contract (C-001) with field presence rules
+    aligned to the type discriminator and to optional comments on each node.
+atomic_steps:
+- A-001
+status: done

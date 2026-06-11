@@ -1,0 +1,29 @@
+step_id: T-001
+parent_global_step: G-005
+name: TreeNode model unit tests
+status: done
+description: 'Establish verification obligations on the TreeNode (C-001) data shape
+  and its embedding in Sidecar (C-002). Prove that every node type discriminator (object,
+  array, string, number, boolean, null) is represented with the correct optional fields:
+  key only on object members, value only on scalars, ordered children only on containers.
+  Prove stable_id is a UUID assigned once per logical node and preserved across serialisation
+  and deserialisation of the sidecar payload. Prove sidecar JSON validity: top-level
+  source_sha256 as hex digest string and root as an array whose elements conform to
+  the node schema. Prove comment_before and comment_inline strings round-trip through
+  the sidecar JSON mapping without loss or relocation relative to the stored tree structure.
+  Cover root-array versus single-root-object encoding rules from the Sidecar contract.'
+concepts:
+- C-001
+- C-002
+inputs:
+- name: synthetic_tree_cases
+  type: constructed TreeNode graphs and Sidecar payloads
+  description: Minimal and edge-case trees covering each type, keyed members, nested
+    containers, empty object and array, and scalar variants permitted by C-001.
+outputs:
+- name: model_contract_verdict
+  type: verification outcome
+  description: Confirmed adherence of instances and serialised Sidecar documents to
+    C-001 and C-002 field rules, stable_id persistence, and JSON structural validity.
+atomic_steps:
+- A-001

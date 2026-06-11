@@ -1,0 +1,76 @@
+step_id: T-003
+parent_global_step: G-002
+name: TreeLifecycle and TreeBuilder
+description: 'Create and modify the TreeBuilder entity (C-011) and the TreeLifecycle
+  entity (C-010) as complete API definitions. TreeBuilder is the single place that
+  writes TreeFiles on the canonical unified path: it resolves FormatHandler via
+  HandlerRegistry, calls FormatHandler.mark for the TREE section, writes the
+  three-section sibling TreeFile in order CHECKSUMS then MAP then TREE — MAP populated
+  via NodeIdMap (C-025) build with short_id↔TreeNodeUuid (C-024) entries and next_free;
+  CHECKSUMS records content_checksum; TREE holds natively marked content with short_id
+  markers only. On rebuild from an existing tree file, TreeBuilder copies next_free
+  from the prior MAP section per {a007} before issuing new short_ids. TreeBuilder does
+  NOT call recreate_tree_from_content or TreeFormatKind (legacy parity oracle only,
+  untouched). TreeLifecycle is the single owner and coordinator of tree validity and
+  tree creation; every consumer routes through it. TreeLifecycle owns ChecksumSyncPolicy
+  (C-006), TreeBuilder (C-011), and the pure checksum helpers compute_content_checksum
+  and is_tree_valid. On rebuild and validity paths that refresh an existing tree,
+  TreeLifecycle invokes NodeIdMap validate_and_repair (C-025) to reconcile markers,
+  map entries, and next_free while preserving UUID4 for unchanged content identity
+  per {a007} and {n002}. TreeLifecycle exposes path-based and content-based entry
+  points whose validity and creation routing dispatch to TreeBuilder.build; downstream
+  integration modules invoke these APIs but do not redefine the entities.'
+concepts:
+- C-010
+- C-011
+- C-006
+- C-007
+- C-008
+- C-003
+- C-024
+- C-025
+inputs:
+- name: ChecksumSyncPolicy entity
+  type: domain entity definition (C-006)
+  description: ChecksumSyncPolicy class defining the four-branch tree-to-source
+    alignment decision mechanism including rebuild with validate_and_repair.
+- name: Sibling storage convention
+  type: domain entity definition (C-003)
+  description: Co-located sibling three-section TreeFile path convention for
+    SourceFile/TreeFile pairs.
+- name: HandlerRegistry and FormatHandler contract
+  type: MRS concept definitions (C-008, C-007)
+  description: HandlerRegistry.default_registry resolves FormatHandler per source
+    path; FormatHandler four-operation contract (parse_content, mark, unmark,
+    sidecar_path).
+- name: NodeIdMap entity
+  type: domain entity definition (C-025)
+  description: build, validate_and_repair, and resolve operations on the MAP section
+    and TREE markers within one tree file context.
+outputs:
+- name: TreeBuilder entity definition
+  type: domain entity definition
+  description: Component that dispatches to FormatHandler and writes three-section
+    TreeFile as sibling (CHECKSUMS, MAP via NodeIdMap.build with next_free and UUID4
+    entries, TREE); sole writer on the canonical path; copies next_free on rebuild;
+    records content_checksum in CHECKSUMS and on the returned tree reference.
+- name: TreeLifecycle entity definition
+  type: domain entity definition
+  description: Coordinator owning ChecksumSyncPolicy, TreeBuilder, validate_and_repair
+    dispatch via NodeIdMap, and pure checksum helpers; all consumers route through it;
+    no ad-hoc validation outside it.
+- name: Package public API
+  type: module re-export surface
+  description: Package root re-exports TreeLifecycle, TreeBuilder, ChecksumSyncPolicy,
+    and all checksum and helper functions.
+source_labels:
+- '{c004}'
+- '{c005}'
+- '{c006}'
+- '{a007}'
+- '{n002}'
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: needs_review

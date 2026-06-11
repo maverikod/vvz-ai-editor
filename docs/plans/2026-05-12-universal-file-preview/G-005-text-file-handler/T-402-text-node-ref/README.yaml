@@ -1,0 +1,40 @@
+step_id: T-402
+parent_global_step: G-005
+name: Text file handler — node_ref as line index
+status: frozen
+concepts:
+- C-004
+- C-014
+- C-017
+description: "Define the node_ref addressing scheme of TextFileHandler (C-017) for\
+  \ .md, .txt, .rst, and .adoc files. TextFileHandler uses zero-based integer line\
+  \ indices as node_ref values; no separate identifier infrastructure is introduced.\n\
+  Addressing scheme: - A node_ref for a text file line is a zero-based integer: 0\
+  \ for\n  the first line, 1 for the second, and so on.\n- The node_ref of a line\
+  \ Block equals its position in the lines root\n  block set. The HandlerDispatcher\
+  \ does not interpret this value;\n  TextFileHandler resolves it directly by position.\n\
+  \nResolution process: - When the caller supplies node_ref as an integer N, TextFileHandler\n\
+  \  returns the Nth line (zero-based) of the file as the focus Node.\n  This Node\
+  \ has NodeKind scalar and its block set is empty.\n- If N is negative or greater\
+  \ than or equal to the total line count,\n  TextFileHandler signals an UNKNOWN_NODE_REF\
+  \ condition, which the\n  command surfaces as an ErrorClassification (C-014) input\
+  \ error.\n\nNo identifier infrastructure: - Text files do not use any external tree\
+  \ infrastructure for\n  identifier resolution. The integer index is computed directly\
+  \ from\n  the file content. No cst_load_file or list_json_blocks calls are\n  made\
+  \ by TextFileHandler.\n"
+inputs:
+- name: node_ref_value
+  type: integer
+  description: A zero-based line index supplied by the caller as node_ref. Must be
+    in the range [0, total_line_count).
+outputs:
+- name: focus_line_node
+  type: Node with NodeKind scalar (C-004)
+  description: The line Node at the given zero-based index. Its value is the full
+    text of that line; its block set is empty.
+- name: node_ref_error
+  type: ErrorClassification (C-014) UNKNOWN_NODE_REF input error
+  description: Returned instead of focus_line_node when node_ref_value is out of range
+    [0, total_line_count).
+atomic_steps:
+- A-001

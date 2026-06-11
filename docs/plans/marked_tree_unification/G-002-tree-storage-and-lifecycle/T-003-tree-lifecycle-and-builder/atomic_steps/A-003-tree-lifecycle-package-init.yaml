@@ -1,0 +1,109 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: Extend tree_lifecycle package __init__ to re-export entity API
+target_file: ai_editor/core/tree_lifecycle/__init__.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+- A-002
+concepts:
+- C-010
+- C-011
+- C-006
+status: ready_for_review
+prompt: |
+  Modify `ai_editor/core/tree_lifecycle/__init__.py`.
+  Operation: modify_file.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-010, C-011, C-006)
+
+  ## Locked model
+  - Public surface exports TreeLifecycle, TreeBuilder, ChecksumSyncPolicy, sha enums, helpers.
+  - Keep recreate_tree_from_content exported (parity oracle until G-000).
+
+  ## a8 — FULL baseline (pre-step; 24 lines)
+
+  ```python
+  """
+  Tree-lifecycle package: centralized checksum + validate + recreate of trees.
+
+  See ``checksum`` for the content-core and the file wrapper.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from ai_editor.core.tree_lifecycle.checksum import (
+      compute_content_checksum,
+      is_tree_valid,
+      recreate_tree_from_content,
+      validate_or_recreate_from_content,
+      validate_or_recreate_tree_file,
+  )
+
+  __all__ = [
+      "compute_content_checksum",
+      "is_tree_valid",
+      "recreate_tree_from_content",
+      "validate_or_recreate_from_content",
+      "validate_or_recreate_tree_file",
+  ]
+  ```
+
+  ## Post-step state (replace imports and __all__ only; keep module docstring unchanged)
+
+  ```python
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+  from ai_editor.core.tree_lifecycle.lifecycle import TreeLifecycle
+  from ai_editor.core.tree_lifecycle.checksum import (
+      ChecksumSyncPolicy,
+      ShaSyncBranch,
+      ShaSyncDecision,
+      compute_content_checksum,
+      is_tree_valid,
+      recreate_tree_from_content,
+      validate_or_recreate_from_content,
+      validate_or_recreate_tree_file,
+  )
+
+  __all__ = [
+      "ChecksumSyncPolicy",
+      "ShaSyncBranch",
+      "ShaSyncDecision",
+      "TreeBuilder",
+      "TreeLifecycle",
+      "compute_content_checksum",
+      "is_tree_valid",
+      "recreate_tree_from_content",
+      "validate_or_recreate_from_content",
+      "validate_or_recreate_tree_file",
+  ]
+  ```
+
+  Prerequisite: checksum.py already defines ChecksumSyncPolicy, ShaSyncBranch, ShaSyncDecision
+  (checksum-sync-policy step). builder.py and lifecycle.py exist from parallel create steps.
+
+  ## Forbidden
+  - Do NOT change module docstring.
+  - Do NOT edit builder.py, lifecycle.py, checksum.py.
+
+  ## Validation
+  ```bash
+  black ai_editor/core/tree_lifecycle/__init__.py
+  flake8 ai_editor/core/tree_lifecycle/__init__.py
+  mypy ai_editor/core/tree_lifecycle/__init__.py
+  python -c "from ai_editor.core.tree_lifecycle import TreeLifecycle, TreeBuilder, ChecksumSyncPolicy, recreate_tree_from_content"
+  pytest -q
+  ```
+
+  Post-step estimate: ~40 lines. All tests must pass.
+verification:
+  type: import
+  target: ai_editor/core/tree_lifecycle/__init__.py
+  expected: >
+    Ten public names import from package root including TreeLifecycle, TreeBuilder,
+    ChecksumSyncPolicy, and legacy recreate_tree_from_content. pytest green.

@@ -1,0 +1,107 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Tree-temp open pipeline — SHA policy, sidecar load or rebuild, session register
+target_file: ai_editor/commands/universal_file_edit/tree_temp_open_support.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-001
+concepts:
+  - C-001
+  - C-002
+  - C-003
+  - C-005
+  - C-007
+prompt: |
+  ## Implementation alias
+  Delivered as `tree_temp_open_support.py` with `acquire_tree_temp_for_open` (not a separate `tree_temp_open_pipeline.py`).
+
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-001-universal-file-open-tree-temp-sidecar/README.yaml
+  - MRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - HRS: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  - Prerequisite modules from G-001–G-003 (must exist and be used; do not duplicate policy):
+    - `resolve_sha_sync_policy` / `ShaSyncBranch` from `ai_editor.commands.universal_file_edit.sha_sync_policy`
+      (G-003 — exact names as implemented).
+    - `.trees/` sidecar: `ai_editor.core.tree_temp.sidecar_payload` + `ai_editor.core.tree_temp.sidecar_paths`
+      (read/write JSON bytes for C-002; not `ai_editor.core.cst_tree.tree_sidecar`).
+    - `parse_source_to_tree_roots` calling SourceParser for json vs yaml (G-002 SourceParser).
+
+  ## File header
+  """
+  Open pipeline for tree-temp universal_file_open: SHA policy, sidecar acquisition, session.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports (adjust to real G-003/G-002 module paths after merge)
+  - from __future__ import annotations
+  - import hashlib
+  - from pathlib import Path
+  - from typing import Any, Dict, List, Optional, Tuple, Union
+  - from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+  - from ai_editor.commands.universal_file_edit.format_group import FormatDescriptor
+  - from ai_editor.commands.universal_file_edit.session import create_session
+  - from ai_editor.core.tree_temp.tree_node import TreeNode
+  - (policy, sidecar, parser imports as resolved in repository)
+
+  ## Constants
+  - HASH_ALGO_LABEL: str = "sha256"  # documentation only if unused
+
+  ## Public function
+  def open_tree_temp_with_sidecar(
+      *,
+      project_id: str,
+      file_path: str,
+      abs_path: Path,
+      descriptor: FormatDescriptor,
+      active_session_for_target: bool,
+  ) -> Union[SuccessResult, ErrorResult]:
+      """
+      Run SHASyncPolicy (C-003), obtain TreeNode roots (C-001) from sidecar (C-002) or rebuild from source,
+      register EditSession (C-007) via create_session extended fields, return session payload.
+      One-line summary for docstring.
+      """
+
+  ## Algorithm (open_tree_temp_with_sidecar)
+  1. Read `abs_path` bytes; compute `current_source_sha256` as lowercase hex SHA-256.
+  2. Determine `sidecar_presence` and `persisted_source_sha256` using sidecar reader (None if missing).
+  3. Call policy resolver with inputs from tactical TS: sidecar_presence, persisted checksum, current checksum,
+     active_session_for_target boolean.
+  4. Branch outcomes:
+     - load roots from sidecar JSON when policy selects sidecar authority (sha_match or session-priority mismatch).
+     - parse source bytes via SourceParser (json/yaml per descriptor.handler_id) when policy selects rebuild;
+       assign stable_ids per parser rules (new UUIDs on rebuild).
+     - no_sidecar: parse source; sidecar_write_intent = "create".
+     - sha_mismatch_no_session: parse source; sidecar_write_intent = "replace".
+     - sha_mismatch_active_session: deserialize sidecar only; sidecar_write_intent = "none".
+  5. Build `create_session` call with **`tree_temp_roots=_clone_roots(...)`**, **`source_sha256_at_open=current_source_sha256`**,
+     `dirty=False`, `sidecar_write_intent` as resolved, `tree_id=None` for pure TreeNode path (unless legacy registry id required).
+  6. SuccessResult data keys: success True, session_id, format_group descriptor.format_group,
+     acquisition_outcome (dict with branch name and load path), acknowledged_format_group tree-temp,
+     available_operations from descriptor.
+
+  ## Errors
+  - Map policy failures and parse failures to stable ErrorResult codes already used by universal_file_open
+    (reuse make_error from errors.py where applicable).
+
+  ## Edge cases
+  - Empty file: parser produces valid minimal tree per format.
+  - Missing sidecar when policy requires load: treat as implementation bug — policy layer must prevent.
+
+  ## Forbidden
+  - File must not exceed 400 lines; split helpers into private functions in same module only if under limit.
+  - No edit/write/close/preview navigation logic.
+  - No cross-atomic-step references.
+
+  ## Module-level private helpers
+  - def _sha256_hex(path: Path) -> str
+  - def _clone_roots(roots: List[TreeNode]) -> List[TreeNode]
+
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.tree_temp_open_support.acquire_tree_temp_for_open
+  expected: Symbol imports without ImportError after G-001–G-003 symbols exist; static_analysis clean on this file
+status: done

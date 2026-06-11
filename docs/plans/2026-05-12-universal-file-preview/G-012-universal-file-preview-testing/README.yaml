@@ -1,0 +1,19 @@
+step_id: G-012
+name: Universal file preview testing
+description: >
+  Retrospective documentation of pytest coverage added for universal file preview:
+  dedicated tests for list_yaml_blocks and integration-style tests in the smoke module
+  (execute path with mocked database, per-handler unit checks). Does not change product
+  architecture; records verification assets that lock in G-008 listing and G-001 preview
+  execute behavior.
+concepts:
+- C-001
+relations: []
+depends_on:
+- G-001
+- G-008
+- G-011
+tactical_steps:
+- T-1005
+- T-1006
+status: done

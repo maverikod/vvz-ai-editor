@@ -1,0 +1,44 @@
+step_id: T-301
+parent_global_step: G-004
+name: Python file handler — open and produce root Node
+status: frozen
+concepts:
+- C-003
+- C-004
+- C-014
+- C-016
+description: "Define the opening behaviour of PythonFileHandler (C-016), which extends\
+  \ FileHandler (C-003), for .py, .pyi, and .pyw files. When invoked to open a Python\
+  \ source file, PythonFileHandler parses it via the project's cst_load_file infrastructure\
+  \ and produces a tree_node root Node representing the Module.\nRoot Node: - NodeKind\
+  \ (C-004): tree_node. - Type label: 'Module'. - Name: absent (modules do not carry\
+  \ a named identifier). - Attributes: empty or minimal module-level attributes. -\
+  \ Block set: the ordered list of top-level statements in the module.\nInterior node\
+  \ structure (CST mapping): - ClassDef statements: NodeKind tree_node; type label\
+  \ 'ClassDef';\n  name = class name; attributes include bases; block set = class\
+  \ body\n  statements.\n- FunctionDef statements: NodeKind tree_node; type label\
+  \ 'FunctionDef';\n  name = function name; attributes include params and returns;\n\
+  \  block set = function body statements.\n- Other statements (assignments, imports,\
+  \ expressions, etc.):\n  NodeKind tree_node or scalar depending on the CST node\
+  \ type.\n- Leaf values (string literals, numbers, names): NodeKind scalar.\nLazy\
+  \ materialisation: PythonFileHandler materialises only the root and the children\
+  \ needed by the current NavigationProcedure request. It does not parse all interior\
+  \ nodes on open.\nFile-structure errors: if the file cannot be parsed as valid Python,\
+  \ PythonFileHandler returns a FILE_STRUCTURE_ERROR carrying the parser name ('libcst')\
+  \ and, when available, the line range of the syntax error.\n"
+inputs:
+- name: file_path
+  type: string
+  description: Project-relative path to the .py, .pyi, or .pyw file to open.
+outputs:
+- name: root_node
+  type: Node with NodeKind tree_node (C-004), type 'Module'
+  description: The Module root Node produced from the parsed Python file. Its block
+    set contains the top-level statements of the module.
+- name: file_structure_error
+  type: ErrorClassification (C-014) FILE_STRUCTURE_ERROR
+  description: Returned instead of root_node when the Python file cannot be parsed.
+    Carries parser name 'libcst' and line range when available.
+atomic_steps:
+- A-000
+- A-001

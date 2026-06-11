@@ -1,0 +1,275 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Edit Subdirectory + Edit Stage acceptance
+target_file: tests/integration/test_edit_subdir_edit_stage.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-007
+- C-008
+- C-009
+- C-010
+- C-011
+- C-022
+prompt: |
+  Create `tests/integration/test_edit_subdir_edit_stage.py` (operation: create_file).
+
+  Acceptance verification for **C-022 (2)** (open loads from CA into session directory
+  and creates Edit Subdirectory), **C-008** (Edit Subdirectory under File Subtree),
+  **C-007** (Origin Snapshot immutable during edit), **C-010** (Open Stage creates
+  both artefacts), **C-011** (Edit Stage mutates only Edit Subdirectory; preview is
+  read-only w.r.t. Origin Snapshot), and **C-009** (open → edit workflow segment).
+
+  Mock Upstream Client in tests by patching these exact module paths:
+  `resolve_workspace_root` at `ai_editor.core.editor_workspace_paths` and
+  `get_code_analysis_client` at `ai_editor.core.upstream.code_analysis_client`.
+
+  Scope boundary: this step covers open → edit (and preview) only — write/close cycle
+  (C-012, C-013) is **out of scope**; create only the target file listed above.
+
+  ## MRS concepts (relevant excerpt)
+
+  - **C-007 Origin Snapshot**: local copy at `FileWorkspaceLayout.origin_path` inside
+    File Subtree; must not change during Edit Stage (C-011).
+  - **C-008 Edit Subdirectory**: `{origin_basename}-{uuid4}/` under `file_subtree_dir`;
+    working copy at `edit_subdir / origin_basename` (= `session.draft_path`).
+  - **C-010 Open Stage**: downloads from CA (mock), writes Origin Snapshot, allocates
+    Edit Subdirectory via `allocate_edit_subdir`.
+  - **C-011 Edit Stage**: mutations apply only to `draft_path` inside Edit Subdirectory;
+    `universal_file_preview` is read-only and must not alter Origin Snapshot bytes.
+  - **C-022 (2)**: product acceptance — open loads into `{workspace_root}/{session_id}/`
+    and creates edit subdirectory (verified by filesystem layout after `universal_file_open`).
+
+  ## Workspace path domain (read-only helpers for assertions)
+
+  From `ai_editor.core.editor_workspace_paths`:
+
+  ```python
+  layout = file_workspace_layout(workspace_root, ca_session_id, project_id, file_path)
+  # layout.session_dir       — Editor Session Directory (C-005)
+  # layout.file_subtree_dir — File Subtree root (C-006)
+  # layout.origin_path      — Origin Snapshot file path (C-007)
+  ```
+
+  Edit Subdirectory is **not** a field on `FileWorkspaceLayout`. After open, discover it
+  as `Path(open_res.data["draft_path"]).parent` (C-008).
+
+  ## File header (exact module docstring)
+
+  ```python
+  """Acceptance: Edit Subdirectory + Edit Stage (C-008, C-011, C-022-2).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports (complete list)
+
+  ```python
+  from __future__ import annotations
+
+  import hashlib
+  import re
+  from contextlib import contextmanager
+  from pathlib import Path
+  from unittest.mock import MagicMock, patch
+
+  import pytest
+
+  from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
+  from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+  from ai_editor.commands.universal_file_preview_command import UniversalFilePreviewCommand
+  from ai_editor.core.editor_workspace_paths import file_workspace_layout
+  ```
+
+  ## Module-level helpers (implement exactly)
+
+  ### `_sha256(path: Path) -> str`
+
+  Return `hashlib.sha256(path.read_bytes()).hexdigest()`.
+
+  ### `_mock_upstream(*, origin_bytes: bytes) -> MagicMock`
+
+  1. `upstream = MagicMock()`
+  2. `upstream.validate_ca_session.return_value = MagicMock(name="VALID")`
+  3. `upstream.lock_file_and_download.return_value = origin_bytes`
+  4. Return `upstream`.
+
+  ### `_open_context(*, workspace: Path, upstream: MagicMock)`
+
+  Context manager (add import `from contextlib import contextmanager`):
+
+  ```python
+  @contextmanager
+  def _open_context(*, workspace: Path, upstream: MagicMock):
+      with patch(
+          "ai_editor.core.editor_workspace_paths.resolve_workspace_root",
+          return_value=workspace,
+      ), patch(
+          "ai_editor.core.upstream.code_analysis_client.get_code_analysis_client",
+          return_value=upstream,
+      ):
+          yield
+  ```
+
+  Patch exactly these module paths (must not vary):
+  `ai_editor.core.editor_workspace_paths.resolve_workspace_root` and
+  `ai_editor.core.upstream.code_analysis_client.get_code_analysis_client`.
+
+  ## Test constants (use in all tests)
+
+  - `workspace = tmp_path / "workspace"`
+  - `sid = "ca-edit-stage"`
+  - `project_id = "p1"`
+  - `file_path = "notes.txt"`  (plain text → FORMAT_TEXT edit pipeline, no CST preview)
+  - `origin_bytes = b"hello world\n"`
+  - `origin_text = origin_bytes.decode("utf-8")`
+
+  ## Test 1: `test_open_creates_edit_subdirectory`
+
+  Decorator: `@pytest.mark.asyncio`
+
+  Algorithm:
+
+  1. `upstream = _mock_upstream(origin_bytes=origin_bytes)`
+  2. Inside `_open_context(workspace=workspace, upstream=upstream)`:
+     - `open_cmd = UniversalFileOpenCommand()`
+     - `open_res = await open_cmd.execute(session_id=sid, project_id=project_id, file_path=file_path)`
+  3. Assert `open_res.success` is True.
+  4. `layout = file_workspace_layout(workspace, sid, project_id, file_path)`
+  5. Assert `layout.origin_path.is_file()` — Origin Snapshot exists (C-007, C-010).
+  6. Assert `layout.origin_path.read_bytes() == origin_bytes` — loaded from mock CA.
+  7. `draft_path = Path(open_res.data["draft_path"])`
+  8. Assert `draft_path.is_file()` — working copy exists (C-008).
+  9. `edit_subdir = draft_path.parent`
+  10. Assert `edit_subdir.is_dir()` — Edit Subdirectory exists (C-008, C-022-2).
+  11. Assert `edit_subdir.is_relative_to(layout.file_subtree_dir)` — under File Subtree.
+  12. Assert `edit_subdir != layout.origin_path` — paths differ (origin is sibling file).
+  13. Assert `draft_path.name == layout.origin_path.name == "notes.txt"`.
+  14. Assert `re.fullmatch(r"notes\.txt-[0-9a-f-]{36}", edit_subdir.name)` — naming scheme
+      `{basename}-{uuid4}` from `allocate_edit_subdir`.
+  15. Assert `str(workspace / sid) in open_res.data["session_dir"]` — session under
+      workspace_root (C-022-2, C-005).
+  16. Assert `upstream.lock_file_and_download.called_once()` (or `assert_called_once()`).
+
+  ## Test 2: `test_edit_stage_mutates_edit_subdir_not_origin`
+
+  Decorator: `@pytest.mark.asyncio`
+
+  Algorithm:
+
+  1. Same setup constants and mock as Test 1.
+  2. Inside `_open_context`:
+     - Open file (same as Test 1); assert success.
+     - `layout = file_workspace_layout(workspace, sid, project_id, file_path)`
+     - `origin_hash_before = _sha256(layout.origin_path)`
+     - `draft_path = Path(open_res.data["draft_path"])`
+     - `draft_hash_before = _sha256(draft_path)`
+  3. Still inside `_open_context`:
+     - `edit_cmd = UniversalFileEditCommand()`
+     - `edit_res = await edit_cmd.execute(
+           session_id=sid,
+           project_id=project_id,
+           file_path=file_path,
+           operations=[
+               {
+                   "type": "replace",
+                   "start_line": 1,
+                   "end_line": 1,
+                   "content": "hello edited\n",
+               }
+           ],
+       )`
+  4. Assert `edit_res.success` is True (C-011 Edit Stage succeeds).
+  5. Assert `_sha256(layout.origin_path) == origin_hash_before` — Origin Snapshot
+     bytes unchanged (C-007, C-011).
+  6. Assert `layout.origin_path.read_bytes() == origin_bytes` — explicit byte equality.
+  7. Assert `_sha256(draft_path) != draft_hash_before` — draft mutated.
+  8. Assert `draft_path.read_text(encoding="utf-8") == "hello edited\n"` — mutation in
+     Edit Subdirectory working copy only (C-008, C-011).
+  9. Assert `draft_path.parent.is_dir()` and `draft_path.parent.name.startswith("notes.txt-")`.
+
+  ## Test 3: `test_preview_read_only_does_not_mutate_origin`
+
+  Decorator: `@pytest.mark.asyncio`
+
+  Algorithm:
+
+  1. Same setup; open inside `_open_context`; assert success.
+  2. `layout = file_workspace_layout(workspace, sid, project_id, file_path)`
+  3. `origin_hash_before = _sha256(layout.origin_path)`
+  4. `preview_cmd = UniversalFilePreviewCommand()`
+  5. `preview_res = await preview_cmd.execute(
+         session_id=sid,
+         project_id=project_id,
+         file_path=file_path,
+     )`
+  6. Assert `preview_res.success` is True — in-session preview works (C-011 preview property).
+  7. Assert `_sha256(layout.origin_path) == origin_hash_before` — Origin Snapshot unchanged.
+  8. Assert `layout.origin_path.read_bytes() == origin_bytes`.
+
+  ## Error handling expectations
+
+  - If open fails: test fails immediately (no skip); do not catch exceptions.
+  - If edit or preview returns `ErrorResult`: use plain `assert edit_res.success` so pytest
+    shows the error payload.
+  - Do not add retry logic.
+
+  ## Edge cases covered
+
+  - Text file (`.txt`) avoids sidecar CST node_ref requirement for edit ops.
+  - Origin and draft share basename but live at different paths (sibling layout).
+  - Edit changes draft only; origin hash stable across edit and preview.
+
+  ## Forbidden patterns
+
+  - Do NOT modify any file other than `tests/integration/test_edit_subdir_edit_stage.py`.
+  - Do NOT modify any file under `docs/plans/`.
+  - Do NOT read or write paths outside `workspace / sid` subtree.
+  - Do NOT use direct HTTP or MCP proxy in tests — invoke command classes directly.
+  - Do NOT use `print()` for diagnostics.
+  - Do NOT skip Test 3 — implement all three tests.
+  - Do NOT reference `layout.edit_subdir` (field does not exist).
+  - Do NOT use bare `except:`.
+
+  ## Validation commands (mandatory after implementation)
+
+  ```bash
+  source .venv/bin/activate
+  black tests/integration/test_edit_subdir_edit_stage.py
+  flake8 tests/integration/test_edit_subdir_edit_stage.py
+  mypy tests/integration/test_edit_subdir_edit_stage.py
+  pytest tests/integration/test_edit_subdir_edit_stage.py -v
+  pytest tests/ -v --ignore=tests/integration/test_workers.py
+  ```
+
+  Expected:
+  - black: "reformatted" or "All done!" / no changes needed
+  - flake8: no output (exit 0)
+  - mypy: "Success: no issues found" on touched file (or no errors for this module)
+  - `pytest tests/integration/test_edit_subdir_edit_stage.py -v`: all 3 tests PASSED
+  - full pytest suite: all tests PASSED
+
+  **All tests must pass.**
+
+  ## Expected deliverable
+
+  A self-contained pytest module proving C-022 (2), C-008, C-007, C-010, C-011, and C-009
+  open→edit segment with mock upstream. Write Stage (C-012) and Close Stage (C-013) are
+  out of scope — this module exercises only open, edit, and preview assertions.
+verification:
+  type: pytest
+  target: tests/integration/test_edit_subdir_edit_stage.py
+  expected: >
+    test_open_creates_edit_subdirectory asserts Origin Snapshot file exists at
+    layout.origin_path under File Subtree, Edit Subdirectory directory exists as
+    draft_path.parent matching notes.txt-{uuid} pattern, origin and edit paths differ,
+    and session_dir lies under workspace_root/session_id (C-022-2, C-008, C-010, C-007).
+    test_edit_stage_mutates_edit_subdir_not_origin asserts universal_file_edit changes
+    only draft_path content while origin bytes and sha256 remain identical to pre-edit
+    state (C-011, C-007, C-008). test_preview_read_only_does_not_mutate_origin asserts
+    universal_file_preview succeeds without changing Origin Snapshot bytes (C-011 preview).
+    All three tests pass under mock upstream.
+status: ready_for_review

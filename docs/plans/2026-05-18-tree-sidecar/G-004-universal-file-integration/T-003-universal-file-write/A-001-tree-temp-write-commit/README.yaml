@@ -1,0 +1,69 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Tree-temp write — serialize TreeNode to source bytes and sidecar payload
+target_file: ai_editor/commands/universal_file_edit/tree_temp_write_commit.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-001
+  - C-002
+  - C-006
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-003-universal-file-write/README.yaml
+  - MRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - HRS: docs/plans/2026-05-18-tree-sidecar/source_spec.md
+
+  ## Goal
+  Provide pure functions used by `UniversalFileWriteCommand` for tree-temp: build preview diff from disk source
+  vs serialized session tree; on commit write source bytes via atomic replace; write Sidecar JSON with updated
+  sidecar-recorded checksum (**use C-002 payload field names as implemented**) and **`tree_temp_roots`**; refresh
+  **`session.source_sha256_at_open`**; clear **`dirty`**; reset **`sidecar_write_intent`** on the **`EditSession`**
+  (align sentinel with **G-003** session baseline: **`None`** or **`\"none\"`**, whichever that baseline adopted).
+
+  ## File header
+  """
+  Preview diff and commit persistence for tree-temp TreeNode edit sessions.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports
+  - from __future__ import annotations
+  - from pathlib import Path
+  - from typing import TYPE_CHECKING, Tuple
+  - if TYPE_CHECKING: from ai_editor.commands.universal_file_edit.session import EditSession
+  - Use SourceSerializer entry points from G-002 (json/yaml) accepting TreeNode roots.
+
+  ## Functions
+  - def build_tree_temp_preview_text(*, abs_path: Path, session: EditSession) -> str:
+      """Return canonical source text for current session tree via SourceSerializer."""
+  - def commit_tree_temp_to_disk(*, session: EditSession) -> Tuple[str, str]:
+      """
+      Write source file and sidecar; return (new_source_sha256_hex, unified_diff_str optional second value
+      or adapt signature to match caller).
+      Raise OSError-derived or return Result type consistent with write_command patterns — choose one approach
+      in implementation: prefer raising ValueError with message on serializer failure for caller to map.
+      """
+
+  ## Algorithm (commit)
+  1. Serialize `session.tree_temp_roots` to bytes using format_kind from session.handler_id.
+  2. Atomically replace `session.abs_path`.
+  3. Recompute lowercase hex SHA-256 of written bytes; assign **`session.source_sha256_at_open`**; **`session.dirty = False`**
+     (canonical session field vs bare **`source_sha256`**).
+  4. Persist `.trees` JSON via `ai_editor.core.tree_temp.sidecar_payload` (serialize API as implemented) and write bytes atomically to the path from `ai_editor.core.tree_temp.sidecar_paths.resolve_trees_sidecar_path` (do not use CST `tree_sidecar` for tree-temp payloads).
+  5. session.sidecar_write_intent = "none".
+
+  ## Forbidden
+  - ≤ 400 lines.
+  - No lockfile PID protocol changes here (remain in write_command).
+
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.tree_temp_write_commit.commit_tree_temp_to_disk
+  expected: Imports resolve after G-002 serializers exist
+status: done

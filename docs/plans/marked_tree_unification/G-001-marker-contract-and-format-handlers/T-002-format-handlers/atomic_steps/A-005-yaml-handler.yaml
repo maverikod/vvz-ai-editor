@@ -1,0 +1,92 @@
+step_id: A-005
+parent_tactical_step: T-002
+name: Create YamlHandler for .yaml and .yml files
+target_file: ai_editor/tree/handlers/yaml_handler.py
+operation: create_file
+priority: 4
+depends_on:
+- A-001
+concepts:
+- C-007
+- C-001
+- C-002
+- C-005
+- C-009
+status: draft
+prompt: |
+  Create `ai_editor/tree/handlers/yaml_handler.py`.
+
+  ## Parent documents
+  - GS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - TS: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-002-format-handlers/README.yaml`
+  - MRS: `docs/plans/marked_tree_unification/spec.yaml`
+
+  ## Locked syntax (YAML / {b003})
+  - Each addressable mapping: `___id___: <int>` MUST be first key
+  - Sequence scalar elements: `{___id___: <int>, v: <scalar>}`
+  - short_id is Python int / YAML integer, never string UUID
+  - unmark removes all `___id___` keys and unwraps `v` wrappers
+
+  ## Module docstring — Author Vasiliy Zdanovskiy, vasilyvz@gmail.com
+
+  ## Imports
+  - from __future__ import annotations
+  - from pathlib import Path
+  - from typing import Any, List
+  - import yaml
+  - from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  - from ai_editor.tree.tree_node import TreeNode
+
+  ## Constants
+  - `_ID_KEY = "___id___"`
+  - `_VAL_KEY = "v"`
+
+  ## Helper functions (module level)
+
+  ### _inject_ids(obj, allocator, path="") -> Any
+  1. dict: build `{_ID_KEY: allocator.allocate(), **{k: _inject_ids(v, allocator, child_path) for k,v in obj.items()}}` with _ID_KEY inserted first (use ordered dict construction)
+  2. list: return [_wrap_scalar(item, allocator, f"{path}[{i}]") for i, item in enumerate(obj)]
+  3. scalar at root: wrap `{_ID_KEY: allocator.allocate(), _VAL_KEY: obj}`
+
+  ### _wrap_scalar(item, allocator, path)
+  If dict or list: delegate _inject_ids; else return `{_ID_KEY: allocator.allocate(), _VAL_KEY: item}`
+
+  ### _strip_ids(obj) -> Any
+  1. dict with both _ID_KEY and _VAL_KEY and only those two keys → return _VAL_KEY value (recurse if nested)
+  2. dict with _ID_KEY among keys → copy without _ID_KEY, recurse values
+  3. list → map _strip_ids
+  4. else return obj
+
+  ### _collect_nodes(obj, path, nodes, allocator) — for parse_content on unmarked
+  Walk unmarked structure; assign sid=allocator.allocate() per addressable unit same as mark would; append TreeNode(short_id=sid, kind=..., content=..., attributes=...) with kind mapping/scalar/sequence, attributes key_path=path, content=yaml.dump snippet without _ID_KEY
+
+  ## Class YamlHandler(FormatHandler)
+
+  ### parse_content
+  yaml.safe_load(content) → walk with ShortIdAllocator(1) → List[TreeNode]
+
+  ### mark
+  obj=yaml.safe_load(content); marked=_inject_ids(obj, ShortIdAllocator(1)); return yaml.dump(marked, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+  ### unmark
+  obj=yaml.safe_load(marked_text); clean=_strip_ids(obj); return yaml.dump(clean, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+  ### sidecar_path
+  sibling `.tree` path
+
+  ## Byte-exact round-trip requirement
+  For inputs where PyYAML dump is stable with fixed kwargs above, `unmark(mark(src))==src`.
+  Tests use simple YAML (`a: 1\nb: 2\n`) that round-trips byte-exact.
+
+  ## Forbidden
+  - NO uuid.uuid4 or string UUID in ___id___ values
+  - NO alternative wrapper keys
+  - NO TreeNode fields `node_id` or `parent_id` — use `short_id` / `parent_short_id` only
+  - NO EditSession (C-012) hide/unhide logic
+
+  ## Validation + pytest -q — all tests must pass
+verification:
+  type: import
+  target: ai_editor/tree/handlers/yaml_handler.py
+  expected: >
+    ___id___ values are integers; unmark(mark(src))==src for canonical test YAML; no uuid module.

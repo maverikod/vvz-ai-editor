@@ -1,0 +1,38 @@
+step_id: G-008
+name: YAML file handler
+description: >
+  YamlFileHandler is the FileHandler family for .yaml and .yml files. It opens a YAML
+  file and produces a root Node whose NodeKind depends on the document root: mapping for
+  YAML mappings, sequence for YAML sequences, scalar for bare scalars. Parsing is
+  single-document only (yaml.safe_load); an empty or whitespace-only stream yields an
+  empty mapping root. Stable identifiers: when `ai_editor.core.yaml_tree` and
+  optional `list_yaml_blocks` exist, opaque ids align with RFC 6901 pointers on the
+  loaded document; otherwise the handler resolves `node_ref` using JSON Pointer-style
+  paths derived from the loaded YAML only.
+concepts:
+- C-020
+relations:
+- from_concept: C-020
+  to_concept: C-003
+  type: extends
+- from_concept: C-020
+  to_concept: C-004
+  type: produces
+- from_concept: C-020
+  to_concept: C-009
+  type: depends_on
+source_ranges:
+- start: 163
+  end: 167
+depends_on:
+- G-002
+- G-003
+tactical_steps:
+- T-701
+- T-702
+- T-703
+- T-704
+- T-705
+- T-706
+- T-707
+status: done

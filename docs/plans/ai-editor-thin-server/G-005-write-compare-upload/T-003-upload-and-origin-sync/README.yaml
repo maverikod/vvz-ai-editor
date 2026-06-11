@@ -1,0 +1,26 @@
+step_id: T-003
+parent_global_step: G-005
+name: Upload и синхронизация origin
+description: 'При write_mode=commit и результате сравнения diff: вызвать upload канонического экспорта Edit Subdirectory (C-008) через Upstream Client (C-017) по контракту C-023; при успешном принятии на СА перезаписать Origin Snapshot (C-007) принятым содержимым. Изменение содержимого файла на СА — только через upload API; прямая локальная запись в дерево проекта на диске СА запрещена.
+
+  '
+concepts:
+- C-007
+- C-008
+- C-012
+- C-017
+- C-023
+inputs:
+- name: canonical_export
+  type: bytes
+  description: Канонический экспорт Edit Subdirectory (C-008) для upload.
+- name: origin_path
+  type: path
+  description: Локальный Origin Snapshot (C-007) для обновления после успеха на СА.
+outputs:
+- name: write_success_response
+  type: object
+  description: success после синхронизации Origin Snapshot с принятым на СА содержимым.
+atomic_steps:
+- A-001
+status: ready_for_review

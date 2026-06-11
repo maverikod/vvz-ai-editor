@@ -1,0 +1,100 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: DynamicFileSet and scan policy
+target_file: ai_editor/core/search_session/file_sets/dynamic.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-013
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/file_sets/dynamic.py
+
+  MRS excerpt (C-013 DynamicFileSet):
+  - Derived from disk files minus the fresh IndexedFileSet.
+  - Scans only supported formats by default.
+  - Broad scan opt-in when caller requests CLI-like coverage.
+
+  Required imports:
+  ```python
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from pathlib import PurePosixPath
+  from typing import Iterable
+
+  from ai_editor.core.search_session.file_sets.indexed import IndexedFileSet
+  ```
+
+  IndexedFileSet excerpt (import only — do not reimplement):
+  ```python
+  @dataclass(frozen=True)
+  class IndexedFileSet:
+      files: frozenset[str]
+  ```
+
+  Task:
+  Create dynamic.py with module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  1. Module constants:
+     ```python
+     DEFAULT_SUPPORTED_SUFFIXES: frozenset[str] = frozenset(
+         {".py", ".json", ".yaml", ".yml", ".md", ".txt"}
+     )
+     DEFAULT_EXCLUDED_DIR_NAMES: frozenset[str] = frozenset(
+         {"logs", ".venv", "venv", "node_modules", "build", "dist", "__pycache__"}
+     )
+     ```
+
+  2. @dataclass(frozen=True) class DynamicFileSet:
+       files: frozenset[str]
+     Docstring: project-relative paths requiring direct disk or draft-session processing.
+
+  3. @dataclass class BroadScanPolicy:
+       enabled: bool = False
+       include_logs: bool = False
+     Docstring: opt-in policy for scanning beyond default supported formats and directory filters.
+
+  4. Private helpers using PurePosixPath (path inspection mechanism — resolved):
+       - `_path_has_excluded_dir(file_path: str, *, include_logs: bool) -> bool`:
+         Parse with PurePosixPath(file_path).parts. For each directory component (all parts except filename):
+         * If component == "logs" and include_logs is False => excluded.
+         * If component in DEFAULT_EXCLUDED_DIR_NAMES => excluded (always, even when broad_scan.enabled).
+         Non-log excluded dirs (.venv, venv, node_modules, build, dist, __pycache__) remain excluded
+         when broad_scan.enabled is True — only the suffix allow-list and logs rule relax.
+       - `_path_has_supported_suffix(file_path: str) -> bool`:
+         PurePosixPath(file_path).suffix in DEFAULT_SUPPORTED_SUFFIXES
+
+  5. def build_dynamic_file_set(
+         disk_files: Iterable[str],
+         indexed: IndexedFileSet,
+         *,
+         broad_scan: BroadScanPolicy = BroadScanPolicy(),
+     ) -> DynamicFileSet:
+     Docstring must document anti-rescan rule: members of indexed.files are always skipped.
+     Per-path rules:
+     - Skip if path in indexed.files (no duplicate indexed rescan).
+     - Skip if _path_has_excluded_dir(path, include_logs=broad_scan.include_logs).
+     - Skip if broad_scan.enabled is False and not _path_has_supported_suffix(path).
+     - Otherwise include path.
+     Returns DynamicFileSet(files=frozenset(...)).
+
+  Broad-scan rules (resolved — no open fork):
+  - broad_scan.enabled=False: apply suffix allow-list AND directory exclusions.
+  - broad_scan.enabled=True: skip suffix allow-list; still apply directory exclusions except logs
+    may pass when broad_scan.include_logs=True.
+  - broad_scan.include_logs=True without broad_scan.enabled=True has no effect on logs filtering.
+
+  Constraints:
+  - Under 220 lines.
+  - All paths are project-relative POSIX strings.
+
+verification:
+  type: pytest
+  target: tests/unit/test_dynamic_file_set.py
+  expected: >
+    Indexed members always excluded; .log under logs/ excluded by default; included when
+    broad_scan.enabled and include_logs; .venv/ paths excluded even when broad_scan.enabled;
+    unsupported suffix excluded unless broad_scan.enabled.
+status: ready_for_review

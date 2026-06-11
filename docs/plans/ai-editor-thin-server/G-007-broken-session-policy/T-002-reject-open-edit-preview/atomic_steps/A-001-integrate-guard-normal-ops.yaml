@@ -1,0 +1,183 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Guard в open_command facade
+target_file: ai_editor/commands/universal_file_edit/open_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-010
+- C-011
+- C-014
+- C-015
+- C-016
+- C-024
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/open_command.py` only (Open Stage C-010,
+  MCP Workflow Surface C-016 facade). Integrate Session Guard (C-024), which delegates
+  Session Validation (C-014) and implements Broken Session Policy (C-015) for normal
+  operations. Scope is **open_command.py only** — do not modify edit, preview, runtime,
+  or test files in this step.
+
+  ## MRS concepts (relevant excerpt)
+
+  - **C-010 Open Stage**: load file from CA with lock; normal operation rejected when session broken.
+  - **C-014 Session Validation**: mandatory before universal_file_open; SESSION_NOT_FOUND when session absent on CA; entry point is C-024 Session Guard.
+  - **C-015 Broken Session Policy**: when CA session missing or invalid, reject all normal operations (open, edit, preview) with ErrorResult and no side effects.
+  - **C-016 MCP Workflow Surface**: slim facade module delegates orchestration to runtime after guard passes.
+  - **C-024 Session Guard**: internal entity; `check(kind, ca_session_id)` returns ALLOW or REJECT for OPEN; REJECT on empty id or CA NOT_FOUND/invalid.
+
+  ## CURRENT FILE CONTENT (post-T-000 open_command facade baseline — modify this file)
+
+  ```py
+  """MCP command: universal_file_open — facade (C-016)."""
+  from __future__ import annotations
+
+  import logging
+  from typing import Any, Dict, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ..core.exceptions import ValidationError
+  from .base_mcp_command import BaseMCPCommand
+  from .open_command_metadata import get_universal_file_open_metadata
+  from .open_command_runtime import run_open_execute
+
+  logger = logging.getLogger(__name__)
+
+
+  class UniversalFileOpenCommand(BaseMCPCommand):
+      name = "universal_file_open"
+      version = "1.0.0"
+      descr = "Open project file into editor workspace"
+      category = "universal_file_edit"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {"type": "string"},
+                  "session_id": {"type": "string", "description": "CA session id (required)"},
+                  "create": {"type": "boolean"},
+                  "initial_content": {"type": "string"},
+              },
+              "required": ["project_id", "file_path", "session_id"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls) -> Dict[str, Any]:
+          return get_universal_file_open_metadata(cls)
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          params = super().validate_params(params)
+          return params
+
+      def execute(self, **kwargs: Any) -> SuccessResult | ErrorResult:
+          try:
+              return run_open_execute(self, **kwargs)
+          except ValidationError as exc:
+              return ErrorResult(message=str(exc), code=cast(Any, "VALIDATION_ERROR"))
+          except Exception as exc:
+              logger.error("universal_file_open failed: %s", exc, exc_info=True)
+              return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
+  ```
+
+  ## Imports to add (exact lines, after existing imports, before logger)
+
+  ```
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+  from ai_editor.core.upstream.session_guard import (
+      GuardDecision,
+      OperationKind,
+      SessionGuard,
+  )
+  ```
+
+  Do **not** add any other new imports. Do **not** call `validate_ca_session` directly anywhere in this file — SessionGuard subsumes C-014 validation.
+
+  ## Method to modify: `execute(self, **kwargs: Any) -> SuccessResult | ErrorResult`
+
+  Replace the method body with the algorithm below. Keep the existing `try` / `except ValidationError` / `except Exception` structure for the runtime call only.
+
+  ### Algorithm (step-by-step)
+
+  1. Read `ca_session_id = str(kwargs.get("session_id", "")).strip()`.
+  2. If `ca_session_id` is empty:
+     - Return immediately `ErrorResult(message="session_id is required for universal_file_open", code=cast(Any, "SESSION_INVALID"))`.
+     - Do **not** instantiate SessionGuard and do **not** call `run_open_execute`.
+  3. Construct `guard = SessionGuard(get_code_analysis_client())`.
+  4. Call `decision = guard.check(OperationKind.OPEN, ca_session_id)`.
+  5. If `decision == GuardDecision.REJECT`:
+     - Return immediately `ErrorResult(message=f"CA session not found or invalid: {ca_session_id}", code=cast(Any, "SESSION_NOT_FOUND"))`.
+     - Do **not** call `run_open_execute` (no disk writes, no lockfiles, no session creation).
+  6. If `decision == GuardDecision.ALLOW`:
+     - Enter existing `try` block: `return run_open_execute(self, **kwargs)`.
+     - Preserve existing `except ValidationError` → `VALIDATION_ERROR` and `except Exception` → log + `OPEN_ERROR`.
+  7. If `decision == GuardDecision.ALLOW_TERMINATING` (unexpected for OPEN):
+     - Return `ErrorResult(message="internal guard misclassification for open", code=cast(Any, "OPEN_ERROR"))`.
+     - Do **not** call `run_open_execute`.
+
+  ### Error handling
+
+  - Guard rejection paths (steps 2 and 5): return ErrorResult only; never raise.
+  - `get_code_analysis_client()` or `guard.check()` failures: let them propagate into the existing outer `except Exception` handler (log + OPEN_ERROR) **only after** step 6's `try` begins. Steps 3–5 should not be wrapped in that try — guard runs before try.
+  - Do **not** catch bare `Exception` around guard.check alone.
+
+  ### Edge cases
+
+  - `session_id` missing from kwargs → treated as empty → SESSION_INVALID.
+  - `session_id` whitespace-only → SESSION_INVALID.
+  - Valid non-empty id but CA reports NOT_FOUND/invalid → guard REJECT → SESSION_NOT_FOUND.
+  - Guard ALLOW → delegate to `run_open_execute` unchanged.
+
+  ### Constants and literals
+
+  - Error code strings: `"SESSION_INVALID"`, `"SESSION_NOT_FOUND"`, `"VALIDATION_ERROR"`, `"OPEN_ERROR"` (via `cast(Any, ...)`).
+  - Guard operation kind: `OperationKind.OPEN`.
+  - Log template on runtime failure: `"universal_file_open failed: %s"` (unchanged).
+
+  ## Forbidden
+
+  - Do **not** modify any file other than `open_command.py`.
+  - Do **not** add guard logic to `open_command_runtime.py`, `edit_command.py`, or preview modules.
+  - Do **not** modify `edit_command.py`, `universal_file_preview_command.py`, or other command modules besides `open_command.py`.
+  - Do **not** call `CodeAnalysisClient.validate_ca_session` directly in this facade.
+  - Do **not** add methods beyond those already in the facade baseline.
+  - Do **not** change `get_schema`, `metadata`, or `validate_params` in this step.
+  - Keep the file ≤120 lines (slim facade constraint from C-016 split).
+
+  ## Expected deliverable
+
+  `UniversalFileOpenCommand.execute` runs SessionGuard (C-024) for Open Stage (C-010) before any runtime orchestration. Broken Session Policy (C-015) rejection returns stable agent-facing codes with zero side effects.
+
+  ## Validation (mandatory after implementation)
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/open_command.py
+  flake8 ai_editor/commands/universal_file_edit/open_command.py
+  mypy ai_editor/commands/universal_file_edit/open_command.py
+  pytest tests/unit/test_session_guard_open.py -v
+  ```
+
+  Expected:
+  - black: "reformatted" or "All done!" / no changes needed
+  - flake8: no output (exit 0)
+  - mypy: "Success: no issues found" on touched file
+  - pytest: all tests PASSED; broken-session open paths assert no `run_open_execute` call and no filesystem mutations
+
+  **All tests must pass.**
+verification:
+  type: pytest
+  target: tests/unit/test_session_guard_open.py
+  expected: >
+    When SessionGuard rejects OPEN (empty session_id → SESSION_INVALID, or CA
+    session missing/invalid → SESSION_NOT_FOUND), universal_file_open returns
+    ErrorResult without invoking run_open_execute and without disk side effects.
+    All tests in the target file pass.
+status: draft

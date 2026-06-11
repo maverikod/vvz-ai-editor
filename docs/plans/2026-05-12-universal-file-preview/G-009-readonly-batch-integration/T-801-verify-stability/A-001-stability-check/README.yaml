@@ -1,0 +1,34 @@
+step_id: A-001
+parent_tactical_step: T-801
+name: Stability check — manual verification gate (no code change)
+target_file: docs/plans/2026-05-12-universal-file-preview/G-009-readonly-batch-integration/T-801-stability-gate.md
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-015
+status: done
+prompt: "Create a new Markdown file.\n\nTarget file (create_file — file does not exist):\n\
+  \  docs/plans/2026-05-12-universal-file-preview/G-009-readonly-batch-integration/T-801-stability-gate.md\n\
+  \nThis file is a REVIEW GATE document, not a code file. Its purpose is to\nrecord\
+  \ the stability confirmation (T-801) required before the whitelist\nedit (T-802)\
+  \ can proceed.\n\nContent of the file:\n\n  # T-801 Stability Gate — universal_file_preview\n\
+  \n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n\n  ## Purpose\n\n\
+  \  This document records the stability confirmation required before\n  `universal_file_preview`\
+  \ is added to `READ_ONLY_BATCH_WHITELIST`.\n\n  The whitelist edit (T-802) must\
+  \ NOT proceed until all criteria below\n  are confirmed TRUE by a reviewer.\n\n\
+  \  ## Stability Criteria (all must be TRUE)\n\n  - [ ] **C-001 implemented**: `UniversalFilePreviewCommand`\
+  \ is fully implemented\n    and registered in `hooks_register_part2.py`.\n  - [\
+  \ ] **All handlers implemented**: PythonFileHandler, TextFileHandler,\n    JsonFileHandler,\
+  \ JsonLinesFileHandler, YamlFileHandler all pass their tests.\n  - [ ] **Public\
+  \ schema frozen**: `get_schema()` is frozen; no breaking changes\n    anticipated.\n\
+  \  - [ ] **Test suite green**: all tests in `tests/test_universal_file_preview*.py`\n\
+  \    pass.\n\n  ## Sign-off\n\n  Reviewer: _________________  Date: _________________\n\
+  \n  Confirmation (write TRUE when confirmed): _________________\n\n  If any criterion\
+  \ is NOT TRUE, do not proceed to T-802.\n"
+verification:
+  type: manual
+  target: docs/plans/2026-05-12-universal-file-preview/G-009-readonly-batch-integration/T-801-stability-gate.md
+  expected: The stability gate document exists and all four criteria checkboxes are
+    confirmed TRUE by a reviewer before T-802 is executed.

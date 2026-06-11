@@ -1,0 +1,23 @@
+global_step: G-000
+name: Sidecar Layout Migration
+description: >
+  Cross-tactical execution order. No cross_ts_depends_on on atomic steps.
+  Batch-1 (G-001..G-005) must be implemented before G-000 coding starts.
+waves:
+  - wave: 1
+    tactical_step: T-001
+    steps:
+      - T-001/A-001
+    note: tree_sidecar.py sibling cutover; removes .cst/ and pending machinery.
+  - wave: 2
+    tactical_step: T-002
+    note: See T-002-write-path/atomic_steps/parallel-waves.yaml (delete sidecar_paths, redirect tree-temp).
+  - wave: 3
+    tactical_step: T-003
+    note: See T-003-read-path-and-consumers/atomic_steps/parallel-waves.yaml.
+prerequisites:
+  batch_1_read_only_baselines:
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-001-sibling-storage-convention/atomic_steps/A-001-sibling-convention-module.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/atomic_steps/A-001-tree-builder-class.yaml
+    - docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-004-unified-pipeline-integration/atomic_steps/A-001-wire-validate-to-unified-build.yaml
+    - docs/plans/marked_tree_unification/G-005-consumer-integration/T-001-grep-consumer-integration/atomic_steps/A-001-grep-tree-lifecycle-routing.yaml

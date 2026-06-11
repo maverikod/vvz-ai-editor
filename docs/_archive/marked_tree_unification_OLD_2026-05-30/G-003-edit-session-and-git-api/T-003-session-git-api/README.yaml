@@ -1,0 +1,40 @@
+step_id: T-003
+parent_global_step: G-003
+name: SessionGitApi Commands
+description: 'Define the SessionGitApi entity (C-014) as the set of session-scoped
+  MCP commands that expose the SessionRepo (C-013) for history inspection and revert.
+  Define the five commands and their contracts. session_git_log(session_id): returns
+  commit history of the SessionRepo. session_git_diff(session_id, *, mode, rev_a,
+  rev_b=None): supports two modes — mode tree (commit vs commit, tree-level comparison)
+  and mode source (tree revision vs clean source, source-level comparison). session_git_show(session_id,
+  rev): returns tree content at a specified revision. session_git_status(session_id):
+  returns uncommitted changes versus HEAD. session_git_revert(session_id, rev): rolls
+  the tree back to a prior revision by creating a new revert commit, not by destructive
+  reset. Establish that every SessionGitApi command requires a session_id and refuses
+  to execute without an active EditSession; there is no sessionless git access.'
+concepts:
+- C-014
+- C-013
+- C-012
+inputs:
+- name: SessionRepo entity definition
+  type: domain entity definition (C-013)
+  description: The repository that all five SessionGitApi commands operate on; 
+    must be active (session open) for any command to execute.
+- name: EditSession entity definition
+  type: domain entity definition (C-012)
+  description: The owning context that must be active for SessionGitApi commands
+    to accept requests.
+outputs:
+- name: SessionGitApi entity definition
+  type: domain entity definition
+  description: Set of five MCP commands (session_git_log, session_git_diff, 
+    session_git_show, session_git_status, session_git_revert) each requiring a 
+    session_id parameter; revert creates a new commit rather than destructive 
+    reset; no sessionless access.
+- name: Session-required invariant
+  type: domain constraint definition
+  description: Every SessionGitApi command requires session_id and refuses 
+    without an active EditSession.
+atomic_steps: []
+status: draft

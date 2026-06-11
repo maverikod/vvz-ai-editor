@@ -1,0 +1,149 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: Add session registration and final response to UniversalFileOpenCommand
+target_file: ai_editor/commands/universal_file_edit/open_command.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-001
+- C-002
+- C-005
+- C-014
+prompt: "Operation: modify_file\nTarget: ai_editor/commands/universal_file_edit/open_command.py\n\
+  \nMRS context:\nC-001 EditSession: In-memory record with session_id, file paths,\
+  \ format_group,\n  handler_id, tree_id. Stored in module-level _sessions dict.\n\
+  C-002 FormatGroup: sidecar | tree-temp | text. Available operations per group.\n\
+  C-005 OpenCommand: returns session_id and available operations.\nC-014 ErrorCodes:\
+  \ SESSION_NOT_FOUND etc.\n\nSession registry API (from ai_editor.commands.universal_file_edit.session):\n\
+  \  def create_session(abs_path: Path, descriptor: FormatDescriptor,\n          \
+  \           file_path: str, tree_id: Optional[str] = None) -> EditSession\n  class\
+  \ EditSession: session_id, file_path, abs_path, draft_path,\n    lockfile_path,\
+  \ format_group, handler_id, tree_id\n\nCurrent full file content (after T-001/A-001\
+  \ and T-002/A-001, ~270 lines):\n\"\"\"\nUniversalFileOpenCommand: starts an editing\
+  \ session for one file.\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\
+  \"\"\"\nfrom __future__ import annotations\n\nimport shutil\nfrom pathlib import\
+  \ Path\nfrom typing import Any, Dict, Optional\n\nfrom mcp_proxy_adapter.commands.base_command\
+  \ import BaseCommand\n\nfrom ai_editor.commands.universal_file_edit.errors import\
+  \ (\n    PARSE_ERROR,\n    UNKNOWN_FORMAT,\n    make_error,\n)\nfrom ai_editor.commands.universal_file_edit.format_group\
+  \ import (\n    FORMAT_SIDECAR,\n    FORMAT_TEXT,\n    FORMAT_TREE_TEMP,\n    FormatDescriptor,\n\
+  \    delete_lockfile,\n    resolve_format_group,\n)\n\n\nclass UniversalFileOpenCommand(BaseCommand):\n\
+  \    \"\"\"MCP command that starts an editing session for one file.\n\n    Cleans\
+  \ stale artefacts, creates draft, creates initial backup when\n    file has no history,\
+  \ registers session, returns session_id.\n    \"\"\"\n\n    @staticmethod\n    def\
+  \ get_name() -> str:\n        \"\"\"Return the MCP command name.\n\n        Returns:\n\
+  \            MCP command name string.\n        \"\"\"\n        return \"universal_file_open\"\
+  \n\n    @staticmethod\n    def get_schema() -> Dict[str, Any]:\n        \"\"\"Return\
+  \ the JSON schema for command parameters.\n\n        Returns:\n            JSON\
+  \ schema dict describing project_id and file_path parameters.\n        \"\"\"\n\
+  \        return {\n            \"type\": \"object\",\n            \"properties\"\
+  : {\n                \"project_id\": {\"type\": \"string\"},\n                \"\
+  file_path\": {\"type\": \"string\"},\n            },\n            \"required\":\
+  \ [\"project_id\", \"file_path\"],\n            \"additionalProperties\": False,\n\
+  \        }\n\n    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:\n\
+  \        \"\"\"Execute the open command.\n\n        Args:\n            params: Dict\
+  \ with project_id and file_path.\n\n        Returns:\n            Dict with success\
+  \ flag; on success includes session_id and\n            available_operations; on\
+  \ failure includes code and message.\n        \"\"\"\n        project_id: str =\
+  \ params[\"project_id\"]\n        file_path: str = params[\"file_path\"]\n     \
+  \   abs_path = self._resolve_abs_path(project_id, file_path)\n        if abs_path\
+  \ is None:\n            return make_error(UNKNOWN_FORMAT, f\"Cannot resolve path:\
+  \ {file_path}\")\n\n        cleanup_result = self._cleanup_stale(abs_path)\n   \
+  \     if cleanup_result is not None:\n            return cleanup_result\n\n    \
+  \    descriptor_result = self._resolve_and_create_draft(abs_path)\n        if isinstance(descriptor_result,\
+  \ dict):\n            return descriptor_result\n        descriptor: FormatDescriptor\
+  \ = descriptor_result\n\n        self._create_initial_backup(project_id, abs_path)\n\
+  \        # Session registration handled in subsequent step.\n        return {\"\
+  success\": True, \"_descriptor\": descriptor, \"_abs_path\": abs_path,\n       \
+  \         \"_file_path\": file_path}\n\n    def _resolve_abs_path(self, project_id:\
+  \ str, file_path: str) -> Optional[Path]:\n        \"\"\"Resolve file_path to an\
+  \ absolute Path using the project root.\n\n        Args:\n            project_id:\
+  \ UUID of the project.\n            file_path: Project-relative path to the file.\n\
+  \n        Returns:\n            Absolute Path if resolution succeeds, None otherwise.\n\
+  \        \"\"\"\n        try:\n            root = self._get_project_root(project_id)\n\
+  \            return (Path(root) / file_path).resolve()\n        except Exception:\n\
+  \            return None\n\n    def _cleanup_stale(self, abs_path: Path) -> Optional[Dict[str,\
+  \ Any]]:\n        \"\"\"Delete stale write lockfile and stale draft (not sidecar).\n\
+  \n        For Python files the sidecar is left intact; only the write\n        lockfile\
+  \ is removed on open.\n\n        Args:\n            abs_path: Absolute path to the\
+  \ original file.\n\n        Returns:\n            None on success; an error dict\
+  \ if an unexpected error occurs.\n        \"\"\"\n        try:\n            delete_lockfile(abs_path)\n\
+  \            draft = abs_path.with_suffix(abs_path.suffix + \".draft\")\n      \
+  \      draft.unlink(missing_ok=True)\n            return None\n        except OSError\
+  \ as exc:\n            return make_error(PARSE_ERROR, f\"Cleanup failed: {exc}\"\
+  )\n\n    def _resolve_and_create_draft(\n        self, abs_path: Path\n    ) ->\
+  \ FormatDescriptor | Dict[str, Any]:\n        \"\"\"Resolve format group and create\
+  \ the draft file.\n\n        Args:\n            abs_path: Absolute path to the original\
+  \ file.\n\n        Returns:\n            FormatDescriptor on success, or an error\
+  \ dict.\n        \"\"\"\n        try:\n            descriptor = resolve_format_group(abs_path)\n\
+  \        except ValueError:\n            return make_error(UNKNOWN_FORMAT, f\"Unsupported\
+  \ file type: {abs_path.suffix}\")\n\n        try:\n            tree_id = self._write_draft(abs_path,\
+  \ descriptor)\n            descriptor.__dict__[\"tree_id\"] = tree_id\n        except\
+  \ Exception as exc:\n            return make_error(PARSE_ERROR, f\"Cannot parse\
+  \ file: {exc}\")\n\n        return descriptor\n\n    def _write_draft(\n       \
+  \ self, abs_path: Path, descriptor: FormatDescriptor\n    ) -> Optional[str]:\n\
+  \        \"\"\"Write the initial draft file for the resolved format group.\n\n \
+  \       Args:\n            abs_path: Absolute path to the original file.\n     \
+  \       descriptor: Resolved FormatDescriptor.\n\n        Returns:\n           \
+  \ In-memory tree UUID for tree-temp group; None for other groups.\n\n        Raises:\n\
+  \            Exception: when the file cannot be parsed or written.\n        \"\"\
+  \"\n        fg = descriptor.format_group\n        if fg == FORMAT_SIDECAR:\n   \
+  \         return self._write_sidecar_draft(abs_path)\n        if fg == FORMAT_TREE_TEMP:\n\
+  \            return self._write_tree_temp_draft(abs_path, descriptor)\n        #\
+  \ FORMAT_TEXT\n        shutil.copy2(str(abs_path), str(descriptor.draft_path))\n\
+  \        return None\n\n    def _write_sidecar_draft(self, abs_path: Path) -> None:\n\
+  \        \"\"\"Load Python file into CST tree and write sidecar.\n\n        Args:\n\
+  \            abs_path: Absolute path to the Python file.\n\n        Returns:\n \
+  \           None (sidecar group uses no in-memory tree id).\n        \"\"\"\n  \
+  \      from ai_editor.core.cst_tree import tree_builder as cst_builder\n   \
+  \     from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic\n\
+  \        tree = cst_builder.load_file(str(abs_path))\n        write_sidecar_atomic(abs_path,\
+  \ tree)\n        return None\n\n    def _write_tree_temp_draft(\n        self, abs_path:\
+  \ Path, descriptor: FormatDescriptor\n    ) -> str:\n        \"\"\"Load JSON/YAML\
+  \ file into in-memory tree and write draft.\n\n        Args:\n            abs_path:\
+  \ Absolute path to the JSON or YAML file.\n            descriptor: Resolved FormatDescriptor\
+  \ with draft_path.\n\n        Returns:\n            In-memory tree UUID string.\n\
+  \        \"\"\"\n        if descriptor.handler_id == \"json\":\n            from\
+  \ ai_editor.core.json_tree import tree_builder as json_builder\n           \
+  \ tree_id = json_builder.load_file_to_tree(str(abs_path))\n            draft_text\
+  \ = json_builder.serialize_tree(tree_id)\n        else:\n            from ai_editor.core.yaml_tree\
+  \ import tree_builder as yaml_builder\n            tree_id = yaml_builder.load_file_to_tree(str(abs_path))\n\
+  \            draft_text = yaml_builder.serialize_tree(tree_id)\n        descriptor.draft_path.write_text(draft_text)\n\
+  \        return tree_id\n\n    def _create_initial_backup(\n        self, project_id:\
+  \ str, abs_path: Path\n    ) -> None:\n        \"\"\"Create initial backup if file\
+  \ has no backup history.\n\n        Uses BackupManager (C-012) to check history\
+  \ and create backup.\n        Only creates backup when list_versions returns an\
+  \ empty list.\n\n        Args:\n            project_id: UUID of the project (used\
+  \ to resolve root dir).\n            abs_path: Absolute path to the original file.\n\
+  \        \"\"\"\n        from ai_editor.core.backup_manager import BackupManager\n\
+  \        root_dir = self._get_project_root(project_id)\n        bm = BackupManager(root_dir=str(root_dir))\n\
+  \        rel_path = abs_path.relative_to(root_dir)\n        versions = bm.list_versions(str(rel_path))\n\
+  \        if not versions:\n            bm.create_backup(abs_path, command=\"universal_file_open\"\
+  )\n\nTask:\nReplace the placeholder return block in execute() with real session\
+  \ registration\nand final response. Also add import of create_session at the top\
+  \ of the file.\n\n1. Add to the imports section (after the format_group import block):\n\
+  ```python\nfrom ai_editor.commands.universal_file_edit.session import create_session\n\
+  ```\n\n2. In execute(), replace the last 3 lines:\n    self._create_initial_backup(project_id,\
+  \ abs_path)\n    # Session registration handled in subsequent step.\n    return\
+  \ {\"success\": True, \"_descriptor\": descriptor, \"_abs_path\": abs_path,\n  \
+  \          \"_file_path\": file_path}\nWith:\n    self._create_initial_backup(project_id,\
+  \ abs_path)\n    tree_id: Optional[str] = getattr(descriptor, \"tree_id\", None)\n\
+  \    session = create_session(\n        abs_path=abs_path,\n        descriptor=descriptor,\n\
+  \        file_path=file_path,\n        tree_id=tree_id,\n    )\n    return {\n \
+  \       \"success\": True,\n        \"session_id\": session.session_id,\n      \
+  \  \"available_operations\": descriptor.available_operations,\n        \"format_group\"\
+  : descriptor.format_group,\n    }\n\nImplementation:\n1. cst_load_file(project_id,\
+  \ \"ai_editor/commands/universal_file_edit/open_command.py\")\n2. Add import\
+  \ via cst_modify_tree insert at module level.\n3. Locate and replace the execute()\
+  \ return block.\n4. cst_save_tree(validate=true, backup=true).\n5. lint_code then\
+  \ format_code.\n\nConstraints:\n- Do not modify any other method.\n- Resulting file\
+  \ must be syntactically valid Python.\n- File line count must not exceed 400.\n"
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/open_command.py
+  expected: 'flake8 reports no errors. execute() imports and calls create_session.
+    The return dict from execute() contains keys session_id, available_operations,
+    format_group. The import of create_session is present in the file.
+
+    '
+status: draft

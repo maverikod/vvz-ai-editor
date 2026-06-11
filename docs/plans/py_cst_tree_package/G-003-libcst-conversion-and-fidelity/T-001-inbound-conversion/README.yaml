@@ -1,0 +1,35 @@
+step_id: T-001
+parent_global_step: G-003
+name: Inbound Conversion and Identity Assignment
+description: "Define the inbound conversion operation of the LibcstConverter entity
+  (C-009). The operation accepts a LibCST tree and produces a package Tree (C-004)
+  by performing three concrete actions. First, for each LibCST node it instantiates
+  the matching member from the NodeSubclassSet (C-002), producing an IdentifiedNode
+  (C-001) of the same grammatical category with the same fields and children. Second,
+  it assigns a StableId to every node: if a persisted StableId for that node is present
+  in the optional identity map supplied by the caller, that StableId is reused; otherwise
+  a fresh StableId is generated. Third, it builds the Tree (C-004) from the root IdentifiedNode
+  and populates the IdIndex, AttributeIndex, and ParentRelation so the result is immediately
+  queryable. This step realizes the C-009 produces C-001, C-009 uses C-002, and C-009
+  produces C-004 relations.\n"
+concepts:
+- C-009
+- C-001
+- C-002
+- C-004
+inputs:
+- name: LibCST tree
+  type: LibCST Module or CSTNode tree
+  description: The parsed LibCST tree to be converted inbound into a package 
+    Tree.
+- name: persisted identities
+  type: mapping of StableId to StableId, optional
+  description: Optional previously persisted stable_id values; when present, 
+    reused for matching nodes rather than generating fresh ones.
+outputs:
+- name: package Tree
+  type: C-004 instance
+  description: A Tree owning the root IdentifiedNode with all nodes assigned 
+    stable_id values and with indexes populated.
+atomic_steps: []
+status: draft

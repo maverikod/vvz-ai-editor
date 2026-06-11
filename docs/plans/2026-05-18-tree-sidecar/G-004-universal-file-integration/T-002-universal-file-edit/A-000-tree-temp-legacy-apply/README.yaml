@@ -1,0 +1,62 @@
+step_id: A-005
+parent_tactical_step: T-002
+name: Extract tree-temp legacy JSON/YAML pointer mutate-and-serialize path
+target_file: ai_editor/commands/universal_file_edit/tree_temp_legacy_apply.py
+operation: create_file
+priority: 2
+depends_on:
+  - A-003
+concepts:
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+  - MRS / HRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml, docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  - Technical plan spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - Parent global README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+
+  ## Goal
+  Move the **legacy** tree-temp branch (JSON and YAML registered-tree pointer ops + draft
+  rewrite) from `UniversalFileEditCommand._apply_tree_temp` inner `_run_tree_temp` into
+  `tree_temp_legacy_apply.py`:
+
+  - `_normalized_json_modify_operation` (move as-is; name stays for internal use or rename to
+    module-private `_normalized_json_modify_operation` — slim step will import from here only).
+  - `_modify_yaml_registered_one` (move as-is).
+  - New function:
+    `def run_tree_temp_legacy_json_yaml_apply(session: EditSession, operations) -> SuccessResult | ErrorResult:`
+    containing the same logic as current `_run_tree_temp`: require `session.tree_id`, backup via
+    `BackupManager(project_root_near(...))` using **`project_root_near` from**
+    `ai_editor.commands.universal_file_edit.edit_draft_path_utils` (import the public name established in
+    `edit_draft_path_utils` — use `project_root_near` when that module exports it).
+
+  Preserve branches: `handler_id == "json"`, `handler_id == "yaml"`, else `UNKNOWN_FORMAT`
+  via `make_error`. Preserve exception mapping (`ValueError` → INVALID_OPERATION with operations
+  detail; PARSE_ERROR paths; WRITE_FAILED on backup failure).
+
+  ## Imports (indicative)
+  - from __future__ import annotations
+  - from typing import Any, Dict, List, cast
+  - mcp_proxy_adapter: ErrorResult, SuccessResult
+  - ai_editor.commands.universal_file_edit.edit_draft_path_utils: project_root_near
+  - ai_editor.commands.universal_file_edit.errors: PARSE_ERROR, UNKNOWN_FORMAT, WRITE_FAILED, make_error
+  - ai_editor.commands.universal_file_edit.session: EditSession
+  - ai_editor.core.backup_manager: BackupManager
+  - json_tree / yaml_tree / json_tree.tree_modifier as in current `edit_command.py`
+
+  ## Forbidden
+  - Do not introduce `apply_tree_temp_mutations` / TreeNode batch here (reserved for `tree_temp_edit_batch.py`).
+  - Do not modify `edit_command.py` in this step.
+  - File ≤400 lines.
+
+  ## Mandatory validation
+  - black / flake8 / mypy on new file
+  - Full regression after the slim edit-command wave: pytest targets touching universal edit / tree-temp
+
+verification:
+  type: static_analysis
+  target: ai_editor.commands.universal_file_edit.tree_temp_legacy_apply.run_tree_temp_legacy_json_yaml_apply
+  expected: black/flake8/mypy clean; file ≤400 lines
+status: done

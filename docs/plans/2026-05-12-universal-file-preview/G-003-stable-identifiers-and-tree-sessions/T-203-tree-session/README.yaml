@@ -1,0 +1,46 @@
+step_id: T-203
+parent_global_step: G-003
+name: Tree session — ownership and lifecycle
+status: frozen
+concepts:
+- C-011
+description: "Define the TreeSession (C-011) as the in-memory parsed tree of a file,\
+  \ identified by a tree_id UUID. A TreeSession is owned either externally by the\
+  \ caller or internally by the command for the duration of one request.\nOwnership\
+  \ modes:\nCaller-owned (external) session:\n  The caller has already opened a tree\
+  \ session via cst_load_file or\n  json_load_file and passes the resulting tree_id\
+  \ in the request.\n  The command reads from this session without creating a new\
+  \ one.\n  The command never closes or invalidates a caller-owned session,\n  regardless\
+  \ of whether the request succeeds or fails.\n\nCommand-owned (transient) session:\n\
+  \  The caller does not supply a tree_id. The command opens a session\n  internally\
+  \ to serve the request. After the request completes,\n  the command returns the\
+  \ tree_id in the ResponseEnvelope so the\n  caller can pass it back in a follow-up\
+  \ request.\n  The command manages the lifecycle of sessions it created:\n  it may\
+  \ close a transient session after returning the response,\n  but it never closes\
+  \ a session it did not create.\n\nNever-invalidate invariant:\n  The command never\
+  \ invalidates any TreeSession it did not create.\n  If the command operates on a\
+  \ caller-owned session and that session\n  becomes stale (e.g. the underlying file\
+  \ changed), the command\n  returns a handler-internal error; it does not silently\
+  \ reload or\n  replace the session.\n"
+inputs:
+- name: tree_id_param
+  type: string (UUID) or null
+  description: The tree_id parameter from the validated input identifying a caller-owned
+    TreeSession, or null when the caller did not supply one.
+- name: file_path
+  type: string
+  description: The project-relative file path, used when the command must open a transient
+    session internally.
+outputs:
+- name: tree_session
+  type: TreeSession (C-011)
+  description: 'The resolved TreeSession: either the caller-owned session identified
+    by tree_id_param, or a newly opened transient session created by the command for
+    this request.'
+- name: session_origin
+  type: enum (caller_owned | command_created)
+  description: Indicates whether the session was provided by the caller or created
+    by the command. The ResponseEnvelope includes tree_id only when session_origin
+    is command_created.
+atomic_steps:
+- A-001

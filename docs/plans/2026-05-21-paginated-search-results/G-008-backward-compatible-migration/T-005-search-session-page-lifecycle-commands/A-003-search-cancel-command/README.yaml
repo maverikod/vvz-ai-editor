@@ -1,0 +1,55 @@
+step_id: A-003
+parent_tactical_step: T-005
+name: search_cancel MCP command
+target_file: ai_editor/commands/search_cancel_command.py
+operation: create_file
+priority: 3
+depends_on: []
+concepts:
+  - C-001
+  - C-020
+  - C-022
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/search_cancel_command.py
+
+  MRS (C-020 SearchStatus): supports cancelled state via apply_cancellation.
+  MRS (C-001 SearchSession): cancellation updates manifest status and stops work where possible.
+  MRS (C-022 IncrementalCompatibilityLayer): preserves queue behavior; cancel must attempt to stop underlying queue job.
+
+  G-008 contract: all lifecycle commands use job_id parameter (not README draft search_id).
+
+  Prerequisite: G-007/T-006 queue-cancel hook in ai_editor/core/search_session/queue_cancel.py
+  (cancel_queued_search_job, queue_job_id_from_manifest). Import and call these helpers; do not
+  reimplement queue stop logic in this command module.
+
+  Implement class SearchCancelCommand(BaseMCPCommand):
+  - name = "search_cancel"
+  - get_schema() required: job_id (string, description: SearchSession search_id from search_start handoff)
+  - execute():
+      Resolve session directory; if missing return SESSION_NOT_FOUND.
+      Read manifest; if already terminal (completed, failed, cancelled, timed_out, closed), return SuccessResult
+      with cancelled=false and explanatory message.
+      Build snapshot = snapshot_from_manifest(manifest) from ai_editor.core.search_session.status.
+      Apply cancelled_snapshot = apply_cancellation(snapshot, reason="client_cancel").
+      Persist manifest via update_manifest_atomic mutator setting status=cancelled_snapshot.status,
+      phase unchanged or set to cancelled phase per manifest conventions, and store cancellation reason in
+      manifest warnings or errors list when appropriate.
+      queue_job_id = queue_job_id_from_manifest(manifest); when present, await cancel_queued_search_job(queue_job_id).
+      Return SuccessResult {success: true, cancelled: true, job_id}.
+  - metadata() with safety notes and error_cases; document job_id parameter name.
+
+  Constraints:
+  - Under 200 lines.
+  - Author header.
+  - No NotImplementedError stubs.
+  - Sole owner of search_cancel_command.py in this plan (G-007/T-006 does not touch this file).
+
+verification:
+  type: pytest
+  target: tests/unit/test_search_cancel_command.py
+  expected: >
+    Running session transitions manifest status to cancelled via snapshot_from_manifest and apply_cancellation;
+    repeated cancel returns cancelled=false; cancel_queued_search_job invoked when manifest carries queue_job_id;
+    schema requires job_id not search_id; matches tests_required search_cancel_stops_running_grep intent at unit level.
+status: ready_for_review

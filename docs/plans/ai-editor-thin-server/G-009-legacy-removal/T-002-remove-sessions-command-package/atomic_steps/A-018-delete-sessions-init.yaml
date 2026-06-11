@@ -1,0 +1,18 @@
+step_id: A-018
+parent_tactical_step: T-002
+name: Удалить __init__.py
+target_file: ai_editor/commands/sessions/__init__.py
+operation: delete_file
+priority: 18
+depends_on:
+- A-017
+concepts:
+- C-020
+prompt: 'Delete file `ai_editor/commands/sessions/__init__.py` only. Do not modify other files in this step.
+
+  '
+verification:
+  type: static_analysis
+  target: ai_editor/commands/sessions/__init__.py
+  expected: File ai_editor/commands/sessions/__init__.py absent from repository.
+status: draft

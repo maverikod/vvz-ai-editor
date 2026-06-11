@@ -1,0 +1,83 @@
+step_id: A-002
+parent_tactical_step: T-002
+name: Export SessionRepo from edit_session package init
+target_file: ai_editor/core/edit_session/__init__.py
+operation: modify_file
+priority: 1
+depends_on:
+- A-001
+concepts:
+- C-013
+status: ready_for_review
+prompt: |
+  Modify the file `ai_editor/core/edit_session/__init__.py`.
+  Operation: modify_file (the file already exists).
+
+  ## Parent documents
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-013)
+  - Global step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-003-edit-session-and-git-api/T-002-session-repo/README.yaml`
+
+  Add SessionRepo (C-013) public names to the package export surface.
+
+  ## Current full content of the file (modify this exact content)
+
+  ```python
+  # Author: Vasiliy Zdanovskiy -- vasilyvz@gmail.com
+
+  """EditSession package (C-012): bounded editing context and active-session registry."""
+
+  from ai_editor.core.edit_session.edit_session import (
+      CONTENT_NOT_ALLOWED_FOR_VALID_FILE,
+      EditSession,
+      EditSessionError,
+      SESSION_INVALID_TRUTH_INVARIANT,
+      SESSION_VALID_TRUTH_INVARIANT,
+      SessionTreeValidity,
+      get_active_session,
+  )
+
+  __all__ = [
+      "EditSession",
+      "EditSessionError",
+      "SessionTreeValidity",
+      "get_active_session",
+      "CONTENT_NOT_ALLOWED_FOR_VALID_FILE",
+      "SESSION_VALID_TRUTH_INVARIANT",
+      "SESSION_INVALID_TRUTH_INVARIANT",
+  ]
+  ```
+
+  ## Required result
+
+  Add imports from `ai_editor.core.edit_session.session_repo`:
+  `ONE_COMMIT_PER_MUTATION_INVARIANT`, `SessionCommit`, `SessionRepo`.
+
+  Extend `__all__` with `"SessionRepo"`, `"SessionCommit"`,
+  `"ONE_COMMIT_PER_MUTATION_INVARIANT"`.
+
+  Do NOT export internal dulwich symbols or `SESSION_COMMIT_IDENTITY` bytes constant.
+  Modify only `__init__.py`.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black ai_editor/core/edit_session/__init__.py
+  flake8 ai_editor/core/edit_session/__init__.py
+  mypy ai_editor/core/edit_session/__init__.py
+  python -c "import ai_editor.core.edit_session as es; assert hasattr(es,'SessionRepo')"
+  pytest -q
+  ```
+
+  All tests must pass.
+
+verification:
+  type: import
+  target: ai_editor.core.edit_session
+  expected: |
+    Importing ai_editor.core.edit_session exposes EditSession, EditSessionError,
+    SessionTreeValidity, get_active_session, CONTENT_NOT_ALLOWED_FOR_VALID_FILE,
+    SESSION_VALID_TRUTH_INVARIANT, SESSION_INVALID_TRUTH_INVARIANT, SessionRepo,
+    SessionCommit, and ONE_COMMIT_PER_MUTATION_INVARIANT; __all__ lists all exported
+    names; black, flake8, mypy exit 0. All tests pass.

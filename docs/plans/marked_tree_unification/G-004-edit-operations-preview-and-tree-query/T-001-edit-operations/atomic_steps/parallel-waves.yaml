@@ -1,0 +1,21 @@
+global_step: G-004
+tactical_step: T-001
+name: EditOperation Six-Operation Contract
+waves:
+  - wave: 1
+    steps:
+      - A-001
+    note: Extend FormatHandler ABC with six op_* abstract methods (short_id int only).
+  - wave: 2
+    parallel: true
+    depends_on_wave: 1
+    steps:
+      - A-002
+      - A-003
+      - A-004
+      - A-005
+      - A-006
+      - A-007
+    note: >
+      edit_operations.py and five handler modules touch disjoint files;
+      all require post-wave-1 FormatHandler op_* signatures.

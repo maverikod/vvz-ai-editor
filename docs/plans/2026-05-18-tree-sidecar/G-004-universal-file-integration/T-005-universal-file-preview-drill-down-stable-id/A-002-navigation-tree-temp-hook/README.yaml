@@ -1,0 +1,44 @@
+step_id: A-002
+parent_tactical_step: T-005
+name: NavigationProcedure hook for tree-temp Sidecar stable_id preview
+target_file: ai_editor/commands/universal_file_preview/navigation.py
+operation: modify_file
+priority: 2
+depends_on:
+  - A-001
+  - A-004
+concepts:
+  - C-009
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-005-universal-file-preview-drill-down-stable-id/README.yaml
+  - HRS: docs/plans/2026-05-18-tree-sidecar/source_spec.md — Preview Navigation; embed the scalar node_ref walk-up
+    rule in coder-facing comment above the hook (verbatim policy summary in one paragraph).
+
+  ## Goal
+  After `handler.open_root` yields-focus and optional `resolve_node_ref` for legacy handlers, detect **tree-temp
+  Sidecar mode**: non-edit read-only preview where `params` include stable UUID `node_ref` for JSON/YAML handler and
+  the loaded tree is TreeNode roots from sidecar (passed via new param `tree_temp_roots` on params dict injected by
+  command layer, or via session object type check). Replace `focus_node` with synthetic `Node` whose `children`
+  match ordered blocks from `resolve_tree_temp_preview_focus` in
+  `ai_editor.commands.universal_file_preview.tree_temp_preview_focus`.
+
+  ## Adapter requirement
+  Map TreeNode container children to `models.Node` block nodes preserving stable_id as `node_ref` string on each
+  child preview block per existing Block rendering pipeline.
+
+  ## navigate() signature
+  Unchanged public signature; read optional `params.get("tree_temp_roots")`.
+
+  ## Forbidden
+  - Must remain ≤ 400 lines — file is ~91 lines today; if exceeds, extract mapper to `tree_temp_preview_focus.py`.
+
+  ## a8
+  Full file text for navigation.py before/after must be pasted by orchestrator into prompt per standard.
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_preview/navigation.py
+  expected: flake8/black clean
+status: done

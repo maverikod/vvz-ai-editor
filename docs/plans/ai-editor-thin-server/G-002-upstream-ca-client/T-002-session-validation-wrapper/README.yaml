@@ -1,0 +1,25 @@
+step_id: T-002
+parent_global_step: G-002
+name: Обёртка Session Validation
+description: 'Добавить в Upstream Client (C-017) метод Session Validation (C-014): проверка существования и валидности CA Session по session_id без list всех сессий. Возвращает дискриминированный результат valid / not_found / invalid для Broken Session Policy (C-015).
+
+  '
+concepts:
+- C-002
+- C-004
+- C-014
+- C-015
+- C-017
+- C-023
+inputs:
+- name: ca_session_id
+  type: string
+  description: Идентификатор сессии СА.
+outputs:
+- name: validation_result
+  type: enum
+  description: valid, not_found, invalid.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

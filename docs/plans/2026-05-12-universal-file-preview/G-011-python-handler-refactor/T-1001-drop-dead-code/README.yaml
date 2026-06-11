@@ -1,0 +1,37 @@
+step_id: T-1001
+parent_global_step: G-011
+name: Clean and rewrite python_handler.py
+description: >
+  Two operations on python_handler.py performed together as one atomic unit.
+  Operation 1 — Drop dead code: remove four module-level functions that became
+  dead code after G-010 wired PythonNodeRenderer (C-022) into PythonFileHandler
+  (C-016): _cst_statements_to_nodes, _cst_node_to_node, _classify_cst_node,
+  _find_by_stable_id. These functions have no callers outside python_handler.py.
+  Inline libcst imports inside their bodies disappear with the functions; no
+  top-level imports are affected.
+  Operation 2 — Rewrite _metadata_children_to_nodes: filter metadata_map by
+  depth == parent_depth + 1 and parent_id == parent_node_id, skip nodes with
+  empty kind, return Nodes with correct stable_id as node_ref. This fixes
+  SimpleStatementLine appearing instead of real semantic types.
+  Do not change PythonFileHandler methods open_root or resolve_node_ref.
+concepts:
+- C-003
+- C-016
+- C-022
+- C-023
+inputs:
+- name: python_handler_py
+  type: file
+  description: handlers/python_handler.py after G-010 changes
+- name: python_visualizer_py
+  type: file
+  description: python_visualizer.py from G-010 (PythonNodeRenderer C-022)
+outputs:
+- name: python_handler_py
+  type: file
+  description: >
+    Cleaned file: four dead functions removed, _metadata_children_to_nodes
+atomic_steps:
+- A-001
+- A-002
+status: done

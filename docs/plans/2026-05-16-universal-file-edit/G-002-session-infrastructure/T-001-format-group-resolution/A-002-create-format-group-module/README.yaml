@@ -1,0 +1,410 @@
+step_id: A-002
+parent_tactical_step: T-001
+name: Create format_group.py with FormatDescriptor and resolution helpers
+target_file: ai_editor/commands/universal_file_edit/format_group.py
+operation: create_file
+priority: 2
+depends_on: [A-001]
+concepts:
+- C-002
+- C-003
+- C-004
+- C-012
+- C-014
+prompt: |
+  Operation: create_file
+  Target: ai_editor/commands/universal_file_edit/format_group.py
+
+  MRS context:
+  C-002 FormatGroup: Classification of a file into sidecar/tree-temp/text group.
+    Properties: sidecar (Python) draft is <file>.cst_sidecar persists after close.
+    tree-temp (JSON, YAML) draft is <file>.draft deleted after close.
+    text (MD, txt, rst, adoc) draft is <file>.draft copy deleted after close.
+    Group resolved from file extension.
+  C-003 DraftFile: On-disk working copy written after every mutation.
+    sidecar group: <file>.cst_sidecar. tree-temp group: <file>.draft. text group: <file>.draft.
+  C-004 WriteLockfile: On-disk lockfile containing server PID.
+    Path is <file>.write. Contains server process PID as text.
+  C-012 ExistingInfrastructure: handler registry resolves file extension to format group.
+    Specifically: ai_editor.core.file_handlers.registry.resolve_handler(file_path, operation)
+    returns handler_id (one of: text, json, yaml, python).
+    RegistryError with code UNSUPPORTED_FILE_EXTENSION is raised for unknown extensions.
+  C-014 ErrorCodes: UNKNOWN_FORMAT when file extension is not supported.
+
+  ExistingInfrastructure (C-012) - registry.py full content for reference:
+  """
+  Config-driven extension → handler registry for universal file commands.
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  from __future__ import annotations
+  
+  from pathlib import Path
+  from typing import Any, Dict, FrozenSet, List
+  
+  HANDLER_TEXT = "text"
+  HANDLER_JSON = "json"
+  HANDLER_YAML = "yaml"
+  HANDLER_PYTHON = "python"
+  
+  HANDLER_IDS = (HANDLER_TEXT, HANDLER_JSON, HANDLER_YAML, HANDLER_PYTHON)
+  
+  OPERATIONS = frozenset({"read", "save", "replace", "delete"})
+  
+  # Default mapping (centralized; swap for config-driven dict merge later).
+  _DEFAULT_SUFFIX_MAP: Dict[str, str] = {
+      ".md": HANDLER_TEXT,
+      ".txt": HANDLER_TEXT,
+      ".rst": HANDLER_TEXT,
+      ".adoc": HANDLER_TEXT,
+      ".json": HANDLER_JSON,
+      ".yaml": HANDLER_YAML,
+      ".yml": HANDLER_YAML,
+      ".py": HANDLER_PYTHON,
+      ".pyi": HANDLER_PYTHON,
+      ".pyw": HANDLER_PYTHON,
+  }
+  
+  _HANDLER_SUPPORTED_OPS: Dict[str, FrozenSet[str]] = {
+      HANDLER_TEXT: OPERATIONS,
+      HANDLER_JSON: OPERATIONS,
+      HANDLER_YAML: OPERATIONS,
+      HANDLER_PYTHON: OPERATIONS,
+  }
+  
+  
+  class RegistryError(Exception):
+      """Raised when routing fails; carries MCP-oriented code and details."""
+  
+      def __init__(self, code: str, details: Dict[str, Any]) -> None:
+          super().__init__(details.get("message", code))
+          self.code = code
+          self.details = details
+  
+  
+  def _suffix(file_path: str) -> str:
+      return Path(file_path).suffix.lower()
+  
+  
+  def resolve_handler(file_path: str, operation: str) -> str:
+      """Return handler id if ``file_path`` and ``operation`` are supported."""
+      validate_supported(file_path, operation)
+      suf = _suffix(file_path)
+      return _DEFAULT_SUFFIX_MAP[suf]
+  
+  
+  def validate_supported(file_path: str, operation: str) -> None:
+      """Raise RegistryError when extension or operation is not supported."""
+      op = (operation or "").lower().strip()
+      if op not in OPERATIONS:
+          raise RegistryError(
+              "UNSUPPORTED_FILE_OPERATION",
+              {
+                  "message": f"Unsupported file operation: {operation!r}",
+                  "file_path": file_path,
+                  "handler_id": "",
+                  "operation": operation,
+              },
+          )
+  
+      suf = _suffix(file_path)
+      if not suf:
+          raise RegistryError(
+              "UNSUPPORTED_FILE_EXTENSION",
+              {
+                  "message": "Path has no extension; cannot resolve handler",
+                  "file_path": file_path,
+                  "suffix": suf,
+                  "operation": op,
+              },
+          )
+  
+      hid = _DEFAULT_SUFFIX_MAP.get(suf)
+      if hid is None:
+          raise RegistryError(
+              "UNSUPPORTED_FILE_EXTENSION",
+              {
+                  "message": f"No handler for suffix {suf!r}",
+                  "file_path": file_path,
+                  "suffix": suf,
+                  "operation": op,
+              },
+          )
+  
+      if op not in _HANDLER_SUPPORTED_OPS.get(hid, frozenset()):
+          raise RegistryError(
+              "UNSUPPORTED_FILE_OPERATION",
+              {
+                  "message": f"Handler {hid!r} does not support operation {op!r}",
+                  "file_path": file_path,
+                  "handler_id": hid,
+                  "operation": op,
+              },
+          )
+  
+  
+  def list_handler_mappings() -> List[Dict[str, str]]:
+      """Return sorted extension → handler rows for discovery."""
+      rows = [
+          {"suffix": suf, "handler_id": hid}
+          for suf, hid in sorted(_DEFAULT_SUFFIX_MAP.items())
+      ]
+      return rows
+  
+  
+  def get_handler_schema(handler_id: str, operation: str) -> Dict[str, Any]:
+      """JSON-schema-like fragment per handler and operation (documentation aid)."""
+      op = (operation or "").lower().strip()
+      base_common: Dict[str, Any] = {
+          "type": "object",
+          "properties": {
+              "project_id": {"type": "string"},
+              "file_path": {"type": "string"},
+              "dry_run": {"type": "boolean"},
+              "diff": {"type": "boolean"},
+              "backup": {"type": "boolean"},
+          },
+      }
+  
+      if handler_id == HANDLER_TEXT:
+          if op == "read":
+              return {
+                  **base_common,
+                  "description": "Plain text: optional start_line/end_line (1-based inclusive); reads may clamp.",
+                  "properties": {
+                      **base_common["properties"],
+                      "start_line": {"type": "integer", "minimum": 1},
+                      "end_line": {"type": "integer", "minimum": 1},
+                  },
+              }
+          if op in ("save", "replace", "delete"):
+              return {
+                  **base_common,
+                  "description": "Plain text: full content or line ranges; no Python/CST parsing.",
+                  "properties": {
+                      **base_common["properties"],
+                      "content": {"type": "string"},
+                      "start_line": {"type": "integer"},
+                      "end_line": {"type": "integer"},
+                      "new_lines": {"type": "array", "items": {"type": "string"}},
+                  },
+              }
+  
+      if handler_id == HANDLER_JSON:
+          return {
+              **base_common,
+              "description": "JSON: use JSON Pointer / structured payloads; not raw ambiguous line edits.",
+              "properties": {
+                  **base_common["properties"],
+                  "json_pointer": {"type": "string"},
+                  "content": {},
+                  "value": {},
+              },
+          }
+  
+      if handler_id == HANDLER_YAML:
+          return {
+              **base_common,
+              "description": "YAML: path-based edits; comments may not round-trip.",
+              "properties": {
+                  **base_common["properties"],
+                  "yaml_path": {"type": "string"},
+                  "content": {"type": "string"},
+                  "value": {},
+              },
+          }
+  
+      if handler_id == HANDLER_PYTHON:
+          return {
+              **base_common,
+              "description": "Python: CST replace-ops only (run_ops_mode); no raw text line editor.",
+              "properties": {
+                  **base_common["properties"],
+                  "content": {"type": "string"},
+                  "ops": {"type": "array"},
+              },
+          }
+  
+      return {
+          "type": "object",
+          "description": f"Unknown handler {handler_id!r} operation {op!r}",
+      }
+  
+
+  Task:
+  Create file ai_editor/commands/universal_file_edit/format_group.py
+  with the following exact content (write it verbatim):
+
+  ```python
+  """
+  FormatGroup resolution and DraftFile/WriteLockfile path helpers.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from typing import List
+
+  from ai_editor.core.file_handlers.registry import RegistryError, resolve_handler
+
+  FORMAT_SIDECAR = "sidecar"
+  FORMAT_TREE_TEMP = "tree-temp"
+  FORMAT_TEXT = "text"
+
+  _HANDLER_TO_FORMAT = {
+      "python": FORMAT_SIDECAR,
+      "json": FORMAT_TREE_TEMP,
+      "yaml": FORMAT_TREE_TEMP,
+      "text": FORMAT_TEXT,
+  }
+
+  _FORMAT_AVAILABLE_OPERATIONS = {
+      FORMAT_SIDECAR: ["insert", "delete", "replace"],
+      FORMAT_TREE_TEMP: ["insert", "delete", "replace"],
+      FORMAT_TEXT: ["insert", "delete", "replace"],
+  }
+
+
+  @dataclass
+  class FormatDescriptor:
+      """Resolved format group descriptor for one file.
+
+      Attributes:
+          format_group: One of sidecar, tree-temp, or text.
+          handler_id: Handler id from the file handler registry.
+          draft_path: Absolute path to the draft file.
+          lockfile_path: Absolute path to the write lockfile.
+          available_operations: List of operation type strings valid for this group.
+      """
+
+      format_group: str
+      handler_id: str
+      draft_path: Path
+      lockfile_path: Path
+      available_operations: List[str] = field(default_factory=list)
+
+
+  def resolve_format_group(abs_path: Path) -> FormatDescriptor:
+      """Resolve the FormatGroup and return a FormatDescriptor for abs_path.
+
+      Args:
+          abs_path: Absolute path to the file being opened for editing.
+
+      Returns:
+          FormatDescriptor with resolved group, draft path, lockfile path,
+          and available operations.
+
+      Raises:
+          ValueError: with code UNKNOWN_FORMAT when the file extension is not
+              supported by any handler.
+      """
+      try:
+          handler_id = resolve_handler(str(abs_path), "read")
+      except RegistryError as exc:
+          raise ValueError("UNKNOWN_FORMAT") from exc
+      format_group = _HANDLER_TO_FORMAT[handler_id]
+      draft_path = draft_path_for(abs_path, format_group)
+      lockfile_path = lockfile_path_for(abs_path)
+      available_ops = list(_FORMAT_AVAILABLE_OPERATIONS[format_group])
+      return FormatDescriptor(
+          format_group=format_group,
+          handler_id=handler_id,
+          draft_path=draft_path,
+          lockfile_path=lockfile_path,
+          available_operations=available_ops,
+      )
+
+
+  def draft_path_for(abs_path: Path, format_group: str) -> Path:
+      """Return the draft file path for abs_path given its format group.
+
+      Args:
+          abs_path: Absolute path to the original file.
+          format_group: One of sidecar, tree-temp, or text.
+
+      Returns:
+          Absolute path to the draft file.
+      """
+      if format_group == FORMAT_SIDECAR:
+          return abs_path.with_suffix(abs_path.suffix + ".cst_sidecar")
+      return abs_path.with_suffix(abs_path.suffix + ".draft")
+
+
+  def lockfile_path_for(abs_path: Path) -> Path:
+      """Return the write lockfile path for abs_path.
+
+      Args:
+          abs_path: Absolute path to the original file.
+
+      Returns:
+          Absolute path to the lockfile (<file>.write).
+      """
+      return abs_path.with_suffix(abs_path.suffix + ".write")
+
+
+  def read_lockfile_pid(abs_path: Path) -> int | None:
+      """Read the PID from the write lockfile, or return None if absent.
+
+      Args:
+          abs_path: Absolute path to the original file.
+
+      Returns:
+          Integer PID when lockfile exists and contains a valid integer,
+          None otherwise.
+      """
+      lf = lockfile_path_for(abs_path)
+      try:
+          return int(lf.read_text().strip())
+      except (FileNotFoundError, ValueError):
+          return None
+
+
+  def write_lockfile_pid(abs_path: Path, pid: int) -> None:
+      """Write the current server PID to the write lockfile atomically.
+
+      Args:
+          abs_path: Absolute path to the original file.
+          pid: Server process PID to write.
+      """
+      lf = lockfile_path_for(abs_path)
+      tmp = lf.with_suffix(".write.tmp")
+      tmp.write_text(str(pid))
+      tmp.rename(lf)
+
+
+  def delete_lockfile(abs_path: Path) -> None:
+      """Delete the write lockfile if it exists; silent if absent.
+
+      Args:
+          abs_path: Absolute path to the original file.
+      """
+      lockfile_path_for(abs_path).unlink(missing_ok=True)
+  ```
+
+  Implementation:
+  Write the file with the exact content shown in the code block above.
+  Then run lint_code and format_code on the file.
+
+  Constraints:
+  - The file must be syntactically valid Python.
+  - All functions and the dataclass must have complete docstrings.
+  - All function parameters and return types must have type hints.
+  - File line count must not exceed 400.
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_edit.format_group
+  expected: >
+    The module can be imported without errors. FormatDescriptor dataclass exists
+    with attributes format_group, handler_id, draft_path, lockfile_path,
+    available_operations. resolve_format_group, draft_path_for, lockfile_path_for,
+    read_lockfile_pid, write_lockfile_pid, delete_lockfile are callable.
+    For a .py file, resolve_format_group returns format_group=="sidecar".
+    For a .json file, returns format_group=="tree-temp".
+    For a .md file, returns format_group=="text".
+    For an unsupported extension, ValueError("UNKNOWN_FORMAT") is raised.
+status: draft

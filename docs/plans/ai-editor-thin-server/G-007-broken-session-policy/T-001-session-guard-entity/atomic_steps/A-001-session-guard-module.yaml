@@ -1,0 +1,19 @@
+step_id: A-001
+parent_tactical_step: T-001
+name: Session guard сущность
+target_file: ai_editor/core/upstream/session_guard.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-014
+- C-015
+- C-017
+- C-024
+prompt: "Create `ai_editor/core/upstream/session_guard.py`.\n\n```python\n\"\"\"Session Guard — single validation entry for universal_file_* (C-024).\"\"\"\nfrom __future__ import annotations\n\nimport enum\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from .code_analysis_client import CodeAnalysisClient, CaSessionStatus\n\nclass OperationKind(str, enum.Enum):\n    OPEN = \"open\"\n    EDIT = \"edit\"\n    PREVIEW = \"preview\"\n    WRITE = \"write\"\n    CLOSE = \"close\"\n\nclass GuardDecision(str, enum.Enum):\n    ALLOW = \"allow\"\n    REJECT = \"reject\"\n    ALLOW_TERMINATING = \"allow_terminating\"\n\nclass SessionGuard:\n    \"\"\"C-024: wraps C-014 validation and C-015 terminating policy.\"\"\"\n\n    def __init__(self, client: \"CodeAnalysisClient\") -> None:\n        self._client = client\n\n    def check(self, kind: OperationKind, ca_session_id: str) -> GuardDecision:\n        if not str(ca_session_id or \"\").strip():\n            return GuardDecision.REJECT\n\
+  \        if kind in (OperationKind.WRITE, OperationKind.CLOSE):\n            return GuardDecision.ALLOW_TERMINATING\n        from .code_analysis_client import CaSessionStatus\n\n        status = self._client.validate_ca_session(ca_session_id)\n        if status == CaSessionStatus.VALID:\n            return GuardDecision.ALLOW\n        return GuardDecision.REJECT\n```\n"
+verification:
+  type: pytest
+  target: tests/unit/test_session_guard.py
+  expected: Normal ops reject NOT_FOUND; write/close allow terminating.
+status: draft

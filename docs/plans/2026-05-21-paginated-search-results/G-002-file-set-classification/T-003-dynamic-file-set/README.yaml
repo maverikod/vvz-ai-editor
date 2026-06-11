@@ -1,0 +1,31 @@
+step_id: T-003
+parent_global_step: G-002
+name: DynamicFileSet and scan policy
+description: >
+  Derives the DynamicFileSet as disk files minus the fresh IndexedFileSet.
+  Defines default dynamic scanning limited to known supported formats via module
+  constants (DEFAULT_SUPPORTED_SUFFIXES) and excludes logs, virtual environments,
+  build directories, and binary-like files unless an explicit BroadScanPolicy
+  opt-in allows broader coverage. Ensures dynamic processing covers missing,
+  stale, unindexed, draft-only, and unavailable-index files without duplicating
+  indexed search for unchanged indexed files — fresh indexed members are always
+  excluded from the dynamic set.
+concepts:
+  - C-013
+inputs:
+  - name: disk_file_list
+    type: DiskFileList
+    description: Complete on-disk file inventory for the search scope.
+  - name: indexed_file_set
+    type: IndexedFileSet
+    description: Fresh indexed files excluded from dynamic scanning.
+  - name: broad_scan_opt_in
+    type: BroadScanPolicy
+    description: Explicit caller policy permitting broader CLI-like scanning when requested.
+outputs:
+  - name: dynamic_file_set
+    type: DynamicFileSet
+    description: Files that must be processed directly from disk or draft session content.
+atomic_steps:
+- A-001
+status: ready_for_review

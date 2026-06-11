@@ -1,0 +1,33 @@
+step_id: A-001
+parent_tactical_step: T-106
+name: Create PreviewBudget dataclass
+target_file: ai_editor/commands/universal_file_preview/budget.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-013
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/budget.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  PreviewBudget (C-013) — response size caps for universal_file_preview.\n\
+  \n  Two caps:\n    preview_lines     — max blocks returned when selector is omitted.\n\
+  \    value_preview_len — max length of any inline scalar value or name.\n\n  Author:\
+  \ Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n  from\
+  \ __future__ import annotations\n  from dataclasses import dataclass\n\nDataclass:\
+  \ PreviewBudget\nDocstring:\n  \"\"\"\n  Resolved size caps for one preview request\
+  \ (C-013).\n\n  Both values are resolved from caller input or from implementation\n\
+  \  defaults before the NavigationProcedure runs.\n\n  Attributes:\n      preview_lines:\
+  \ Max blocks returned when selector is omitted.\n                     Must be >=\
+  \ 1.\n      value_preview_len: Max characters for any inline scalar or name.\n \
+  \                        Must be >= 1.\n  \"\"\"\nFields:\n  preview_lines: int\n\
+  \  value_preview_len: int\n\nMethod: __post_init__(self) -> None\n  Docstring: \"\
+  Validate that both caps are positive integers.\"\n  Body:\n    if self.preview_lines\
+  \ < 1:\n        raise ValueError(f'preview_lines must be >= 1, got {self.preview_lines}')\n\
+  \    if self.value_preview_len < 1:\n        raise ValueError(\n            f'value_preview_len\
+  \ must be >= 1, got {self.value_preview_len}')\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.budget
+  expected: Module imports without error; PreviewBudget(20, 120) instantiates without
+    error; PreviewBudget(0, 1) raises ValueError.

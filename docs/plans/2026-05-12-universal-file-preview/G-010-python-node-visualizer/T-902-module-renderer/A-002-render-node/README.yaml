@@ -1,0 +1,100 @@
+step_id: A-002
+parent_tactical_step: T-902
+name: Add render_node to python_visualizer.py
+target_file: ai_editor/commands/universal_file_preview/python_visualizer.py
+operation: modify_file
+priority: 2
+depends_on:
+- A-001
+concepts:
+- C-009
+- C-016
+- C-022
+status: done
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.python_visualizer
+  expected: 'Module imports without error. render_node(tree, stable_id) is callable
+    and returns a non-empty string for a valid node stable_id.
+
+    '
+prompt: "## Task\n\nModify an existing file by appending one function.\n\nTarget file:\
+  \ ai_editor/commands/universal_file_preview/python_visualizer.py\nOperation:\
+  \ modify_file\n\n## Current file content (after A-001)\n\nDo not modify any existing\
+  \ code. Append render_node after the last line.\n\n---\n\"\"\"\nPython node renderer\
+  \ for universal_file_preview (C-022).\n\nConverts CSTTree nodes to structured human-readable\
+  \ text for AI consumption.\n\nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\
+  \"\"\"\n\nfrom __future__ import annotations\n\nimport pathlib\nfrom typing import\
+  \ Any\n\nfrom .budget import PreviewBudget\n\n\ndef _fmt_range(meta: Any) -> str:\n\
+  \    \"\"\"Format a line range string from node metadata.\n\n    Args:\n       \
+  \ meta: NodeMetadata with start_line and end_line attributes.\n\n    Returns:\n\
+  \        String 'L{start}-{end}', 'L{start}', or '' when start_line is None.\n \
+  \   \"\"\"\n    start = meta.start_line\n    if start is None:\n        return \"\
+  \"\n    end = meta.end_line\n    if end is not None and end != start:\n        return\
+  \ f\"L{start}-{end}\"\n    return f\"L{start}\"\n\n\ndef render_module(tree: Any,\
+  \ budget: PreviewBudget) -> str:\n    \"\"\"Render a structured text overview of\
+  \ a Python module (C-022).\n\n    When the file has fewer lines than budget.full_text_max_lines\
+  \ and that\n    threshold is positive, returns the raw file source instead of the\n\
+  \    structured overview (C-023 full-text fallback).\n\n    Args:\n        tree:\
+  \ CSTTree loaded for the file.\n        budget: PreviewBudget with full_text_max_lines\
+  \ cap.\n\n    Returns:\n        Structured text string suitable for AI consumption.\n\
+  \    \"\"\"\n    file_line_count = max(\n        (meta.end_line for meta in tree.metadata_map.values()\
+  \ if meta.end_line),\n        default=0,\n    )\n    if budget.full_text_max_lines\
+  \ > 0 and file_line_count < budget.full_text_max_lines:\n        file_path = getattr(tree,\
+  \ \"file_path\", None)\n        if file_path:\n            try:\n              \
+  \  return pathlib.Path(file_path).read_text(encoding=\"utf-8\")\n            except\
+  \ Exception:\n                pass\n\n    top_nodes = sorted(\n        (meta for\
+  \ meta in tree.metadata_map.values() if meta.depth == 1),\n        key=lambda m:\
+  \ m.start_line or 0,\n    )\n\n    entries: list[str] = []\n    for meta in top_nodes:\n\
+  \        kind = meta.kind or \"\"\n        stable_id = meta.stable_id\n        rng\
+  \ = _fmt_range(meta)\n\n        if kind == \"import\" or (\n            not kind\
+  \ and meta.type in (\"Import\", \"ImportFrom\", \"ImportStar\")\n        ):\n  \
+  \          entries.append(f\"[{stable_id}] {rng}  {meta.signature or meta.type}\"\
+  )\n        elif kind == \"smallstmt\":\n            entries.append(f\"[{stable_id}]\
+  \ {rng}  {meta.signature or meta.type}\")\n        elif kind == \"function\":\n\
+  \            line1 = f\"[{stable_id}] {rng}  {meta.signature or 'def ' + (meta.name\
+  \ or '?') + ':'}\"\n            doc = (meta.docstring or \"\").strip()\n       \
+  \     if doc:\n                entries.append(line1 + \"\\n    \" + doc.splitlines()[0])\n\
+  \            else:\n                entries.append(line1)\n        elif kind ==\
+  \ \"class\":\n            line1 = f\"[{stable_id}] {rng}  class {meta.name or '?'}:\"\
+  \n            lines_cls: list[str] = [line1]\n            doc = (meta.docstring\
+  \ or \"\").strip()\n            if doc:\n                lines_cls.append(\"   \
+  \ \" + doc.splitlines()[0])\n            node_id = next(\n                (nid for\
+  \ nid, m in tree.metadata_map.items() if m.stable_id == stable_id),\n          \
+  \      None,\n            )\n            if node_id:\n                methods =\
+  \ sorted(\n                    (\n                        m for m in tree.metadata_map.values()\n\
+  \                        if m.parent_id == node_id and m.kind in (\"function\",\
+  \ \"method\")\n                    ),\n                    key=lambda m: m.start_line\
+  \ or 0,\n                )\n                for meth in methods:\n             \
+  \       sig = meth.signature or (\"def \" + (meth.name or \"?\"))\n            \
+  \        lines_cls.append(\n                        \"    [{sid}] {r}  {sig}\".format(\n\
+  \                            sid=meth.stable_id, r=_fmt_range(meth), sig=sig\n \
+  \                       )\n                    )\n            entries.append(\"\\\
+  n\".join(lines_cls))\n\n    root_meta = tree.metadata_map.get(tree.root_node_id)\n\
+  \    module_docstring = (root_meta.docstring or \"\").strip() if root_meta else\
+  \ \"\"\n    parts: list[str] = []\n    if module_docstring:\n        parts.append(module_docstring)\n\
+  \    parts.extend(entries)\n    return \"\\n\\n\".join(parts)\n---\n\n## What to\
+  \ add\n\nAppend render_node after the last line. Do not modify any existing code.\n\
+  \n### render_node(tree: Any, stable_id: str) -> str\n\nDocstring:\n    Render a\
+  \ single CST node identified by its stable_id (C-022).\n\n    Args:\n        tree:\
+  \ CSTTree loaded for the file.\n        stable_id: Stable UUID of the target node\
+  \ from cst_load_file (C-009).\n\n    Returns:\n        Structured text for the node,\
+  \ or empty string if stable_id not found.\n\nLogic:\n\nStep 1 - Locate node metadata:\n\
+  \  meta = next((m for m in tree.metadata_map.values() if m.stable_id == stable_id),\
+  \ None)\n  if meta is None: return ''\n  node_id = next((nid for nid, m in tree.metadata_map.items()\
+  \ if m.stable_id == stable_id), None)\n\nStep 2 - Render by kind/type using _fmt_range.\
+  \ Build list[str] lines, return '\\n'.join(lines).\n\nCase A - function/method or\
+  \ FunctionDef/AsyncFunctionDef:\n  Append signature, docstring first line, then\
+  \ first-level body\n  (compound stmts get '  ...' suffix). Return '\\n'.join(lines).\n\
+  \nCase B - class or ClassDef:\n  Append class header, docstring first line, then\
+  \ method signatures\n  and their docstring first lines. Return '\\n'.join(lines).\n\
+  \nCase C - If/For/While/Try/With/Match:\n  Append header, then first-level body\
+  \ with compound stmts collapsed.\n  Return '\\n'.join(lines).\n\nCase D - anything\
+  \ else:\n  Return f'[{stable_id}] {_fmt_range(meta)}  {meta.signature or meta.type\
+  \ or meta.name or \"\"}'\n\n## CSTTree interface\n\ntree.metadata_map: dict[str,\
+  \ NodeMetadata]\nNodeMetadata: stable_id, start_line, end_line, type, kind, name,\
+  \ parent_id, depth, signature, docstring\n\n## Required imports\n\nNo new imports\
+  \ needed. Use only what is already imported in the file.\n\n## Constraints\n\nComplete\
+  \ docstring with Args and Returns. Type annotations on all parameters.\nDo not import\
+  \ libcst. Do not change existing code.\nAfter addition file must not exceed 350\
+  \ lines.\n"

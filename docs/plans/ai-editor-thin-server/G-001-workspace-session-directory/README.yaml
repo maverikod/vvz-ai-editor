@@ -1,0 +1,49 @@
+step_id: G-001
+name: Workspace root и модель каталога сессии
+description: 'Зафиксировать на диске редактора иерархию Workspace Root Configuration (C-018), Editor Session Directory (C-005), File Subtree (C-006), Origin Snapshot (C-007) и Edit Subdirectory (C-008): один каталог сессии на CA Session, одно поддерево на открытый файл, неизменный снимок origin и изолированный подкаталог правок. Локальные артефакты сессии не размещаются в дереве проекта на СА.
+
+  '
+concepts:
+- C-001
+- C-004
+- C-005
+- C-006
+- C-007
+- C-008
+- C-018
+- C-019
+relations:
+- from_concept: C-001
+  to_concept: C-005
+  type: owns
+- from_concept: C-001
+  to_concept: C-018
+  type: depends_on
+- from_concept: C-018
+  to_concept: C-005
+  type: produces
+- from_concept: C-005
+  to_concept: C-006
+  type: owns
+- from_concept: C-006
+  to_concept: C-007
+  type: owns
+- from_concept: C-006
+  to_concept: C-008
+  type: owns
+source_ranges:
+- start: 15
+  end: 15
+- start: 23
+  end: 27
+- start: 85
+  end: 85
+depends_on: []
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+- T-006
+status: ready_for_review

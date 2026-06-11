@@ -1,0 +1,69 @@
+step_id: A-004
+parent_tactical_step: T-002
+name: Drop dead .trees resolver re-export from tree_temp package __init__
+target_file: ai_editor/core/tree_temp/__init__.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: draft
+prompt: "Operation: modify_file\nTarget: ai_editor/core/tree_temp/__init__.py\n\
+  \n## Goal\nRemove the dead re-export of the `.trees/` legacy resolver from the tree_temp\n\
+  package __init__. The module ai_editor/core/tree_temp/sidecar_paths.py is\n\
+  deleted whole in A-001 of this tactical step, together with its entire public\n\
+  surface: resolve_trees_sidecar_path, TREES_DIRECTORY_NAME, and SidecarPathError.\n\
+  This package __init__ still imports those three names from sidecar_paths and\nre-exports
+  them via __all__. After sidecar_paths.py is gone this import raises\nImportError
+  at package import time, which breaks every importer of the\nai_editor.core.tree_temp
+  package. The three names have no consumers outside\nthis package (verified by usage
+  analysis), so they are removed, not replaced.\n\n## Context\nsidecar_payload and
+  tree_node imports are unrelated to the .trees/ resolver and\nstay exactly as they
+  are. Only the sidecar_paths import block and the three\nmatching __all__ entries
+  are removed, and the module docstring stops advertising\na `.trees/` path resolver
+  that no longer exists. sibling_tree_path is NOT\nre-exported here; it lives in ai_editor/tree/sibling_convention.py
+  and is\nnot part of this package's surface.\n\n## Required edits (migration-relevant
+  ONLY; do not refactor anything else)\n1. Module docstring (first line): drop the
+  trailing \", `.trees/` path resolver\"\n   clause so the line reads:\n       \"\"\
+  \"Tree-temp Sidecar domain package: TreeNode entity, Sidecar JSON helpers.\n\n2.
+  Delete the entire sidecar_paths import block:\n       from ai_editor.core.tree_temp.sidecar_paths
+  import (\n           TREES_DIRECTORY_NAME,\n           SidecarPathError,\n     \
+  \      resolve_trees_sidecar_path,\n       )\n\n3. Delete these three entries from
+  the __all__ list (leave every other entry,\n   ordering, and the trailing commas
+  of the remaining entries unchanged):\n       \"SidecarPathError\",\n       \"TREES_DIRECTORY_NAME\"\
+  ,\n       \"resolve_trees_sidecar_path\",\n\n## Ordering / dependency\nThis atomic
+  step belongs with A-001 (delete sidecar_paths.py) of the same\ntactical step. Apply
+  it together with A-001 so the package no longer imports a\ndeleted module. After
+  both are applied, a project search for\n\"resolve_trees_sidecar_path\", \"TREES_DIRECTORY_NAME\"\
+  , \"SidecarPathError\", and\n\"tree_temp.sidecar_paths\" returns no hits in ai_editor/
+  (tests and scripts\nare handled in T-003).\n\n## Forbidden\n- Do not keep any backward-compatibility
+  re-export of the removed names.\n- Do not add a re-export of sibling_tree_path or
+  any replacement resolver here.\n- Do not touch the sidecar_payload import block,
+  the tree_node import block, or\n  any other __all__ entry.\n- Do not touch any other
+  file.\n\n## Full current file content (verbatim, 41 lines)\n```python\n\"\"\"Tree-temp
+  Sidecar domain package: TreeNode entity, Sidecar JSON helpers, `.trees/` path resolver.\n\
+  \nAuthor: Vasiliy Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"\n\nfrom __future__
+  import annotations\n\nfrom ai_editor.core.tree_temp.sidecar_paths import (\n\
+  \    TREES_DIRECTORY_NAME,\n    SidecarPathError,\n    resolve_trees_sidecar_path,\n\
+  )\nfrom ai_editor.core.tree_temp.sidecar_payload import (\n    SidecarParseError,\n\
+  \    parse_sidecar_json_bytes,\n    parse_sidecar_json_text,\n    serialize_sidecar_to_json_text,\n\
+  \    validate_sidecar_source_sha256_field,\n)\nfrom ai_editor.core.tree_temp.tree_node
+  import (\n    TreeNode,\n    tree_node_from_json_dict,\n    tree_node_to_json_dict,\n\
+  \    validate_node_constraints,\n)\n\n__all__ = [\n    \"TreeNode\",\n    \"SidecarParseError\"\
+  ,\n    \"SidecarPathError\",\n    \"TREES_DIRECTORY_NAME\",\n    \"parse_sidecar_json_bytes\"\
+  ,\n    \"parse_sidecar_json_text\",\n    \"serialize_sidecar_to_json_text\",\n \
+  \   \"resolve_trees_sidecar_path\",\n    \"tree_node_from_json_dict\",\n    \"tree_node_to_json_dict\"\
+  ,\n    \"validate_node_constraints\",\n    \"validate_sidecar_source_sha256_field\"\
+  ,\n]\n```\n"
+verification:
+  type: static_analysis
+  target: ai_editor/core/tree_temp/__init__.py
+  expected: black, flake8, mypy exit 0; the module no longer imports from 
+    ai_editor.core.tree_temp.sidecar_paths; __all__ no longer lists 
+    SidecarPathError, TREES_DIRECTORY_NAME, or resolve_trees_sidecar_path; the 
+    sidecar_payload and tree_node import blocks and their __all__ entries are 
+    unchanged; importing ai_editor.core.tree_temp succeeds after 
+    sidecar_paths.py is deleted; grep for 'sidecar_paths', 
+    'TREES_DIRECTORY_NAME', 'SidecarPathError', and 'resolve_trees_sidecar_path'
+    in this file returns nothing.

@@ -1,0 +1,28 @@
+concepts:
+- C-005
+depends_on:
+- A-005
+name: Add register_auto_import_module calls for session commands in hooks.py
+operation: modify_file
+parent_tactical_step: T-001
+priority: 6
+prompt: "Modify the existing file at the exact path:\n  ai_editor/hooks.py\n\n\
+  Operation: modify_file. The file ends with a series of register_auto_import_module\n\
+  calls. The last few lines look like:\n  register_auto_import_module(\"ai_editor.commands.universal_file_preview_command\"\
+  )\n\nRequired change: append three new register_auto_import_module calls at the
+  END of\nthe file (after the last existing register_auto_import_module call):\n\n\
+  \  register_auto_import_module(\"ai_editor.commands.sessions.session_create_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.sessions.session_delete_command\"\
+  )\n  register_auto_import_module(\"ai_editor.commands.sessions.session_list_command\"\
+  )\n\nDo not modify any other part of the file. Do not reformat existing code.\n\
+  register_auto_import_module is already imported at the top of hooks.py via:\n  from
+  mcp_proxy_adapter.commands.hooks import register_auto_import_module"
+status: done
+step_id: A-006
+target_file: ai_editor/hooks.py
+verification:
+  expected: The last three lines of hooks.py are the three 
+    register_auto_import_module calls for session commands. All existing lines 
+    are unchanged. File imports without error.
+  target: ai_editor/hooks.py
+  type: static_analysis

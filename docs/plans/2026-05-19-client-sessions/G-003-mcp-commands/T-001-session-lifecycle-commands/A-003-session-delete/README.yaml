@@ -1,0 +1,165 @@
+concepts:
+- C-001
+- C-002
+- C-004
+- C-005
+- C-009
+depends_on:
+- A-001
+name: Create session_delete_command.py
+operation: create_file
+parent_tactical_step: T-001
+priority: 3
+prompt: "Create a new Python file at the exact path:
+  ai_editor/commands/sessions/session_delete_command.py
+
+This file is new with no pre-existing content.
+
+MRS context:
+- C-001 ClientSession: UUID4, deleted via delete_client_session(force).
+- C-002 SessionFileLock: released when force=True.
+- C-005 SessionMCPCommands: session_delete; no SessionTouchRule (session being
+  deleted); SESSION_NOT_FOUND, SESSION_HAS_LOCKS, COMMAND_FORBIDDEN errors.
+- C-009 SecurityPolicy: enforce_security_policy called after SESSION_NOT_FOUND
+  guard and before main delete logic.
+
+File-level docstring:
+\"\"\"\nsession_delete MCP command: delete a client session.\n\nAuthor: Vasiliy
+  Zdanovskiy\nemail: vasilyvz@gmail.com\n\"\"\"
+
+Imports (exact):
+  from __future__ import annotations
+  from typing import Any, Dict
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.core.client_sessions import (
+      delete_client_session,
+      SessionNotFoundError,
+      SessionHasLocksError,
+  )
+  from ai_editor.core.security_policy_guard import (
+      enforce_security_policy,
+      CommandForbiddenError,
+  )
+
+Class:
+
+class SessionDeleteCommand(BaseMCPCommand):
+    \"\"\"MCP command: delete a client session.\"\"\"
+
+    name = 'session_delete'
+    version = '1.0.0'
+    descr = 'Delete a client session, optionally force-releasing all file locks.'
+    category = 'session_management'
+    author = 'Vasiliy Zdanovskiy'
+    email = 'vasilyvz@gmail.com'
+    use_queue = False
+
+    @staticmethod
+    def get_name() -> str:
+        \"\"\"Return the MCP command name.
+
+        Returns:
+            MCP command name string.
+        \"\"\"
+        return 'session_delete'
+
+    @classmethod
+    def get_schema(cls) -> Dict[str, Any]:
+        \"\"\"Return the JSON schema for command parameters.
+
+        Returns:
+            JSON schema dict.
+        \"\"\"
+        return {
+            'type': 'object',
+            'properties': {
+                'session_id': {
+                    'type': 'string',
+                    'description': 'UUID4 of the session to delete.',
+                },
+                'force': {
+                    'type': 'boolean',
+                    'default': False,
+                    'description': 'If true, release all file locks before deleting.',
+                },
+            },
+            'required': ['session_id'],
+            'additionalProperties': False,
+        }
+
+    async def execute(  # type: ignore[override]
+        self,
+        session_id: str,
+        force: bool = False,
+        **kwargs: Any,
+    ) -> SuccessResult | ErrorResult:
+        \"\"\"Execute session_delete.
+
+        No SessionTouchRule (session is being terminated).
+        Execution order: SESSION_NOT_FOUND guard -> SecurityPolicy check -> delete.
+
+        Args:
+            session_id: UUID4 of the session to delete.
+            force: If True, release all file locks before deleting.
+            **kwargs: Adapter context (ignored).
+
+        Returns:
+            SuccessResult with session_id, deleted, released_lock_count.
+            ErrorResult SESSION_NOT_FOUND if session absent.
+            ErrorResult SESSION_HAS_LOCKS if open locks exist and force=False.
+            ErrorResult COMMAND_FORBIDDEN if SecurityPolicy denies the command.
+        \"\"\"
+        _ = kwargs
+        database = self._open_database_from_config()
+        raw_config = self._get_raw_config()
+        server_uuid: str = raw_config.get('registration', {}).get('instance_uuid', '')
+        policy_mode: str = (raw_config.get('security') or {}).get('policy', 'disabled')
+
+        # SESSION_NOT_FOUND guard first (session must exist before policy check)
+        from ai_editor.core.client_sessions import get_client_session
+        if get_client_session(database, session_id) is None:
+            return ErrorResult(
+                code='SESSION_NOT_FOUND',
+                message=f'Session {session_id!r} not found.',
+            )
+
+        # SecurityPolicy check
+        try:
+            enforce_security_policy(
+                database=database,
+                session_id=session_id,
+                command_name='session_delete',
+                server_uuid=server_uuid,
+                policy_mode=policy_mode,
+            )
+        except CommandForbiddenError as e:
+            return ErrorResult(code='COMMAND_FORBIDDEN', message=str(e))
+
+        # Main logic
+        try:
+            result = delete_client_session(database, session_id=session_id, force=force)
+        except SessionNotFoundError:
+            return ErrorResult(
+                code='SESSION_NOT_FOUND',
+                message=f'Session {session_id!r} not found.',
+            )
+        except SessionHasLocksError as e:
+            return ErrorResult(code='SESSION_HAS_LOCKS', message=str(e))
+        return SuccessResult(data=result)
+
+Constraints:
+- File must not exceed 120 lines.
+- No other functions or classes.
+- All type annotations required.
+- Google-style docstrings."
+status: done
+step_id: A-003
+target_file: ai_editor/commands/sessions/session_delete_command.py
+verification:
+  expected: SessionDeleteCommand is importable. get_name() returns
+    'session_delete'. get_schema() has required=['session_id'] and optional
+    'force' boolean. enforce_security_policy is called between the
+    SESSION_NOT_FOUND guard and delete_client_session.
+  target: ai_editor/commands/sessions/session_delete_command.py
+  type: import

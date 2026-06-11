@@ -1,0 +1,70 @@
+step_id: A-001
+parent_tactical_step: T-601
+name: Create JsonLinesFileHandler — open_root produces lines root without JSON parsing
+target_file: ai_editor/commands/universal_file_preview/handlers/jsonl_handler.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-003
+- C-004
+- C-019
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/handlers/jsonl_handler.py\n\nFile-level\
+  \ docstring (required):\n  \"\"\"\n  JsonLinesFileHandler — FileHandler for .jsonl,\
+  \ .ndjson files (C-019).\n\n  Root-level: lines Node; each line is a scalar Block\
+  \ (raw text).\n  No JSON parsing at the root level — lines are opaque text.\n  Drill-in:\
+  \ caller supplies integer line index as node_ref; that line\n  is then parsed as\
+  \ a standalone JSON document.\n  JSON parse errors on drill-in return FILE_STRUCTURE_ERROR.\n\
+  \n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n  \"\"\"\n\nImports:\n\
+  \  from __future__ import annotations\n  import json\n  import logging\n  from pathlib\
+  \ import Path\n  from typing import Any\n  from ..base_handler import FileHandler\n\
+  \  from ..errors import (\n      PreviewError, file_structure_error, input_error,\n\
+  \      INPUT_ERROR_UNKNOWN_NODE_REF,\n  )\n  from ..models import Node, NodeKind\n\
+  \  from .json_handler import _json_value_to_node\n\nModule-level:\n  logger = logging.getLogger(__name__)\n\
+  \nClass: JsonLinesFileHandler(FileHandler)\nDocstring:\n  \"\"\"\n  FileHandler\
+  \ for JSON Lines files (.jsonl, .ndjson) (C-019).\n\n  Root NodeKind: lines. Each\
+  \ line is a scalar block (raw text, not parsed).\n  Drill-in: node_ref is a zero-based\
+  \ integer line index; that line is\n  parsed as a JSON document and its root NodeKind\
+  \ follows JSON value type.\n  FILE_STRUCTURE_ERROR returned for individual invalid\
+  \ JSON lines on drill-in.\n\n  Attributes:\n      supported_extensions: frozenset({'.jsonl',\
+  \ '.ndjson'}).\n  \"\"\"\n\nProperty: supported_extensions -> frozenset[str]\n \
+  \ Body: return frozenset({'.jsonl', '.ndjson'})\n\nMethod: open_root(self, file_path,\
+  \ session) -> Node | PreviewError\n  Docstring:\n    \"\"\"\n    Read file line-by-line\
+  \ without JSON parsing and return a lines root.\n\n    Each line becomes a scalar\
+  \ Block with its raw text as value and\n    its zero-based index as node_ref. No\
+  \ JSON content is parsed here.\n\n    Args:\n        file_path: Project-relative\
+  \ path to the .jsonl/.ndjson file.\n        session: Ignored.\n\n    Returns:\n\
+  \        Lines root Node.\n    \"\"\"\n  Body:\n    self._last_file_path = file_path\n\
+  \    def _load_lines() -> list[Node]:\n        try:\n            text = Path(file_path).read_text(encoding='utf-8',\
+  \ errors='replace')\n        except OSError:\n            text = ''\n        return\
+  \ [\n            Node(node_kind=NodeKind.SCALAR, node_ref=str(i),\n            \
+  \     attributes={'value': line})\n            for i, line in enumerate(text.splitlines())\n\
+  \        ]\n    return Node(node_kind=NodeKind.LINES, node_ref='', _children_loader=_load_lines)\n\
+  \nMethod: resolve_node_ref(self, node_ref, session) -> Node | PreviewError\n  Docstring:\n\
+  \    \"\"\"\n    Parse the addressed line as a standalone JSON document (C-019 drill-in).\n\
+  \n    node_ref is a zero-based integer line index string. The line is read\n   \
+  \ and parsed as JSON; its root NodeKind follows the JSON value type.\n    Out-of-range\
+  \ index returns UNKNOWN_NODE_REF.\n    Invalid JSON on that line returns FILE_STRUCTURE_ERROR.\n\
+  \n    Args:\n        node_ref: str(line_index), zero-based.\n        session: Ignored.\n\
+  \n    Returns:\n        JSON root Node for the line, or PreviewError.\n    \"\"\"\
+  \n  Body:\n    try:\n        idx = int(node_ref)\n    except ValueError:\n     \
+  \   return input_error(INPUT_ERROR_UNKNOWN_NODE_REF,\n                         \
+  \  f'node_ref {node_ref!r} is not a valid integer.')\n    fp = getattr(self, '_last_file_path',\
+  \ None)\n    if fp is None:\n        return input_error(INPUT_ERROR_UNKNOWN_NODE_REF,\n\
+  \                           'open_root must be called before resolve_node_ref.')\n\
+  \    try:\n        lines = Path(fp).read_text(encoding='utf-8', errors='replace').splitlines()\n\
+  \    except OSError as exc:\n        return file_structure_error(parser='json',\
+  \ message=str(exc))\n    if idx < 0 or idx >= len(lines):\n        return input_error(INPUT_ERROR_UNKNOWN_NODE_REF,\n\
+  \                           f'Line index {idx} out of range [0, {len(lines)}).',\n\
+  \                           details={'node_ref': node_ref})\n    line_text = lines[idx]\n\
+  \    try:\n        doc = json.loads(line_text)\n    except json.JSONDecodeError\
+  \ as exc:\n        return file_structure_error(parser='json', message=str(exc),\n\
+  \                                    line_start=idx + 1, line_end=idx + 1)\n   \
+  \ return _json_value_to_node(doc, '')\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.handlers.jsonl_handler
+  expected: Module imports without error; JsonLinesFileHandler instantiates; supported_extensions
+    == frozenset({'.jsonl', '.ndjson'}).

@@ -1,0 +1,28 @@
+step_id: T-003
+parent_global_step: G-006
+name: Path-style Selector Evaluation
+description: Define the path-style selector evaluation operation of the 
+  QueryInterface entity (C-008). A path-style selector combines an attribute 
+  match with structural relation constraints among nodes — child, descendant, 
+  sibling. Evaluation resolves its first and broadest step against the 
+  AttributeIndex (C-006) or IdIndex (C-005), then narrows the result by 
+  traversing the ParentRelation (C-007) to satisfy structural constraints, 
+  without scanning all nodes per step. This operation is the intended foundation
+  for the project existing in-tree search operations; cross-project 
+  database-backed search is out of scope.
+concepts:
+- C-008
+- C-005
+- C-006
+- C-007
+inputs:
+- name: path-style selector
+  type: selector expression
+  description: A selector combining an attribute match with structural relation 
+    constraints.
+outputs:
+- name: path selector result
+  type: set of IdentifiedNodes
+  description: All nodes in the Tree matching the full selector expression.
+atomic_steps: []
+status: draft

@@ -1,0 +1,73 @@
+step_id: A-004
+parent_tactical_step: T-002
+name: Extract sidecar CST validation helpers and batch apply runner
+target_file: ai_editor/commands/universal_file_edit/sidecar_cst_apply.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-001
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+  - MRS / HRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml, docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  - Technical plan spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - Parent global README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+
+  ## Goal
+  Move from `edit_command.py` into `sidecar_cst_apply.py` (new file) WITHOUT behavior change:
+
+  1. Class `StaleNodeIdError` (same `__init__`, attributes `field`, `stable_id`).
+  2. Functions `_resolve_stable_to_span`, `_normalized_cst_modify_operation`, `_is_ancestor`
+     (identical implementations; keep leading underscore names for re-export compatibility).
+  3. New **public** function:
+     `def validate_sidecar_nested_batch(operations, tree_id) -> Optional[Dict[str, Any]]:`
+     — body is the current `UniversalFileEditCommand._validate_sidecar_batch` logic (imports
+     `get_tree`, uses `_is_ancestor`, returns `make_error(NESTED_BATCH_FORBIDDEN, ...)` or None).
+  4. New **public** function:
+     `def run_sidecar_cst_edit_batch(session: EditSession, operations) -> SuccessResult | ErrorResult:`
+     — body is the inner `_run` function from `_apply_sidecar` (the synchronous work that loops
+     operations, calls `_resolve_stable_to_span`, `build_tree_operations`, `modify_tree`,
+     `write_sidecar_atomic`), including nested helpers `_rollback_sidecar_session` and
+     `_rollback_and_fail` as local defs **inside** `run_sidecar_cst_edit_batch` OR module-level
+     private helpers in the same file — behavior and error codes identical to today.
+
+  `UniversalFileEditCommand._apply_sidecar` will later become a one-liner calling
+  `run_sidecar_cst_edit_batch` via `asyncio.to_thread` from the slimmed command module
+  (import `asyncio` in command file).
+
+  ## Imports (new module must include)
+  - from __future__ import annotations
+  - from typing import Any, Dict, List, Optional, cast
+  - mcp_proxy_adapter: ErrorResult, SuccessResult
+  - ai_editor.commands.universal_file_edit.errors: NESTED_BATCH_FORBIDDEN, PARSE_ERROR, WRITE_FAILED, make_error
+  - ai_editor.commands.universal_file_edit.session: EditSession
+  - ai_editor.commands.cst_modify_tree_ops_build: build_tree_operations
+  - ai_editor.core.cst_tree.models: CSTTree, ROOT_NODE_ID_SENTINEL
+  - ai_editor.core.cst_tree.tree_builder: get_tree, load_file_to_tree, rollback_tree_to_code
+  - ai_editor.core.cst_tree.tree_modifier: modify_tree
+  - ai_editor.core.cst_tree.tree_sidecar: write_sidecar_atomic
+  - ai_editor.core.cst_tree.tree_metadata (for `_resolve_node_id` as used today in `_resolve_stable_to_span`)
+
+  ## Tests contract
+  `tests/test_universal_file_edit_command.py` imports `_normalized_cst_modify_operation` and
+  `_resolve_stable_to_span` from `edit_command`. The slim edit-command step re-exports them from
+  `edit_command` importing from `sidecar_cst_apply` — do **not** change tests in this step.
+
+  ## Forbidden
+  - Do not change FORMAT_SIDECAR semantics, rollback order, or error codes.
+  - Do not modify `edit_command.py` in this step (only the new file).
+  - File MUST be ≤400 lines; if larger, split is orchestrator scope — stop and escalate.
+
+  ## Mandatory validation
+  - black / flake8 / mypy on `sidecar_cst_apply.py`
+  - After prerequisite extractors and slim step on `edit_command.py` complete: `pytest tests/test_universal_file_edit_command.py tests/test_sibling_insert_positioning.py -q`
+
+verification:
+  type: static_analysis
+  target: ai_editor.commands.universal_file_edit.sidecar_cst_apply
+  expected: black/flake8/mypy clean; file ≤400 lines
+status: done

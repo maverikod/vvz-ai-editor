@@ -1,0 +1,31 @@
+step_id: T-003
+parent_global_step: G-004
+name: GrepSearchMode operating modes
+description: >
+  Creates the GrepSearchMode contract for fs_grep with two explicit modes.
+  Structural mode is the default: validate or create the file tree per distinct
+  file path, map matches to tree nodes or blocks, and return PreviewReference
+  data with structural_evidence_eligibility. Classic line mode is opt-in and
+  returns line-oriented text matches for standalone inspection. Defines that
+  classic line grep does not count as project cross-search structural evidence
+  unless its results are converted into validated preview-compatible nodes.
+concepts:
+  - C-019
+inputs:
+  - name: grep_request
+    type: GrepRequest
+    description: Caller request specifying pattern, scope, and requested operating mode.
+  - name: mode_selection
+    type: GrepSearchMode
+    description: Structural default or explicit classic line opt-in.
+outputs:
+  - name: grep_result_payload
+    type: GrepResultPayload
+    description: Line-oriented matches or preview-compatible structural node references depending on mode.
+  - name: structural_evidence_eligibility
+    type: StructuralEvidenceEligibility
+    description: Indicates whether the grep output may be used directly as cross-search structural evidence.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

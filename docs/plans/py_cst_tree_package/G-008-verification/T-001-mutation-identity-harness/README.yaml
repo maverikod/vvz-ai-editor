@@ -1,0 +1,32 @@
+step_id: T-001
+parent_global_step: G-008
+name: Mutation Identity Harness
+description: Define the mutation identity verification component of the 
+  VerificationHarness entity (C-018). This component exercises the identity 
+  invariants of all four mutation operations. For the InsertOperation (C-011) it
+  verifies that inserted nodes receive fresh StableIds and every pre-existing 
+  node keeps its StableId unchanged. For the DeleteOperation (C-012) it verifies
+  that every surviving node keeps its StableId unchanged and no dangling index 
+  entries remain. For the ReplaceOperation (C-013) it verifies that new nodes 
+  receive fresh StableIds and all other nodes keep theirs. For the MoveOperation
+  (C-014) it verifies that the moved node and every descendant, however deeply 
+  nested and regardless of node category, keep their StableIds, and every node 
+  outside the moved subtree also keeps its StableId.
+concepts:
+- C-018
+- C-011
+- C-012
+- C-013
+- C-014
+inputs:
+- name: Tree under test
+  type: C-004 instance
+  description: A package Tree serving as the starting state for each mutation 
+    identity test case.
+outputs:
+- name: mutation identity results
+  type: verification report
+  description: Pass or fail verdict for the identity invariant of each of the 
+    four mutation operations.
+atomic_steps: []
+status: draft

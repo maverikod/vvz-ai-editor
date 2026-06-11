@@ -1,0 +1,31 @@
+step_id: T-001
+parent_global_step: G-002
+name: Tree Object and Ownership Contract
+description: "Define the Tree entity (C-004) as the self-contained object that owns
+  the root IdentifiedNode (C-001) and its entire subtree, and that owns and exposes
+  the identity index (C-005), the attribute indexes (C-006), the parent relation (C-007),
+  and the query surface (C-008) as encapsulated components. Callers interact with
+  the Tree object directly rather than walking raw nodes. The indexes are derived
+  state: after any mutation, indexes are updated to remain consistent with the current
+  structure, and where an index entry and a node's own stable_id could disagree, the
+  node's stable_id is authoritative. A query performed on the Tree never triggers
+  a full rescan of the node structure to answer.\n"
+concepts:
+- C-004
+- C-001
+- C-005
+- C-006
+- C-007
+- C-008
+inputs:
+- name: root IdentifiedNode
+  type: C-001 instance
+  description: The root of the node subtree that the Tree will own.
+outputs:
+- name: Tree entity
+  type: domain entity definition
+  description: A self-contained object owning the root node and encapsulating 
+    the three index components and the query surface; with the ownership 
+    contract and consistency rules defined above.
+atomic_steps: []
+status: draft

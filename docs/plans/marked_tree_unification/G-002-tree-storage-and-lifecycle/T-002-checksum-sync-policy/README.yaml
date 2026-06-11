@@ -1,0 +1,56 @@
+step_id: T-002
+parent_global_step: G-002
+name: ChecksumSyncPolicy Four-Branch Decision
+description: 'Define the ChecksumSyncPolicy entity (C-006) as the single mechanism
+  that decides tree-vs-source truth by SHA-256 checksum comparison. Specify the four
+  decision branches only: (1) no TreeFile present — build tree from source; (2) checksum
+  match — tree is current, no action needed; (3) checksum mismatch outside an active
+  session — rebuild tree from source applying short_id allocation rules in {a007}
+  (preserve next_free from existing MAP when a prior tree exists; initialize next_free
+  to 1 on first creation); after rebuild, NodeIdMap (C-025) validate_and_repair restores
+  MAP consistency while preserving TreeNodeUuid (C-024) for nodes whose underlying
+  content identity is unchanged per {n002}; (4) checksum mismatch inside an active
+  session — tree is truth, source is stale, do not rebuild. Establish that SHA-256
+  checksum of source content is the synchronization trigger for this four-branch
+  decision. ChecksumSyncPolicy owns the four-branch decision exclusively; it does NOT
+  own compute_content_checksum or is_tree_valid — those pure checksum helpers belong
+  to TreeLifecycle (C-010) per MRS. Establish that this decision mechanism applies
+  uniformly to all formats. An existing implementation exists in the codebase; this
+  step extends and integrates it rather than replacing it.'
+concepts:
+- C-006
+- C-003
+- C-004
+- C-025
+- C-024
+inputs:
+- name: SourceFile content
+  type: C-004 instance
+  description: The source file whose SHA-256 checksum is compared to the stored
+    checksum to determine the synchronization branch.
+- name: TreeFile presence flag
+  type: boolean
+  description: Whether a co-located three-section TreeFile already exists for the
+    SourceFile.
+outputs:
+- name: ChecksumSyncPolicy entity definition
+  type: domain entity definition
+  description: Four-branch decision mechanism keyed by TreeFile presence and checksum
+    match; SHA-256 is the synchronization trigger; rebuild branch applies {a007}
+    next_free rules and invokes NodeIdMap validate_and_repair per {n002}; owns the
+    decision only, not checksum helper functions; applies uniformly to all formats.
+- name: Four-branch decision table
+  type: domain constraint definition
+  description: Enumeration of the four branches with their preconditions and
+    resulting actions (build, no-op, rebuild with validate_and_repair, or treat tree
+    as truth).
+source_labels:
+- '{a005}'
+- '{a006}'
+- '{a007}'
+- '{c002}'
+- '{c003}'
+- '{n002}'
+atomic_steps:
+- A-001
+status: needs_review

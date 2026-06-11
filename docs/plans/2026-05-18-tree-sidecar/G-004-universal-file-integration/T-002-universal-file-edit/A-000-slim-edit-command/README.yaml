@@ -1,0 +1,798 @@
+step_id: A-007
+parent_tactical_step: T-002
+name: Slim UniversalFileEditCommand to orchestration + re-exports (≤400 lines)
+target_file: ai_editor/commands/universal_file_edit/edit_command.py
+operation: modify_file
+priority: 3
+depends_on:
+  - A-003
+  - A-004
+  - A-005
+  - A-006
+concepts:
+  - C-001
+  - C-007
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+  - MRS / HRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml, docs/plans/2026-05-18-tree-sidecar/source_spec.md
+  - Technical plan spec: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - Parent global README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical README: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-002-universal-file-edit/README.yaml
+
+  ## Goal
+  Reduce `edit_command.py` to **≤400 lines** by deleting moved implementations and delegating:
+
+  - `execute`: unchanged control flow; for FORMAT_SIDECAR call
+    `validate_sidecar_nested_batch(operations, session.tree_id)` from `sidecar_cst_apply`; on None
+    call `_apply_sidecar` which runs `run_sidecar_cst_edit_batch` via `asyncio.to_thread` (same
+    pattern as today).
+  - `_apply_tree_temp`: body replaces inner function with
+    `return await asyncio.to_thread(run_tree_temp_legacy_json_yaml_apply, session, operations)`
+    (import from `tree_temp_legacy_apply`) until a later modify_file step on this same file delegates FORMAT_TREE_TEMP to `apply_tree_temp_mutations` (no duplicate routing here beyond the legacy/thread path).
+  - `_apply_text`: delegate to `run_text_draft_apply` in a thread same as today.
+
+  **Re-exports for backward compatibility** (tests import from `edit_command`):
+  - `StaleNodeIdError`, `_resolve_stable_to_span`, `_normalized_cst_modify_operation` from
+    `sidecar_cst_apply` (or explicit `from X import Y` assignments).
+
+  Remove duplicate `project_root_near` / `_project_root_near`; all call sites use new modules.
+
+  ## Hard gate
+  - `wc -l edit_command.py` ≤ 400 after edit.
+
+  ## Cross-G / within-TS a8 — baseline file (no prior AS on this file in T-002)
+  Workspace repository **2026-05-18** before this slim step: `wc -l ai_editor/commands/universal_file_edit/edit_command.py` → **730** lines.
+
+  ```python
+  """
+  UniversalFileEditCommand: applies a batch of mutations to the draft.
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  from __future__ import annotations
+
+  from pathlib import Path
+  from typing import Any, Dict, List, Optional, Type, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.base_mcp_command import BaseMCPCommand
+  from ai_editor.commands.universal_file_edit.edit_command_metadata import (
+      get_universal_file_edit_metadata,
+  )
+  from ai_editor.commands.universal_file_edit.errors import (
+      NESTED_BATCH_FORBIDDEN,
+      PARSE_ERROR,
+      SESSION_NOT_FOUND,
+      UNKNOWN_FORMAT,
+      WRITE_FAILED,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.format_group import (
+      FORMAT_SIDECAR,
+      FORMAT_TREE_TEMP,
+  )
+  from ai_editor.commands.universal_file_edit.session import EditSession, get_session
+  from ai_editor.core.cst_tree.models import CSTTree, ROOT_NODE_ID_SENTINEL
+  from ai_editor.core.cst_tree.tree_builder import get_tree
+
+
+  class StaleNodeIdError(ValueError):
+      """Raised when a stable_id is not found in the current CST tree.
+
+      Attributes:
+          field: Name of the op field containing the stale id.
+          stable_id: The stale stable_id value.
+      """
+
+      def __init__(self, message: str, *, field: str, stable_id: str) -> None:
+          """Initialise StaleNodeIdError.
+
+          Args:
+              message: Human-readable error message.
+              field: Name of the op dict field (node_id / parent_node_id / target_node_id).
+              stable_id: The stale stable_id value that was not found.
+          """
+          super().__init__(message)
+          self.field = field
+          self.stable_id = stable_id
+
+
+  class UniversalFileEditCommand(BaseMCPCommand):
+      """MCP command that applies a batch of mutation operations to the draft.
+
+      The original file is never touched. For sidecar group, ancestor-descendant
+      pairs in the batch are rejected atomically with NESTED_BATCH_FORBIDDEN.
+      """
+
+      name = "universal_file_edit"
+
+      version = "1.0.0"
+
+      descr = "Apply a batch of universal file edit operations to the session draft."
+
+      category = "file_management"
+
+      author = "Vasiliy Zdanovskiy"
+
+      email = "vasilyvz@gmail.com"
+
+      use_queue = False
+
+      @staticmethod
+      def get_name() -> str:
+          """Return the MCP command name.
+
+          Returns:
+              MCP command name string.
+          """
+          return "universal_file_edit"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          """Return the JSON schema for command parameters.
+
+          Returns:
+              JSON schema dict describing project_id, session_id, operations.
+          """
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {
+                      "type": "string",
+                      "description": "Project UUID. Use list_projects to discover valid values.",
+                  },
+                  "session_id": {
+                      "type": "string",
+                      "description": "Active session UUID returned by universal_file_open.",
+                  },
+                  "operations": {
+                      "type": "array",
+                      "description": (
+                          "Batch of edit operations. Structure varies by format_group: "
+                          "sidecar={type,node_id,code_lines}, "
+                          "tree-temp={type,json_pointer,value}, "
+                          "text={type,start_line,end_line,content}."
+                      ),
+                      "items": {"type": "object"},
+                  },
+              },
+              "required": ["project_id", "session_id", "operations"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls: Type["UniversalFileEditCommand"]) -> Dict[str, Any]:
+          """Return extended AI/docs metadata for universal_file_edit.
+
+          Returns:
+              Metadata dict with description, parameters, examples, errors.
+          """
+          return get_universal_file_edit_metadata(cls)
+
+      async def execute(
+          self,
+          project_id: str,
+          session_id: str,
+          operations: List[Dict[str, Any]],
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          """Execute the edit command.
+
+          Args:
+              project_id: Project UUID (validated by handler; reserved for future checks).
+              session_id: Active session identifier.
+              operations: Batch of edit operation dicts.
+              **kwargs: Adapter context.
+
+          Returns:
+              SuccessResult with payload, or ErrorResult on failure.
+          """
+          del project_id, kwargs
+          try:
+              session = get_session(session_id)
+          except ValueError:
+              err = make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+              return ErrorResult(
+                  message=str(err["message"]),
+                  code=str(err["code"]),
+                  details=err.get("details"),
+              )
+
+          fg = session.format_group
+          if fg == FORMAT_SIDECAR:
+              validation = self._validate_sidecar_batch(operations, session.tree_id)
+              if validation is not None:
+                  return ErrorResult(
+                      message=str(validation["message"]),
+                      code=str(validation["code"]),
+                      details=validation.get("details"),
+                  )
+              return await self._apply_sidecar(session, operations)
+          if fg == FORMAT_TREE_TEMP:
+              return await self._apply_tree_temp(session, operations)
+          return await self._apply_text(session, operations)
+
+      def _validate_sidecar_batch(
+          self,
+          operations: List[Dict[str, Any]],
+          tree_id: Optional[str],
+      ) -> Optional[Dict[str, Any]]:
+          """Validate that no ancestor-descendant pairs exist in the batch.
+
+          For sidecar group only. Checks every pair of node_ids in the batch.
+          If any node is an ancestor of another, rejects the entire batch.
+
+          Args:
+              operations: List of edit operation dicts with parent_node_id.
+              tree_id: In-memory CST tree UUID for ancestor resolution.
+
+          Returns:
+              None when batch is valid;
+              error dict with NESTED_BATCH_FORBIDDEN when invalid.
+          """
+          node_ids: List[str] = []
+          for op in operations:
+              raw = op.get("parent_node_id")
+              if isinstance(raw, str) and raw:
+                  node_ids.append(raw)
+          if len(node_ids) < 2 or tree_id is None:
+              return None
+          tree = get_tree(tree_id)
+          if tree is None:
+              return None
+          for i, nid_a in enumerate(node_ids):
+              for nid_b in node_ids[i + 1 :]:
+                  if _is_ancestor(tree, nid_a, nid_b) or _is_ancestor(tree, nid_b, nid_a):
+                      return cast(
+                          Dict[str, Any],
+                          make_error(
+                              NESTED_BATCH_FORBIDDEN,
+                              "Ancestor-descendant pair in batch",
+                          ),
+                      )
+          return None
+
+      async def _apply_sidecar(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          """Apply sidecar group operations via CST ``modify_tree`` and refresh sidecar.
+
+          Each operation runs in isolation: resolve ``stable_id`` against the current
+          tree, ``modify_tree`` with one op (stable_id transfer via ``_build_tree_index``),
+          then ``write_sidecar_atomic``. On any failure the batch rolls back to the
+          pre-batch tree and sidecar snapshot.
+
+          Args:
+              session: Active EditSession.
+              operations: List of validated edit operation dicts.
+
+          Returns:
+              SuccessResult with success/update flags, or ErrorResult on failure.
+          """
+          import asyncio
+
+          from ai_editor.commands.cst_modify_tree_ops_build import (
+              build_tree_operations,
+          )
+          from ai_editor.core.cst_tree.tree_builder import (
+              get_tree,
+              load_file_to_tree,
+              rollback_tree_to_code,
+          )
+          from ai_editor.core.cst_tree.tree_modifier import modify_tree
+          from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+
+          def _rollback_sidecar_session(
+              tree_id: str,
+              code: str,
+              metadata_snapshot: Dict[str, Any],  # TreeNodeMetadata values
+          ) -> None:
+              rollback_tree_to_code(
+                  tree_id,
+                  code,
+                  index_metadata_for_code=metadata_snapshot,
+              )
+              session.tree_id = tree_id
+              restored = get_tree(tree_id)
+              if restored is not None:
+                  write_sidecar_atomic(session.abs_path, restored)
+
+          def _run() -> SuccessResult | ErrorResult:
+              tid = session.tree_id
+              tree = get_tree(tid) if tid else None
+              if tree is None:
+                  try:
+                      tree = load_file_to_tree(str(session.abs_path))
+                  except FileNotFoundError as exc:
+                      return ErrorResult(
+                          message=str(exc),
+                          code="FILE_NOT_FOUND",
+                          details={"path": str(session.abs_path)},
+                      )
+                  except Exception as exc:
+                      return ErrorResult(
+                          message=str(exc),
+                          code=PARSE_ERROR,
+                          details={"path": str(session.abs_path)},
+                      )
+              session.tree_id = tree.tree_id
+
+              batch_original_code = tree.module.code
+              batch_original_tree_id = tree.tree_id
+              batch_original_metadata = dict(tree.metadata_map)
+
+              def _rollback_and_fail(err: ErrorResult) -> ErrorResult:
+                  _rollback_sidecar_session(
+                      batch_original_tree_id,
+                      batch_original_code,
+                      batch_original_metadata,
+                  )
+                  return err
+
+              for op in operations:
+                  try:
+                      resolved_op = _resolve_stable_to_span(op, tree)
+                  except StaleNodeIdError as _stale:
+                      return _rollback_and_fail(
+                          ErrorResult(
+                              message=str(_stale),
+                              code="STALE_NODE_ID",
+                              details={
+                                  "field": _stale.field,
+                                  "stable_id": _stale.stable_id,
+                                  "hint": (
+                                      "Call universal_file_preview (with session_id) "
+                                      "after each edit to refresh node_ref values "
+                                      "before the next operation."
+                                  ),
+                              },
+                          )
+                      )
+                  try:
+                      normalized_op = _normalized_cst_modify_operation(resolved_op)
+                  except ValueError as exc:
+                      return _rollback_and_fail(
+                          ErrorResult(
+                              message=str(exc),
+                              code="INVALID_OPERATION",
+                              details={"operation": op},
+                          )
+                      )
+                  built, err = build_tree_operations(tree, [normalized_op])
+                  if err is not None:
+                      return _rollback_and_fail(err)
+                  if not built:
+                      return _rollback_and_fail(
+                          ErrorResult(
+                              message="No operations built from edit payload",
+                              code="INVALID_OPERATION",
+                              details={"operation": normalized_op},
+                          )
+                      )
+                  try:
+                      tree = modify_tree(tree.tree_id, built)
+                  except ValueError as exc:
+                      return _rollback_and_fail(
+                          ErrorResult(
+                              message=str(exc),
+                              code="INVALID_OPERATION",
+                              details={"operation": op},
+                          )
+                      )
+                  session.tree_id = tree.tree_id
+                  try:
+                      write_sidecar_atomic(session.abs_path, tree)
+                  except Exception as exc:
+                      return _rollback_and_fail(
+                          ErrorResult(
+                              message=str(exc),
+                              code="WRITE_FAILED",
+                              details={"path": str(session.abs_path)},
+                          )
+                      )
+
+              return SuccessResult(data={"success": True, "updated": True})
+
+          return await asyncio.to_thread(_run)
+
+      async def _apply_tree_temp(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          """Apply tree-temp group operations to the draft via JSON/YAML pipelines.
+
+          For each operation, updates the registered in-memory tree, then serializes
+          the tree to ``session.draft_path``.
+
+          Args:
+              session: Active EditSession with tree_id and draft_path.
+              operations: Edit operation dicts (``type``/``action``, addresses, values).
+
+          Returns:
+              SuccessResult with ``success``/``updated`` flags, or ErrorResult on failure.
+          """
+          import asyncio
+
+          def _run_tree_temp() -> SuccessResult | ErrorResult:
+              from ai_editor.core.backup_manager import BackupManager
+              from ai_editor.core.json_tree.tree_modifier import (
+                  modify_tree as json_modify_tree,
+              )
+
+              tid = session.tree_id
+              if not tid:
+                  return ErrorResult(
+                      message="Session has no registered tree id for tree-temp format.",
+                      code="INVALID_SESSION",
+                      details=None,
+                  )
+              try:
+                  root_dir = _project_root_near(session.draft_path)
+                  bm = BackupManager(root_dir=root_dir)
+                  if session.draft_path.exists():
+                      bm.create_backup(
+                          session.draft_path,
+                          command="universal_file_edit",
+                      )
+              except Exception as exc:
+                  return ErrorResult(
+                      message=f"Backup before edit failed: {exc}",
+                      code=WRITE_FAILED,
+                      details={"path": str(session.draft_path)},
+                  )
+
+              try:
+                  if session.handler_id == "json":
+                      import json as _json
+
+                      from ai_editor.core.json_tree.tree_builder import (
+                          get_tree as json_get_registered,
+                      )
+
+                      for op in operations:
+                          mop = _normalized_json_modify_operation(op)
+                          json_modify_tree(tid, [mop])
+                          jt = json_get_registered(tid)
+                          if jt is None:
+                              return ErrorResult(
+                                  message=f"JSON tree not found after apply: {tid}",
+                                  code=PARSE_ERROR,
+                                  details=None,
+                              )
+                          dump = (
+                              _json.dumps(jt.root_data, indent=2, ensure_ascii=False)
+                              + "\n"
+                          )
+                          session.draft_path.write_text(
+                              dump,
+                              encoding="utf-8",
+                          )
+                  elif session.handler_id == "yaml":
+                      import yaml
+
+                      from ai_editor.core.yaml_tree.tree_builder import (
+                          get_tree as yaml_get_tree,
+                      )
+
+                      for op in operations:
+                          mop = _normalized_json_modify_operation(op)
+                          _modify_yaml_registered_one(tid, mop)
+                          yt = yaml_get_tree(tid)
+                          if yt is None:
+                              return ErrorResult(
+                                  message=f"YAML tree not found after apply: {tid}",
+                                  code=PARSE_ERROR,
+                                  details=None,
+                              )
+                          session.draft_path.write_text(
+                              yaml.safe_dump(
+                                  yt.root_data,
+                                  default_flow_style=False,
+                                  allow_unicode=True,
+                                  sort_keys=False,
+                              ),
+                              encoding="utf-8",
+                          )
+                  else:
+                      err = cast(
+                          Dict[str, Any],
+                          make_error(
+                              UNKNOWN_FORMAT,
+                              f"Unsupported handler for tree-temp: {session.handler_id}",
+                          ),
+                      )
+                      return ErrorResult(
+                          message=str(err["message"]),
+                          code=str(err["code"]),
+                          details=err.get("details"),
+                      )
+              except ValueError as exc:
+                  return ErrorResult(
+                      message=str(exc),
+                      code="INVALID_OPERATION",
+                      details={"operations": operations},
+                  )
+
+              return SuccessResult(data={"success": True, "updated": True})
+
+          return await asyncio.to_thread(_run_tree_temp)
+
+      async def _apply_text(
+          self, session: EditSession, operations: List[Dict[str, Any]]
+      ) -> SuccessResult | ErrorResult:
+          """Apply text edits to ``session.draft_path`` sorted bottom-up."""
+
+          import asyncio
+
+          def _run_text() -> SuccessResult | ErrorResult:
+              from ai_editor.commands.universal_file_replace_command import (
+                  TextReplacementTriple,
+                  _sort_text_replacements_bottom_up,
+              )
+              from ai_editor.core.backup_manager import BackupManager
+
+              try:
+                  root_dir = _project_root_near(session.draft_path)
+                  bm = BackupManager(root_dir=root_dir)
+                  if session.draft_path.exists():
+                      bm.create_backup(
+                          session.draft_path,
+                          command="universal_file_edit",
+                      )
+              except Exception as exc:
+                  return ErrorResult(
+                      message=f"Backup before edit failed: {exc}",
+                      code=WRITE_FAILED,
+                      details={"path": str(session.draft_path)},
+                  )
+
+              keyed: List[Dict[str, Any]] = []
+              for op in operations:
+                  s_ln = int(op.get("start_line", 1))
+                  e_raw = op.get("end_line")
+                  if e_raw is None:
+                      e_ln = s_ln
+                  else:
+                      e_ln = int(e_raw)
+                  keyed.append(
+                      {
+                          "start": s_ln,
+                          "end": e_ln,
+                          "op": op,
+                      }
+                  )
+              triples_only: List[TextReplacementTriple] = [
+                  (int(k["start"]), int(k["end"]), [], None, None) for k in keyed
+              ]
+              _sort_text_replacements_bottom_up(triples_only)
+              keyed.sort(key=lambda row: (row["start"], row["end"]), reverse=True)
+              sorted_ops = [row["op"] for row in keyed]
+
+              buffer = session.draft_path.read_text(encoding="utf-8").splitlines(
+                  keepends=True
+              )
+              for op in sorted_ops:
+                  start = int(op.get("start_line", 1)) - 1
+                  end_raw = op.get("end_line")
+                  if end_raw is None:
+                      end = start + 1
+                  else:
+                      end = int(end_raw)
+                  content_raw = op.get("content", "")
+                  content_str = (
+                      content_raw if isinstance(content_raw, str) else str(content_raw)
+                  )
+                  op_type = op.get("type", "replace")
+                  if op_type == "delete":
+                      del buffer[start:end]
+                  elif op_type == "insert":
+                      inserted = (
+                          content_str
+                          if content_str.endswith("\n")
+                          else content_str + "\n"
+                      )
+                      buffer.insert(start, inserted)
+                  else:
+                      block = (
+                          content_str
+                          if content_str.endswith("\n")
+                          else content_str + "\n"
+                      )
+                      buffer[start:end] = [block]
+
+              session.draft_path.write_text("".join(buffer), encoding="utf-8")
+
+              return SuccessResult(
+                  data={"success": True, "line_count": len(buffer)},
+              )
+
+          return await asyncio.to_thread(_run_text)
+
+
+  def _project_root_near(path: Path) -> Path:
+      """Locate project-like root upward from ``path`` for backups."""
+      resolved = path.resolve()
+      probe = resolved.parent if resolved.is_file() else resolved
+      for candidate in (probe,) + tuple(probe.parents):
+          if (candidate / "pyproject.toml").exists() or (
+              candidate / "projectid"
+          ).exists():
+              return candidate
+      raise ValueError(f"Cannot resolve project root near {resolved}")
+
+
+  def _resolve_stable_to_span(op: Dict[str, Any], tree: CSTTree) -> Dict[str, Any]:
+      """Replace stable_id in node refs with span-based node_id for modify_tree."""
+      from ai_editor.core.cst_tree.tree_metadata import _resolve_node_id
+
+      m = dict(op)
+      for field in ("node_id", "parent_node_id", "target_node_id"):
+          raw = m.get(field)
+          if not isinstance(raw, str) or not raw:
+              continue
+          if ":" not in raw:
+              if raw == ROOT_NODE_ID_SENTINEL:
+                  m[field] = raw
+                  continue
+              meta = tree.find_by_stable_id(raw)
+              if meta is None:
+                  raise StaleNodeIdError(
+                      f"stable_id '{raw}' not found in current CST tree. "
+                      "Re-call universal_file_preview after each edit to obtain fresh node_ref values.",
+                      field=field,
+                      stable_id=raw,
+                  )
+              raw = meta.node_id
+          m[field] = _resolve_node_id(tree, raw)
+      return m
+
+
+  def _normalized_cst_modify_operation(op: Dict[str, Any]) -> Dict[str, Any]:
+      """Map universal-edit op keys into ``build_tree_operations`` / CST shape."""
+      m = dict(op)
+      raw_action = op.get("action")
+      raw_type = op.get("type")
+      if isinstance(raw_action, str) and raw_action.strip():
+          m["action"] = raw_action.strip().lower()
+      elif isinstance(raw_type, str) and raw_type.strip():
+          m["action"] = raw_type.strip().lower()
+
+      action = str(m.get("action") or "").lower()
+      if action == "insert":
+          target_nid = m.get("target_node_id")
+          parent_nid = m.get("parent_node_id")
+          pos_raw = m.get("position")
+          pos_str = pos_raw.strip().lower() if isinstance(pos_raw, str) else None
+          if target_nid and parent_nid:
+              if pos_str in ("before", "after"):
+                  m.pop("parent_node_id", None)
+              elif parent_nid == ROOT_NODE_ID_SENTINEL and pos_str in ("first", "last"):
+                  m.pop("target_node_id", None)
+              else:
+                  raise ValueError(
+                      "insert: provide either target_node_id with position before|after "
+                      "or parent_node_id with position first|last|{after:N}, not both"
+                  )
+          if target_nid and pos_str in ("before", "after"):
+              pass
+          elif parent_nid and isinstance(pos_raw, dict) and "after" in pos_raw:
+              pass
+          elif target_nid and pos_str in ("first", "last"):
+              raise ValueError(
+                  "insert: position first|last requires parent_node_id; "
+                  "use target_node_id with position before|after for sibling-relative insert"
+              )
+          elif pos_str in ("before", "after") and not target_nid:
+              raise ValueError(
+                  "insert: position before|after requires target_node_id "
+                  "(sibling node_ref from universal_file_preview)"
+              )
+
+      return m
+
+
+  def _normalized_json_modify_operation(op: Dict[str, Any]) -> Dict[str, Any]:
+      """Map universal-edit op keys into ``core.json_tree.tree_modifier`` shape."""
+      import json as _json
+
+      m = dict(op)
+      raw_action = op.get("action")
+      raw_type = op.get("type")
+      if isinstance(raw_action, str) and raw_action.strip():
+          m["action"] = raw_action.strip().lower()
+      elif isinstance(raw_type, str) and raw_type.strip():
+          m["action"] = raw_type.strip().lower()
+      if "value" not in m and "content" in m:
+          cnt = m.get("content")
+          if isinstance(cnt, str):
+              try:
+                  m["value"] = _json.loads(cnt)
+              except _json.JSONDecodeError:
+                  m["value"] = cnt
+          else:
+              m["value"] = cnt
+      return m
+
+
+  def _modify_yaml_registered_one(tree_id: str, mop: Dict[str, Any]) -> None:
+      """Apply one JSON-shaped modify dict to YAML tree and rebuild its index."""
+
+      from ai_editor.core.json_tree.models import JSONTree
+      from ai_editor.core.json_tree.tree_modifier import (
+          _op_delete,
+          _op_insert,
+          _op_replace,
+      )
+      from ai_editor.core.yaml_tree.tree_builder import (
+          _build_index as yaml_rebuild_index,
+          get_tree as yaml_get_tree,
+      )
+
+      tree = yaml_get_tree(tree_id)
+      if tree is None:
+          raise ValueError(f"YAML tree not found: {tree_id}")
+      act = str(mop.get("action") or "").lower()
+      jtree = cast(JSONTree, tree)
+      if act == "replace":
+          _op_replace(jtree, mop)
+      elif act == "delete":
+          _op_delete(jtree, mop)
+      elif act == "insert":
+          _op_insert(jtree, mop)
+      else:
+          raise ValueError(f"Unknown YAML tree action: {act!r}")
+      yaml_rebuild_index(tree)
+
+
+  def _is_ancestor(
+      tree: CSTTree, ancestor_stable_id: str, descendant_stable_id: str
+  ) -> bool:
+      """Return True if ancestor_stable_id is an ancestor of descendant_stable_id in tree.
+
+      Args:
+          tree: In-memory CST tree object.
+          ancestor_stable_id: Stable ID of the potential ancestor node.
+          descendant_stable_id: Stable ID of the potential descendant node.
+
+      Returns:
+          True if ancestor_stable_id is found in the parent chain of descendant_stable_id.
+      """
+      node_meta = tree.find_by_stable_id(descendant_stable_id)
+      if node_meta is None:
+          return False
+      current_nid: Optional[str] = node_meta.node_id
+      while current_nid is not None:
+          parent_nid: Optional[str] = tree.parent_map.get(current_nid)
+          if not parent_nid:
+              return False
+          parent_meta = tree.metadata_map.get(parent_nid)
+          if parent_meta is None:
+              return False
+          if parent_meta.stable_id == ancestor_stable_id:
+              return True
+          current_nid = parent_nid
+      return False
+  ```
+
+  ## Forbidden
+  - Do not change observable behavior of universal_file_edit for any format_group.
+  - Do not add TreeNode batch delegation (`apply_tree_temp_mutations`) inside this file beyond the legacy/thread path above.
+  - Do not alter sidecar or text semantics.
+
+  ## a8 (baseline for modify_file)
+  The fenced Python block above is the **complete** pre-slim `edit_command.py` workspace snapshot (**730** lines) and satisfies **a8** for the patch base **when** prerequisite extractor modules exist only as planned but are not yet merged. If **A-003**–**A-006** are already merged on disk, use the repository file at that state as the literal baseline (same byte content as would result from applying those extractors first).
+
+  ## Mandatory validation
+  - black / flake8 / mypy on `edit_command.py`
+  - `pytest tests/test_universal_file_edit_command.py tests/test_sibling_insert_positioning.py tests/mcp/test_universal_file_mcp_regression.py -q`
+  - Optional: `rg "def _" edit_command.py` — module-level helpers should be gone or minimal
+
+verification:
+  type: static_analysis
+  target: ai_editor.commands.universal_file_edit.edit_command
+  expected: flake8/black clean; wc -l ≤400; pytest smoke green
+status: done

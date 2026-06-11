@@ -1,0 +1,26 @@
+tactical_step: T-003
+waves:
+  - wave: 1
+    parallel: true
+    steps:
+      - A-001
+      - A-002
+  - wave: 2
+    parallel: false
+    steps:
+      - A-003
+  - wave: 3
+    parallel: true
+    steps:
+      - A-004
+      - A-005
+      - A-006
+  - wave: 4
+    parallel: false
+    steps:
+      - A-007
+notes: |
+  A-003 depends on A-002 (bundle helpers + workspace fields on EditSession).
+  A-004/A-005/A-006 depend on A-001 (error code) and A-002 (resolve_session_for_command).
+  A-007 depends on A-002 production helpers.
+  T-002 first-file open orchestration is prerequisite for A-003 baseline; do not duplicate in T-003.

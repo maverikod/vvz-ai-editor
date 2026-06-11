@@ -1,0 +1,39 @@
+step_id: A-001
+parent_tactical_step: T-502
+name: Fix JsonFileHandler.resolve_node_ref to dispatch on JSON Pointer vs opaque id
+target_file: ai_editor/commands/universal_file_preview/handlers/json_handler.py
+operation: modify_file
+priority: 1
+depends_on: []
+concepts:
+- C-004
+- C-009
+- C-011
+- C-014
+- C-018
+status: done
+prompt: |
+  Retrospective note (final shipped behavior):
+
+  `JsonFileHandler.open_root` builds `_pointer_by_node_id` from the same tree builder
+  indexing as `list_json_blocks` (`build_tree_from_data(...).pointer_by_id`).
+
+  `resolve_node_ref` dispatches:
+  - JSON Pointer: `node_ref == ''` or `node_ref.startswith('/')` — traverse via
+    `_resolve_json_pointer` and materialize the node.
+  - Opaque stable `node_id`: look up the canonical pointer in `_pointer_by_node_id`,
+    then resolve that pointer; UNKNOWN_NODE_REF only when the id is missing or the
+    mapped pointer is stale.
+
+  Earlier atomic text described error-only behavior for opaque ids; that was superseded
+  by full `pointer_by_id` resolution for parity with listing.
+implementation_note: >
+  Smoke coverage: `test_json_handler_resolve_opaque_node_id_matches_list_json_blocks`
+  in `tests/test_universal_file_preview_smoke.py`.
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_preview/handlers/json_handler.py
+  expected: >
+    `resolve_node_ref` uses pointer dispatch for '' and '/'-prefixed refs; for other
+    strings, looks up `_pointer_by_node_id` (when populated) before returning
+    UNKNOWN_NODE_REF.

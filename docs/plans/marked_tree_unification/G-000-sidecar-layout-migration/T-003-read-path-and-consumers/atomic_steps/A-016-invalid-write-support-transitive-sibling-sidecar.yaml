@@ -1,0 +1,311 @@
+step_id: A-016
+parent_tactical_step: T-003
+name: Confirm invalid_write_support observes sibling sidecar via write_sidecar_atomic
+target_file: ai_editor/commands/universal_file_edit/invalid_write_support.py
+operation: modify_file
+priority: 15
+depends_on: []
+concepts:
+- C-023
+- C-003
+status: ready_for_review
+prompt: |
+  Operation: modify_file
+  Target: ai_editor/commands/universal_file_edit/invalid_write_support.py
+
+  ## Goal
+  Satisfy the tactical requirement that invalid_write_support observes the sibling
+  tree-file convention (C-003). The degraded write path calls write_sidecar_atomic
+  after rebuilding the in-session tree; path resolution is entirely inside tree_sidecar
+  (sibling only after the tree_sidecar cutover). Add a comment documenting sibling layout.
+
+  ## MRS excerpt
+
+  **C-023 SidecarLayoutMigration**
+  - definition: Final sidecar layout cutover; write_sidecar_atomic writes at the sibling path; pending mechanism deleted.
+  - properties:
+    - hard cutover; no backward-compatibility shim
+
+  **C-003 TreeFile**
+  - definition: On-disk artifact stored as a sibling `<source>.py.tree` next to the source.
+
+  ## Precondition (file state)
+  The tree_sidecar module on disk must write only via sibling_tree_path.
+
+  ## Full current file content (verbatim baseline, 245 lines)
+
+  ```python
+    """
+    Post-write re-parse and format-group recovery for invalid-on-open sessions.
+    
+    Author: Vasiliy Zdanovskiy
+    email: vasilyvz@gmail.com
+    """
+    
+    from __future__ import annotations
+    
+    import json
+    from pathlib import Path
+    from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+    
+    if TYPE_CHECKING:
+        from ai_editor.commands.universal_file_edit.session import EditSession
+    
+    from ai_editor.commands.universal_file_edit.format_group import (
+        FORMAT_SIDECAR,
+        FORMAT_TREE_TEMP,
+        _FORMAT_AVAILABLE_OPERATIONS,
+        resolve_format_group,
+    )
+    
+    
+    def _parse_error_entry(
+        *,
+        line: int = 0,
+        col: int = 0,
+        message: str,
+    ) -> Dict[str, Any]:
+        return {"line": line, "col": col, "message": message}
+    
+    
+    def _errors_from_exception(exc: BaseException) -> List[Dict[str, Any]]:
+        if isinstance(exc, json.JSONDecodeError):
+            return [
+                _parse_error_entry(
+                    line=int(exc.lineno or 0),
+                    col=int(exc.colno or 0),
+                    message=str(exc.msg),
+                )
+            ]
+        if isinstance(exc, SyntaxError):
+            return [
+                _parse_error_entry(
+                    line=int(exc.lineno or 0),
+                    col=int(exc.offset or 0),
+                    message=str(exc.msg or exc),
+                )
+            ]
+        line = getattr(exc, "editor_line", None) or getattr(exc, "lineno", None) or 0
+        col = getattr(exc, "editor_column", None) or getattr(exc, "colno", None) or 0
+        return [_parse_error_entry(line=int(line), col=int(col), message=str(exc))]
+    
+    
+    def try_parse_content(
+        text: str,
+        path: Path,
+        format_group: str,
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Attempt to parse *text* with the formatter for *format_group*.
+    
+        Returns:
+            ``(True, [])`` when parsing succeeds; otherwise ``(False, parse_errors)``.
+        """
+        try:
+            if format_group == FORMAT_SIDECAR or path.suffix.lower() in (
+                ".py",
+                ".pyi",
+                ".pyw",
+            ):
+                import libcst as cst
+    
+                cst.parse_module(text)
+            elif path.suffix.lower() == ".json":
+                json.loads(text)
+            elif path.suffix.lower() in (".yaml", ".yml"):
+                import yaml
+    
+                yaml.safe_load(text)
+            else:
+                return True, []
+        except Exception as exc:
+            errors = _errors_from_exception(exc)
+            if isinstance(exc, Exception):
+                try:
+                    import yaml
+    
+                    if isinstance(exc, yaml.YAMLError):
+                        mark = getattr(exc, "problem_mark", None)
+                        if mark is not None:
+                            errors = [
+                                _parse_error_entry(
+                                    line=int(mark.line) + 1,
+                                    col=int(mark.column) + 1,
+                                    message=str(exc),
+                                )
+                            ]
+                except ImportError:
+                    pass
+            return False, errors
+        return True, []
+    
+    
+    def validate_invalid_session_for_commit(
+        session: "EditSession",
+        draft_text: str,
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Re-parse draft content against ``session.original_format_group``."""
+        orig = session.original_format_group
+        if not orig:
+            return True, []
+        return try_parse_content(draft_text, session.abs_path, orig)
+    
+    
+    def restore_session_format_after_recovery(
+        session: "EditSession",
+        project_id: str,
+    ) -> Dict[str, Any]:
+        """Switch session back to the original format group and rebuild in-memory state."""
+        orig = session.original_format_group
+        if not orig:
+            raise ValueError("Session has no original_format_group to recover")
+    
+        descriptor = resolve_format_group(session.abs_path)
+        session.format_group = orig
+        session.handler_id = descriptor.handler_id
+        session.is_invalid = False
+        session.fallback_reason = None
+        session.draft_path = descriptor.draft_path
+        session.lockfile_path = descriptor.lockfile_path
+    
+        if orig == FORMAT_SIDECAR:
+            from ai_editor.core.cst_tree import tree_builder as cst_builder
+            from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+    
+            tree = cst_builder.load_file_to_tree(str(session.abs_path))
+            write_sidecar_atomic(session.abs_path, tree)
+            session.tree_id = str(tree.tree_id)
+            session.tree_temp_roots = None
+            session.sidecar_write_intent = None
+            session.source_sha256_at_open = None
+        elif orig == FORMAT_TREE_TEMP:
+            from ai_editor.commands.base_mcp_command import BaseMCPCommand
+            from ai_editor.commands.universal_file_edit.tree_temp_open_support import (
+                acquire_tree_temp_for_open,
+            )
+    
+            project_root = Path(BaseMCPCommand._resolve_project_root(project_id)).resolve()
+            raw_bytes = session.abs_path.read_bytes()
+            acq = acquire_tree_temp_for_open(
+                project_root=project_root,
+                source_abs=session.abs_path,
+                handler_id=descriptor.handler_id,
+                raw_source_bytes=raw_bytes,
+            )
+            session.tree_temp_roots = acq.roots
+            session.source_sha256_at_open = acq.source_sha256
+            session.sidecar_write_intent = acq.sidecar_write_intent.value
+            session.tree_id = None
+            if descriptor.handler_id == "json":
+                from ai_editor.core.tree_temp.json_source_serializer import (
+                    serialize_json_source,
+                )
+    
+                draft_text = serialize_json_source(acq.roots)
+            else:
+                from ai_editor.core.tree_temp.yaml_source_serializer import (
+                    serialize_yaml_source,
+                )
+    
+                draft_text = serialize_yaml_source(acq.roots)
+            session.draft_path.write_text(draft_text, encoding="utf-8")
+        else:
+            session.tree_id = None
+            session.tree_temp_roots = None
+            session.sidecar_write_intent = None
+            session.source_sha256_at_open = None
+    
+        session.original_format_group = None
+        available_ops = list(_FORMAT_AVAILABLE_OPERATIONS.get(orig, []))
+        return {
+            "structural_editing_restored": True,
+            "available_operations": available_ops,
+        }
+    
+    
+    def try_clear_invalid_after_write(session: "EditSession") -> None:
+        """If the file now parses, clear ``session.is_invalid`` (legacy hook).
+    
+        Prefer ``restore_session_format_after_recovery`` when format-group switch is
+        required; this helper remains for callers that only need the boolean flag.
+        """
+        if not session.is_invalid:
+            return
+        path = session.abs_path
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return
+        orig = session.original_format_group or session.format_group
+        ok, _ = try_parse_content(text, path, orig)
+        if ok:
+            session.is_invalid = False
+    
+    
+    def invalid_session_warning(session: "EditSession") -> str:
+        """Human-readable warning for sessions opened in line-based fallback."""
+        reason = session.fallback_reason or "parse error"
+        return (
+            "File opened in line-based fallback due to parse errors. "
+            f"Reason: {reason}. "
+            "Fix syntax errors and commit with write_mode=commit to restore structural "
+            "(node-based) editing. Re-run universal_file_preview before the next edit."
+        )
+    
+    
+    def open_fallback_warning(fallback_reason: str) -> str:
+        """Human-readable warning for universal_file_open fallback responses."""
+        return (
+            "File has parse errors. Opened in line-based fallback. "
+            f"Parse error: {fallback_reason}. "
+            "Fix the file content and commit with write_mode=commit to restore "
+            "structural (node-based) editing."
+        )
+    
+    
+    def mode_notice_text(is_invalid: bool, reason: str | None = None) -> str:
+        """Single source of truth for the mode/addressing notice.
+    
+        Normal mode -> identifier-based addressing notice.
+        Fallback mode -> line-based addressing warning with the parse-error reason.
+        """
+        if is_invalid:
+            detail = reason or "parse error"
+            return (
+                "Emergency/fallback mode (parse errors). Addressing is line-based "
+                f"(line numbers), NOT by identifiers. Reason: {detail}. Fix syntax "
+                "and commit to restore identifier-based editing."
+            )
+        return (
+            "Normal mode. Address nodes by identifier (node_ref / stable_id from "
+            "preview), NOT by line numbers. Re-run universal_file_preview to get "
+            "current identifiers before editing."
+        )
+  ```
+
+  ## Required edits (migration-relevant ONLY)
+  Locate the FORMAT_SIDECAR branch that contains:
+      from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+
+  Add directly above that import:
+      # Sidecar persisted at sibling <source>.py.tree via write_sidecar_atomic (C-003).
+
+  If a comment already mentions .cst or pending paths, replace only that line.
+
+  ## a3 / a8
+  File is 245 lines (within cap). Only the comment line may differ.
+
+  ## Forbidden
+  - Do not import sidecar_path_for_py, promote_pending_sidecar_to_final, or sibling_tree_path.
+  - Do not change write_sidecar_atomic call sites.
+  - Do not touch other files.
+
+  ## Validation
+  black/flake8/mypy exit 0; grep for '.cst', 'pending', 'promote_pending',
+  'sidecar_path_for_py' returns nothing. All tests must pass.
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_edit/invalid_write_support.py
+  expected: >
+    Comment near write_sidecar_atomic states sibling <source>.py.tree;
+    no legacy path symbols; calls unchanged; black/flake8/mypy exit 0.

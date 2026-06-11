@@ -1,0 +1,228 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Ошибка write без порчи локального состояния
+target_file: ai_editor/commands/universal_file_edit/write_command.py
+operation: modify_file
+priority: 3
+depends_on: []
+concepts:
+- C-007
+- C-008
+- C-012
+- C-015
+prompt: |
+  Modify `ai_editor/commands/universal_file_edit/write_command.py` only.
+  Wrap upload branch in error-preservation handling (C-012, C-015): on upstream failure,
+  return ErrorResult without modifying Origin Snapshot or Edit Subdirectory.
+
+  ## MRS C-012 / C-015 (relevant)
+
+  - при ошибке СА — состояние локальных копий не меняется
+  - сессия остаётся открытой для повторного write или close
+
+  ## CURRENT FILE CONTENT (complete post-priority-2 state — modify this file)
+
+  ```py
+  """MCP command: universal_file_write — facade (C-016).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  from __future__ import annotations
+
+  import logging
+  from typing import Any, Dict, cast
+
+  from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+
+  from ai_editor.commands.universal_file_edit.errors import (
+      SESSION_NOT_FOUND,
+      error_result_from_make_error,
+      make_error,
+  )
+  from ai_editor.commands.universal_file_edit.session import get_session
+  from ai_editor.commands.universal_file_edit.write_compare import (
+      CompareResult,
+      compare_session_to_origin,
+  )
+  from ai_editor.commands.universal_file_edit.write_command_metadata import (
+      get_universal_file_write_metadata,
+  )
+  from ai_editor.core.exceptions import ValidationError
+  from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+  from ai_editor.core.upstream.session_guard import OperationKind, SessionGuard
+
+  from .base_mcp_command import BaseMCPCommand
+
+  logger = logging.getLogger(__name__)
+
+
+  class UniversalFileWriteCommand(BaseMCPCommand):
+      name = "universal_file_write"
+      version = "1.0.0"
+      descr = "Compare edit workspace to origin and upload if changed"
+      category = "universal_file_edit"
+      author = "Vasiliy Zdanovskiy"
+      email = "vasilyvz@gmail.com"
+
+      @classmethod
+      def get_schema(cls) -> Dict[str, Any]:
+          return {
+              "type": "object",
+              "properties": {
+                  "project_id": {"type": "string"},
+                  "file_path": {"type": "string"},
+                  "session_id": {"type": "string"},
+                  "write_mode": {
+                      "type": "string",
+                      "enum": ["preview", "commit"],
+                      "default": "commit",
+                  },
+              },
+              "required": ["project_id", "file_path", "session_id"],
+              "additionalProperties": False,
+          }
+
+      @classmethod
+      def metadata(cls) -> Dict[str, Any]:
+          return get_universal_file_write_metadata(cls)
+
+      def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+          return super().validate_params(params)
+
+      async def execute(
+          self,
+          project_id: str,
+          file_path: str,
+          session_id: str,
+          write_mode: str = "commit",
+          **kwargs: Any,
+      ) -> SuccessResult | ErrorResult:
+          _ = kwargs
+          ca_session_id = session_id
+          guard = SessionGuard(get_code_analysis_client())
+          if guard.check(OperationKind.WRITE, ca_session_id).name == "REJECT":
+              return ErrorResult(message="invalid CA session", code="SESSION_REJECTED")
+
+          try:
+              session = get_session(ca_session_id, file_path=file_path or None)
+          except ValueError as exc:
+              msg = str(exc)
+              if msg == "SESSION_FILE_PATH_REQUIRED":
+                  return error_result_from_make_error(
+                      make_error(
+                          SESSION_NOT_FOUND,
+                          "file_path is required when the session has multiple open files",
+                      )
+                  )
+              return error_result_from_make_error(
+                  make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}")
+              )
+
+          if write_mode != "commit":
+              return ErrorResult(
+                  message="write_mode=preview not implemented in this step",
+                  code="NOT_IMPLEMENTED",
+              )
+
+          comparison = compare_session_to_origin(session)
+          if comparison.result == CompareResult.EQUAL:
+              return SuccessResult(
+                  data={
+                      "unchanged": True,
+                      "uploaded": False,
+                      "session_id": ca_session_id,
+                      "project_id": project_id,
+                      "file_path": session.file_path,
+                  }
+              )
+
+          client = get_code_analysis_client()
+          accepted = client.upload_session_file_content(
+              session_id=ca_session_id,
+              project_id=project_id,
+              file_path=session.file_path,
+              content=comparison.exported_bytes,
+          )
+          session.abs_path.write_bytes(accepted)
+          return SuccessResult(
+              data={
+                  "unchanged": False,
+                  "uploaded": True,
+                  "session_id": ca_session_id,
+                  "project_id": project_id,
+                  "file_path": session.file_path,
+              }
+          )
+  ```
+
+  ## Change required: wrap upload in try/except
+
+  Replace the bare DIFF upload block with:
+
+  ```python
+          client = get_code_analysis_client()
+          try:
+              accepted = client.upload_session_file_content(
+                  session_id=ca_session_id,
+                  project_id=project_id,
+                  file_path=session.file_path,
+                  content=comparison.exported_bytes,
+              )
+          except RuntimeError as exc:
+              logger.error("universal_file_write upload failed: %s", exc)
+              return ErrorResult(
+                  message=str(exc),
+                  code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
+                  details={"upstream_error": str(exc)},
+              )
+          except Exception as exc:
+              logger.error("universal_file_write upload failed: %s", exc, exc_info=True)
+              return ErrorResult(
+                  message=str(exc),
+                  code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
+                  details={"upstream_error": str(exc)},
+              )
+          session.abs_path.write_bytes(accepted)
+          return SuccessResult(
+              data={
+                  "unchanged": False,
+                  "uploaded": True,
+                  "session_id": ca_session_id,
+                  "project_id": project_id,
+                  "file_path": session.file_path,
+              }
+          )
+  ```
+
+  Algorithm on upload failure:
+  1. Do NOT call `session.abs_path.write_bytes`.
+  2. Do NOT modify `session.draft_path`.
+  3. Return `ErrorResult` with upstream message in `message` and `details`.
+  4. Session bundle remains open (C-015).
+
+  Keep EQUAL branch, guard, and session resolution unchanged.
+
+  ## Forbidden
+
+  - Do NOT partially write origin on failed upload.
+  - Do NOT delete session or close bundle on upload error.
+  - Do NOT modify files other than `write_command.py`.
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/commands/universal_file_edit/write_command.py
+  flake8 ai_editor/commands/universal_file_edit/write_command.py
+  mypy ai_editor/commands/universal_file_edit/write_command.py
+  pytest tests/unit/test_universal_file_write_upload.py -v
+  ```
+
+  Expected: failed upload leaves origin and draft bytes unchanged; ErrorResult returned with upstream message.
+  All tests must pass before handoff.
+verification:
+  type: pytest
+  target: tests/unit/test_universal_file_write_upload.py
+  expected: Failed upload leaves origin snapshot and draft bytes unchanged; session remains resolvable for retry.
+status: ready_for_review

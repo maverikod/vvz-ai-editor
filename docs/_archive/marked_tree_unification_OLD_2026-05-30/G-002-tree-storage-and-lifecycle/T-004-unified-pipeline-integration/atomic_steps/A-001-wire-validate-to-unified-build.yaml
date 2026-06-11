@@ -1,0 +1,88 @@
+step_id: A-001
+parent_tactical_step: T-004
+name: Wire validate_or_recreate rebuild to TreeBuilder.build
+target_file: ai_editor/core/tree_lifecycle/checksum.py
+operation: modify_file
+priority: 1
+depends_on: []
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-002-tree-storage-and-lifecycle/T-003-tree-lifecycle-and-builder/atomic_steps/A-001-tree-builder-class.yaml
+status: needs_review
+concepts:
+- C-010
+- C-011
+- C-006
+- C-003
+prompt: |
+  Modify `ai_editor/core/tree_lifecycle/checksum.py`.
+  Operation: modify_file.
+
+  ## Purpose
+
+  Wire the canonical rebuild path inside `validate_or_recreate_from_content` to
+  call `TreeBuilder.build` (HandlerRegistry / FormatHandler unified pipeline)
+  instead of `recreate_tree_from_content(kind=TreeFormatKind, ...)`.
+
+  **Strategy new-alongside-old:** Keep `recreate_tree_from_content` function
+  body **unchanged** in this file. It remains importable for parity tests (T-004
+  A-002) but is NOT called from validate_or_recreate_from_content after this step.
+
+  ## Cross-TS prerequisite
+
+  G-002 T-003 A-001 must be applied: `TreeBuilder.build` exists in builder.py.
+
+  ## MRS excerpt
+
+  C-010: canonical build dispatch via HandlerRegistry (not TreeFormatKind).
+  C-011: TreeBuilder.build is the unified writer.
+
+  ## Change scope (surgical)
+
+  In `validate_or_recreate_from_content`, locate the branch(es) that call
+  `recreate_tree_from_content(...)` for rebuild (NO_SIDECAR, SHA_MISMATCH_NO_SESSION,
+  and force=True paths). Replace each such call with:
+
+  ```python
+  from ai_editor.core.tree_lifecycle.builder import TreeBuilder
+
+  ref = TreeBuilder.build(
+      content=content,
+      source_abs=source_abs,
+      file_path=file_path,
+      content_checksum=compute_content_checksum(content),
+  )
+  ```
+
+  Use the existing `sidecar_path` parameter if TreeBuilder needs explicit path —
+  if TreeBuilder derives path from handler.sidecar_path(source_abs), ensure
+  `ref.sidecar_path == sidecar_path` or update caller to use ref.sidecar_path.
+
+  Remove `kind: TreeFormatKind` parameter from rebuild calls in this function
+  (handler resolution is extension-based via registry).
+
+  ## Do NOT change
+
+  - `recreate_tree_from_content` function definition or body
+  - `compute_content_checksum`, `is_tree_valid`, `ChecksumSyncPolicy`
+  - `validate_or_recreate_tree_file` except if it passes `kind` — remove kind
+    threading into validate_or_recreate_from_content if present
+  - Any legacy imports used only by recreate_tree_from_content
+
+  ## Forbidden approaches
+
+  - Do NOT delete recreate_tree_from_content
+  - Do NOT modify tree_representation.py legacy wrappers
+  - Do NOT redirect G-000 consumers
+
+  ## File-state note
+
+  Prompt assumes post-T-002/A-001 checksum.py (ChecksumSyncPolicy present) and
+  post-T-003/A-001 builder.py (TreeBuilder.build present).
+
+verification:
+  type: pytest
+  target: tests/tree_pipeline_parity/
+  expected: >
+    validate_or_recreate_from_content rebuild paths invoke TreeBuilder.build;
+    recreate_tree_from_content remains defined but unused by validate path;
+    existing pytest suite passes.

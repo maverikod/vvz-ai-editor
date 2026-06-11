@@ -1,0 +1,164 @@
+step_id: A-004
+parent_tactical_step: T-001
+name: Implement six edit operations on MarkdownHandler
+target_file: ai_editor/tree/handlers/markdown_handler.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-001
+concepts:
+- C-015
+- C-007
+- C-002
+- C-009
+status: ready_for_review
+prompt: |
+  > Cross-TS ordering via depends_on and parallel-waves.yaml only. Do not add non-standard ordering fields. No step identifiers in this prose.
+
+  ## Parent documents
+  - Global step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-004-edit-operations-preview-and-tree-query/T-001-edit-operations/README.yaml`
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml` (C-015, C-007, C-002, C-009)
+
+  Modify `ai_editor/tree/handlers/markdown_handler.py`.
+  Operation: modify_file.
+
+  Implement six EditOperation methods using integer short_id HTML comment markers
+  `<!-- id:<int> -->` before each block (MARKDOWN format).
+
+  ## Full current file content (a8 — pre-edit baseline inlined)
+
+  COMPLETE expected module BEFORE this edit. Baseline from G-001 create_file spec (85 lines).
+  File may not exist on disk yet; treat this block as the exact pre-edit state.
+
+  ```python
+  """
+  Markdown FormatHandler (C-007).
+  
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  
+  from __future__ import annotations
+  
+  import re
+  from pathlib import Path
+  from typing import Dict, List
+  
+  from markdown_it import MarkdownIt
+  
+  from ai_editor.tree.format_handler import FormatHandler, ShortIdAllocator
+  from ai_editor.tree.tree_node import TreeNode
+  
+  _MARKER_RE = re.compile(r"^<!-- id:(\d+) -->\n", re.MULTILINE)
+  _MD = MarkdownIt()
+  _TOKEN_TO_KIND = {
+      "heading_open": "heading",
+      "paragraph_open": "paragraph",
+      "fence": "code_block",
+      "code_block": "code_block",
+      "blockquote_open": "blockquote",
+      "list_item_open": "list_item",
+  }
+  
+  
+  class MarkdownHandler(FormatHandler):
+      def parse_content(self, file_path: Path, content: str) -> List[TreeNode]:
+          if content == "":
+              return []
+          allocator = ShortIdAllocator(1)
+          tokens = _MD.parse(content)
+          lines = content.splitlines()
+          nodes: List[TreeNode] = []
+          for tok in tokens:
+              if tok.type not in _TOKEN_TO_KIND:
+                  continue
+              sid = allocator.allocate()
+              kind = _TOKEN_TO_KIND[tok.type]
+              level = 0
+              if kind == "heading" and tok.tag and tok.tag[1:].isdigit():
+                  level = int(tok.tag[1:])
+              start, end = tok.map or (0, 1)
+              block_content = "\n".join(lines[start:end])
+              nodes.append(
+                  TreeNode(
+                      short_id=sid,
+                      kind=kind,
+                      content=block_content,
+                      attributes={
+                          "level": level,
+                          "start_line": start + 1,
+                          "end_line": end,
+                      },
+                  )
+              )
+          return nodes
+  
+      def mark(self, content: str) -> str:
+          allocator = ShortIdAllocator(1)
+          tokens = _MD.parse(content)
+          lines = content.splitlines(keepends=True)
+          inserts: Dict[int, str] = {}
+          for tok in tokens:
+              if tok.type not in _TOKEN_TO_KIND or not tok.map:
+                  continue
+              line_no = tok.map[0]
+              if line_no not in inserts:
+                  inserts[line_no] = f"<!-- id:{allocator.allocate()} -->\n"
+          out: List[str] = []
+          for idx, line in enumerate(lines):
+              if idx in inserts:
+                  out.append(inserts[idx])
+              out.append(line)
+          return "".join(out)
+  
+      def unmark(self, marked_text: str) -> str:
+          return _MARKER_RE.sub("", marked_text)
+  
+      def sidecar_path(self, source_abs: Path) -> Path:
+          return source_abs.parent / (source_abs.name + ".tree")
+  ```
+
+  ## Required additions
+
+  Imports: Any, Dict; NodeId, UnknownNodeIdError from contracts.
+
+  Helpers:
+  - _parse_blocks(marked_text) -> List[TreeNode]  # scan _MARKER_RE + markdown-it token boundaries
+  - _serialize_blocks(nodes) -> str
+  - _find_short_id(nodes, short_id) -> TreeNode  # UnknownNodeIdError if missing
+
+  op_insert: use next_free as new short_id; insert `<!-- id:{next_free} -->\n` before/after block line per position relative to anchor_short_id.
+
+  op_delete: remove marker line + block content through next marker or EOF; preserve markdown validity.
+
+  op_replace/op_edit_content: replace block inner content keeping same marker id; edit-content only on leaf kinds (paragraph, code_block leaf).
+
+  op_move: cut block range, reinsert at anchor per position atomically.
+
+  op_edit_attributes: merge attributes on TreeNode; re-serialize without content change.
+
+  All op_* signatures match FormatHandler abstract methods (anchor_short_id, short_id, next_free).
+
+  ## Forbidden
+
+  - NO UUID markers, NO str node_id fields, NO {l*}/{m*}
+  - Do NOT change mark/unmark marker syntax away from integer comments
+
+  ## Validation
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/handlers/markdown_handler.py
+  flake8 ai_editor/tree/handlers/markdown_handler.py
+  mypy ai_editor/tree/handlers/markdown_handler.py
+  pytest -q
+  ```
+
+  Mandatory completion: all tests pass.
+verification:
+  type: static_analysis
+  target: ai_editor/tree/handlers/markdown_handler.py
+  expected: >
+    Six op_* methods with int short_id; insert uses next_free; UnknownNodeIdError on
+    missing id; integer <!-- id:N --> markers preserved; estimated ~350 lines (≤400).

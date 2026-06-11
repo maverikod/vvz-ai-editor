@@ -1,0 +1,43 @@
+step_id: T-007
+parent_global_step: G-005
+name: Universal file command integration tests (JSON)
+status: done
+description: 'Establish end-to-end verification obligations on the universal file command
+  surface for JSON tree-temp sources, exercising TreeNode (C-001), Sidecar (C-002),
+  SHASyncPolicy (C-003), EditSession (C-007), PreviewNavigation (C-009), and JSON-facing
+  parser and serializer facets of SourceParser and SourceSerializer (C-005, C-006). Prove
+  open returns session_id and exposes stable_id-bearing blocks suitable for subsequent
+  calls. Prove edit accepts operation batches covering all supported mutation kinds and
+  positional variants defined by the integration scope for JSON. Prove write emits coherent
+  diff or preview data where the contract promises diff preview, and persists JSON with
+  restored comments. Prove preview at absent node_ref returns root-level blocks; prove
+  drill-down with node_ref equal to a container stable_id returns ordered child blocks.
+  Prove at least one case where node_ref resolves to a scalar stable_id: the response block
+  list matches the nearest object/array ancestor''s children, or root_view when the document
+  root is scalar (scalar_node_ref_effective_focus); do not expand into a full matrix beyond
+  this obligation. Prove stable_id values obtained before session close remain valid node_ref inputs after
+  a second open cycle on the same file path. Prove interaction respects SHA synchronisation
+  behaviour visible through successive opens when external versus session writes occur.'
+concepts:
+- C-001
+- C-002
+- C-003
+- C-004
+- C-005
+- C-006
+- C-007
+- C-009
+inputs:
+- name: json_integration_matrices
+  type: project-scoped JSON file scenarios and command sequences
+  description: Files under JSON extension with comments plus multi-step command traces
+    spanning preview, open, edit variants, write with diff expectation, close, and second-session
+    preview navigation.
+outputs:
+- name: json_surface_verdict
+  type: verification outcome
+  description: Observable responses and filesystem state satisfy universal file semantics
+    for JSON across operations, preview navigation, and cross-session stable_id stability.
+atomic_steps:
+- A-001
+- A-002

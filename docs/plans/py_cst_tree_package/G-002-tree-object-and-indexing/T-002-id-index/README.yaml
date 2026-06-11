@@ -1,0 +1,25 @@
+step_id: T-002
+parent_global_step: G-002
+name: IdIndex
+description: "Define the IdIndex entity (C-005) as the index that maps each StableId
+  (C-003) to its corresponding IdentifiedNode within the Tree, enabling direct retrieval
+  by identity without traversing the node structure. The IdIndex realizes the C-005
+  uses C-003 relation: it keys on StableId values. The index is built once when the
+  Tree is created or loaded from persistence, and is updated after each mutation to
+  remain consistent with the current node structure. It is the primary addressing
+  mechanism by which external operations name a node for mutation or query.\n"
+concepts:
+- C-005
+- C-003
+inputs:
+- name: node structure
+  type: IdentifiedNode subtree
+  description: The full node subtree owned by the Tree; used to build the 
+    initial id-to-node mapping.
+outputs:
+- name: IdIndex entity
+  type: domain entity definition
+  description: An index mapping StableId to IdentifiedNode with direct 
+    retrieval; built-once-keep-consistent; primary address mechanism.
+atomic_steps: []
+status: draft

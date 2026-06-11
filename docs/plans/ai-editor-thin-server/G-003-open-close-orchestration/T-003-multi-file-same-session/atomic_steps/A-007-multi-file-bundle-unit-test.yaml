@@ -1,0 +1,99 @@
+step_id: A-007
+parent_tactical_step: T-003
+name: Unit-тест multi-file одной CA Session
+target_file: tests/unit/test_ca_session_bundle.py
+operation: create_file
+priority: 7
+depends_on:
+- A-002
+concepts:
+- C-004
+- C-005
+- C-006
+prompt: |
+  Create `tests/unit/test_ca_session_bundle.py` (operation: create_file).
+
+  ## Goal
+
+  Unit coverage for multi-file CA Session bundle registry and session-module helpers
+  (`bundle_file_count`, `list_bundle_file_paths`, `build_multi_file_bundle_payload`,
+  `resolve_session_for_command`, `get_session` disambiguation).
+
+  ## File header
+
+  ```python
+  """Unit tests for multi-file bundle (C-004, C-006).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+  ```
+
+  ## Imports
+
+  ```python
+  from __future__ import annotations
+
+  from pathlib import Path
+  from unittest.mock import MagicMock
+
+  import pytest
+  ```
+
+  ## Fixture `_clear_registry` (autouse)
+
+  ```python
+  @pytest.fixture(autouse=True)
+  def _clear_registry() -> None:
+      import ai_editor.commands.universal_file_edit.session as m
+
+      m._session_bundles.clear()
+      m._file_open_index.clear()
+  ```
+
+  ## Test `test_two_files_same_ca_session`
+
+  Register two `EditSession` facades under same `sid = "ca-1"` in `_session_bundles` and
+  `_file_open_index` (same pattern as before, using `EditSession` from session module).
+
+  Assert:
+  - `get_session(sid, file_path="a.py")` returns session a
+  - `get_session(sid, file_path="b.py")` returns session b
+  - `get_session(sid)` raises `ValueError` with message `SESSION_FILE_PATH_REQUIRED`
+  - `bundle_file_count(sid) == 2`
+  - `list_bundle_file_paths(sid) == ["a.py", "b.py"]` (sorted)
+  - `build_multi_file_bundle_payload(sid)["open_file_count"] == 2`
+  - `len(build_multi_file_bundle_payload(sid)["files"]) == 2`
+
+  ## Test `test_resolve_session_for_command_requires_file_path`
+
+  Same two-file setup. Assert `resolve_session_for_command(sid, None)` raises
+  `ValueError("SESSION_FILE_PATH_REQUIRED")`.
+
+  ## Test `test_single_file_bundle_no_file_path_required`
+
+  One file in bundle. Assert `resolve_session_for_command(sid, None)` returns that session.
+
+  Use `MagicMock()` for `core` with `is_open=True`.
+
+  ## Forbidden
+
+  - Do NOT import open_command_runtime (integration belongs in open orchestration tests).
+  - Do NOT use direct file tools on test_data.
+
+  ## Validation
+
+  ```bash
+  source .venv/bin/activate
+  black tests/unit/test_ca_session_bundle.py
+  flake8 tests/unit/test_ca_session_bundle.py
+  pytest tests/unit/test_ca_session_bundle.py -v
+  pytest tests/ -q --tb=no -x
+  ```
+
+  Expected: all listed tests PASSED; full suite green.
+verification:
+  type: pytest
+  target: tests/unit/test_ca_session_bundle.py
+  expected: Multi-file bundle registry and helper tests pass; full test suite passes.
+status: draft

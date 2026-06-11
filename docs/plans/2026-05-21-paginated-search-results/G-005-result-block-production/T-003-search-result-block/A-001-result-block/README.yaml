@@ -1,0 +1,77 @@
+step_id: A-001
+parent_tactical_step: T-003
+name: SearchResultBlock serializer
+target_file: ai_editor/core/search_session/result_block.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-004
+prompt: |
+  Operation: create_file
+  Target: ai_editor/core/search_session/result_block.py
+
+  MRS excerpt (C-004 SearchResultBlock):
+  - Immutable result block inside SearchSessionDirectory ({uj1g}).
+  - Contains an integer number of complete, non-split search results.
+  - Serialized size bounded by configured maximum block size in bytes.
+  - When a single result exceeds the limit, the block holds that one result and the limit is exceeded.
+  - Immutable after initial write; addressed by position number via directory index, not embedded links.
+
+  Required imports:
+  - from __future__ import annotations
+  - import json
+  - from dataclasses import dataclass
+  - from typing import Any
+
+  Implement:
+
+  1. Module docstring (Author: Vasiliy Zdanovskiy, email: vasilyvz@gmail.com).
+
+  2. @dataclass(frozen=True) SearchResultBlock:
+       position: int
+       results: tuple[dict[str, Any], ...]
+       serialized_size_bytes: int
+     Docstring on class and each field.
+
+  3. def _block_payload(block: SearchResultBlock) -> dict[str, Any]
+     Docstring: canonical on-disk JSON object shape (see serialize schema below).
+
+  4. def serialize_block(block: SearchResultBlock) -> bytes
+     Docstring: UTF-8 JSON bytes of _block_payload(block).
+
+  Serialize schema (required on-disk JSON object for block_{n}.json):
+  ```json
+  {
+    "position": <int, 1-based block position number>,
+    "results": [ <dict>, ... complete finding objects, never split across blocks > ]
+  }
+  ```
+  Rules:
+  - ``position`` equals SearchResultBlock.position passed to assemble_block.
+  - ``results`` is ordered list of whole finding dicts as produced by RawFindingBuffer.
+  - serialized_size_bytes on SearchResultBlock equals len(serialize_block(block)).
+  - No extra top-level keys in v1.
+
+  5. def _assembled_size_bytes(results: list[dict[str, Any]]) -> int
+     Docstring: size of provisional payload {"position": 0, "results": results} for packing math.
+
+  6. def assemble_block(
+        findings: list[dict[str, Any]],
+        *,
+        max_block_size_bytes: int,
+        position: int,
+     ) -> SearchResultBlock
+     Docstring: pack findings in order; never split one finding; stop before next would exceed
+     max_block_size_bytes unless block still empty and single finding exceeds limit (then block
+     contains exactly that one finding); set serialized_size_bytes from serialize_block output.
+
+  Under 200 lines. All public symbols documented.
+
+verification:
+  type: pytest
+  target: tests/unit/test_result_block.py
+  expected: >
+    Never splits one result; oversized single result forms one block exceeding limit;
+    serialize_block emits JSON with only position and results keys matching serialize schema.
+status: frozen

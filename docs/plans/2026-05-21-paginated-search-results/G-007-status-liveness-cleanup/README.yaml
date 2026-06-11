@@ -1,0 +1,49 @@
+step_id: G-007
+name: Status, liveness, cleanup and expiration
+description: "Defines the search status model, liveness detection, and time-based
+  cleanup of search\nsessions. Status exposes running, completed, failed, cancelled,
+  or timed-out states and\nthe current phase, and supports hard timeout and cancellation
+  without contributing\npartial invalid evidence. A running search updates a heartbeat;
+  a stale heartbeat or a\nmissing or reused owning process marks a session dead or
+  orphaned. A background cleaner\nremoves expired, closed, finished, failed, cancelled,
+  timed-out, or dead sessions under\nthe configured TTL while never deleting a valid
+  live session. Cancellation stops\nunderlying queued search work via the queue-cancel
+  hook defined in this step; the MCP\ncommand surface for cancellation is defined
+  elsewhere and calls this hook after\napply_cancellation when the manifest carries
+  a queue job reference. This step defines\nstatus, liveness, cleanup, and queue-cancel
+  infrastructure only; it does not define\nblock production, HTTP access, or MCP lifecycle
+  commands.\n"
+concepts:
+- C-009
+- C-010
+- C-011
+- C-020
+- C-007
+- C-002
+relations:
+- from_concept: C-010
+  to_concept: C-009
+  type: uses
+- from_concept: C-011
+  to_concept: C-010
+  type: uses
+- from_concept: C-011
+  to_concept: C-007
+  type: uses
+source_labels:
+- '{oa6t}'
+- '{5tnm}'
+- '{ilmi}'
+- '{ymk7}'
+- '{7u1o}'
+depends_on:
+- G-001
+- G-005
+tactical_steps:
+- T-001
+- T-002
+- T-003
+- T-004
+- T-005
+- T-006
+status: ready_for_review

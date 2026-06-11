@@ -1,0 +1,19 @@
+step_id: T-1006
+parent_global_step: G-012
+name: Execute integration smoke and handler unit tests
+status: done
+concepts:
+- C-001
+- C-002
+- C-003
+description: |
+  `tests/test_universal_file_preview_smoke.py` bundles unit-level checks without MCP:
+  command schema basics, dispatcher routing, Json/YAML/JSONL/Python/Text handler behaviors,
+  opaque id resolution parity, YAML session lookup, Python visualizer outputs, whitelist
+  membership, and async `UniversalFilePreviewCommand.execute` against a mocked database
+  (`test_universal_file_preview_execute_budget_py_mock_db`).
+
+atomic_steps:
+- A-001
+implementation_note: >
+  Single module is intentional: fast regression gate for preview stack cross-cutting concerns.

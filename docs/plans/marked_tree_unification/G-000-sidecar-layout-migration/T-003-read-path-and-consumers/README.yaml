@@ -1,0 +1,86 @@
+step_id: T-003
+parent_global_step: G-000
+name: Dispatcher, Readers and Remaining Consumers Cutover
+description: 'Cut the format-dispatch resolver, the reader functions, and all remaining
+  legacy-path consumers over to the sibling convention, and align tests and scripts.
+  In search_session/tree_representation.py, the dispatch resolver sidecar_path_for
+  resolves to the existing sibling_tree_path for every format (its inline .tree_sidecar
+  branch for text/markdown is removed), and the reader functions (_read_sidecar_state,
+  _read_cst_digest_and_root, _read_tree_temp_digest, _read_adjacent_sidecar_digest,
+  and related) read from the sibling path only. Three-section TreeFile parse and
+  write (CHECKSUMS, MAP, TREE) is owned by G-002 TreeBuilder (C-011), TreeLifecycle
+  (C-010), and NodeIdMap (C-025); this tactical step does not implement a new
+  three-section reader or writer in tree_representation.py. The tree-validity wrapper
+  validate_or_recreate_tree_file in tree_lifecycle/checksum.py resolves the sibling
+  path and its TreeRepresentationRef carries the sibling path. The remaining direct
+  legacy-path consumers are pointed at the sibling path: tree_builder.py (stale .cst
+  docstring references updated to sibling .tree naming), tree_saver.py (write_sidecar_atomic
+  calls follow the cutover),
+  stable_tree.py and grep_block_resolver.py (their former sidecar_path_for_py calls),
+  and the commands in the ai_editor/commands/universal_file_edit/ package
+  (open_command, close_command, invalid_write_support, sidecar_cst_apply) —
+  universal_file_edit is the Python package name for session/sidecar commands.
+  Finally, existing tests and scripts that assert or construct .cst/, .trees/, or
+  .tree_sidecar paths are updated to the sibling path, and a project scan confirms
+  zero legacy artifacts remain. This step uses the existing sibling_tree_path (created
+  in G-002) and does not create it. G-000 is the final layout cutover after G-001
+  through G-005 verification.'
+concepts:
+- C-023
+- C-003
+- C-006
+source_labels:
+- '{k001}'
+- '{k002}'
+- '{k003}'
+- '{c001}'
+inputs:
+- name: sibling_tree_path
+  type: tree-file path resolver
+  description: The existing sibling-path function (created in G-002), used by
+    the dispatcher, the readers, and every remaining consumer to locate tree
+    files.
+- name: tree_representation.py
+  type: legacy dispatcher and readers
+  description: The format-dispatch resolver and reader functions in
+    tree_representation.py whose legacy-layout logic must be removed.
+- name: validate_or_recreate_tree_file
+  type: tree-validity wrapper
+  description: The tree-validity wrapper whose reference object must carry the
+    sibling path after the cutover.
+outputs:
+- name: sibling_dispatch_and_consumers
+  type: read and consumption behavior
+  description: The dispatcher and readers resolve only the sibling path for all
+    formats; TreeRepresentationRef carries the sibling path; all remaining
+    consumers (tree_builder, tree_saver, stable_tree, grep_block_resolver,
+    universal_file_edit open/close/invalid_write_support/sidecar_cst_apply) observe
+    the sibling path. Three-section TreeFile semantics remain owned by G-002
+    TreeBuilder, TreeLifecycle, and NodeIdMap.
+- name: sibling_aligned_tests
+  type: test alignment and cutover verification
+  description: Tests and scripts assert the sibling location with no legacy
+    assertions; a project scan confirms zero .cst/, .trees/, or .tree_sidecar
+    artifacts remain.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+- A-004
+- A-005
+- A-006
+- A-007
+- A-008
+- A-009
+- A-010
+- A-011
+- A-012
+- A-013
+- A-014
+- A-015
+- A-016
+- A-017
+- A-018
+- A-019
+- A-020
+status: ready_for_review

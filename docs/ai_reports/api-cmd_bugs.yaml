@@ -1,0 +1,4133 @@
+meta:
+  title: API command parameter validation bugs (complete)
+  methodology: 'Per command: full read of source + schema helper files; schema/metadata/execute/validate_params static analysis;
+    runtime probe (unknown param, wrong type, invalid enum) on registered commands.'
+  standard: docs/standards/PARAMS_VALIDATION.md
+  rule: Optional parameters may be absent. If present they must match schema type and semantics. Unknown parameters must raise
+    ValidationError.
+  audit_date: '2026-05-23'
+  audit_pass: complete
+  total_commands: 147
+systemic_findings:
+- id: SYS-001
+  severity: error
+  location: ai_editor/commands/base_mcp_command.py:619-620
+  title: Unknown params silently filtered in BaseMCPCommand.validate_params
+  description: When additionalProperties is false, params dict is filtered to schema properties before validate_params_against_schema.
+    Unknown keys never trigger ValidationError.
+  fix: Remove pre-filter; call validate_params_against_schema on original params.
+- id: SYS-002
+  severity: error
+  location: ai_editor/commands/base_mcp_command.py:524
+  title: Default additionalProperties=True in validate_params_against_schema
+  description: Schemas omitting additionalProperties allow unknown keys.
+- id: SYS-003
+  severity: warning
+  location: mcp_proxy_adapter/commands/base.py:142-222
+  title: Adapter Command.validate_params skips type/enum validation
+  description: format_code, lint_code, type_check_code, health, queue_health, qa_sleep reject unknown keys but not wrong types.
+- id: SYS-004
+  severity: error
+  location: ai_editor/commands/project_management_mcp_commands/create_project.py:22
+  title: create_project missing Command/BaseMCPCommand inheritance
+  description: validate_params super() raises AttributeError; no param validation path works.
+- id: SYS-005
+  severity: warning
+  location: ai_editor/hooks_register_part1.py
+  title: 31 command classes not registered in live API
+  description: CST/JSON/universal legacy commands exist with get_schema but are not in register_ai_editor_commands.
+  commands:
+  - create_text_file
+  - cst_apply_buffer
+  - cst_convert_and_save
+  - cst_create_file
+  - cst_find_node
+  - cst_get_node_at_line
+  - cst_get_node_by_range
+  - cst_get_node_info
+  - cst_list_trees
+  - cst_load_file
+  - cst_modify_tree
+  - cst_reload_tree
+  - cst_save_tree
+  - cst_unload_tree
+  - get_file_lines
+  - json_find_node
+  - json_get_node_info
+  - json_load_file
+  - json_modify_tree
+  - json_reload_tree
+  - json_save_tree
+  - list_cst_blocks
+  - list_json_blocks
+  - query_cst
+  - read_project_text_file
+  - replace_file_lines
+  - universal_file_delete
+  - universal_file_read
+  - universal_file_replace
+  - universal_file_save
+  - write_project_text_lines
+- id: SYS-006
+  severity: error
+  location: ai_editor/commands/base_mcp_command.py:500-597
+  title: Shallow schema validation
+  description: validate_params_against_schema ignores minimum/maximum, minItems, oneOf, anyOf, union types, array item types,
+    nested object property validation.
+summary:
+  commands_audited: 147
+  registered_in_api: 116
+  not_registered: 31
+  commands_with_errors: 142
+  commands_with_warnings: 98
+  total_issue_entries: 504
+  behavior_unknown_accepted: 0
+  behavior_unknown_rejected: 110
+  issue_kind_counts:
+    SYS-001_unknown_param_silent_drop: 141
+    execute_kwargs_not_revalidated: 147
+    schema_min_max_not_enforced: 55
+    missing_project_id_semantic_validation: 51
+    command_not_registered: 31
+    metadata_legacy_param_not_in_schema: 2
+    conditional_required_not_in_validate: 1
+    oneOf_not_validated: 6
+    array_items_type_not_validated: 30
+    metadata_schema_default_mismatch: 1
+    nested_object_items_not_validated: 6
+    schema_nested_missing_additionalProperties: 3
+    schema_nested_additionalProperties_true: 5
+    SYS-003_adapter_no_type_validation: 6
+    execute_param_not_in_schema: 5
+    anyOf_not_validated: 2
+    enum_validated_in_execute_only: 2
+    schema_property_missing_type: 2
+    minItems_not_enforced: 3
+    union_type_not_validated: 2
+    batch_inner_params_not_strict: 1
+    batch_invocation_items_permissive: 1
+    metadata_get_error: 1
+  command_list:
+  - analyze_complexity
+  - analyze_timing_bottlenecks
+  - ast_statistics
+  - backup_database
+  - change_project_id
+  - check_vectors
+  - cleanup_deleted_files
+  - clear_all_backups
+  - clear_trash
+  - collapse_versions
+  - comprehensive_analysis
+  - create_project
+  - create_text_file
+  - cst_apply_buffer
+  - cst_convert_and_save
+  - cst_create_file
+  - cst_find_node
+  - cst_get_node_at_line
+  - cst_get_node_by_range
+  - cst_get_node_info
+  - cst_list_trees
+  - cst_load_file
+  - cst_modify_tree
+  - cst_reload_tree
+  - cst_save_tree
+  - cst_unload_tree
+  - delete_backup
+  - delete_file
+  - delete_files_by_mask
+  - delete_unwatched_projects
+  - export_graph
+  - extract_superclass
+  - file_structure
+  - find_classes
+  - find_dependencies
+  - find_duplicates
+  - find_usages
+  - format_code
+  - fs_copy
+  - fs_grep
+  - fs_move
+  - fs_remove
+  - fulltext_search
+  - get_ast
+  - get_class_hierarchy
+  - get_code_entity_info
+  - get_database_corruption_status
+  - get_database_status
+  - get_entity_dependencies
+  - get_entity_dependents
+  - get_file_lines
+  - get_imports
+  - get_worker_status
+  - health
+  - json_find_node
+  - json_get_node_info
+  - json_load_file
+  - json_modify_tree
+  - json_reload_tree
+  - json_save_tree
+  - lint_code
+  - list_backup_files
+  - list_backup_versions
+  - list_class_methods
+  - list_code_entities
+  - list_cst_blocks
+  - list_deleted_files
+  - list_errors_by_category
+  - list_indexing_errors
+  - list_json_blocks
+  - list_logs
+  - list_long_files
+  - list_project_files
+  - list_projects
+  - list_trashed_projects
+  - list_watch_dirs
+  - list_worker_logs
+  - list_yaml_blocks
+  - permanently_delete_from_trash
+  - project_cross_search
+  - project_file_advisory_lock_batch
+  - project_file_lock_status
+  - project_file_transfer_download_begin
+  - project_file_transfer_upload_save
+  - project_pip_check
+  - project_pip_install
+  - project_pip_list
+  - project_pip_search
+  - project_pip_show
+  - project_pip_uninstall
+  - project_set_mark_del
+  - qa_mcp_plan_hooks
+  - qa_sleep
+  - query_cst
+  - queue_health
+  - read_only_batch
+  - read_project_text_file
+  - rebuild_faiss
+  - repair_database
+  - repair_sqlite_database
+  - repair_worker_status
+  - replace_file_lines
+  - restore_backup_file
+  - restore_database
+  - restore_deleted_files
+  - restore_project_from_trash
+  - revectorize
+  - rotate_all_logs
+  - rotate_worker_logs
+  - run_project_module
+  - run_project_script
+  - run_uuid_identity_migration
+  - search_ast_nodes
+  - semantic_search
+  - session_close_file
+  - session_create
+  - session_delete
+  - session_list
+  - session_list_file_locks
+  - session_open_file
+  - session_view
+  - set_project_processing_paused
+  - split_class
+  - split_file_to_package
+  - start_repair_worker
+  - start_worker
+  - stop_repair_worker
+  - stop_worker
+  - subordinate_session_create
+  - subordinate_session_delete
+  - subordinate_session_get
+  - subordinate_session_list
+  - subordinate_session_update
+  - type_check_code
+  - universal_file_close
+  - universal_file_delete
+  - universal_file_edit
+  - universal_file_open
+  - universal_file_preview
+  - universal_file_read
+  - universal_file_replace
+  - universal_file_save
+  - universal_file_write
+  - unmark_deleted_file
+  - update_indexes
+  - view_worker_logs
+  - write_project_text_lines
+commands:
+- ordinal: 1
+  command: analyze_complexity
+  source_files_read_in_full:
+  - ai_editor/commands/analyze_complexity_mcp.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/analyze_complexity_mcp.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 2
+  command: analyze_timing_bottlenecks
+  source_files_read_in_full:
+  - ai_editor/commands/log_viewer_mcp_commands/analyze_timing_bottlenecks.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_enum_worker_type: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'tail' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:tail
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:limit
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'top_n' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:top_n
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/log_viewer_mcp_commands/analyze_timing_bottlenecks.py:execute
+  error_count: 4
+  warning_count: 0
+  info_count: 1
+- ordinal: 3
+  command: ast_statistics
+  source_files_read_in_full:
+  - ai_editor/commands/ast/statistics.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/statistics.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/statistics.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 4
+  command: backup_database
+  source_files_read_in_full:
+  - ai_editor/commands/database_integrity_mcp_commands/backup_database.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/database_integrity_mcp_commands/backup_database.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 5
+  command: change_project_id
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/change_project_id.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/change_project_id.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 6
+  command: check_vectors
+  source_files_read_in_full:
+  - ai_editor/commands/check_vectors_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/check_vectors_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/check_vectors_command.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 7
+  command: cleanup_deleted_files
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/cleanup_deleted_files.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_management_mcp_commands/cleanup_deleted_files.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/cleanup_deleted_files.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 8
+  command: clear_all_backups
+  source_files_read_in_full:
+  - ai_editor/commands/backup_mcp_commands/clear_all_backups.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/backup_mcp_commands/clear_all_backups.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/backup_mcp_commands/clear_all_backups.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 9
+  command: clear_trash
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/clear_trash.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/clear_trash.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 10
+  command: collapse_versions
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/collapse_versions.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_management_mcp_commands/collapse_versions.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/collapse_versions.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 11
+  command: comprehensive_analysis
+  source_files_read_in_full:
+  - ai_editor/commands/comprehensive_analysis_mcp/command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/comprehensive_analysis_mcp/command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 12
+  command: create_project
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/create_project.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/create_project.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 13
+  command: create_text_file
+  source_files_read_in_full:
+  - ai_editor/commands/create_text_file_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/create_text_file_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/create_text_file_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 14
+  command: cst_apply_buffer
+  source_files_read_in_full:
+  - ai_editor/commands/cst_apply_buffer_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_apply_buffer_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 15
+  command: cst_convert_and_save
+  source_files_read_in_full:
+  - ai_editor/commands/cst_convert_and_save_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: metadata_legacy_param_not_in_schema
+    severity: warning
+    detail: metadata.parameters.'root_dir' (required=False) absent from get_schema; schema uses project_id/watch_dir_id instead
+    lines: ai_editor/commands/cst_convert_and_save_command.py:metadata.parameters.root_dir
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_convert_and_save_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 16
+  command: cst_create_file
+  source_files_read_in_full:
+  - ai_editor/commands/cst_create_file_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: metadata_legacy_param_not_in_schema
+    severity: warning
+    detail: metadata.parameters.'root_dir' (required=False) absent from get_schema; schema uses project_id/watch_dir_id instead
+    lines: ai_editor/commands/cst_create_file_command.py:metadata.parameters.root_dir
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_create_file_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 17
+  command: cst_find_node
+  source_files_read_in_full:
+  - ai_editor/commands/cst_find_node_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: conditional_required_not_in_validate
+    severity: warning
+    detail: search_type=xpath requires query; enforced in execute not validate_params
+    lines: ai_editor/commands/cst_find_node_command.py:119-127
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_find_node_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 18
+  command: cst_get_node_at_line
+  source_files_read_in_full:
+  - ai_editor/commands/cst_get_node_at_line_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_get_node_at_line_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 19
+  command: cst_get_node_by_range
+  source_files_read_in_full:
+  - ai_editor/commands/cst_get_node_by_range_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_get_node_by_range_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 20
+  command: cst_get_node_info
+  source_files_read_in_full:
+  - ai_editor/commands/cst_get_node_info_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: oneOf_not_validated
+    severity: error
+    detail: property 'children_depth' has oneOf; not enforced in validate_params_against_schema
+    lines: get_schema:children_depth
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_get_node_info_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 2
+  warning_count: 1
+  info_count: 1
+- ordinal: 21
+  command: cst_list_trees
+  source_files_read_in_full:
+  - ai_editor/commands/cst_list_trees_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_list_trees_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 22
+  command: cst_load_file
+  source_files_read_in_full:
+  - ai_editor/commands/cst_load_file_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'node_types' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:node_types
+  - id: oneOf_not_validated
+    severity: error
+    detail: property 'selector' has oneOf; not enforced in validate_params_against_schema
+    lines: get_schema:selector
+  - id: metadata_schema_default_mismatch
+    severity: warning
+    detail: 'default mismatch for ''return_format'': metadata=''full'' schema=''declarative'''
+    lines: ai_editor/commands/cst_load_file_command.py:metadata + get_schema:return_format
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_load_file_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 2
+  warning_count: 3
+  info_count: 1
+- ordinal: 23
+  command: cst_modify_tree
+  source_files_read_in_full:
+  - ai_editor/commands/cst_modify_tree_command.py
+  - ai_editor/commands/cst_modify_tree_schema.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'operations' array items typed 'object' but base validator only checks array, not element types
+    lines: get_schema:operations
+  - id: nested_object_items_not_validated
+    severity: error
+    detail: property 'operations' array items are objects; inner properties/unknown keys not validated at validate_params
+    lines: get_schema:operations
+  - id: schema_nested_missing_additionalProperties
+    severity: warning
+    detail: nested object at root.properties.operations.items omits additionalProperties
+    lines: get_schema
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'replacements' array items typed 'object' but base validator only checks array, not element types
+    lines: get_schema:replacements
+  - id: nested_object_items_not_validated
+    severity: error
+    detail: property 'replacements' array items are objects; inner properties/unknown keys not validated at validate_params
+    lines: get_schema:replacements
+  - id: schema_nested_missing_additionalProperties
+    severity: warning
+    detail: nested object at root.properties.operations.items.properties.replacements.items omits additionalProperties
+    lines: get_schema
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'code_lines' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:code_lines
+  - id: oneOf_not_validated
+    severity: error
+    detail: property 'position' has oneOf; not enforced in validate_params_against_schema
+    lines: get_schema:position
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_modify_tree_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 4
+  warning_count: 6
+  info_count: 1
+- ordinal: 24
+  command: cst_reload_tree
+  source_files_read_in_full:
+  - ai_editor/commands/cst_reload_tree_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'node_types' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:node_types
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_reload_tree_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 25
+  command: cst_save_tree
+  source_files_read_in_full:
+  - ai_editor/commands/cst_save_tree_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_save_tree_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 26
+  command: cst_unload_tree
+  source_files_read_in_full:
+  - ai_editor/commands/cst_unload_tree_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/cst_unload_tree_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 27
+  command: delete_backup
+  source_files_read_in_full:
+  - ai_editor/commands/backup_mcp_commands/delete_backup.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/backup_mcp_commands/delete_backup.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/backup_mcp_commands/delete_backup.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 28
+  command: delete_file
+  source_files_read_in_full:
+  - ai_editor/commands/delete_file_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/delete_file_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/delete_file_command.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 29
+  command: delete_files_by_mask
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/delete_files_by_mask.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_management_mcp_commands/delete_files_by_mask.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/delete_files_by_mask.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 30
+  command: delete_unwatched_projects
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/delete_unwatched_projects.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'watched_dirs' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:watched_dirs
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/delete_unwatched_projects.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 31
+  command: export_graph
+  source_files_read_in_full:
+  - ai_editor/commands/ast/graph.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_graph_type: rejected
+    wrong_enum_format: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:limit
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/graph.py:execute
+  error_count: 2
+  warning_count: 0
+  info_count: 1
+- ordinal: 32
+  command: extract_superclass
+  source_files_read_in_full:
+  - ai_editor/commands/refactor_extract_superclass.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: schema_nested_additionalProperties_true
+    severity: warning
+    detail: nested object at root.properties.config allows unknown keys
+    lines: get_schema
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/refactor_extract_superclass.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 33
+  command: file_structure
+  source_files_read_in_full:
+  - ai_editor/commands/file_structure_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_structure_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_structure_command.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 34
+  command: find_classes
+  source_files_read_in_full:
+  - ai_editor/commands/search_mcp_commands_find_classes.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/search_mcp_commands_find_classes.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/search_mcp_commands_find_classes.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 35
+  command: find_dependencies
+  source_files_read_in_full:
+  - ai_editor/commands/ast/dependencies.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_entity_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/dependencies.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/dependencies.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 36
+  command: find_duplicates
+  source_files_read_in_full:
+  - ai_editor/commands/find_duplicates_mcp.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'min_similarity' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:min_similarity
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'semantic_threshold' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:semantic_threshold
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/find_duplicates_mcp.py:execute
+  error_count: 3
+  warning_count: 0
+  info_count: 1
+- ordinal: 37
+  command: find_usages
+  source_files_read_in_full:
+  - ai_editor/commands/ast/usages.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_target_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/usages.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/usages.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 38
+  command: format_code
+  source_files_read_in_full:
+  - ai_editor/commands/format_code_command.py
+  registered: true
+  inherits: Command
+  behavior_probe:
+    unknown_param: error:ValidationError
+    wrong_type_project_id: error:ValidationError
+  issues:
+  - id: SYS-003_adapter_no_type_validation
+    severity: warning
+    detail: inherits mcp_proxy_adapter Command only; unknown keys rejected but types/enums not validated
+    lines: mcp_proxy_adapter/commands/base.py:142-222
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/format_code_command.py:execute
+  error_count: 0
+  warning_count: 1
+  info_count: 1
+- ordinal: 39
+  command: fs_copy
+  source_files_read_in_full:
+  - ai_editor/commands/fs_copy_move_remove_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/fs_copy_move_remove_commands.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/fs_copy_move_remove_commands.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 40
+  command: fs_grep
+  source_files_read_in_full:
+  - ai_editor/commands/fs_grep_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_source: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'max_matches' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:max_matches
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'max_file_bytes' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:max_file_bytes
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'line_preview_len' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:line_preview_len
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'enrich_max_results' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:enrich_max_results
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'grep_sync_max_wall_seconds' has minimum/maximum in schema but validate_params_against_schema ignores
+      bounds
+    lines: get_schema:grep_sync_max_wall_seconds
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'hard_timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:hard_timeout_seconds
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'inline_timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:inline_timeout_seconds
+  - id: execute_param_not_in_schema
+    severity: error
+    detail: execute() named parameter 'max_files_scanned' absent from get_schema; API callers cannot pass it; internal-only
+      or schema gap
+    lines: ai_editor/commands/fs_grep_command.py:execute:max_files_scanned
+  - id: execute_param_not_in_schema
+    severity: error
+    detail: execute() named parameter 'wall_time_budget_s' absent from get_schema; API callers cannot pass it; internal-only
+      or schema gap
+    lines: ai_editor/commands/fs_grep_command.py:execute:wall_time_budget_s
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/fs_grep_command.py:execute
+  error_count: 10
+  warning_count: 0
+  info_count: 1
+- ordinal: 41
+  command: fs_move
+  source_files_read_in_full:
+  - ai_editor/commands/fs_copy_move_remove_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/fs_copy_move_remove_commands.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/fs_copy_move_remove_commands.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 42
+  command: fs_remove
+  source_files_read_in_full:
+  - ai_editor/commands/fs_copy_move_remove_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/fs_copy_move_remove_commands.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/fs_copy_move_remove_commands.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 43
+  command: fulltext_search
+  source_files_read_in_full:
+  - ai_editor/commands/search_mcp_commands_fulltext.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_entity_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/search_mcp_commands_fulltext.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 44
+  command: get_ast
+  source_files_read_in_full:
+  - ai_editor/commands/ast/get_ast.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/get_ast.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/get_ast.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 45
+  command: get_class_hierarchy
+  source_files_read_in_full:
+  - ai_editor/commands/ast/hierarchy.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/hierarchy.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/hierarchy.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 46
+  command: get_code_entity_info
+  source_files_read_in_full:
+  - ai_editor/commands/ast/entity_info.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_entity_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/entity_info.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/entity_info.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 47
+  command: get_database_corruption_status
+  source_files_read_in_full:
+  - ai_editor/commands/database_integrity_mcp_commands/get_corruption_status.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/database_integrity_mcp_commands/get_corruption_status.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 48
+  command: get_database_status
+  source_files_read_in_full:
+  - ai_editor/commands/worker_status_mcp_commands/get_database_status.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/worker_status_mcp_commands/get_database_status.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 49
+  command: get_entity_dependencies
+  source_files_read_in_full:
+  - ai_editor/commands/ast/entity_dependencies.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_entity_type: rejected
+  issues:
+  - id: anyOf_not_validated
+    severity: warning
+    detail: property 'entity_id' has anyOf; not enforced in validate_params_against_schema
+    lines: get_schema:entity_id
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: enum_validated_in_execute_only
+    severity: warning
+    detail: property 'entity_type' enum enforced in execute, not in validate_params
+    lines: ai_editor/commands/ast/entity_dependencies.py:execute
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/entity_dependencies.py:execute
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 50
+  command: get_entity_dependents
+  source_files_read_in_full:
+  - ai_editor/commands/ast/entity_dependencies.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_entity_type: rejected
+  issues:
+  - id: anyOf_not_validated
+    severity: warning
+    detail: property 'entity_id' has anyOf; not enforced in validate_params_against_schema
+    lines: get_schema:entity_id
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: enum_validated_in_execute_only
+    severity: warning
+    detail: property 'entity_type' enum enforced in execute, not in validate_params
+    lines: ai_editor/commands/ast/entity_dependencies.py:execute
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/entity_dependencies.py:execute
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 51
+  command: get_file_lines
+  source_files_read_in_full:
+  - ai_editor/commands/get_file_lines_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/get_file_lines_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/get_file_lines_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 52
+  command: get_imports
+  source_files_read_in_full:
+  - ai_editor/commands/ast/imports.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_import_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/imports.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/imports.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 53
+  command: get_worker_status
+  source_files_read_in_full:
+  - ai_editor/commands/worker_status_mcp_commands/get_worker_status.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_enum_worker_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/worker_status_mcp_commands/get_worker_status.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 54
+  command: health
+  source_files_read_in_full:
+  - ai_editor/commands/health_command.py
+  registered: true
+  inherits: Command
+  behavior_probe:
+    unknown_param: error:ValidationError
+  issues:
+  - id: SYS-003_adapter_no_type_validation
+    severity: warning
+    detail: inherits mcp_proxy_adapter Command only; unknown keys rejected but types/enums not validated
+    lines: mcp_proxy_adapter/commands/base.py:142-222
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/health_command.py:execute
+  error_count: 0
+  warning_count: 1
+  info_count: 1
+- ordinal: 55
+  command: json_find_node
+  source_files_read_in_full:
+  - ai_editor/commands/json_find_node_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: oneOf_not_validated
+    severity: error
+    detail: property 'key_path' has oneOf; not enforced in validate_params_against_schema
+    lines: get_schema:key_path
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/json_find_node_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 2
+  warning_count: 1
+  info_count: 1
+- ordinal: 56
+  command: json_get_node_info
+  source_files_read_in_full:
+  - ai_editor/commands/json_get_node_info_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: oneOf_not_validated
+    severity: error
+    detail: property 'key_path' has oneOf; not enforced in validate_params_against_schema
+    lines: get_schema:key_path
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/json_get_node_info_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 2
+  warning_count: 1
+  info_count: 1
+- ordinal: 57
+  command: json_load_file
+  source_files_read_in_full:
+  - ai_editor/commands/json_load_file_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/json_load_file_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 58
+  command: json_modify_tree
+  source_files_read_in_full:
+  - ai_editor/commands/json_modify_tree_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'operations' array items typed 'object' but base validator only checks array, not element types
+    lines: get_schema:operations
+  - id: nested_object_items_not_validated
+    severity: error
+    detail: property 'operations' array items are objects; inner properties/unknown keys not validated at validate_params
+    lines: get_schema:operations
+  - id: schema_property_missing_type
+    severity: warning
+    detail: property 'value' has no type/oneOf/anyOf
+    lines: get_schema:value
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/json_modify_tree_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 2
+  warning_count: 3
+  info_count: 1
+- ordinal: 59
+  command: json_reload_tree
+  source_files_read_in_full:
+  - ai_editor/commands/json_reload_tree_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/json_reload_tree_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 60
+  command: json_save_tree
+  source_files_read_in_full:
+  - ai_editor/commands/json_save_tree_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/json_save_tree_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 61
+  command: lint_code
+  source_files_read_in_full:
+  - ai_editor/commands/lint_code_command.py
+  registered: true
+  inherits: Command
+  behavior_probe:
+    unknown_param: error:ValidationError
+    wrong_type_project_id: error:ValidationError
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'ignore' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:ignore
+  - id: SYS-003_adapter_no_type_validation
+    severity: warning
+    detail: inherits mcp_proxy_adapter Command only; unknown keys rejected but types/enums not validated
+    lines: mcp_proxy_adapter/commands/base.py:142-222
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/lint_code_command.py:execute
+  error_count: 0
+  warning_count: 2
+  info_count: 1
+- ordinal: 62
+  command: list_backup_files
+  source_files_read_in_full:
+  - ai_editor/commands/backup_mcp_commands/list_backup_files.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/backup_mcp_commands/list_backup_files.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/backup_mcp_commands/list_backup_files.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 63
+  command: list_backup_versions
+  source_files_read_in_full:
+  - ai_editor/commands/backup_mcp_commands/list_backup_versions.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/backup_mcp_commands/list_backup_versions.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/backup_mcp_commands/list_backup_versions.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 64
+  command: list_class_methods
+  source_files_read_in_full:
+  - ai_editor/commands/search_mcp_commands_list_class_methods.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/search_mcp_commands_list_class_methods.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/search_mcp_commands_list_class_methods.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 65
+  command: list_code_entities
+  source_files_read_in_full:
+  - ai_editor/commands/ast/list_entities.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_entity_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/list_entities.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/list_entities.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 66
+  command: list_cst_blocks
+  source_files_read_in_full:
+  - ai_editor/commands/list_cst_blocks_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/list_cst_blocks_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 67
+  command: list_deleted_files
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/list_deleted_files.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_management_mcp_commands/list_deleted_files.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/list_deleted_files.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 68
+  command: list_errors_by_category
+  source_files_read_in_full:
+  - ai_editor/commands/code_mapper_mcp_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/code_mapper_mcp_commands.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/code_mapper_mcp_commands.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 69
+  command: list_indexing_errors
+  source_files_read_in_full:
+  - ai_editor/commands/worker_status_mcp_commands/list_indexing_errors.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:limit
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/worker_status_mcp_commands/list_indexing_errors.py:execute
+  error_count: 2
+  warning_count: 0
+  info_count: 1
+- ordinal: 70
+  command: list_json_blocks
+  source_files_read_in_full:
+  - ai_editor/commands/list_json_blocks_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/list_json_blocks_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 71
+  command: list_logs
+  source_files_read_in_full:
+  - ai_editor/commands/log_viewer_mcp_commands/list_logs.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/log_viewer_mcp_commands/list_logs.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 72
+  command: list_long_files
+  source_files_read_in_full:
+  - ai_editor/commands/code_mapper_mcp_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/code_mapper_mcp_commands.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/code_mapper_mcp_commands.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 73
+  command: list_project_files
+  source_files_read_in_full:
+  - ai_editor/commands/ast/list_files.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/list_files.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/list_files.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 74
+  command: list_projects
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/list_projects.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/list_projects.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 75
+  command: list_trashed_projects
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/list_trashed_projects.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/list_trashed_projects.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 76
+  command: list_watch_dirs
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/list_watch_dirs.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/list_watch_dirs.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 77
+  command: list_worker_logs
+  source_files_read_in_full:
+  - ai_editor/commands/log_viewer_mcp_commands/list_worker_logs.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_enum_worker_type: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'log_dirs' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:log_dirs
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/log_viewer_mcp_commands/list_worker_logs.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 78
+  command: list_yaml_blocks
+  source_files_read_in_full:
+  - ai_editor/commands/list_yaml_blocks_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/list_yaml_blocks_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 79
+  command: permanently_delete_from_trash
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/permanently_delete_from_trash.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/permanently_delete_from_trash.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 80
+  command: project_cross_search
+  source_files_read_in_full:
+  - ai_editor/commands/project_cross_search_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_entity_type: rejected
+    wrong_enum_mode: rejected
+    wrong_enum_profile: rejected
+    wrong_enum_grep_scope: rejected
+    wrong_enum_source: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'grep_patterns' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:grep_patterns
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:limit
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'semantic_limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:semantic_limit
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'fulltext_limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:fulltext_limit
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'grep_limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:grep_limit
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'min_semantic_score' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:min_semantic_score
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'grep_sync_max_wall_seconds' has minimum/maximum in schema but validate_params_against_schema ignores
+      bounds
+    lines: get_schema:grep_sync_max_wall_seconds
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'grep_hard_timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores
+      bounds
+    lines: get_schema:grep_hard_timeout_seconds
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'inline_timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:inline_timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_cross_search_command.py:execute
+  error_count: 9
+  warning_count: 1
+  info_count: 1
+- ordinal: 81
+  command: project_file_advisory_lock_batch
+  source_files_read_in_full:
+  - ai_editor/commands/project_file_advisory_lock_batch_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'items' array items typed 'object' but base validator only checks array, not element types
+    lines: get_schema:items
+  - id: nested_object_items_not_validated
+    severity: error
+    detail: property 'items' array items are objects; inner properties/unknown keys not validated at validate_params
+    lines: get_schema:items
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_file_advisory_lock_batch_command.py:execute
+  error_count: 3
+  warning_count: 1
+  info_count: 1
+- ordinal: 82
+  command: project_file_lock_status
+  source_files_read_in_full:
+  - ai_editor/commands/project_file_lock_status_command.py
+  - ai_editor/commands/project_file_lock_status_schema.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_file_lock_status_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 83
+  command: project_file_transfer_download_begin
+  source_files_read_in_full:
+  - ai_editor/commands/project_file_transfer_by_id_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_compression: rejected
+    wrong_enum_lock_mode: rejected
+  issues:
+  - id: execute_param_not_in_schema
+    severity: error
+    detail: execute() named parameter 'file_path' absent from get_schema; API callers cannot pass it; internal-only or schema
+      gap
+    lines: ai_editor/commands/project_file_transfer_by_id_commands.py:execute:file_path
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_file_transfer_by_id_commands.py:execute
+  error_count: 2
+  warning_count: 0
+  info_count: 1
+- ordinal: 84
+  command: project_file_transfer_upload_save
+  source_files_read_in_full:
+  - ai_editor/commands/project_file_transfer_by_id_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_lock_mode: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_file_transfer_by_id_commands.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 85
+  command: project_pip_check
+  source_files_read_in_full:
+  - ai_editor/commands/project_pip_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: minItems_not_enforced
+    severity: error
+    detail: property 'packages' has minItems in schema but not enforced at validate_params
+    lines: get_schema:packages
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'packages' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:packages
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_pip_commands.py:execute
+  error_count: 3
+  warning_count: 1
+  info_count: 1
+- ordinal: 86
+  command: project_pip_install
+  source_files_read_in_full:
+  - ai_editor/commands/project_pip_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'packages' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:packages
+  - id: union_type_not_validated
+    severity: error
+    detail: property 'requirements_file' uses JSON Schema union type ['string', 'null']; validate_params_against_schema skips
+      list-typed type
+    lines: get_schema:requirements_file
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_pip_commands.py:execute
+  error_count: 3
+  warning_count: 1
+  info_count: 1
+- ordinal: 87
+  command: project_pip_list
+  source_files_read_in_full:
+  - ai_editor/commands/project_pip_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_list_format: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_pip_commands.py:execute
+  error_count: 2
+  warning_count: 0
+  info_count: 1
+- ordinal: 88
+  command: project_pip_search
+  source_files_read_in_full:
+  - ai_editor/commands/project_pip_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_match_mode: rejected
+  issues:
+  - id: union_type_not_validated
+    severity: error
+    detail: property 'query' uses JSON Schema union type ['string', 'null']; validate_params_against_schema skips list-typed
+      type
+    lines: get_schema:query
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_pip_commands.py:execute
+  error_count: 3
+  warning_count: 0
+  info_count: 1
+- ordinal: 89
+  command: project_pip_show
+  source_files_read_in_full:
+  - ai_editor/commands/project_pip_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: minItems_not_enforced
+    severity: error
+    detail: property 'packages' has minItems in schema but not enforced at validate_params
+    lines: get_schema:packages
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'packages' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:packages
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_pip_commands.py:execute
+  error_count: 3
+  warning_count: 1
+  info_count: 1
+- ordinal: 90
+  command: project_pip_uninstall
+  source_files_read_in_full:
+  - ai_editor/commands/project_pip_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: minItems_not_enforced
+    severity: error
+    detail: property 'packages' has minItems in schema but not enforced at validate_params
+    lines: get_schema:packages
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'packages' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:packages
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_pip_commands.py:execute
+  error_count: 3
+  warning_count: 1
+  info_count: 1
+- ordinal: 91
+  command: project_set_mark_del
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/delete_project.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/delete_project.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 92
+  command: qa_mcp_plan_hooks
+  source_files_read_in_full:
+  - ai_editor/commands/qa_mcp_plan_hooks_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_scenario: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'inject_remaining' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:inject_remaining
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/qa_mcp_plan_hooks_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/qa_mcp_plan_hooks_command.py:execute
+  error_count: 2
+  warning_count: 1
+  info_count: 1
+- ordinal: 93
+  command: qa_sleep
+  source_files_read_in_full:
+  - ai_editor/commands/qa_sleep_command.py
+  registered: true
+  inherits: Command
+  behavior_probe:
+    unknown_param: error:ValidationError
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:seconds
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'tick_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:tick_seconds
+  - id: SYS-003_adapter_no_type_validation
+    severity: warning
+    detail: inherits mcp_proxy_adapter Command only; unknown keys rejected but types/enums not validated
+    lines: mcp_proxy_adapter/commands/base.py:142-222
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/qa_sleep_command.py:execute
+  error_count: 2
+  warning_count: 1
+  info_count: 1
+- ordinal: 94
+  command: query_cst
+  source_files_read_in_full:
+  - ai_editor/commands/query_cst_command.py
+  - ai_editor/commands/query_cst_schema.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'code_lines' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:code_lines
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'replacements' array items typed 'object' but base validator only checks array, not element types
+    lines: get_schema:replacements
+  - id: nested_object_items_not_validated
+    severity: error
+    detail: property 'replacements' array items are objects; inner properties/unknown keys not validated at validate_params
+    lines: get_schema:replacements
+  - id: schema_nested_missing_additionalProperties
+    severity: warning
+    detail: nested object at root.properties.replacements.items omits additionalProperties
+    lines: get_schema
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/query_cst_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 2
+  warning_count: 4
+  info_count: 1
+- ordinal: 95
+  command: queue_health
+  source_files_read_in_full:
+  - ai_editor/commands/queue_health_command.py
+  registered: true
+  inherits: Command
+  behavior_probe:
+    unknown_param: error:ValidationError
+  issues:
+  - id: SYS-003_adapter_no_type_validation
+    severity: warning
+    detail: inherits mcp_proxy_adapter Command only; unknown keys rejected but types/enums not validated
+    lines: mcp_proxy_adapter/commands/base.py:142-222
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/queue_health_command.py:execute
+  error_count: 0
+  warning_count: 1
+  info_count: 1
+- ordinal: 96
+  command: read_only_batch
+  source_files_read_in_full:
+  - ai_editor/commands/read_only_batch_mcp_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'invocations' array items typed 'object' but base validator only checks array, not element types
+    lines: get_schema:invocations
+  - id: nested_object_items_not_validated
+    severity: error
+    detail: property 'invocations' array items are objects; inner properties/unknown keys not validated at validate_params
+    lines: get_schema:invocations
+  - id: schema_nested_additionalProperties_true
+    severity: warning
+    detail: nested object at root.properties.invocations.items allows unknown keys
+    lines: get_schema
+  - id: schema_nested_additionalProperties_true
+    severity: warning
+    detail: nested object at root.properties.invocations.items.properties.params allows unknown keys
+    lines: get_schema
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: batch_inner_params_not_strict
+    severity: error
+    detail: invocations[].params uses additionalProperties:true; unknown keys inside nested command params are allowed at
+      schema level
+    lines: ai_editor/commands/read_only_batch_mcp_command.py:73-77
+  - id: batch_invocation_items_permissive
+    severity: warning
+    detail: invocations[].items allows additionalProperties:true; extra keys per invocation accepted
+    lines: ai_editor/commands/read_only_batch_mcp_command.py:80
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/read_only_batch_mcp_command.py:execute
+  error_count: 3
+  warning_count: 4
+  info_count: 1
+- ordinal: 97
+  command: read_project_text_file
+  source_files_read_in_full:
+  - ai_editor/commands/read_project_text_file_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'start_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:start_line
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'end_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:end_line
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/read_project_text_file_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/read_project_text_file_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 3
+  warning_count: 2
+  info_count: 1
+- ordinal: 98
+  command: rebuild_faiss
+  source_files_read_in_full:
+  - ai_editor/commands/vector_commands/rebuild_faiss.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/vector_commands/rebuild_faiss.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/vector_commands/rebuild_faiss.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 99
+  command: repair_database
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/repair_database.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_management_mcp_commands/repair_database.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/repair_database.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 100
+  command: repair_sqlite_database
+  source_files_read_in_full:
+  - ai_editor/commands/database_integrity_mcp_commands/repair_sqlite_database.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/database_integrity_mcp_commands/repair_sqlite_database.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 101
+  command: repair_worker_status
+  source_files_read_in_full:
+  - ai_editor/commands/repair_worker_mcp_commands/repair_worker_status.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/repair_worker_mcp_commands/repair_worker_status.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/repair_worker_mcp_commands/repair_worker_status.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 102
+  command: replace_file_lines
+  source_files_read_in_full:
+  - ai_editor/commands/replace_file_lines_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'new_lines' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:new_lines
+  - id: execute_param_not_in_schema
+    severity: error
+    detail: execute() named parameter 'allow_healthy_line_ops' absent from get_schema; API callers cannot pass it; internal-only
+      or schema gap
+    lines: ai_editor/commands/replace_file_lines_command.py:execute:allow_healthy_line_ops
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/replace_file_lines_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/replace_file_lines_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 2
+  warning_count: 3
+  info_count: 1
+- ordinal: 103
+  command: restore_backup_file
+  source_files_read_in_full:
+  - ai_editor/commands/backup_mcp_commands/restore_backup_file.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/backup_mcp_commands/restore_backup_file.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/backup_mcp_commands/restore_backup_file.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 104
+  command: restore_database
+  source_files_read_in_full:
+  - ai_editor/commands/database_restore_mcp_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/database_restore_mcp_commands.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 105
+  command: restore_deleted_files
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/restore_deleted_files.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'file_paths' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:file_paths
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_management_mcp_commands/restore_deleted_files.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/restore_deleted_files.py:execute
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 106
+  command: restore_project_from_trash
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/restore_project_from_trash.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/restore_project_from_trash.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 107
+  command: revectorize
+  source_files_read_in_full:
+  - ai_editor/commands/vector_commands/revectorize.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/vector_commands/revectorize.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/vector_commands/revectorize.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 108
+  command: rotate_all_logs
+  source_files_read_in_full:
+  - ai_editor/commands/log_viewer_mcp_commands/rotate_all_logs.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'log_filter' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:log_filter
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'backup_count' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:backup_count
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/log_viewer_mcp_commands/rotate_all_logs.py:execute
+  error_count: 2
+  warning_count: 1
+  info_count: 1
+- ordinal: 109
+  command: rotate_worker_logs
+  source_files_read_in_full:
+  - ai_editor/commands/log_viewer_mcp_commands/rotate_worker_logs.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_enum_worker_type: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'backup_count' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:backup_count
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/log_viewer_mcp_commands/rotate_worker_logs.py:execute
+  error_count: 2
+  warning_count: 0
+  info_count: 1
+- ordinal: 110
+  command: run_project_module
+  source_files_read_in_full:
+  - ai_editor/commands/run_project_module_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'args' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:args
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/run_project_module_command.py:execute
+  error_count: 2
+  warning_count: 1
+  info_count: 1
+- ordinal: 111
+  command: run_project_script
+  source_files_read_in_full:
+  - ai_editor/commands/run_project_script_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'args' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:args
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'timeout_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:timeout_seconds
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'post_run_delay_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:post_run_delay_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/run_project_script_command.py:execute
+  error_count: 3
+  warning_count: 1
+  info_count: 1
+- ordinal: 112
+  command: run_uuid_identity_migration
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/run_uuid_identity_migration.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_enum_action: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/run_uuid_identity_migration.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 113
+  command: search_ast_nodes
+  source_files_read_in_full:
+  - ai_editor/commands/ast/search_nodes.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/ast/search_nodes.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/ast/search_nodes.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 114
+  command: semantic_search
+  source_files_read_in_full:
+  - ai_editor/commands/semantic_search_mcp.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'limit' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:limit
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'min_score' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:min_score
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/semantic_search_mcp.py:execute
+  error_count: 3
+  warning_count: 0
+  info_count: 1
+- ordinal: 115
+  command: session_close_file
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/session_close_file_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/sessions/session_close_file_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/session_close_file_command.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 116
+  command: session_create
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/session_create_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'role_ids' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:role_ids
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/session_create_command.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 117
+  command: session_delete
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/session_delete_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/session_delete_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 118
+  command: session_list
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/session_list_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'stale_threshold_seconds' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:stale_threshold_seconds
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/session_list_command.py:execute
+  error_count: 2
+  warning_count: 0
+  info_count: 1
+- ordinal: 119
+  command: session_list_file_locks
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/session_list_file_locks_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/session_list_file_locks_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 120
+  command: session_open_file
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/session_open_file_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/sessions/session_open_file_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/session_open_file_command.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 121
+  command: session_view
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/session_view_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/session_view_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 122
+  command: set_project_processing_paused
+  source_files_read_in_full:
+  - ai_editor/commands/project_management_mcp_commands/set_project_processing_paused.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/project_management_mcp_commands/set_project_processing_paused.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 123
+  command: split_class
+  source_files_read_in_full:
+  - ai_editor/commands/refactor_split_class.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: schema_nested_additionalProperties_true
+    severity: warning
+    detail: nested object at root.properties.config allows unknown keys
+    lines: get_schema
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/refactor_split_class.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 124
+  command: split_file_to_package
+  source_files_read_in_full:
+  - ai_editor/commands/refactor_split_file_to_package.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: schema_nested_additionalProperties_true
+    severity: warning
+    detail: nested object at root.properties.config allows unknown keys
+    lines: get_schema
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/refactor_split_file_to_package.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 125
+  command: start_repair_worker
+  source_files_read_in_full:
+  - ai_editor/commands/repair_worker_mcp_commands/start_repair_worker.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/repair_worker_mcp_commands/start_repair_worker.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/repair_worker_mcp_commands/start_repair_worker.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 126
+  command: start_worker
+  source_files_read_in_full:
+  - ai_editor/commands/start_worker_mcp_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_worker_type: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'watch_dirs' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:watch_dirs
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/start_worker_mcp_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/start_worker_mcp_command.py:execute
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 127
+  command: stop_repair_worker
+  source_files_read_in_full:
+  - ai_editor/commands/repair_worker_mcp_commands/stop_repair_worker.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/repair_worker_mcp_commands/stop_repair_worker.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 128
+  command: stop_worker
+  source_files_read_in_full:
+  - ai_editor/commands/stop_worker_mcp_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_enum_worker_type: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/stop_worker_mcp_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 129
+  command: subordinate_session_create
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/subordinate_session_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/subordinate_session_commands.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 130
+  command: subordinate_session_delete
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/subordinate_session_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/subordinate_session_commands.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 131
+  command: subordinate_session_get
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/subordinate_session_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/subordinate_session_commands.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 132
+  command: subordinate_session_list
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/subordinate_session_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/subordinate_session_commands.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 133
+  command: subordinate_session_update
+  source_files_read_in_full:
+  - ai_editor/commands/sessions/subordinate_session_commands.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/sessions/subordinate_session_commands.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 134
+  command: type_check_code
+  source_files_read_in_full:
+  - ai_editor/commands/type_check_code_command.py
+  registered: true
+  inherits: Command
+  behavior_probe:
+    unknown_param: error:ValidationError
+    wrong_type_project_id: error:ValidationError
+  issues:
+  - id: SYS-003_adapter_no_type_validation
+    severity: warning
+    detail: inherits mcp_proxy_adapter Command only; unknown keys rejected but types/enums not validated
+    lines: mcp_proxy_adapter/commands/base.py:142-222
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/type_check_code_command.py:execute
+  error_count: 0
+  warning_count: 1
+  info_count: 1
+- ordinal: 135
+  command: universal_file_close
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_edit/close_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/universal_file_edit/close_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_edit/close_command.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 136
+  command: universal_file_delete
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_delete_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'start_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:start_line
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'end_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:end_line
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/universal_file_delete_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_delete_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 3
+  warning_count: 2
+  info_count: 1
+- ordinal: 137
+  command: universal_file_edit
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_edit/edit_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'operations' array items typed 'object' but base validator only checks array, not element types
+    lines: get_schema:operations
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/universal_file_edit/edit_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_edit/edit_command.py:execute
+  error_count: 1
+  warning_count: 2
+  info_count: 1
+- ordinal: 138
+  command: universal_file_open
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_edit/open_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_edit/open_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 139
+  command: universal_file_preview
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_preview_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: oneOf_not_validated
+    severity: error
+    detail: property 'selector' has oneOf; not enforced in validate_params_against_schema
+    lines: get_schema:selector
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'preview_lines' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:preview_lines
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'value_preview_len' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:value_preview_len
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'full_text_max_lines' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:full_text_max_lines
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_preview_command.py:execute
+  error_count: 5
+  warning_count: 0
+  info_count: 1
+- ordinal: 140
+  command: universal_file_read
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_read_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'start_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:start_line
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'end_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:end_line
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/universal_file_read_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_read_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 3
+  warning_count: 2
+  info_count: 1
+- ordinal: 141
+  command: universal_file_replace
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_replace_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'start_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:start_line
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'end_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:end_line
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'new_lines' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:new_lines
+  - id: schema_property_missing_type
+    severity: warning
+    detail: property 'value' has no type/oneOf/anyOf
+    lines: get_schema:value
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/universal_file_replace_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_replace_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 3
+  warning_count: 4
+  info_count: 1
+- ordinal: 142
+  command: universal_file_save
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_save_command/save_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: metadata_get_error
+    severity: warning
+    detail: No module named 'ai_editor.commands.universal_file_save_command.universal_file_save_metadata'
+    lines: ai_editor/commands/universal_file_save_command/save_command.py:metadata
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/universal_file_save_command/save_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_save_command/save_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 1
+  warning_count: 3
+  info_count: 1
+- ordinal: 143
+  command: universal_file_write
+  source_files_read_in_full:
+  - ai_editor/commands/universal_file_edit/write_command.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+    wrong_enum_write_mode: rejected
+  issues:
+  - id: execute_param_not_in_schema
+    severity: error
+    detail: execute() named parameter 'write_mode_explicit' absent from get_schema; API callers cannot pass it; internal-only
+      or schema gap
+    lines: ai_editor/commands/universal_file_edit/write_command.py:execute:write_mode_explicit
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/universal_file_edit/write_command.py:execute
+  error_count: 2
+  warning_count: 0
+  info_count: 1
+- ordinal: 144
+  command: unmark_deleted_file
+  source_files_read_in_full:
+  - ai_editor/commands/file_management_mcp_commands/unmark_deleted_file.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/file_management_mcp_commands/unmark_deleted_file.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/file_management_mcp_commands/unmark_deleted_file.py:execute
+  error_count: 1
+  warning_count: 1
+  info_count: 1
+- ordinal: 145
+  command: update_indexes
+  source_files_read_in_full:
+  - ai_editor/commands/code_mapper_mcp_command.py
+  - ai_editor/commands/update_indexes_metadata.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_type_project_id: rejected
+  issues:
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/code_mapper_mcp_command.py:execute
+  error_count: 1
+  warning_count: 0
+  info_count: 1
+- ordinal: 146
+  command: view_worker_logs
+  source_files_read_in_full:
+  - ai_editor/commands/log_viewer_mcp_commands/view_worker_logs.py
+  registered: true
+  inherits: BaseMCPCommand
+  behavior_probe:
+    unknown_param: rejected
+    wrong_enum_log_id: rejected
+    wrong_enum_worker_type: rejected
+  issues:
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'event_types' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:event_types
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'log_levels' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:log_levels
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'importance_min' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:importance_min
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'importance_max' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:importance_max
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/log_viewer_mcp_commands/view_worker_logs.py:execute
+  error_count: 3
+  warning_count: 2
+  info_count: 1
+- ordinal: 147
+  command: write_project_text_lines
+  source_files_read_in_full:
+  - ai_editor/commands/write_project_text_lines_command.py
+  registered: false
+  inherits: BaseMCPCommand
+  behavior_probe: {}
+  issues:
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'start_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:start_line
+  - id: schema_min_max_not_enforced
+    severity: error
+    detail: property 'end_line' has minimum/maximum in schema but validate_params_against_schema ignores bounds
+    lines: get_schema:end_line
+  - id: array_items_type_not_validated
+    severity: warning
+    detail: property 'new_lines' array items typed 'string' but base validator only checks array, not element types
+    lines: get_schema:new_lines
+  - id: SYS-001_unknown_param_silent_drop
+    severity: error
+    detail: uses BaseMCPCommand.validate_params which pre-filters unknown keys at base_mcp_command.py:619-620 instead of ValidationError
+    lines: ai_editor/commands/base_mcp_command.py:619-620
+  - id: missing_project_id_semantic_validation
+    severity: warning
+    detail: no validate_params override; project_id existence not checked before execute/queue
+    lines: ai_editor/commands/write_project_text_lines_command.py:validate_params
+  - id: execute_kwargs_not_revalidated
+    severity: info
+    detail: execute(**kwargs) without validate_params_against_schema at entry (per PARAMS_VALIDATION.md)
+    lines: ai_editor/commands/write_project_text_lines_command.py:execute
+  - id: command_not_registered
+    severity: warning
+    detail: class exists but absent from register_ai_editor_commands (hooks auto-import only)
+    lines: ai_editor/hooks.py
+  error_count: 3
+  warning_count: 3
+  info_count: 1

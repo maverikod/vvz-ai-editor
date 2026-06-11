@@ -1,0 +1,15 @@
+global_step: G-002
+tactical_step: T-003
+name: TreeLifecycle and TreeBuilder
+waves:
+  - wave: 1
+    parallel: true
+    steps:
+      - A-001
+      - A-002
+    note: builder.py and lifecycle.py may be created in parallel (no shared file).
+  - wave: 2
+    steps:
+      - A-003
+    depends_on_wave: 1
+    note: Package __init__ re-exports after both entity modules exist.

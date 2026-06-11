@@ -1,0 +1,34 @@
+step_id: G-000
+name: Sidecar Layout Migration
+description: Final sidecar layout cutover (G-000). After the new marked-tree system
+  (G-001 through G-005) is built and verified end to end, several existing call sites
+  still resolve tree-file paths through the three legacy layouts (.cst/ subdirectory,
+  .trees/ mirror directory, .tree_sidecar adjacent file) because consumer integration
+  (G-005) does not reach them. This step redirects those remaining call sites onto the
+  existing sibling_tree_path function (created in G-002), removes the legacy resolvers
+  and layouts entirely, and removes the legacy pending-sidecar mechanism that the
+  edit-session lifecycle has made unnecessary. It does not create sibling_tree_path.
+  It is a hard cutover with no backward-compatibility shim. This step runs as the
+  final layout cutover after G-001 through G-005 verification.
+concepts:
+- C-003
+- C-023
+- C-006
+relations: []
+source_labels:
+- '{k001}'
+- '{k002}'
+- '{k003}'
+- '{k004}'
+- '{c001}'
+depends_on:
+- G-001
+- G-002
+- G-003
+- G-004
+- G-005
+tactical_steps:
+- T-001
+- T-002
+- T-003
+status: ready_for_review

@@ -1,0 +1,80 @@
+step_id: A-001
+parent_tactical_step: T-005
+name: Tree-temp preview focus — stable_id drill-down with scalar ancestor walk (C-009)
+target_file: ai_editor/commands/universal_file_preview/tree_temp_preview_focus.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+  - C-001
+  - C-002
+  - C-009
+prompt: |
+  ## Authority
+  - Parent global step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/README.yaml
+  - Parent tactical step: docs/plans/2026-05-18-tree-sidecar/G-004-universal-file-integration/T-005-universal-file-preview-drill-down-stable-id/README.yaml
+  - MRS: docs/plans/2026-05-18-tree-sidecar/spec.yaml
+  - HRS — Preview Navigation: docs/plans/2026-05-18-tree-sidecar/source_spec.md (section "Preview Navigation")
+
+  ## Critical HRS policy (must be implemented exactly in resolve logic)
+  Scalar `node_ref` (stable_id of a string | number | boolean | null node): resolve the node in the
+  Sidecar-backed tree, walk up the parent chain to the nearest ancestor whose type is object or array, and use
+  that container's ordered children as the block list. If no object or array ancestor exists (e.g. document root
+  is scalar), treat node_ref as absent and return the same root_view as when node_ref is omitted.
+  Container object | array node_ref: return that node's ordered children as the block list (unchanged container
+  drill-down). Unknown or unresolvable stable_id: return an input/resolve error — scalar policy does not apply.
+
+  ## File header
+  """
+  Resolves universal_file_preview drill-down focus for tree-temp Sidecar stable_id (C-009).
+
+  Author: Vasiliy Zdanovskiy
+  email: vasilyvz@gmail.com
+  """
+
+  ## Imports
+  - from __future__ import annotations
+  - from dataclasses import dataclass
+  - from typing import List, Optional, Tuple
+  - from ai_editor.core.tree_temp.tree_node import TreeNode
+  - (TreeNodeIndex or parent lookup from G-001)
+
+  ## Result type
+  @dataclass(frozen=True)
+  class TreeTempPreviewFocus:
+      container: TreeNode
+      effective_mode: str  # literal "root_view" | "container_drill_down" | "scalar_node_ref_effective_focus"
+      navigation_context: dict[str, object]
+
+  ## Public API
+  def resolve_tree_temp_preview_focus(
+      *,
+      roots: List[TreeNode],
+      node_ref: Optional[str],
+  ) -> TreeTempPreviewFocus:
+      """Return effective container whose children define the ordered block list."""
+
+  ## Algorithm
+  1. If node_ref is None or empty after strip: set mode root_view; synthesize container wrapping roots (or use
+     existing strategy that matches preview Node children for root — document choice in docstring).
+  2. Else look up stable_id in index; if missing raise PreviewError-compatible exception type defined in this
+     module as `class TreeTempPreviewResolveError(ValueError)` with stable message prefix `UNKNOWN_STABLE_ID`.
+  3. If node.type in (object, array): container = node; mode container_drill_down.
+  4. If scalar: walk parents to nearest object|array; if found container = ancestor; mode
+     scalar_node_ref_effective_focus; navigation_context includes original scalar stable_id and effective container id.
+  5. If scalar walk finds no container ancestor: same as step 1 root_view (ignore original ref for listing).
+
+  ## navigation_context keys (exact strings)
+  - "resolved_stable_id": str | None
+  - "effective_focus_stable_id": str | None
+  - "depth_hint": int
+
+  ## Forbidden
+  - ≤ 400 lines.
+  - No disk IO here — caller loads roots from sidecar or session.
+
+verification:
+  type: static_analysis
+  target: ai_editor/commands/universal_file_preview/tree_temp_preview_focus.py
+  expected: black/flake8 clean
+status: done

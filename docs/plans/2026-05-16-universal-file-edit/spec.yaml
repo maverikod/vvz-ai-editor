@@ -1,0 +1,304 @@
+meta:
+  plan_name: universal_file_edit
+  source_spec: source_spec.md
+  status: draft
+concepts:
+- concept_id: C-001
+  name: EditSession
+  definition: In-memory record that tracks one active editing session for one file.
+    Identified by a session_id UUID. Stores format group, handler_id, paths, and optional
+    in-memory tree reference.
+  properties:
+  - identified by session_id (UUID)
+  - stores file_path, abs_path, draft_path, lockfile_path, format_group, handler_id, tree_id
+  - format_group is one of sidecar, tree-temp, text
+  - stored in module-level _sessions dict in the server process
+  - not persisted across server restarts
+  source_ranges:
+  - start: 247
+    end: 263
+- concept_id: C-002
+  name: FormatGroup
+  definition: Classification of a file into one of three groups that determines draft
+    lifecycle, sync mechanism, and close behaviour.
+  properties:
+  - sidecar (Python): draft is <file>.cst_sidecar; persists after close
+  - tree-temp (JSON, YAML): draft is <file>.draft; deleted after close
+  - text (MD, txt, rst, adoc): draft is <file>.draft copy; deleted after close
+  - group resolved from file extension
+  source_ranges:
+  - start: 41
+    end: 73
+- concept_id: C-003
+  name: DraftFile
+  definition: On-disk working copy written after every mutation. Format and persistence
+    depend on the format group.
+  properties:
+  - sidecar group: <file>.cst_sidecar; persists after close
+  - tree-temp group: <file>.draft serialised tree; deleted on close
+  - text group: <file>.draft byte copy; deleted on close
+  - written after each mutation
+  source_ranges:
+  - start: 41
+    end: 73
+- concept_id: C-004
+  name: WriteLockfile
+  definition: On-disk lockfile containing server PID. Controls the two-phase write
+    protocol.
+  properties:
+  - path is <file>.write
+  - contains server process PID as text
+  - absent means first write call; present with matching PID means second
+  - PID mismatch treated as first call
+  - deleted on successful commit or on universal_file_open
+  source_ranges:
+  - start: 75
+    end: 79
+- concept_id: C-005
+  name: OpenCommand
+  definition: MCP command that starts an editing session. Cleans stale artefacts,
+    creates draft, creates initial backup when file has no history.
+  properties:
+  - deletes stale lockfile and draft (not sidecar) on entry
+  - resolves format group from file extension
+  - creates draft appropriate for format group
+  - creates initial backup if file has no backup history
+  - returns session_id and available operations for the format
+  source_ranges:
+  - start: 116
+    end: 136
+- concept_id: C-006
+  name: EditCommand
+  definition: MCP command that applies a batch of mutation operations to the draft.
+    Original file is never touched. Draft written after each operation.
+  properties:
+  - accepts insert, delete, replace with format-specific addressing
+  - sidecar group: validates no ancestor-descendant pairs; applies via CST pipeline;
+      writes sidecar after each op
+  - tree-temp group: applies to in-memory tree sequentially; writes draft after each
+      op
+  - text group: sorts by start_line descending; applies to buffer; writes draft once
+  - NESTED_BATCH_FORBIDDEN on ancestor-descendant violation (sidecar only)
+  source_ranges:
+  - start: 138
+    end: 175
+- concept_id: C-007
+  name: EditOperation
+  definition: Single mutation in an edit batch. Type, address, and content depend
+    on the format group.
+  properties:
+  - type is one of insert, delete, replace
+  - sidecar address: parent_node_id (StableIdentifier UUID) + position (int)
+  - tree-temp address: parent_node_id (JSON pointer) + position (int)
+  - text address: start_line + end_line (1-based inclusive)
+  - content required for insert and replace; absent for delete
+  source_ranges:
+  - start: 142
+    end: 148
+  - start: 149
+    end: 175
+- concept_id: C-008
+  name: BatchValidation
+  definition: Pre-application check for sidecar group batches only. Forbids ancestor-descendant
+    node pairs in one batch.
+  properties:
+  - applies to sidecar (Python) group only
+  - runs before any operation is applied
+  - rejects batch atomically on violation
+  - error code NESTED_BATCH_FORBIDDEN
+  - tree-temp and text groups have no batch validation
+  source_ranges:
+  - start: 151
+    end: 154
+- concept_id: C-009
+  name: WriteCommand
+  definition: Two-phase MCP command. First call returns diff and writes lockfile.
+    Second call (PID matches) commits with backup.
+  properties:
+  - first call: generate code from draft, compute diff, write lockfile, return diff
+  - second call: backup pair then rename temp to original then delete lockfile then
+      git commit
+  - PID mismatch treated as first call
+  - write failure after backup restores original from backup
+  source_ranges:
+  - start: 177
+    end: 213
+- concept_id: C-010
+  name: CloseCommand
+  definition: MCP command that ends the session. Behaviour differs by format group.
+  properties:
+  - sidecar: checksum verify; mismatch rebuilds sidecar; sidecar not deleted
+  - tree-temp: sha256 compare draft vs original; mismatch rebuilds draft; draft deleted
+      on match; in-memory tree freed
+  - text: delete draft; always clean
+  - lockfile deleted in all cases
+  - draft_rebuilt flag returned when rebuild occurred
+  source_ranges:
+  - start: 215
+    end: 244
+- concept_id: C-011
+  name: BackupPair
+  definition: Atomic backup of original file and draft created together as one history
+    entry on successful write commit.
+  properties:
+  - created only on successful second write call
+  - initial backup created by open when file has no backup history
+  - restore from backup on write failure
+  source_ranges:
+  - start: 105
+    end: 108
+  - start: 197
+    end: 205
+- concept_id: C-012
+  name: ExistingInfrastructure
+  definition: Set of existing project components that the four new commands reuse
+    without modification.
+  properties:
+  - handler registry resolves file extension to format group and handler
+  - file handlers implement read, save, replace, delete per format
+  - sidecar infrastructure manages Python tree persistence and sync check
+  - JSON and YAML tree builders manage in-memory trees
+  - backup manager creates, lists, and restores file backups
+  - git integration commits after successful write
+  - file lock provides advisory locking
+  - text sort utility orders text operations bottom-up
+  - preview handlers provide read-only node navigation
+  source_ranges:
+  - start: 82
+    end: 113
+- concept_id: C-013
+  name: RegistrationCleanup
+  definition: Removal of legacy editing commands from registration. Code not deleted;
+    only registration removed.
+  properties:
+  - legacy save, replace, read, delete commands unregistered
+  - all legacy CST and JSON tree commands unregistered
+  - legacy text line commands unregistered
+  - get_file_lines remains as fallback for broken files
+  - universal_file_preview remains unchanged
+  source_ranges:
+  - {start: 21, end: 38}
+
+- concept_id: C-014
+  name: ErrorCodes
+  definition: >-
+    Set of deterministic error codes produced by the four commands
+    when preconditions are violated.
+  properties:
+  - SESSION_NOT_FOUND when session_id is unknown
+  - DRAFT_NOT_FOUND when draft is missing but expected
+  - NESTED_BATCH_FORBIDDEN when ancestor-descendant pair in sidecar batch
+  - WRITE_FAILED when code generation or file write fails; backup restored
+  - UNKNOWN_FORMAT when file extension is not supported
+  - PARSE_ERROR when file cannot be parsed on open
+  source_ranges:
+  - {start: 265, end: 275}
+relations:
+- from_concept: C-005
+  to_concept: C-001
+  type: produces
+- from_concept: C-006
+  to_concept: C-001
+  type: consumes
+- from_concept: C-009
+  to_concept: C-001
+  type: consumes
+- from_concept: C-010
+  to_concept: C-001
+  type: consumes
+- from_concept: C-002
+  to_concept: C-003
+  type: owns
+- from_concept: C-005
+  to_concept: C-003
+  type: produces
+- from_concept: C-006
+  to_concept: C-003
+  type: uses
+- from_concept: C-009
+  to_concept: C-003
+  type: uses
+- from_concept: C-010
+  to_concept: C-003
+  type: uses
+- from_concept: C-009
+  to_concept: C-004
+  type: produces
+- from_concept: C-010
+  to_concept: C-004
+  type: uses
+- from_concept: C-005
+  to_concept: C-004
+  type: uses
+- from_concept: C-001
+  to_concept: C-002
+  type: depends_on
+- from_concept: C-005
+  to_concept: C-002
+  type: consumes
+- from_concept: C-006
+  to_concept: C-002
+  type: consumes
+- from_concept: C-009
+  to_concept: C-002
+  type: consumes
+- from_concept: C-010
+  to_concept: C-002
+  type: consumes
+- from_concept: C-006
+  to_concept: C-007
+  type: consumes
+- from_concept: C-006
+  to_concept: C-008
+  type: uses
+- from_concept: C-008
+  to_concept: C-007
+  type: consumes
+- from_concept: C-009
+  to_concept: C-011
+  type: produces
+- from_concept: C-005
+  to_concept: C-011
+  type: produces
+- from_concept: C-005
+  to_concept: C-012
+  type: uses
+- from_concept: C-006
+  to_concept: C-012
+  type: uses
+- from_concept: C-009
+  to_concept: C-012
+  type: uses
+- from_concept: C-010
+  to_concept: C-012
+  type: uses
+- from_concept: C-013
+  to_concept: C-005
+  type: depends_on
+- from_concept: C-013
+  to_concept: C-006
+  type: depends_on
+- from_concept: C-013
+  to_concept: C-009
+  type: depends_on
+- from_concept: C-013
+  to_concept: C-010
+  type: depends_on
+- from_concept: C-005
+  to_concept: C-014
+  type: produces
+- from_concept: C-006
+  to_concept: C-014
+  type: produces
+- from_concept: C-009
+  to_concept: C-014
+  type: produces
+- from_concept: C-010
+  to_concept: C-014
+  type: produces
+- from_concept: C-001
+  to_concept: C-004
+  type: depends_on
+- from_concept: C-002
+  to_concept: C-012
+  type: uses

@@ -1,0 +1,85 @@
+step_id: A-005
+parent_tactical_step: T-002
+name: Create YamlHandler for .yaml and .yml files
+target_file: ai_editor/tree/handlers/yaml_handler.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml
+concepts:
+- C-007
+- C-001
+- C-003
+- C-004
+- C-005
+- C-009
+status: draft
+prompt: "Create the file `ai_editor/tree/handlers/yaml_handler.py`.\nOperation:
+  create_file (the file does not exist yet).\n\nThis file implements `YamlHandler`
+  — the FormatHandler (C-007) for .yaml and .yml files.\nIt does **NOT** subclass
+  MarkerContract.\n\n**Cross-TS execution order:** complete\n`docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml`\n\
+  before this step so `TreeNode` is available.\n\n## MRS excerpt\n\nC-005 AddressableBlock
+  for YAML: `___id___` key in mapping blocks.\nC-007: parse_content from **unmarked**
+  source via PyYAML.\n\nC-009 TreeNode fields from YamlHandler.parse_content:\n \
+  \ - node_id, kind (\"mapping\", \"sequence\", \"scalar\"), content\n  - key_path
+  in TreeNode.attributes[\"key_path\"]\n\n## TreeNode dataclass (from ai_editor/tree/tree_node.py)\n\
+  \n```python\nfrom __future__ import annotations\n\nfrom dataclasses import dataclass,
+  field\nfrom typing import Any, Dict, Optional\n\nfrom ai_editor.tree.contracts
+  import NodeId\n\n\n@dataclass\nclass TreeNode:\n    node_id: NodeId\n    kind:
+  str\n    content: str\n    attributes: Dict[str, Any] = field(default_factory=dict)\n\
+  \    parent_id: Optional[NodeId] = None\n\n    def __post_init__(self) -> None:\n\
+  \        if not self.node_id:\n            raise ValueError(\"TreeNode.node_id must
+  be a non-empty string\")\n        if not self.kind:\n            raise ValueError(\"\
+  TreeNode.kind must be a non-empty string\")\n```\n\n## Required file content\n\n\
+  ```python\nfrom __future__ import annotations\n\nimport uuid\nfrom pathlib import
+  Path\nfrom typing import Any, List\n\nimport yaml\n\nfrom ai_editor.tree.format_handler
+  import FormatHandler\nfrom ai_editor.tree.tree_node import TreeNode\n\n_ID_KEY
+  = \"___id___\"\n_VAL_KEY = \"v\"\n\n\ndef _inject_ids(obj: Any, path: str = \"\")
+  -> Any:\n    if isinstance(obj, dict):\n        result: dict[str, Any] = {_ID_KEY:
+  str(uuid.uuid4())}\n        for k, v in obj.items():\n            result[k] = _inject_ids(v,
+  f\"{path}.{k}\" if path else k)\n        return result\n    if isinstance(obj, list):\n\
+  \        return [_wrap_scalar(item, path) for item in obj]\n    return obj\n\n\n\
+  def _wrap_scalar(item: Any, path: str) -> Any:\n    if isinstance(item, (dict, list)):\n\
+  \        return _inject_ids(item, path)\n    return {_ID_KEY: str(uuid.uuid4()),
+  _VAL_KEY: item}\n\n\ndef _strip_ids(obj: Any) -> Any:\n    if isinstance(obj, dict):\n\
+  \        if _ID_KEY in obj and _VAL_KEY in obj and len(obj) == 2:\n            return
+  obj[_VAL_KEY]\n        return {k: _strip_ids(v) for k, v in obj.items() if k !=
+  _ID_KEY}\n    if isinstance(obj, list):\n        return [_strip_ids(item) for item
+  in obj]\n    return obj\n\n\ndef _collect_nodes(\n    obj: Any, path: str, nodes:
+  List[TreeNode]\n) -> None:\n    if isinstance(obj, dict):\n        node_id = obj.get(_ID_KEY,
+  str(uuid.uuid4()))\n        nodes.append(\n            TreeNode(\n               \
+  \ node_id=node_id,\n                kind=\"mapping\",\n                content=yaml.dump(\n\
+  \                    {k: v for k, v in obj.items() if k != _ID_KEY}\n           \
+  \     ),\n                attributes={\"key_path\": path},\n            )\n     \
+  \   )\n        for k, v in obj.items():\n            if k == _ID_KEY:\n        \
+  \        continue\n            _collect_nodes(v, f\"{path}.{k}\" if path else k,
+  nodes)\n    elif isinstance(obj, list):\n        for i, item in enumerate(obj):\n\
+  \            _collect_nodes(item, f\"{path}[{i}]\", nodes)\n    else:\n        nodes.append(\n\
+  \            TreeNode(\n                node_id=str(uuid.uuid4()),\n           \
+  \     kind=\"scalar\",\n                content=yaml.dump(obj),\n              \
+  \  attributes={\"key_path\": path},\n            )\n        )\n\n\nclass YamlHandler(FormatHandler):\n\
+  \    \"\"\"FormatHandler for YAML files (.yaml, .yml) (C-007).\"\"\"\n\n    def parse_content(\n\
+  \        self, file_path: Path, content: str\n    ) -> List[TreeNode]:\n        \"\"\
+  \"Build TreeNode list from unmarked YAML content.\"\"\"\n        obj = yaml.safe_load(content)\n\
+  \        nodes: List[TreeNode] = []\n        _collect_nodes(obj, \"\", nodes)\n \
+  \       return nodes\n\n    def mark(self, content: str) -> str:\n        obj =
+  yaml.safe_load(content)\n        marked_obj = _inject_ids(obj)\n        return yaml.dump(marked_obj,
+  default_flow_style=False, allow_unicode=True)\n\n    def unmark(self, marked_text:
+  str) -> str:\n        obj = yaml.safe_load(marked_text)\n        clean = _strip_ids(obj)\n\
+  \        return yaml.dump(clean, default_flow_style=False, allow_unicode=True)\n\
+  \n    def sidecar_path(self, source_abs: Path) -> Path:\n        return source_abs.parent
+  / (source_abs.name + \".tree\")\n```\n\n## Constraints\n- Imports: `from __future__
+  import annotations`, `uuid`, `pathlib.Path`,\n  `typing.Any`, `typing.List`, `yaml`,\n\
+  \  `ai_editor.tree.format_handler.FormatHandler`,\n  `ai_editor.tree.tree_node.TreeNode`.
+  No other imports.\n- parse_content returns List[TreeNode], not List[Dict].\n- key_path
+  in attributes[\"key_path\"].\n- Estimated line count: ~115 lines.\n"
+verification:
+  type: import
+  target: ai_editor/tree/handlers/yaml_handler.py
+  expected: "`from ai_editor.tree.handlers.yaml_handler import YamlHandler; from
+    ai_editor.tree.tree_node import TreeNode; h = YamlHandler(); nodes = h.parse_content(__import__(\"\
+    pathlib\").Path(\"/tmp/x.yaml\"), \"a: 1\\nb: 2\\n\"); assert all(isinstance(n,
+    TreeNode) for n in nodes); assert \"key_path\" in nodes[0].attributes; src = \"\
+    a: 1\\nb: 2\\n\"; assert h.unmark(h.mark(src)) == src` runs without error.\n"

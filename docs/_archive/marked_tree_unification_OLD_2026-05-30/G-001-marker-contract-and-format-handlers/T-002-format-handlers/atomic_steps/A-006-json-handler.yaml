@@ -1,0 +1,80 @@
+step_id: A-006
+parent_tactical_step: T-002
+name: Create JsonHandler for .json files
+target_file: ai_editor/tree/handlers/json_handler.py
+operation: create_file
+priority: 1
+depends_on:
+- A-001
+cross_ts_depends_on:
+- docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml
+concepts:
+- C-007
+- C-001
+- C-003
+- C-004
+- C-005
+- C-009
+status: draft
+prompt: "Create the file `ai_editor/tree/handlers/json_handler.py`.\nOperation:
+  create_file (the file does not exist yet).\n\nThis file implements `JsonHandler`
+  — the FormatHandler (C-007) for .json files.\nIt does **NOT** subclass MarkerContract.\n\
+  \n**Cross-TS execution order:** complete\n`docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/atomic_steps/A-001-tree-node.yaml`\n\
+  before this step so `TreeNode` is available.\n\n## MRS excerpt\n\nC-005 AddressableBlock
+  for JSON: wrapper `{\"___id___\": \"<uuid>\", \"v\": <value>}`.\nC-007: parse_content
+  from **unmarked** source via standard json library.\n\nC-009 TreeNode fields from
+  JsonHandler.parse_content:\n  - node_id, kind (\"object\", \"array\", \"scalar\"),
+  content\n  - json_pointer in TreeNode.attributes[\"json_pointer\"]\n\n## TreeNode
+  dataclass (from ai_editor/tree/tree_node.py)\n\n```python\nfrom __future__ import
+  annotations\n\nfrom dataclasses import dataclass, field\nfrom typing import Any,
+  Dict, Optional\n\nfrom ai_editor.tree.contracts import NodeId\n\n\n@dataclass\n\
+  class TreeNode:\n    node_id: NodeId\n    kind: str\n    content: str\n    attributes:
+  Dict[str, Any] = field(default_factory=dict)\n    parent_id: Optional[NodeId] = None\n\
+  \n    def __post_init__(self) -> None:\n        if not self.node_id:\n         \
+  \   raise ValueError(\"TreeNode.node_id must be a non-empty string\")\n        if
+  not self.kind:\n            raise ValueError(\"TreeNode.kind must be a non-empty
+  string\")\n```\n\n## Required file content\n\n```python\nfrom __future__ import
+  annotations\n\nimport json\nimport uuid\nfrom pathlib import Path\nfrom typing import
+  Any, List\n\nfrom ai_editor.tree.format_handler import FormatHandler\nfrom ai_editor.tree.tree_node
+  import TreeNode\n\n_ID_KEY = \"___id___\"\n_VAL_KEY = \"v\"\n\n\ndef _wrap(obj: Any)
+  -> Any:\n    if isinstance(obj, dict):\n        return {_ID_KEY: str(uuid.uuid4()),
+  _VAL_KEY: {k: _wrap(v) for k, v in obj.items()}}\n    if isinstance(obj, list):\n\
+  \        return {_ID_KEY: str(uuid.uuid4()), _VAL_KEY: [_wrap(item) for item in
+  obj]}\n    return {_ID_KEY: str(uuid.uuid4()), _VAL_KEY: obj}\n\n\ndef _unwrap(obj:
+  Any) -> Any:\n    if isinstance(obj, dict) and _ID_KEY in obj and _VAL_KEY in obj:\n\
+  \        inner = obj[_VAL_KEY]\n        if isinstance(inner, dict):\n           \
+  \ return {k: _unwrap(v) for k, v in inner.items()}\n        if isinstance(inner, list):\n\
+  \            return [_unwrap(item) for item in inner]\n        return inner\n  \
+  \  return obj\n\n\ndef _collect_nodes(\n    obj: Any, pointer: str, nodes: List[TreeNode]\n\
+  ) -> None:\n    if not (isinstance(obj, dict) and _ID_KEY in obj):\n        return\n\
+  \    node_id = obj[_ID_KEY]\n    inner = obj.get(_VAL_KEY)\n    if isinstance(inner,
+  dict):\n        kind = \"object\"\n    elif isinstance(inner, list):\n        kind
+  = \"array\"\n    else:\n        kind = \"scalar\"\n    nodes.append(\n        TreeNode(\n\
+  \            node_id=node_id,\n            kind=kind,\n            content=json.dumps(inner),\n\
+  \            attributes={\"json_pointer\": pointer},\n        )\n    )\n    if isinstance(inner,
+  dict):\n        for k, v in inner.items():\n            _collect_nodes(v, f\"{pointer}/{k}\"\
+  , nodes)\n    elif isinstance(inner, list):\n        for i, item in enumerate(inner):\n\
+  \            _collect_nodes(item, f\"{pointer}/{i}\", nodes)\n\n\nclass JsonHandler(FormatHandler):\n\
+  \    \"\"\"FormatHandler for JSON files (.json) (C-007).\"\"\"\n\n    def parse_content(\n\
+  \        self, file_path: Path, content: str\n    ) -> List[TreeNode]:\n       \
+  \ obj = json.loads(content)\n        nodes: List[TreeNode] = []\n        _collect_nodes(_wrap(obj),
+  \"\", nodes)\n        return nodes\n\n    def mark(self, content: str) -> str:\n\
+  \        obj = json.loads(content)\n        wrapped = _wrap(obj)\n        return
+  json.dumps(wrapped, indent=2, ensure_ascii=False)\n\n    def unmark(self, marked_text:
+  str) -> str:\n        obj = json.loads(marked_text)\n        clean = _unwrap(obj)\n\
+  \        return json.dumps(clean, indent=2, ensure_ascii=False)\n\n    def sidecar_path(self,
+  source_abs: Path) -> Path:\n        return source_abs.parent / (source_abs.name
+  + \".tree\")\n```\n\n## Constraints\n- Imports: `from __future__ import annotations`,
+  `json`, `uuid`, `pathlib.Path`,\n  `typing.Any`, `typing.List`,\n  `ai_editor.tree.format_handler.FormatHandler`,\n\
+  \  `ai_editor.tree.tree_node.TreeNode`. No other imports.\n- parse_content returns
+  List[TreeNode], not List[Dict].\n- json_pointer in attributes[\"json_pointer\"].\n\
+  - Estimated line count: ~100 lines.\n"
+verification:
+  type: import
+  target: ai_editor/tree/handlers/json_handler.py
+  expected: "`from ai_editor.tree.handlers.json_handler import JsonHandler; from
+    ai_editor.tree.tree_node import TreeNode; import json; h = JsonHandler(); nodes
+    = h.parse_content(__import__(\"pathlib\").Path(\"/tmp/x.json\"), '{\"a\": 1}');
+    assert all(isinstance(n, TreeNode) for n in nodes); assert \"json_pointer\" in
+    nodes[0].attributes; src = '{\"a\": 1}'; assert json.loads(h.unmark(h.mark(src)))
+    == json.loads(src)` runs without error.\n"

@@ -1,0 +1,212 @@
+step_id: A-003
+parent_tactical_step: T-003
+name: Add default_registry bootstrap to HandlerRegistry
+target_file: ai_editor/tree/handler_registry.py
+operation: modify_file
+priority: 3
+depends_on:
+- A-002
+concepts:
+- C-008
+- C-007
+status: draft
+prompt: |
+  Modify the file `ai_editor/tree/handler_registry.py`.
+  Operation: modify_file (file exists after priority-2 step on this same target).
+
+  ## Parent documents
+
+  - Machine spec: `docs/plans/marked_tree_unification/spec.yaml`
+  - Global step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/README.yaml`
+  - Tactical step: `docs/plans/marked_tree_unification/G-001-marker-contract-and-format-handlers/T-003-handler-registry-and-tree-node/README.yaml`
+
+  ## Purpose
+
+  Add `HandlerRegistry.default_registry()` classmethod (C-008 bootstrap) that
+  registers all five format handlers for their supported extensions. This is
+  the standard entry point used by TreeBuilder and TreeLifecycle:
+  `HandlerRegistry.default_registry().resolve(source_abs)`.
+
+  ## Prerequisite (execution wave)
+
+  All five handler modules and `ai_editor/tree/handlers/__init__.py` must
+  exist before running this step. The HandlerRegistry class from the prior
+  step on this file must be present unchanged except for the addition below.
+
+  ## MRS excerpt
+
+  C-008 HandlerRegistry:
+    - keyed by file extension
+    - owns registered FormatHandlers
+    - sole resolution path; must be populated for production use
+
+  C-007 FormatHandler extensions:
+    - text: .txt, .rst (one TextHandler instance)
+    - markdown: .md
+    - yaml: .yaml, .yml (one YamlHandler instance)
+    - json: .json
+    - python: .py
+
+  ## Current file content (after priority-2 step — preserve all of it)
+
+  ```python
+  from __future__ import annotations
+
+  from pathlib import Path
+  from typing import Dict
+
+  from ai_editor.tree.format_handler import FormatHandler
+
+
+  class HandlerNotFoundError(KeyError):
+      """Raised when no FormatHandler is registered for a file extension."""
+
+      def __init__(self, extension: str) -> None:
+          super().__init__(
+              f"No FormatHandler registered for extension {extension!r}"
+          )
+          self.extension = extension
+
+
+  class HandlerRegistry:
+      """Central registry resolving a file to its FormatHandler by extension (C-008).
+
+      Sole resolution path from a source file path to its FormatHandler.
+      No caller may bypass the registry to select a handler directly.
+      """
+
+      def __init__(self) -> None:
+          """Initialise with an empty handler map."""
+          self._handlers: Dict[str, FormatHandler] = {}
+
+      def register(self, extension: str, handler: FormatHandler) -> None:
+          """Register a FormatHandler for a file extension."""
+          if not extension.startswith("."):
+              raise ValueError(
+                  f"Extension must start with a dot; got {extension!r}"
+              )
+          self._handlers[extension] = handler
+
+      def resolve(self, file_path: Path) -> FormatHandler:
+          """Return the FormatHandler registered for the file's extension."""
+          ext = file_path.suffix
+          if ext not in self._handlers:
+              raise HandlerNotFoundError(ext)
+          return self._handlers[ext]
+
+      def extensions(self) -> list[str]:
+          """Return sorted list of registered file extensions."""
+          return sorted(self._handlers.keys())
+
+      def __contains__(self, extension: str) -> bool:
+          """Return True if a handler is registered for the extension."""
+          return extension in self._handlers
+  ```
+
+  ## Required addition
+
+  Append this `@classmethod` inside `HandlerRegistry` (after `__contains__`,
+  before the class ends). Keep every existing method unchanged.
+
+  ```
+  @classmethod
+  def default_registry(cls) -> HandlerRegistry:
+      """Return a HandlerRegistry with all five format handlers registered (C-008).
+
+      Registers:
+        .txt, .rst  -> TextHandler (shared instance)
+        .md         -> MarkdownHandler
+        .yaml, .yml -> YamlHandler (shared instance)
+        .json       -> JsonHandler
+        .py         -> PythonHandler
+
+      Sole bootstrap for extension-keyed handler resolution. Callers must use
+      HandlerRegistry.default_registry() or manual register(); direct handler
+      selection bypassing the registry is forbidden.
+      """
+  ```
+
+  ### Method logic: default_registry(cls) -> HandlerRegistry
+
+  Algorithm:
+  1. Lazy-import inside the method body (avoid circular imports at module load):
+     ```
+     from ai_editor.tree.handlers import (
+         JsonHandler,
+         MarkdownHandler,
+         PythonHandler,
+         TextHandler,
+         YamlHandler,
+     )
+     ```
+  2. `registry = cls()`.
+  3. `text_handler = TextHandler()`.
+  4. `registry.register(".txt", text_handler)`.
+  5. `registry.register(".rst", text_handler)`.
+  6. `registry.register(".md", MarkdownHandler())`.
+  7. `yaml_handler = YamlHandler()`.
+  8. `registry.register(".yaml", yaml_handler)`.
+  9. `registry.register(".yml", yaml_handler)`.
+  10. `registry.register(".json", JsonHandler())`.
+  11. `registry.register(".py", PythonHandler())`.
+  12. Return `registry`.
+
+  Return value: new HandlerRegistry with seven extension keys registered.
+
+  Error handling:
+  - Do not catch import errors; let them propagate.
+  - Handler constructors may raise; do not wrap.
+
+  Edge cases:
+  - Each call returns a **new** registry instance (not a singleton).
+  - TextHandler shared for .txt and .rst; YamlHandler shared for .yaml and .yml.
+
+  ## Forbidden patterns
+
+  - Do NOT change behavior of existing HandlerRegistry methods.
+  - Do NOT add module-level `default_registry` function; use classmethod only.
+  - Do NOT import handlers at module top level.
+  - Do NOT create a singleton global registry variable.
+  - Do NOT modify any file other than `ai_editor/tree/handler_registry.py`.
+  - Do NOT use `Any` type annotation.
+
+  ## Estimated post-modification line count
+
+  ~115 lines (must stay ≤ 400).
+
+  ## Mandatory validation (run from project root with `.venv` activated)
+
+  ```
+  source .venv/bin/activate
+  black ai_editor/tree/handler_registry.py
+  flake8 ai_editor/tree/handler_registry.py
+  mypy ai_editor/tree/handler_registry.py
+  python -c "
+  from pathlib import Path
+  from ai_editor.tree.handler_registry import HandlerRegistry
+  from ai_editor.tree.handlers import PythonHandler, MarkdownHandler
+  r = HandlerRegistry.default_registry()
+  exts = set(r.extensions())
+  assert exts == {'.txt', '.rst', '.md', '.yaml', '.yml', '.json', '.py'}
+  assert isinstance(r.resolve(Path('foo.py')), PythonHandler)
+  assert isinstance(r.resolve(Path('readme.md')), MarkdownHandler)
+  r2 = HandlerRegistry.default_registry()
+  assert r is not r2
+  "
+  pytest -q
+  ```
+
+  Expected:
+  - black, flake8, mypy → success
+  - python -c → exit 0
+  - pytest → all tests pass
+
+  All tests in the repository must pass before marking this step complete.
+verification:
+  type: import
+  target: ai_editor/tree/handler_registry.py
+  expected: >
+    HandlerRegistry.default_registry() returns a HandlerRegistry with extensions
+    .txt, .rst, .md, .yaml, .yml, .json, .py. resolve(Path("a.py")) returns
+    PythonHandler instance. resolve(Path("b.md")) returns MarkdownHandler instance.
+    Each default_registry() call returns a distinct new instance.

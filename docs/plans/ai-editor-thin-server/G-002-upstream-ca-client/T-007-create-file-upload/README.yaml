@@ -1,0 +1,25 @@
+step_id: T-007
+parent_global_step: G-002
+name: Upload при create=true
+description: 'Добавить в Upstream Client (C-017) create-path upload для Open Stage (C-010, {c4f2}) по контракту C-023: передача начального содержимого на СА, сопоставление file_path→file_id, затем блокировка (create=true: file upload с lock acquisition). Граница C-017: core-клиент координирует session/project/path и оркестрирует file upload с lock; sibling transfer-слой выполняет передачу начального содержимого и сопоставление пути с file_id после создания на СА. Downstream вызывает create-path только через публичную поверхность core-клиента.
+
+  '
+concepts:
+- C-010
+- C-017
+- C-023
+inputs:
+- name: initial_content
+  type: bytes
+  description: Начальное содержимое.
+outputs:
+- name: file_id
+  type: string
+  description: file_id после создания на СА.
+- name: code_analysis_file_transfer_module
+  type: module
+  description: Sibling-модуль transfer-хелперов create-path Open Stage (C-010) — upload и resolve file_id; расширяется в рамках T-007.
+atomic_steps:
+- A-001
+- A-002
+status: ready_for_review

@@ -1,0 +1,70 @@
+# Project File Organization Standards
+
+## Directory Structure Standards
+
+### 📁 scripts/
+- **Purpose**: Scripts and test utilities (NOT pytest tests)
+- **Contents**: 
+  - Utility scripts
+  - Test scripts (non-pytest)
+  - Helper scripts
+  - Registration scripts
+- **Example**: `register_mcp_server.py`, `test_project_cleanup.py`
+
+### 📁 docs/
+- **Purpose**: ALL documentation
+- **Contents**:
+  - README files
+  - Documentation files (.md)
+  - API documentation
+  - Migration guides
+  - Analysis reports
+- **Example**: `README.md`, `ANALYSIS.md`, `MIGRATION_SUMMARY.md`
+
+### 📁 logs/
+- **Purpose**: Server logs
+- **Contents**:
+  - Application logs
+  - Server logs
+  - Error logs
+  - Access logs
+- **Example**: `mcp_proxy_adapter.log`, `server.log`
+
+### 📁 data/
+- **Purpose**: Data files (databases, data files)
+- **Contents**:
+  - Database files (.db, .sqlite)
+  - Data files
+  - Test data
+  - Configuration data files
+- **Example**: `ai_editor.db`, `test.db`
+
+## Testing Commands (MCP Only)
+
+**When testing or verifying server commands:** use ONLY MCP proxy tools (e.g. `call_server`, `help`, `list_servers`) from the agent context. Do NOT use terminal scripts, console commands, or direct HTTP to test commands. This restriction applies only to testing/verification of commands.
+
+## Versioning Before Write (Backup + Optional Git)
+
+**Before modifying existing code:** the file MUST be placed in versions (backup to `old_code` via BackupManager). This is mandatory for all write commands.
+
+**Optional git:** when the project is a git repository, you can pass `commit_message` to create a git commit *after* the change. Commands that support it: `cst_save_tree`, `compose_cst_module`. Git does not replace backup: backup (old_code) is always created before write; git commit is an extra version snapshot after write.
+
+## Rules
+
+1. **ALL documentation files (.md) MUST be in `docs/`**
+2. **ALL scripts (non-pytest) MUST be in `scripts/`**
+3. **ALL log files MUST be in `logs/`**
+4. **ALL data files (databases, etc.) MUST be in `data/`**
+5. **Pytest tests MUST remain in `tests/`**
+6. **Source code MUST remain in `ai_editor/`**
+
+## File Organization Checklist
+
+When adding new files, ensure they are placed in the correct directory:
+- ✅ Documentation → `docs/`
+- ✅ Scripts → `scripts/`
+- ✅ Logs → `logs/`
+- ✅ Data → `data/`
+- ✅ Tests (pytest) → `tests/`
+- ✅ Source code → `ai_editor/`
+

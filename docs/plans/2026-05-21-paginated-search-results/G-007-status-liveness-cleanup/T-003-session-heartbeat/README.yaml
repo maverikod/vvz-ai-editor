@@ -1,0 +1,29 @@
+step_id: T-003
+parent_global_step: G-007
+name: SessionHeartbeat liveness
+description: >
+  Creates SessionHeartbeat as the periodic liveness timestamp written by the
+  search execution path while SearchSession is running. Stores heartbeat_at in
+  SearchSessionManifest, distinguishes a live search with no ready blocks from
+  a stuck or dead worker, and marks a running session as timed_out or orphaned
+  when heartbeat_at is older than the configured hard timeout even if
+  last_access_at was recently refreshed by HTTP readers.
+concepts:
+  - C-009
+inputs:
+  - name: search_session_manifest
+    type: SearchSessionManifest
+    description: Manifest field container for heartbeat_at during running searches.
+  - name: heartbeat_tick
+    type: HeartbeatTick
+    description: Periodic update emitted by the active search execution path.
+  - name: hard_timeout_policy
+    type: HardTimeoutPolicy
+    description: Maximum allowed age of heartbeat_at before liveness is lost.
+outputs:
+  - name: session_heartbeat
+    type: SessionHeartbeat
+    description: Current heartbeat_at value reflecting writer liveness.
+atomic_steps:
+- A-001
+status: frozen

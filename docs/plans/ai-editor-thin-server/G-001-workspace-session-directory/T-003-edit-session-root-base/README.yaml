@@ -1,0 +1,29 @@
+step_id: T-003
+parent_global_step: G-001
+name: Базовый корень Internal Edit Engine
+description: 'Изменить Internal Edit Engine (C-019): при open принимать явные session_root и file_subtree_root из workspace path resolver — привязка базовых путей Editor Session Directory (C-005) и File Subtree (C-006) под Workspace Root Configuration (C-018). Выделить Edit Subdirectory (C-008) и разместить Origin Snapshot (C-007) внутри File Subtree. Правила путей draft, lockfile, sidecar и tree-temp не входят в этот тактический шаг — см. T-004 и T-006.
+
+  '
+concepts:
+- C-005
+- C-006
+- C-007
+- C-008
+- C-018
+- C-019
+inputs:
+- name: file_subtree_layout
+  type: object
+  description: Пути из workspace path resolver (C-005, C-006).
+outputs:
+- name: core_edit_session
+  type: object
+  description: Открытая in-memory сессия редактирования с путями внутри workspace.
+atomic_steps:
+- A-001
+- A-006
+- A-002
+- A-005
+- A-003
+- A-004
+status: ready_for_review

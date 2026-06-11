@@ -1,0 +1,38 @@
+step_id: T-202
+parent_global_step: G-003
+name: Node reference — focus parameter
+status: frozen
+concepts:
+- C-009
+- C-010
+- C-014
+description: "Define the NodeReference (C-010) as the optional caller-supplied parameter\
+  \ that focuses the preview on a specific Node within the file. NodeReference depends\
+  \ on StableIdentifier (C-009): its value is always a StableIdentifier in the file\
+  \ handler's native format.\nBehaviour: - When node_ref is absent: the focus node\
+  \ is the file root. The FileHandler\n  opens the file and returns the root Node\
+  \ without resolving any identifier.\n- When node_ref is present: the value is passed\
+  \ to the selected FileHandler\n  for resolution. The FileHandler resolves the identifier\
+  \ to the specific\n  Node that the identifier addresses and returns that Node as\
+  \ the focus node.\n- If the FileHandler cannot resolve the identifier (the node\
+  \ no longer\n  exists, the identifier is malformed for this handler's format, or\
+  \ the\n  identifier refers outside the document), the command returns an\n  UNKNOWN_NODE_REF\
+  \ input error of class ErrorClassification (C-014).\n\nThe node_ref value is opaque\
+  \ to the HandlerDispatcher; only the FileHandler for the given extension interprets\
+  \ it.\n"
+inputs:
+- name: node_ref_param
+  type: string or integer or null
+  description: The node_ref parameter value from the validated input, in the StableIdentifier
+    (C-009) format for the target file type, or null when the caller omitted it.
+outputs:
+- name: focus_node
+  type: Node
+  description: The file root Node when node_ref is null, or the specific Node resolved
+    from node_ref by the FileHandler.
+- name: node_ref_error
+  type: ErrorClassification (C-014) UNKNOWN_NODE_REF error
+  description: Returned instead of focus_node when the FileHandler cannot resolve
+    the provided node_ref value.
+atomic_steps:
+- A-001

@@ -1,0 +1,63 @@
+step_id: A-001
+parent_tactical_step: T-002
+name: Create response envelope module with build_envelope function
+target_file: ai_editor/commands/universal_file_preview/response.py
+operation: create_file
+priority: 1
+depends_on: []
+concepts:
+- C-012
+- C-004
+- C-005
+- C-007
+status: done
+prompt: "Create a new Python file.\n\nTarget file (create_file — file does not exist):\n\
+  \  ai_editor/commands/universal_file_preview/response.py\n\nFile-level docstring\
+  \ (required):\n  \"\"\"\n  Response envelope assembly for universal_file_preview.\n\
+  \n  Builds the uniform top-level ResponseEnvelope (C-012) returned by\n  UniversalFilePreviewCommand\
+  \ on every successful request.\n\n  Author: Vasiliy Zdanovskiy\n  email: vasilyvz@gmail.com\n\
+  \  \"\"\"\n\nImports:\n  from __future__ import annotations\n  from typing import\
+  \ Any\n  from .models import Node, Block, NavigationResult\n\nThe imported classes\
+  \ (defined in models.py) have\nthese signatures relevant to this file:\n\n  @dataclass\n\
+  \  class Node:\n      node_kind: NodeKind       # enum with .value (str): scalar|lines|mapping|sequence|tree_node\n\
+  \      node_ref: str             # StableIdentifier string\n      type_label: str\
+  \ | None    # optional type label (e.g. 'FunctionDef')\n      name: str | None \
+  \         # optional name\n      attributes: dict[str, Any]  # compact metadata\n\
+  \n  @dataclass\n  class Block:\n      node_kind: NodeKind\n      node_ref: str\n\
+  \      summary: dict[str, Any]  # rendered compact summary from BlockHandler\n\n\
+  \  @dataclass\n  class NavigationResult:\n      focus_node: Node           # the\
+  \ focus Node for this request\n      total_blocks: int          # total count of\
+  \ blocks in focus block set\n      selected_blocks: list[Block]  # ordered selected\
+  \ blocks after selector\n      tree_id: str | None        # tree_id if command created\
+  \ session; else None\n\nFunction: build_envelope(\n    navigation_result: NavigationResult,\n\
+  \    raw_selector: str | list | None,\n    session_origin: str | None,\n) -> dict[str,\
+  \ Any]\nDocstring:\n  \"\"\"\n  Build the ResponseEnvelope (C-012) from a NavigationResult.\n\
+  \n  The envelope shape is constant regardless of NodeKind and selector form.\n \
+  \ Fields always present:\n    focus            - dict with node_kind, node_ref,\
+  \ type, name, attributes\n    selector_applied - normalised selector or None\n \
+  \   total_blocks     - int: total count of blocks in focus block set\n    blocks\
+  \           - list of rendered block dicts\n  Field present only when session_origin\
+  \ == 'command_created' and\n  navigation_result.tree_id is not None:\n    tree_id\
+  \          - str: UUID for reuse by the caller\n\n  Args:\n      navigation_result:\
+  \ Output of the NavigationProcedure.\n      raw_selector: Original selector value\
+  \ from the caller (for echo-back).\n      session_origin: One of 'caller_owned',\
+  \ 'command_created', 'none', or None.\n\n  Returns:\n      Dict conforming to ResponseEnvelope\
+  \ (C-012).\n  \"\"\"\nBody:\n  focus = navigation_result.focus_node\n  focus_dict\
+  \ = {\n      'node_kind': focus.node_kind.value,\n      'node_ref': focus.node_ref,\n\
+  \      'type': focus.type_label,\n      'name': focus.name,\n      'attributes':\
+  \ focus.attributes or {},\n  }\n\n  # Normalise selector for echo-back: keep as-is\
+  \ if already str or list;\n  # set to None if raw_selector is None.\n  selector_applied:\
+  \ str | list | None = raw_selector\n\n  blocks_list = [\n      {\n          'node_kind':\
+  \ b.node_kind.value,\n          'node_ref': b.node_ref,\n          'summary': b.summary,\n\
+  \      }\n      for b in navigation_result.selected_blocks\n  ]\n\n  envelope: dict[str,\
+  \ Any] = {\n      'focus': focus_dict,\n      'selector_applied': selector_applied,\n\
+  \      'total_blocks': navigation_result.total_blocks,\n      'blocks': blocks_list,\n\
+  \  }\n\n  if (\n      session_origin == 'command_created'\n      and navigation_result.tree_id\
+  \ is not None\n  ):\n      envelope['tree_id'] = navigation_result.tree_id\n\n \
+  \ return envelope\n"
+verification:
+  type: import
+  target: ai_editor.commands.universal_file_preview.response
+  expected: Module imports without error; build_envelope is callable with (NavigationResult,
+    selector, session_origin) and returns a dict with keys focus, selector_applied,
+    total_blocks, blocks.

@@ -1,0 +1,37 @@
+step_id: T-003
+parent_global_step: G-002
+name: Обёртка open file и download
+description: 'Добавить в Upstream Client (C-017) оркестрацию Open Stage (C-010) на стороне СА: блокировка по контракту C-023 для CA Session, project_id и file_path; передача содержимого с СА для записи в Origin Snapshot (C-007). Граница C-017: core-клиент координирует session/file-контекст и RPC lock; sibling transfer-слой выполняет нормализацию пути, resolve file_path→file_id и chunked download bytes. Публичная поверхность Upstream Client для downstream — только core-клиент; Origin Snapshot получает содержимое через thin-обёртку core. Прямой доступ к диску проекта СА не используется (свойство C-017).
+
+  '
+concepts:
+- C-002
+- C-007
+- C-010
+- C-017
+- C-023
+inputs:
+- name: ca_session_id
+  type: string
+  description: CA Session.
+- name: project_id
+  type: string
+  description: Проект на СА.
+- name: file_path
+  type: string
+  description: Путь файла в проекте.
+outputs:
+- name: file_content
+  type: bytes
+  description: Содержимое файла с СА.
+- name: lock_acquired
+  type: boolean
+  description: Подтверждение блокировки на СА.
+- name: code_analysis_file_transfer_module
+  type: module
+  description: Sibling-модуль transfer-хелперов Open Stage (C-010) — resolve пути и download pipeline; создаётся или расширяется в рамках T-003.
+atomic_steps:
+- A-001
+- A-002
+- A-003
+status: ready_for_review
