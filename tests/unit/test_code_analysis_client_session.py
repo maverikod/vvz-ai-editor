@@ -42,3 +42,24 @@ def test_validate_empty() -> None:
 
     client = CodeAnalysisClient(config_path=Path("config.json"))
     assert client.validate_ca_session("") == CaSessionStatus.INVALID
+
+
+def test_run_async_from_active_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    client = CodeAnalysisClient(config_path=Path("config.json"))
+    seen: list[str] = []
+
+    def fake_blocking(self: CodeAnalysisClient, command: str, params: dict[str, Any]) -> Any:
+        seen.append(command)
+        return {"locks": []}
+
+    monkeypatch.setattr(CodeAnalysisClient, "_call_blocking", fake_blocking)
+
+    async def runner() -> None:
+        client.call("session_list_file_locks", {"session_id": "sid-1"})
+
+    asyncio.run(runner())
+    assert seen == ["session_list_file_locks"]

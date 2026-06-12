@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-editor"
-version = "1.0.6"
+version = "1.0.11"
 description = "AI Editor MCP server: universal file preview, open, edit, write, and close"
 readme = { file = "docs/README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -21,6 +21,7 @@ dependencies = [
     "lark>=1.1.0",
     "libcst>=1.1.0",
     "mcp-proxy-adapter>=8.10.13",
+    "code-analysis-client>=1.0.9",
     "queuemgr>=1.0.19",
     "dulwich>=1.2.4",
     "markdown-it-py>=3.0",
@@ -47,6 +48,9 @@ dev = [
 where = ["."]
 include = ["ai_editor*", "aiedmgr_entry*"]
 
+[tool.setuptools.package-data]
+"ai_editor.config_templates" = ["*.json"]
+
 # Portable shell launcher (#!/usr/bin/env bash); not pip console_scripts with host shebang.
 [tool.setuptools]
-script-files = ["scripts/aiedmgr"]
+script-files = ["scripts/aiedmgr", "scripts/aiedcfg"]

@@ -8,6 +8,8 @@ email: vasilyvz@gmail.com
 import argparse
 from typing import Any, Callable
 
+from ai_editor.core.config_placeholders import PH_CODE_ANALYSIS_HOST
+
 
 def build_parser(
     cmd_generate: Callable[[argparse.Namespace], int],
@@ -124,6 +126,91 @@ def build_parser(
         "--instance-uuid",
         type=str,
         help="Server instance UUID (UUID4 format, auto-generated if not provided)",
+    )
+    gen_parser.add_argument(
+        "--server-advertised-host",
+        type=str,
+        help="Host/IP advertised in registration metadata (server.advertised_host)",
+    )
+    gen_parser.add_argument(
+        "--enable-qa-mcp-hooks",
+        action="store_true",
+        help="Set enable_qa_mcp_hooks=true in generated config (default: false)",
+    )
+    gen_parser.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Skip post-generation validation",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-host",
+        type=str,
+        default=PH_CODE_ANALYSIS_HOST,
+        help=(
+            "Code Analysis Server host/IP or placeholder "
+            f"(default: {PH_CODE_ANALYSIS_HOST})"
+        ),
+    )
+    gen_parser.add_argument(
+        "--code-analysis-port",
+        type=int,
+        default=15010,
+        help="Code Analysis Server port (default: 15010)",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-protocol",
+        type=str,
+        choices=["http", "https"],
+        default="https",
+        help="Code Analysis Server protocol (default: https)",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-timeout",
+        type=float,
+        default=60.0,
+        help="Code Analysis Server request timeout in seconds (default: 60)",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-server-id",
+        type=str,
+        default="code-analysis-server",
+        help="Registered MCP server_id for Code Analysis (default: code-analysis-server)",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-cert-file",
+        type=str,
+        help="Client certificate for mTLS to Code Analysis Server",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-key-file",
+        type=str,
+        help="Client key for mTLS to Code Analysis Server",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-ca-cert-file",
+        type=str,
+        help="CA certificate for Code Analysis Server mTLS",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-crl-file",
+        type=str,
+        help="CRL file for Code Analysis Server mTLS",
+    )
+    gen_parser.add_argument(
+        "--code-analysis-check-hostname",
+        action="store_true",
+        help="Enable TLS hostname check for Code Analysis upstream",
+    )
+    gen_parser.add_argument(
+        "--ai-editor-workspace-root",
+        type=str,
+        default="data/editor_workspaces",
+        help="ai_editor.storage.workspace_root (default: data/editor_workspaces)",
+    )
+    gen_parser.add_argument(
+        "--ai-editor-no-git-commit-on-write",
+        action="store_true",
+        help="Set ai_editor.git_commit_on_write=false (default: true)",
     )
     gen_parser.add_argument(
         "--queue-enabled",

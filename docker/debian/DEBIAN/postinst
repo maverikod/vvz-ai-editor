@@ -14,6 +14,9 @@ MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
 DEFAULT_CONFIG="${CONFIG_DIR}/${CONFIG_FILE}"
 SHARE_CONFIG="/usr/share/ai-editor/${CONFIG_FILE}"
 IMAGE_SPEC="/usr/lib/ai-editor/image-spec"
+PREFLIGHT="/usr/lib/ai-editor/config-preflight.sh"
+BANNER="/usr/lib/ai-editor/show-install-banner.sh"
+SETUP_FLAG="/var/lib/ai-editor/config-needs-setup"
 
 ensure_user() {
   if ! getent group "$AI_EDITOR_GROUP" >/dev/null 2>&1; then
@@ -94,6 +97,30 @@ show_host_info() {
   fi
 }
 
+show_install_banner() {
+  if [ -x "$BANNER" ]; then
+    "$BANNER"
+  fi
+}
+
+config_preflight_ok() {
+  if [ ! -x "$PREFLIGHT" ]; then
+    echo "[ai-editor-docker] preflight script missing: $PREFLIGHT" >&2
+    return 1
+  fi
+  AI_EDITOR_SKIP_DOCKER_VALIDATE=1 "$PREFLIGHT"
+}
+
+mark_config_needs_setup() {
+  echo "Set AI_EDITOR_* variables in /etc/default/ai-editor before starting." \
+    >"$SETUP_FLAG"
+  chmod 644 "$SETUP_FLAG"
+}
+
+clear_config_needs_setup() {
+  rm -f "$SETUP_FLAG"
+}
+
 update_documentation_index() {
   if command -v mandb >/dev/null 2>&1; then
     mandb -q /usr/share/man 2>/dev/null || true
@@ -105,13 +132,23 @@ case "${1:-}" in
     rm -f /var/lib/ai-editor/uninstall-image-ref
     ensure_user
     ensure_dirs
+    show_install_banner
     pull_image
     systemctl daemon-reload
     systemctl enable ai-editor-docker.service
-    if [ -x /usr/lib/ai-editor/docker-run.sh ]; then
-      AI_EDITOR_PULL_ON_RECREATE=1 /usr/lib/ai-editor/docker-run.sh recreate
+    if config_preflight_ok; then
+      clear_config_needs_setup
+      if [ -x /usr/lib/ai-editor/docker-run.sh ]; then
+        AI_EDITOR_PULL_ON_RECREATE=1 /usr/lib/ai-editor/docker-run.sh recreate
+      fi
+      systemctl start ai-editor-docker.service || true
+    else
+      mark_config_needs_setup
+      echo "[ai-editor-docker] Service was NOT started: configuration placeholders are not set." >&2
+      echo "[ai-editor-docker] Follow the instructions above, then run:" >&2
+      echo "[ai-editor-docker]   sudo /usr/lib/ai-editor/config-preflight.sh" >&2
+      echo "[ai-editor-docker]   sudo ai-editor-docker recreate" >&2
     fi
-    systemctl start ai-editor-docker.service
     update_documentation_index
     show_host_info
     ;;

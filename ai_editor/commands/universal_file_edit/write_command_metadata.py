@@ -31,8 +31,7 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "write_mode=preview:\n"
             "  Canonical-export comparison (format-specific export vs Origin "
             "Snapshot bytes).\n"
-            "  Returns local unified diff only. No upload to Code Analysis Server.\n"
-            "  Not yet implemented — current code returns NOT_IMPLEMENTED.\n\n"
+            "  Returns local unified diff only. No upload to Code Analysis Server.\n\n"
             "write_mode=commit:\n"
             "  compare_session_to_origin; if equal — success no-op "
             "(unchanged=true, no CA RPC).\n"
@@ -110,7 +109,7 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
         },
         "usage_examples": [
             {
-                "description": "Preview local diff (not yet implemented)",
+                "description": "Preview local diff vs origin snapshot",
                 "command": {
                     "project_id": "8772a086-688d-4198-a0c4-f03817cc0e6c",
                     "session_id": "<ca-session-id>",
@@ -119,7 +118,7 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 },
                 "explanation": (
                     "write_mode=preview returns a local unified diff only; no CA "
-                    "upload. Current implementation returns NOT_IMPLEMENTED."
+                    "upload."
                 ),
             },
             {
@@ -150,10 +149,6 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "SESSION_REJECTED": {
                 "description": "CA session id failed SessionGuard validation.",
                 "solution": "Create a new CA session and re-open the file.",
-            },
-            "NOT_IMPLEMENTED": {
-                "description": "write_mode=preview is not yet implemented.",
-                "solution": "Use write_mode=commit or wait for preview support.",
             },
             "UPSTREAM_UPLOAD_FAILED": {
                 "description": "CA rejected upload; origin and draft unchanged.",

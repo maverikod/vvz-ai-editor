@@ -11,6 +11,7 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import libcst as cst
@@ -44,6 +45,11 @@ from ai_editor.core.cst_tree.tree_builder import (
 )
 from ai_editor.core.cst_tree.tree_modifier import modify_tree
 from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
+
+
+def _edit_source_path(session: EditSession) -> Path:
+    """Workspace draft source inside the edit subdir (not project origin path)."""
+    return session.core.session_source_path
 
 
 class StaleNodeIdError(ValueError):
@@ -157,7 +163,7 @@ def _preview_short_id_to_stable_id(
     tree = get_tree(tid) if tid else None
     if tree is None:
         try:
-            tree = load_file_to_tree(str(session.abs_path))
+            tree = load_file_to_tree(str(_edit_source_path(session)))
         except Exception:
             tree = None
     if tree is not None:
@@ -237,12 +243,12 @@ def _expand_cst_move_operations(
         tree = get_tree(tid) if tid else None
         if tree is None:
             try:
-                tree = load_file_to_tree(str(session.abs_path))
+                tree = load_file_to_tree(str(_edit_source_path(session)))
             except Exception as exc:
                 return error_result_for_edit(
                     str(exc),
                     PARSE_ERROR,
-                    {"path": str(session.abs_path)},
+                    {"path": str(_edit_source_path(session))},
                 )
             session.tree_id = tree.tree_id
         try:
@@ -606,24 +612,24 @@ def run_sidecar_cst_edit_batch(
         session.tree_id = tree_id
         restored = get_tree(tree_id)
         if restored is not None:
-            write_sidecar_atomic(session.abs_path, restored)
+            write_sidecar_atomic(_edit_source_path(session), restored)
 
     tid = session.tree_id
     tree = get_tree(tid) if tid else None
     if tree is None:
         try:
-            tree = load_file_to_tree(str(session.abs_path))
+            tree = load_file_to_tree(str(_edit_source_path(session)))
         except FileNotFoundError as exc:
             return error_result_for_edit(
                 str(exc),
                 "FILE_NOT_FOUND",
-                {"path": str(session.abs_path)},
+                {"path": str(_edit_source_path(session))},
             )
         except Exception as exc:
             return error_result_for_edit(
                 str(exc),
                 PARSE_ERROR,
-                {"path": str(session.abs_path)},
+                {"path": str(_edit_source_path(session))},
             )
     session.tree_id = tree.tree_id
 
@@ -690,13 +696,13 @@ def run_sidecar_cst_edit_batch(
             )
         session.tree_id = tree.tree_id
         try:
-            sidecar_path = write_sidecar_atomic(session.abs_path, tree)
+            sidecar_path = write_sidecar_atomic(_edit_source_path(session), tree)
         except Exception as exc:
             return _rollback_and_fail(
                 error_result_for_edit(
                     str(exc),
                     "WRITE_FAILED",
-                    {"path": str(session.abs_path)},
+                    {"path": str(_edit_source_path(session))},
                 )
             )
 

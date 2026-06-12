@@ -67,9 +67,10 @@ def download_transfer_to_bytes(
     tid = str(transfer_id or "").strip()
     if not tid:
         raise RuntimeError("download begin returned no transfer_id")
-    rpc = client._ensure_rpc()
     with tempfile.NamedTemporaryFile(delete=True) as tmp:
-        client._run_async(rpc.download_file(tid, tmp.name))
+        client.run_in_isolated_loop(
+            lambda rpc, path=tmp.name, transfer=tid: rpc.download_file(transfer, path)
+        )
         return Path(tmp.name).read_bytes()
 
 
@@ -109,14 +110,15 @@ def upload_bytes_transfer_id(
     """Upload in-memory buffer and return transfer_id for upload_save (C-023)."""
     import tempfile
 
-    rpc = client._ensure_rpc()
     suffix = Path(filename).suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
     try:
-        receipt = client._run_async(
-            rpc.upload_file(tmp_path, filename=filename, compression="identity")
+        receipt = client.run_in_isolated_loop(
+            lambda rpc, path=tmp_path, name=filename: rpc.upload_file(
+                path, filename=name, compression="identity"
+            )
         )
         transfer_id = str(getattr(receipt, "transfer_id", "") or "").strip()
         if not transfer_id:

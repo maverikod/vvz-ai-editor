@@ -56,11 +56,11 @@ async def test_write_commit_equal_returns_noop_without_upload() -> None:
         ) as mock_guard_cls:
             mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
                 return_value=session,
             ):
                 with patch(
-                    "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ) as mock_compare:
                     result = await cmd.execute(
@@ -102,11 +102,11 @@ async def test_write_commit_diff_uploads_and_syncs_origin() -> None:
         ) as mock_guard_cls:
             mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
                 return_value=session,
             ):
                 with patch(
-                    "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
                     result = await cmd.execute(
@@ -131,9 +131,16 @@ async def test_write_commit_diff_uploads_and_syncs_origin() -> None:
 
 
 @pytest.mark.asyncio
-async def test_write_preview_returns_not_implemented() -> None:
+async def test_write_preview_returns_diff_without_upload() -> None:
     cmd = UniversalFileWriteCommand()
     session = _mock_session()
+    session.format_group = "text"
+    session.draft_path = MagicMock()
+    session.draft_path.read_text.return_value = "x = 2\n"
+    session.abs_path = MagicMock()
+    session.abs_path.is_file.return_value = True
+    session.abs_path.read_text.return_value = "x = 1\n"
+    session.abs_path.__str__ = lambda _s: "/tmp/foo.py"
     client = MagicMock()
 
     with patch(
@@ -145,22 +152,19 @@ async def test_write_preview_returns_not_implemented() -> None:
         ) as mock_guard_cls:
             mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
                 return_value=session,
             ):
-                with patch(
-                    "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
-                ) as mock_compare:
-                    result = await cmd.execute(
-                        project_id="proj-1",
-                        session_id="sess-1",
-                        write_mode="preview",
-                    )
+                result = await cmd.execute(
+                    project_id="proj-1",
+                    session_id="sess-1",
+                    write_mode="preview",
+                )
 
-    assert isinstance(result, ErrorResult)
-    assert result.code == "NOT_IMPLEMENTED"
-    assert "preview not implemented" in result.message
-    mock_compare.assert_not_called()
+    assert isinstance(result, SuccessResult)
+    assert result.data["phase"] == "preview"
+    assert result.data["has_changes"] is True
+    assert "diff" in result.data
     client.upload_session_file_content.assert_not_called()
 
 
@@ -178,10 +182,10 @@ async def test_write_guard_reject_skips_compare() -> None:
         ) as mock_guard_cls:
             mock_guard_cls.return_value.check.return_value = GuardDecision.REJECT
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
             ) as mock_resolve_session_for_command:
                 with patch(
-                    "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                 ) as mock_compare:
                     result = await cmd.execute(
                         project_id="proj-1",

@@ -46,13 +46,16 @@ mkdir -p "$PKG_WORK/usr/lib/ai-editor" "$PKG_WORK/usr/bin" "$PKG_WORK/usr/share/
   "$PKG_WORK/usr/share/doc/ai-editor-docker" "$PKG_WORK/etc/ai-editor/mtls_certificates"
 
 install -m 755 "$SCRIPT_DIR/pkg/docker-run.sh" "$PKG_WORK/usr/lib/ai-editor/docker-run.sh"
+install -m 755 "$SCRIPT_DIR/pkg/config-preflight.sh" "$PKG_WORK/usr/lib/ai-editor/config-preflight.sh"
+install -m 755 "$SCRIPT_DIR/pkg/config_preflight.py" "$PKG_WORK/usr/lib/ai-editor/config_preflight.py"
+install -m 755 "$SCRIPT_DIR/pkg/show-install-banner.sh" "$PKG_WORK/usr/lib/ai-editor/show-install-banner.sh"
 install -m 755 "$SCRIPT_DIR/pkg/ai-editor-info" "$PKG_WORK/usr/bin/ai-editor-info"
 install -m 755 "$SCRIPT_DIR/pkg/ai-editor-docker" "$PKG_WORK/usr/bin/ai-editor-docker"
 install -m 644 "$SCRIPT_DIR/pkg/image-spec.in" "$PKG_WORK/usr/lib/ai-editor/image-spec"
 sed -i "s|@DOCKERHUB_REPO@|${DOCKERHUB_REPO}|g; s|@IMAGE_TAG@|${VERSION}|g" \
   "$PKG_WORK/usr/lib/ai-editor/image-spec"
 
-install -m 644 "$PROJECT_ROOT/config/ai_editor_container.json" \
+install -m 644 "$PROJECT_ROOT/ai_editor/config_templates/ai_editor_container.json" \
   "$PKG_WORK/usr/share/ai-editor/ai_editor_container.json"
 install -m 644 "$PKG_WORK/usr/share/ai-editor/ai_editor_container.json" \
   "$PKG_WORK/etc/ai-editor/ai_editor_container.json"

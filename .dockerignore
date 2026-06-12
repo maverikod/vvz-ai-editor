@@ -1,0 +1,15 @@
+# Docker build context for mcp-terminal bootstrap (keep paths project-relative).
+.git/
+.venv/
+venv/
+logs/
+old_code/
+.terminals/
+.mcp_terminal/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+data/*.db
+test_data/

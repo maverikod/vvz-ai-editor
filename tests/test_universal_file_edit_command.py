@@ -554,8 +554,9 @@ async def test_edit_replace_via_annotated_text_node_ref(tmp_path) -> None:
             session_id=sid,
             write_mode="preview",
         )
-        assert isinstance(write_preview, ErrorResult)
-        assert write_preview.code == "NOT_IMPLEMENTED"
+        assert isinstance(write_preview, SuccessResult)
+        assert write_preview.data.get("phase") == "preview"
+        assert write_preview.data.get("has_changes") is True
         commit = await wr.execute(
             project_id=project_id,
             session_id=sid,

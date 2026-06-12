@@ -15,6 +15,7 @@ Commands:
   stop       Stop the service (systemctl stop)
   restart    Restart container without recreating it (stop + start)
   recreate   Remove and recreate container (apply config/mount/network changes)
+  validate   Check config placeholders and run validation (preflight)
   status     Show systemd and container status
   info       Show host user, port, paths, and image (ai-editor-info)
 
@@ -57,6 +58,10 @@ case "$cmd" in
     else
       systemctl start "$RECREATE_SERVICE"
     fi
+    ;;
+  validate)
+    require_root validate
+    exec /usr/lib/ai-editor/config-preflight.sh
     ;;
   status)
     systemctl status "$SERVICE" --no-pager 2>/dev/null || true

@@ -3,3 +3,4 @@ include LICENSE
 include requirements.txt
 include .flake8
 recursive-include ai_editor *.py
+recursive-include ai_editor/config_templates *.json

@@ -18,18 +18,16 @@ PORT="${AI_EDITOR_PORT:-15000}"
 CONFIG_DIR="${AI_EDITOR_CONFIG_DIR:-/etc/ai-editor}"
 CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"
 LOG_DIR="${AI_EDITOR_LOG_DIR:-/var/log/ai-editor}"
+CONTAINER_LOG_DIR="/var/log/ai-editor"
 DATA_DIR="${AI_EDITOR_DATA_DIR:-/var/ai-editor}"
 MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
 NETWORK_PRIMARY="${AI_EDITOR_NETWORK_PRIMARY:-smart-assistant}"
 NETWORK_SECONDARY="${AI_EDITOR_NETWORK_SECONDARY:-ai-editor-net}"
-IP_HOST_NUM="${AI_EDITOR_IP_HOST_NUM:-4}"
 DNS_NAME="${AI_EDITOR_DOCKER_DNS_NAME:-ai-editor-server}"
 SHM_SIZE="${AI_EDITOR_SHM_SIZE:-1g}"
 ULIMIT_NOFILE="${AI_EDITOR_ULIMIT_NOFILE:-65536:65536}"
 IMAGE_SPEC="${LIB_DIR}/image-spec"
 
-LAST_DOCKER_SUBNET=""
-SMART_ASSISTANT_CONTAINER_IP=""
 EXTRA_HOST_DOCKER_ARGS=()
 
 if [ -f "$IMAGE_SPEC" ]; then
@@ -37,6 +35,21 @@ if [ -f "$IMAGE_SPEC" ]; then
   . "$IMAGE_SPEC"
 fi
 IMAGE_NAME="${DOCKERHUB_REPO:-ai-editor}:${IMAGE_TAG:-latest}"
+PREFLIGHT="${LIB_DIR}/config-preflight.sh"
+
+run_config_preflight() {
+  if [ ! -x "$PREFLIGHT" ]; then
+    echo "[ERROR] Config preflight script not found: $PREFLIGHT" >&2
+    exit 1
+  fi
+  if ! "$PREFLIGHT"; then
+    echo "[ERROR] Refusing to start: configuration placeholders are not resolved." >&2
+    echo "[ERROR] Edit /etc/default/ai-editor, install mTLS certs, then:" >&2
+    echo "[ERROR]   sudo /usr/lib/ai-editor/config-preflight.sh" >&2
+    echo "[ERROR]   sudo ai-editor-docker recreate" >&2
+    exit 1
+  fi
+}
 
 ensure_host_owner() {
   if ! getent passwd "$AI_EDITOR_USER" >/dev/null 2>&1; then
@@ -64,54 +77,13 @@ docker_ensure_network() {
   docker network create "$net"
 }
 
-docker_network_read_subnet() {
-  local net="$1"
-  local out
-  out=$(docker network inspect "$net" --format '{{range .IPAM.Config}}{{.Subnet}}{{"\n"}}{{end}}' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/' | head -1)
-  if [ -z "$out" ]; then
-    echo "[ERROR] no IPv4 subnet in Docker IPAM for network \"$net\"" >&2
-    return 1
-  fi
-  printf '%s' "$out"
-}
-
-container_ip_from_subnet() {
-  local subnet="$1"
-  local hostnum="$2"
-  python3 -c "
-import ipaddress, sys
-subnet, hostnum = sys.argv[1], int(sys.argv[2])
-if not 0 <= hostnum <= 255:
-    sys.exit('IP_HOST_NUM out of range')
-net = ipaddress.ip_network(subnet, strict=False)
-octets = str(net.network_address).split('.')
-octets[3] = str(hostnum)
-ip = '.'.join(octets)
-if ipaddress.ip_address(ip) not in net:
-    print(f'Error: {ip} not in {subnet}', file=sys.stderr)
-    sys.exit(1)
-print(ip)
-" "$subnet" "$hostnum"
-}
-
-smart_assistant_prepare_static_ip() {
-  local net="$1"
-  docker_ensure_network "$net"
-  local subnet
-  subnet=$(docker_network_read_subnet "$net") || return 1
-  local target_ip
-  target_ip=$(container_ip_from_subnet "$subnet" "$IP_HOST_NUM") || return 1
-  echo "[INFO] Network \"$net\": subnet $subnet → container IP $target_ip (IP_HOST_NUM=$IP_HOST_NUM)"
-  LAST_DOCKER_SUBNET="$subnet"
-  SMART_ASSISTANT_CONTAINER_IP="$target_ip"
-}
-
 container_create() {
   local -a docker_opts
   local config_in_container="/etc/ai-editor/${CONFIG_FILE}"
 
   ensure_host_owner
-  mkdir -p "$CONFIG_DIR" "$LOG_DIR" "${DATA_DIR}/editor_workspaces" "${DATA_DIR}/versions" "$MTLS_DIR"
+  mkdir -p "$CONFIG_DIR" "$LOG_DIR" "${DATA_DIR}/editor_workspaces" "${DATA_DIR}/versions" \
+    "${DATA_DIR}/.config-cache" "$MTLS_DIR"
   chown -R "${AI_EDITOR_USER}:${AI_EDITOR_GROUP}" "$LOG_DIR" "$DATA_DIR" 2>/dev/null || true
   chmod 755 "$LOG_DIR" "$DATA_DIR" 2>/dev/null || true
 
@@ -120,26 +92,30 @@ container_create() {
     exit 1
   fi
 
-  smart_assistant_prepare_static_ip "$NETWORK_PRIMARY" || exit 1
+  docker_ensure_network "$NETWORK_PRIMARY"
   docker_ensure_network "$NETWORK_SECONDARY"
   docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
   docker_opts=(
     --name "$CONTAINER_NAME"
     --user "$(container_run_user)"
+    --workdir "$CONTAINER_LOG_DIR"
     --shm-size "$SHM_SIZE"
     --ulimit "nofile=$ULIMIT_NOFILE"
     -v "${CONFIG_DIR}/${CONFIG_FILE}:${config_in_container}:ro"
-    -v "${LOG_DIR}:/var/log/ai-editor"
+    -v "${LOG_DIR}:${CONTAINER_LOG_DIR}"
     -v "${DATA_DIR}:/var/ai-editor"
     -v "${MTLS_DIR}:/app/mtls_certificates:ro"
     --network "$NETWORK_PRIMARY"
-    --ip "$SMART_ASSISTANT_CONTAINER_IP"
     --network-alias "$CONTAINER_NAME"
     --network-alias "$DNS_NAME"
     -p "${PORT}:15000"
     -e "CONFIG_FILE=${CONFIG_FILE}"
     -e PYTHONUNBUFFERED=1
+    -e "USER=${AI_EDITOR_USER}"
+    -e "LOGNAME=${AI_EDITOR_USER}"
+    -e "HOME=${CONTAINER_LOG_DIR}"
+    -e "AI_EDITOR_CONFIG_CACHE_DIR=/var/ai-editor/.config-cache"
     --add-host host.docker.internal:host-gateway
     --restart=always
   )
@@ -147,6 +123,17 @@ container_create() {
   if [ -n "${AI_EDITOR_POSTGRES_PASSWORD:-}" ]; then
     docker_opts+=(-e "AI_EDITOR_POSTGRES_PASSWORD=${AI_EDITOR_POSTGRES_PASSWORD}")
   fi
+
+  for _placeholder_var in \
+    AI_EDITOR_ADVERTISED_HOST \
+    AI_EDITOR_REGISTRATION_HOST \
+    AI_EDITOR_REGISTRATION_PORT \
+    AI_EDITOR_CODE_ANALYSIS_HOST \
+    AI_EDITOR_CODE_ANALYSIS_PORT; do
+    if [ -n "${!_placeholder_var:-}" ]; then
+      docker_opts+=(-e "${_placeholder_var}=${!_placeholder_var}")
+    fi
+  done
 
   if [ "${#EXTRA_HOST_DOCKER_ARGS[@]}" -gt 0 ]; then
     docker_opts+=("${EXTRA_HOST_DOCKER_ARGS[@]}")
@@ -177,6 +164,7 @@ pull_image_if_requested() {
 }
 
 cmd_start() {
+  run_config_preflight
   if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
     if ! container_image_matches; then
       echo "[INFO] Recreating $CONTAINER_NAME (image changed -> $IMAGE_NAME)"
@@ -195,6 +183,7 @@ cmd_stop() {
 }
 
 cmd_restart() {
+  run_config_preflight
   if ! docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
     cmd_start
     return
@@ -205,6 +194,7 @@ cmd_restart() {
 }
 
 cmd_recreate() {
+  run_config_preflight
   pull_image_if_requested
   cmd_stop
   docker rm -f "$CONTAINER_NAME" 2>/dev/null || true

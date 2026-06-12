@@ -27,7 +27,7 @@ Flags: `--skip-push`, `--skip-deb`, `--dev-run`.
 ### Install on Debian/Ubuntu host
 
 ```bash
-sudo dpkg -i docker/dist/ai-editor-docker_1.0.6_amd64.deb
+sudo dpkg -i docker/dist/ai-editor-docker_1.0.7_amd64.deb
 sudo apt -f install
 ai-editor-info
 ```

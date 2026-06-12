@@ -11,11 +11,16 @@ import asyncio
 import enum
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ai_editor.core.exceptions import ValidationError
-from ai_editor.core.storage_paths import load_raw_config
+
+from .ca_config_bridge import (
+    build_jsonrpc_kwargs_from_ca_section,
+    load_resolved_ca_section,
+)
 
 from .code_analysis_file_transfer import (
     download_bytes_without_lock,
@@ -35,25 +40,6 @@ except Exception:  # pragma: no cover
 
 _client_lock = threading.Lock()
 _client_instance: Optional["CodeAnalysisClient"] = None
-
-
-def _resolve_config_path() -> Path:
-    try:
-        from mcp_proxy_adapter.config import get_config
-
-        cfg = get_config()
-        cfg_path = getattr(cfg, "config_path", None)
-        if isinstance(cfg_path, str) and cfg_path.strip():
-            return Path(cfg_path).expanduser().resolve()
-    except Exception:
-        pass
-    return (Path.cwd() / "config.json").resolve()
-
-
-def _expand_path(value: Any) -> Optional[str]:
-    if value is None or value == "":
-        return None
-    return str(Path(str(value)).expanduser().resolve())
 
 
 def _normalized_session_path(
@@ -89,49 +75,11 @@ def _accepted_upload_bytes(saved: Any, content: bytes) -> bytes:
 
 
 def _load_ca_section(config_path: Optional[Path] = None) -> Dict[str, Any]:
-    path = config_path or _resolve_config_path()
-    raw = load_raw_config(path)
-    section = raw.get("code_analysis_server") or {}
-    if not isinstance(section, dict):
-        section = {}
-    if section:
-        return {
-            **section,
-            "server_id": str(section.get("server_id") or "code-analysis-server"),
-            "command_transport": str(section.get("command_transport") or "direct"),
-        }
-    client = raw.get("client") or {}
-    ssl = client.get("ssl") if isinstance(client, dict) else {}
-    return {
-        "host": "192.168.254.26",
-        "port": 15001,
-        "protocol": "https",
-        "ssl": ssl if isinstance(ssl, dict) else {},
-        "server_id": "code-analysis-server",
-        "command_transport": "direct",
-    }
+    return load_resolved_ca_section(config_path)
 
 
 def _build_jsonrpc_kwargs(section: Dict[str, Any]) -> Dict[str, Any]:
-    host = str(section.get("host") or "127.0.0.1")
-    if host in ("0.0.0.0", "::", "[::]"):
-        host = "127.0.0.1"
-    raw_ssl = section.get("ssl")
-    ssl_section: Dict[str, Any] = raw_ssl if isinstance(raw_ssl, dict) else {}
-    cert = _expand_path(ssl_section.get("cert") or ssl_section.get("cert_path"))
-    key = _expand_path(ssl_section.get("key") or ssl_section.get("key_path"))
-    ca = _expand_path(ssl_section.get("ca") or ssl_section.get("ca_path"))
-    timeout = float(section.get("timeout") or 60.0)
-    return {
-        "protocol": str(section.get("protocol") or "https"),
-        "host": host,
-        "port": int(section.get("port") or 15001),
-        "cert": cert,
-        "key": key,
-        "ca": ca,
-        "check_hostname": bool(section.get("check_hostname", False)),
-        "timeout": timeout,
-    }
+    return build_jsonrpc_kwargs_from_ca_section(section)
 
 
 def _unwrap_command_result(response: Any) -> Any:
@@ -163,13 +111,62 @@ class CodeAnalysisClient:
         self._server_id = str(self._section.get("server_id") or "code-analysis-server")
 
     def _run_async(self, coroutine: Any) -> Any:
+        """Run awaitable from sync code; safe inside Hypercorn async handlers."""
+
+        def _blocking() -> Any:
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(coroutine)
+            finally:
+                loop.close()
+
         try:
             asyncio.get_running_loop()
+            in_async = True
         except RuntimeError:
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            return self._loop.run_until_complete(coroutine)
-        raise RuntimeError("CodeAnalysisClient.call() cannot run inside an active event loop")  # fmt: skip
+            in_async = False
+
+        if in_async:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(_blocking).result()
+
+        if self._loop is None or self._loop.is_closed():
+            self._loop = asyncio.new_event_loop()
+        return self._loop.run_until_complete(coroutine)
+
+    def run_in_isolated_loop(self, coroutine_factory: Any) -> Any:
+        """Build coroutine with a fresh JsonRpcClient in an isolated event loop."""
+
+        def _blocking() -> Any:
+            loop = asyncio.new_event_loop()
+            rpc = JsonRpcClient(**_build_jsonrpc_kwargs(self._section))
+            try:
+                return loop.run_until_complete(coroutine_factory(rpc))
+            finally:
+                loop.close()
+
+        try:
+            asyncio.get_running_loop()
+            in_async = True
+        except RuntimeError:
+            in_async = False
+
+        if in_async:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(_blocking).result()
+        return _blocking()
+
+    def _call_blocking(self, command: str, params: Dict[str, Any]) -> Any:
+        """Run one CA RPC in a fresh event loop (safe from any thread)."""
+        loop = asyncio.new_event_loop()
+        rpc = JsonRpcClient(**_build_jsonrpc_kwargs(self._section))
+        try:
+            response = loop.run_until_complete(
+                rpc.execute_command(command=command, params=params)
+            )
+            return _unwrap_command_result(response)
+        finally:
+            loop.close()
 
     def _ensure_rpc(self) -> JsonRpcClient:
         if self._rpc is None:
@@ -178,8 +175,19 @@ class CodeAnalysisClient:
 
     def call(self, command: str, params: Optional[Dict[str, Any]] = None) -> Any:
         """Execute a command on code-analysis-server and return unwrapped data."""
+        payload = params or {}
+        try:
+            asyncio.get_running_loop()
+            in_async = True
+        except RuntimeError:
+            in_async = False
+
+        if in_async:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(self._call_blocking, command, payload).result()
+
         rpc = self._ensure_rpc()
-        response = self._run_async(rpc.execute_command(command=command, params=params or {}))  # fmt: skip
+        response = self._run_async(rpc.execute_command(command=command, params=payload))
         return _unwrap_command_result(response)
 
     def list_projects(self, *, include_deleted: bool = False) -> List[Dict[str, Any]]:

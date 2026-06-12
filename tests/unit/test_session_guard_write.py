@@ -43,14 +43,18 @@ def _mock_session() -> EditSession:
 @pytest.mark.asyncio
 async def test_write_rejects_empty_session_id() -> None:
     cmd = UniversalFileWriteCommand()
-    with patch(
-        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
-        return_value=MagicMock(),
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
-    ) as mock_get, patch(
-        "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
-    ) as mock_compare:
+    with (
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+        ) as mock_get,
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+        ) as mock_compare,
+    ):
         result = await cmd.execute(
             project_id="p1",
             session_id="",
@@ -75,17 +79,22 @@ async def test_write_attempted_when_session_not_found_terminating() -> None:
     client = MagicMock()
     client.validate_ca_session.return_value = CaSessionStatus.NOT_FOUND
 
-    with patch(
-        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
-        return_value=client,
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
-        return_value=session,
-    ) as mock_get, patch(
-        "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
-        return_value=comparison,
-    ) as mock_compare, patch(
-        "ai_editor.core.workspace_session_cleanup.cleanup_zombie_ca_session",
+    with (
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=client,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+            return_value=session,
+        ) as mock_get,
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+            return_value=comparison,
+        ) as mock_compare,
+        patch(
+            "ai_editor.core.workspace_session_cleanup.cleanup_zombie_ca_session",
+        ),
     ):
         result = await cmd.execute(
             project_id="p1",
@@ -109,11 +118,11 @@ async def test_write_proceeds_on_allow_terminating_decision() -> None:
     ) as mock_guard_cls:
         mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW_TERMINATING
         with patch(
-            "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
             return_value=session,
         ) as mock_get:
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                 return_value=WriteComparison(
                     result=CompareResult.EQUAL,
                     origin_bytes=b"a",

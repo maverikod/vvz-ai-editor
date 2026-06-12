@@ -93,7 +93,7 @@ def test_python_invalid_returns_raw_source_via_marked_tree(tmp_path: Path) -> No
 
 @pytest.mark.asyncio
 async def test_open_does_not_preempt_write_preview_phase(tmp_path: Path) -> None:
-    """write_mode=preview is deferred in thin server; commit uploads draft."""
+    """write_mode=preview returns diff; commit uploads draft."""
     rel = "sample.py"
     content = b"def foo():\n    return 1\n"
     sid, workspace, origin, upstream = await open_ca_file(
@@ -136,8 +136,8 @@ async def test_open_does_not_preempt_write_preview_phase(tmp_path: Path) -> None
             file_path=rel,
             write_mode="preview",
         )
-    assert isinstance(preview, ErrorResult)
-    assert preview.code == "NOT_IMPLEMENTED"
+    assert isinstance(preview, SuccessResult)
+    assert preview.data.get("phase") == "preview"
     if tree_id:
         remove_tree(tree_id)
 
@@ -241,8 +241,8 @@ async def test_open_invalid_json_sets_is_invalid_and_allows_raw_edit(
             file_path=rel,
             write_mode="preview",
         )
-        assert isinstance(preview, ErrorResult)
-        assert preview.code == "NOT_IMPLEMENTED"
+        assert isinstance(preview, SuccessResult)
+        assert preview.data.get("phase") == "preview"
         commit = await wr.execute(
             project_id=_PROJECT_UUID,
             session_id=sid,
@@ -453,5 +453,5 @@ async def test_write_preview_invalid_session_always_succeeds(tmp_path: Path) -> 
             file_path=rel,
             write_mode="preview",
         )
-    assert isinstance(preview, ErrorResult)
-    assert preview.code == "NOT_IMPLEMENTED"
+    assert isinstance(preview, SuccessResult)
+    assert preview.data.get("phase") == "preview"

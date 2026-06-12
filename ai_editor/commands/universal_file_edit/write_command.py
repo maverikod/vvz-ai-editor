@@ -6,26 +6,18 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, Type, cast
 
-from mcp_proxy_adapter.commands.result import CommandResult, ErrorResult, SuccessResult
+from mcp_proxy_adapter.commands.result import CommandResult, ErrorResult
 
 from ai_editor.commands.base_mcp_command import BaseMCPCommand
-from ai_editor.commands.universal_file_edit.errors import (
-    SESSION_FILE_PATH_REQUIRED,
-    SESSION_NOT_FOUND,
-    error_result_from_make_error,
-    make_error,
-)
-from ai_editor.commands.universal_file_edit.session import resolve_session_for_command
-from ai_editor.commands.universal_file_edit.write_compare import (
-    CompareResult,
-    compare_session_to_origin,
-)
 from ai_editor.commands.universal_file_edit.write_command_metadata import (
     get_universal_file_write_metadata,
 )
+from ai_editor.commands.universal_file_edit.write_command_runtime import (
+    run_write_execute,
+)
+from ai_editor.core.exceptions import ValidationError
 from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
 from ai_editor.core.upstream.session_guard import (
     GuardDecision,
@@ -33,15 +25,16 @@ from ai_editor.core.upstream.session_guard import (
     SessionGuard,
 )
 
-logger = logging.getLogger(__name__)
-
 
 class UniversalFileWriteCommand(BaseMCPCommand):
-    """Compare edit workspace to origin; upload when changed (C-012)."""
+    """Preview diff vs origin; commit uploads to CA when changed (C-012)."""
 
     name = "universal_file_write"
     version = "1.0.0"
-    descr = "Compare edit workspace to origin and upload if changed"
+    descr = (
+        "Write universal file edit draft: preview/commit diff vs origin; "
+        "two-phase PID lockfile for sidecar when write_mode is omitted."
+    )
     category = "file_management"
     author = "Vasiliy Zdanovskiy"
     email = "vasilyvz@gmail.com"
@@ -62,17 +55,18 @@ class UniversalFileWriteCommand(BaseMCPCommand):
                     "type": "string",
                     "description": (
                         "Project-relative path. Required when the CA session has "
-                        "more than one open file (see multi_file_bundle from open). "
-                        "Optional when exactly one file is open."
+                        "more than one open file. Optional when one file is open."
                     ),
                 },
                 "write_mode": {
                     "type": "string",
                     "enum": ["preview", "commit"],
-                    "default": "commit",
+                    "default": "preview",
                     "description": (
-                        "commit: compare canonical export to origin and upload if "
-                        "changed. preview: not implemented in this step."
+                        "preview: unified diff vs origin (no CA upload). "
+                        "commit: upload when content differs. "
+                        "Sidecar (.py): omitted write_mode uses two-phase lockfile "
+                        "(first call preview+lock, second call commit)."
                     ),
                 },
             },
@@ -82,6 +76,16 @@ class UniversalFileWriteCommand(BaseMCPCommand):
 
     def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         validated: Dict[str, Any] = super().validate_params(params)
+        wm_raw = validated.get("write_mode")
+        wm = "preview" if wm_raw is None else wm_raw
+        if wm not in ("preview", "commit"):
+            raise ValidationError(
+                "write_mode must be 'preview' or 'commit'",
+                field="write_mode",
+                details={"write_mode": wm},
+            )
+        validated["write_mode"] = wm
+        validated["write_mode_explicit"] = wm_raw is not None
         return validated
 
     @classmethod
@@ -92,7 +96,8 @@ class UniversalFileWriteCommand(BaseMCPCommand):
         project_id = str(kwargs.get("project_id", ""))
         ca_session_id = str(kwargs.get("session_id", ""))
         file_path = str(kwargs.get("file_path", ""))
-        write_mode = str(kwargs.get("write_mode", "commit"))
+        write_mode = str(kwargs.get("write_mode", "preview"))
+        write_mode_explicit = bool(kwargs.get("write_mode_explicit", False))
 
         guard = SessionGuard(get_code_analysis_client())
         decision = guard.check(OperationKind.WRITE, ca_session_id)
@@ -102,72 +107,11 @@ class UniversalFileWriteCommand(BaseMCPCommand):
                 code=cast(Any, "SESSION_REJECTED"),
             )
 
-        try:
-            session = resolve_session_for_command(
-                ca_session_id,
-                file_path or None,
-            )
-        except ValueError as exc:
-            msg = str(exc)
-            if msg == "SESSION_FILE_PATH_REQUIRED":
-                return error_result_from_make_error(
-                    make_error(
-                        SESSION_FILE_PATH_REQUIRED,
-                        "file_path is required when the session has multiple open files",
-                        details={"session_id": ca_session_id},
-                    )
-                )
-            return error_result_from_make_error(
-                make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}")
-            )
-
-        if write_mode != "commit":
-            return ErrorResult(
-                message="write_mode=preview not implemented in this step",
-                code=cast(Any, "NOT_IMPLEMENTED"),
-            )
-
-        comparison = compare_session_to_origin(session)
-        if comparison.result == CompareResult.EQUAL:
-            return SuccessResult(
-                data={
-                    "unchanged": True,
-                    "uploaded": False,
-                    "session_id": ca_session_id,
-                    "project_id": project_id,
-                    "file_path": session.file_path,
-                }
-            )
-
-        client = get_code_analysis_client()
-        try:
-            accepted = client.upload_session_file_content(
-                session_id=ca_session_id,
-                project_id=project_id,
-                file_path=session.file_path,
-                content=comparison.exported_bytes,
-            )
-        except RuntimeError as exc:
-            logger.error("universal_file_write upload failed: %s", exc)
-            return ErrorResult(
-                message=str(exc),
-                code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
-                details={"upstream_error": str(exc)},
-            )
-        except Exception as exc:
-            logger.error("universal_file_write upload failed: %s", exc, exc_info=True)
-            return ErrorResult(
-                message=str(exc),
-                code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
-                details={"upstream_error": str(exc)},
-            )
-        session.abs_path.write_bytes(accepted)
-        return SuccessResult(
-            data={
-                "unchanged": False,
-                "uploaded": True,
-                "session_id": ca_session_id,
-                "project_id": project_id,
-                "file_path": session.file_path,
-            }
+        return await run_write_execute(
+            project_id=project_id,
+            session_id=ca_session_id,
+            write_mode=write_mode,
+            write_mode_explicit=write_mode_explicit,
+            file_path=file_path,
+            client=get_code_analysis_client(),
         )

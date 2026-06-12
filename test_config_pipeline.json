@@ -1,0 +1,282 @@
+{
+  "enable_qa_mcp_hooks": true,
+  "server_presentation": {
+    "title": "AI Editor Server",
+    "version": "1.0.4",
+    "description": "AI Editor server for Python projects: CST editing, code indexes, semantic and fulltext search, refactoring helpers, backups, and quality checks (Black, Flake8, Mypy).\n\n### MCP Proxy (recommended)\n- Discover servers: `list_servers`\n- Discover projects: `list_projects` \u2192 use `project_id` for all project-scoped commands\n- Execute: `call_server(server_id=\"ai-editor-server\", copy_number=1, command=\"<name>\", params={...})`\n- Paths are project-relative (`file_path`); do not pass host filesystem `root_dir`\n- Long-running work returns `job_id`; poll with `queue_get_job_status` and `queue_get_job_logs`\n- Command schemas: `help(server_id=\"ai-editor-server\", command=\"<name>\")`\n\n### Direct API\n- OpenAPI document: `GET /openapi.json` (HTTPS/mTLS per `server` and `registration` in this config)\n- JSON-RPC command execution as described in the OpenAPI schema"
+  },
+  "server": {
+    "host": "172.18.0.1",
+    "port": 15000,
+    "protocol": "https",
+    "servername": "ai-editor-server",
+    "advertised_host": "172.18.0.1",
+    "debug": false,
+    "log_level": "INFO",
+    "ssl": {
+      "cert": "mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
+      "key": "mtls_certificates/mtls_certificates/server/ai-editor-server.key",
+      "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    },
+    "log_dir": "./logs"
+  },
+  "client": {
+    "enabled": false,
+    "protocol": "https",
+    "ssl": {
+      "cert": "mtls_certificates/mtls_certificates/client/ai-editor.crt",
+      "key": "mtls_certificates/mtls_certificates/client/ai-editor.key",
+      "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    }
+  },
+  "registration": {
+    "enabled": true,
+    "protocol": "https",
+    "register_url": "https://127.0.0.1:3004/register",
+    "unregister_url": "https://127.0.0.1:3004/unregister",
+    "heartbeat_interval": 30,
+    "server_id": "ai-editor-server",
+    "server_name": "AI Editor Server",
+    "metadata": {
+      "server_id": "ai-editor-server",
+      "server_name": "AI Editor Server",
+      "description": "AI Editor server for Python projects: CST editing, code indexes, semantic and fulltext search, refactoring helpers, backups, and quality checks (Black, Flake8, Mypy).\n\n### MCP Proxy (recommended)\n- Discover servers: `list_servers`\n- Discover projects: `list_projects` \u2192 use `project_id` for all project-scoped commands\n- Execute: `call_server(server_id=\"ai-editor-server\", copy_number=1, command=\"<name>\", params={...})`\n- Paths are project-relative (`file_path`); do not pass host filesystem `root_dir`\n- Long-running work returns `job_id`; poll with `queue_get_job_status` and `queue_get_job_logs`\n- Command schemas: `help(server_id=\"ai-editor-server\", command=\"<name>\")`\n\n### Direct API\n- OpenAPI document: `GET /openapi.json` (HTTPS/mTLS per `server` and `registration` in this config)\n- JSON-RPC command execution as described in the OpenAPI schema",
+      "version": "1.0.4"
+    },
+    "instance_uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "auto_on_startup": true,
+    "auto_on_shutdown": true,
+    "ssl": {
+      "cert": "mtls_certificates/mtls_certificates/client/ai-editor.crt",
+      "key": "mtls_certificates/mtls_certificates/client/ai-editor.key",
+      "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    },
+    "heartbeat": {
+      "url": "https://127.0.0.1:3004/proxy/heartbeat",
+      "interval": 30
+    }
+  },
+  "server_validation": {
+    "enabled": false,
+    "protocol": "mtls",
+    "timeout": 10,
+    "use_token": false,
+    "use_roles": false,
+    "tokens": {},
+    "roles": {},
+    "auth_header": "X-API-Key",
+    "roles_header": "X-Roles",
+    "health_path": "/health",
+    "check_hostname": false,
+    "ssl": {
+      "cert": "mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
+      "key": "mtls_certificates/mtls_certificates/server/ai-editor-server.key",
+      "ca": "mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    }
+  },
+  "auth": {
+    "use_token": false,
+    "use_roles": false,
+    "tokens": {},
+    "roles": {}
+  },
+  "queue_manager": {
+    "enabled": true,
+    "in_memory": true,
+    "registry_path": null,
+    "shutdown_timeout": 30.0,
+    "max_concurrent_jobs": 5,
+    "max_queue_size": null,
+    "per_job_type_limits": null,
+    "completed_job_retention_seconds": 21600
+  },
+  "transport": {
+    "type": "https",
+    "verify_client": true,
+    "chk_hostname": false
+  },
+  "process_management": {
+    "shutdown_grace_seconds": 10.0
+  },
+  "ai_editor": {
+    "git_commit_on_write": true,
+    "host": "127.0.0.1",
+    "port": 15000,
+    "log": "logs/ai_editor.log",
+    "db_path": "/home/vasilyvz/projects/tools/ai_editor/data/ai_editor.db",
+    "dirs": [],
+    "chunker": {
+      "enabled": true,
+      "url": "localhost",
+      "port": 8009,
+      "protocol": "mtls",
+      "cert_file": "mtls_certificates/mtls_certificates/client/ai-editor.crt",
+      "key_file": "mtls_certificates/mtls_certificates/client/ai-editor.key",
+      "ca_cert_file": "mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl_file": null,
+      "retry_attempts": 3,
+      "retry_delay": 5.0,
+      "timeout": 600.0,
+      "check_hostname": false
+    },
+    "embedding": {
+      "enabled": true,
+      "host": "embedding-service.techsup.od.ua",
+      "port": 8001,
+      "protocol": "mtls",
+      "cert_file": "mtls_certificates/mtls_certificates/client/ai-editor.crt",
+      "key_file": "mtls_certificates/mtls_certificates/client/ai-editor.key",
+      "ca_cert_file": "mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl_file": null,
+      "retry_attempts": 3,
+      "retry_delay": 5.0,
+      "timeout": 120.0,
+      "check_hostname": false
+    },
+    "database": {
+      "driver": {
+        "type": "postgres",
+        "config": {
+          "host": "ai-editor-db.techsup.od.ua",
+          "port": 5432,
+          "dbname": "ai_editor",
+          "user": "ai_editor",
+          "password_env": "AI_EDITOR_POSTGRES_PASSWORD"
+        }
+      },
+      "rpc": {
+        "shm_threshold_bytes": 65536,
+        "shm_enabled": true
+      }
+    },
+    "faiss_index_path": "data/faiss_index.bin",
+    "vector_dim": 384,
+    "min_chunk_length": 30,
+    "vectorization_retry_attempts": 3,
+    "vectorization_retry_delay": 10.0,
+    "log_vectorization_chunker_trace": true,
+    "ignore_exceptions": [],
+    "venv_site_packages_index_allowlisted_distributions": [],
+    "worker": {
+      "enabled": false,
+      "poll_interval": 30,
+      "batch_size": 5,
+      "max_files_per_pass": 30,
+      "log_all_operations_timing": true,
+      "retry_attempts": 3,
+      "retry_delay": 10.0,
+      "watch_dirs": [
+        {
+          "id": "550e8400-e29b-41d4-a716-446655440001",
+          "path": "/home/vasilyvz/projects/tools",
+          "ignore_patterns": [
+            "**/.venv/**",
+            "**/venv/**",
+            "**/ENV/**",
+            "**/env/**",
+            "**/__pycache__/**",
+            "**/.pytest_cache/**",
+            "**/.mypy_cache/**",
+            "**/.eggs/**",
+            "**/eggs/**",
+            "**/old_code/**",
+            "**/data/**",
+            "**/*.egg-info/**",
+            "**/*.egg",
+            "**/develop-eggs/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/wheels/**",
+            "**/.tox/**",
+            "**/.cache/**",
+            "**/htmlcov/**",
+            "**/.coverage",
+            "**/node_modules/**",
+            "**/test_data/**"
+          ]
+        },
+        {
+          "id": "test-pipeline",
+          "path": "/home/vasilyvz/projects/tools/ai_editor/test_data"
+        }
+      ],
+      "log_path": "logs/vectorization_worker.log",
+      "circuit_breaker": {
+        "failure_threshold": 5,
+        "recovery_timeout": 60.0,
+        "success_threshold": 2,
+        "initial_backoff": 5.0,
+        "max_backoff": 300.0,
+        "backoff_multiplier": 2.0
+      },
+      "batch_processor": {
+        "max_empty_iterations": 3,
+        "empty_delay": 5.0
+      },
+      "log_rotation": {
+        "max_bytes": 10485760,
+        "backup_count": 5
+      }
+    },
+    "file_watcher": {
+      "enabled": false,
+      "scan_interval": 60,
+      "log_path": "logs/file_watcher.log",
+      "version_dir": "data/versions",
+      "max_scan_duration": 300,
+      "ignore_patterns": [
+        "**/__pycache__/**",
+        "**/.git/**",
+        "**/old_code/**",
+        "**/node_modules/**",
+        "**/.venv/**",
+        "**/venv/**",
+        "**/env/**",
+        "**/ENV/**",
+        "**/cache/**",
+        "**/env.bak/**",
+        "**/venv.bak/**"
+      ],
+      "log_rotation": {
+        "max_bytes": 10485760,
+        "backup_count": 5
+      }
+    },
+    "indexing_worker": {
+      "enabled": false,
+      "poll_interval": 30,
+      "batch_size": 5,
+      "log_path": "logs/indexing_worker.log"
+    },
+    "docs_indexing": {
+      "enabled": true,
+      "vectorize": true,
+      "roots": [
+        "docs"
+      ],
+      "include": [
+        "docs/**/*.md",
+        "docs/*.md",
+        "docs/**/*.yml",
+        "docs/*.yml",
+        "docs/**/*.yaml",
+        "docs/*.yaml"
+      ],
+      "exclude": [
+        "docs/ai_reports/**"
+      ]
+    }
+  }
+}

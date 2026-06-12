@@ -72,7 +72,7 @@ async def _open_text(
 
 @pytest.mark.asyncio
 async def test_text_write_preview_does_not_touch_disk(tmp_path: Path) -> None:
-    """write_mode=preview is deferred; origin stays unchanged while draft is edited."""
+    """write_mode=preview returns diff; origin stays unchanged while draft is edited."""
     rel = _REL
     sid, workspace, origin = await _open_text(tmp_path, rel)
     before = origin.read_text(encoding="utf-8")
@@ -116,10 +116,11 @@ async def test_text_write_preview_does_not_touch_disk(tmp_path: Path) -> None:
             )
         )
 
-    assert isinstance(r1, ErrorResult)
-    assert r1.code == "NOT_IMPLEMENTED"
-    assert isinstance(r2, ErrorResult)
-    assert r2.code == "NOT_IMPLEMENTED"
+    assert isinstance(r1, SuccessResult)
+    assert r1.data.get("phase") == "preview"
+    assert r1.data.get("has_changes") is True
+    assert isinstance(r2, SuccessResult)
+    assert r2.data.get("phase") == "preview"
     assert origin.read_text(encoding="utf-8") == before
 
 

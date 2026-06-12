@@ -62,11 +62,11 @@ async def test_upload_success_writes_origin_snapshot() -> None:
         ) as mock_guard_cls:
             mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
                 return_value=session,
             ):
                 with patch(
-                    "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
                     result = await cmd.execute(
@@ -104,11 +104,11 @@ async def test_upload_runtime_error_preserves_origin() -> None:
         ) as mock_guard_cls:
             mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
                 return_value=session,
             ):
                 with patch(
-                    "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
                     result = await cmd.execute(
@@ -142,11 +142,11 @@ async def test_upload_generic_exception_preserves_origin() -> None:
         ) as mock_guard_cls:
             mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
             with patch(
-                "ai_editor.commands.universal_file_edit.write_command.resolve_session_for_command",
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
                 return_value=session,
             ):
                 with patch(
-                    "ai_editor.commands.universal_file_edit.write_command.compare_session_to_origin",
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
                     result = await cmd.execute(

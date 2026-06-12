@@ -27,8 +27,13 @@ COPY requirements.txt pyproject.toml ./
 COPY ai_editor/ ai_editor/
 COPY aiedmgr_entry/ aiedmgr_entry/
 COPY scripts/aiedmgr scripts/aiedmgr
+COPY scripts/aiedcfg scripts/aiedcfg
 
 RUN pip install --default-timeout=300 --no-cache-dir -r requirements.txt
+
+RUN mkdir -p "$CONFIG_DIR" && python -c "\
+from ai_editor.config_templates import copy_bundled_template; \
+copy_bundled_template('${CONFIG_DIR}', overwrite=True)"
 
 RUN groupadd -g 1000 appuser && \
     useradd -u 1000 -g appuser -s /bin/bash -m appuser && \
@@ -42,4 +47,4 @@ EXPOSE 15000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f -sk https://localhost:15000/health || exit 1
 
-CMD ["sh", "-c", "exec python -m ai_editor.main --config ${CONFIG_DIR}/${CONFIG_FILE:-ai_editor_container.json} --foreground"]
+CMD ["sh", "-c", "cd \"${LOG_DIR}\" && exec python -m ai_editor.main --config ${CONFIG_DIR}/${CONFIG_FILE:-ai_editor_container.json} --foreground"]

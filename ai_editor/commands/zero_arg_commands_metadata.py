@@ -23,7 +23,7 @@ def health_command_metadata(cls: Type[Any]) -> Dict[str, Any]:
         "return_value": {
             "success": {
                 "description": "Health payload with status, version, uptime, and components.",
-                "data": {"status": "ok", "version": "1.0.6", "uptime": 12.5},
+                "data": {"status": "ok", "version": "1.0.7", "uptime": 12.5},
             }
         },
         "usage_examples": [

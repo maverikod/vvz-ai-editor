@@ -17,7 +17,6 @@ AI_EDITOR_MTLS_DIR=/etc/ai-editor/mtls_certificates
 AI_EDITOR_CONTAINER=ai-editor
 AI_EDITOR_NETWORK_PRIMARY=smart-assistant
 AI_EDITOR_NETWORK_SECONDARY=ai-editor-net
-AI_EDITOR_IP_HOST_NUM=4
 AI_EDITOR_DOCKER_DNS_NAME=ai-editor-server
 
 AI_EDITOR_SHM_SIZE=1g
@@ -28,3 +27,9 @@ AI_EDITOR_ULIMIT_NOFILE=65536:65536
 
 # Set to 1 on recreate to docker pull before container recreate.
 # AI_EDITOR_PULL_ON_RECREATE=0
+
+# Placeholders in /etc/ai-editor/ai_editor_container.json — REQUIRED before start:
+# AI_EDITOR_ADVERTISED_HOST=your-host-or-ip
+# AI_EDITOR_REGISTRATION_HOST=mcp-proxy-host
+# AI_EDITOR_REGISTRATION_PORT=3004
+# AI_EDITOR_CODE_ANALYSIS_HOST=code-analysis-host
