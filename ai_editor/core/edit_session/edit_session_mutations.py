@@ -97,16 +97,26 @@ def build_session_tree(session: EditSession, source_text: str) -> bool:
     """Build marked tree in session dir using MAP from session tree file."""
     handler = HandlerRegistry.default_registry().resolve(session.source_abs)
     marked_text = handler.mark(source_text)
-    nodes = handler.parse_content(Path(session.file_path), source_text)
-    discovered: list[DiscoveredNode] = [
-        DiscoveredNode(
-            content_fingerprint=compute_content_fingerprint(node.content),
-            kind=node.kind,
-            marker_short_id=int(node.short_id),
-            attributes=dict(node.attributes),
+    from ai_editor.tree.handlers.python_handler import PythonHandler
+
+    if isinstance(handler, PythonHandler):
+        discovered_raw = handler.discover_marked_nodes(
+            marked_text,
+            source_text,
+            Path(session.file_path),
         )
-        for node in nodes
-    ]
+        discovered: list[DiscoveredNode] = list(discovered_raw)
+    else:
+        nodes = handler.parse_content(Path(session.file_path), source_text)
+        discovered = [
+            DiscoveredNode(
+                content_fingerprint=compute_content_fingerprint(node.content),
+                kind=node.kind,
+                marker_short_id=int(node.short_id),
+                attributes=dict(node.attributes),
+            )
+            for node in nodes
+        ]
     if not discovered:
         return False
     prior_map = None

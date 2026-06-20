@@ -26,5 +26,6 @@ PostgreSQL password: set `AI_EDITOR_POSTGRES_PASSWORD` in the container environm
 (`docker/container.env.local` for dev, `/etc/default/ai-editor` for production).
 
 Network placeholders: set `AI_EDITOR_ADVERTISED_HOST`, `AI_EDITOR_REGISTRATION_HOST`,
-`AI_EDITOR_REGISTRATION_PORT` (default 3004), and `AI_EDITOR_CODE_ANALYSIS_HOST` in
-`.env` or container env — see `.env.example`.
+`AI_EDITOR_REGISTRATION_PORT` (default 3004), `AI_EDITOR_CODE_ANALYSIS_HOST`, and
+`AI_EDITOR_CODE_ANALYSIS_PORT` (default **15010**, not legacy 15001) in `.env` or
+container env — see `.env.example`.

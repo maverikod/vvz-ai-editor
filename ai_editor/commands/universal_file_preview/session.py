@@ -63,16 +63,27 @@ def merge_edit_session_into_preview_params(
     )
     from ai_editor.commands.universal_file_edit.session import get_session
 
+    file_path = params.get("file_path")
     try:
-        edit_sess = get_session(session_id)
-    except ValueError:
+        edit_sess = get_session(
+            str(session_id),
+            file_path=str(file_path).strip() if file_path else None,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "SESSION_FILE_PATH_REQUIRED":
+            return input_error(
+                INPUT_ERROR_CONFLICTING_PARAMETERS,
+                "file_path is required when the session has multiple open files",
+                details={"session_id": session_id},
+            )
         return input_error(
             INPUT_ERROR_CONFLICTING_PARAMETERS,
             f"session_id {session_id!r} not found in edit session registry.",
             details={"session_id": session_id},
         )
 
-    rel_path = params.get("file_path")
+    rel_path = file_path
     if rel_path is not None and Path(edit_sess.file_path) != Path(rel_path):
         return input_error(
             INPUT_ERROR_CONFLICTING_PARAMETERS,

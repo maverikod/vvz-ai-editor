@@ -38,6 +38,7 @@ def _package_version() -> str:
 
 LEGACY_CA_HOST = "192.168.254.26"
 LEGACY_CA_PORT = 15001
+CURRENT_CA_PORT = 15010
 DEFAULT_CA_SERVER_ID = "code-analysis-server"
 DEFAULT_CA_TIMEOUT = 60.0
 DEFAULT_WORKSPACE_ROOT = "data/editor_workspaces"
@@ -62,6 +63,15 @@ class EditorExtensionValidator:
     def __init__(self, config_path: Optional[str] = None) -> None:
         self._config_path = config_path
         self._ssl = SSLValidator(config_path)
+
+    @staticmethod
+    def _coerce_port(value: Any) -> Optional[int]:
+        if isinstance(value, int):
+            return value if 1 <= value <= 65535 else None
+        if isinstance(value, str) and value.strip().isdigit():
+            port = int(value.strip())
+            return port if 1 <= port <= 65535 else None
+        return None
 
     def validate(
         self, config_data: Mapping[str, Any]
@@ -134,12 +144,16 @@ class EditorExtensionValidator:
                 )
             )
 
-        port = section.get("port")
-        if not isinstance(port, int) or port < 1 or port > 65535:
+        port_raw = section.get("port")
+        port = self._coerce_port(port_raw)
+        if port is None:
             issues.append(
                 EditorConfigValidationIssue(
                     level="error",
-                    message="code_analysis_server.port must be an integer 1..65535",
+                    message=(
+                        "code_analysis_server.port must be an integer 1..65535 "
+                        "(or ${AI_EDITOR_CODE_ANALYSIS_PORT} placeholder)"
+                    ),
                     section="code_analysis_server",
                     key="port",
                 )
@@ -182,7 +196,7 @@ class EditorExtensionValidator:
                 )
             )
 
-        if host == LEGACY_CA_HOST and isinstance(port, int) and port == LEGACY_CA_PORT:
+        if host == LEGACY_CA_HOST and port == LEGACY_CA_PORT:
             issues.append(
                 EditorConfigValidationIssue(
                     level="error",
@@ -194,7 +208,24 @@ class EditorExtensionValidator:
                     section="code_analysis_server",
                     suggestion=(
                         "Set --code-analysis-host/--code-analysis-port to match "
-                        "list_servers() server_url for code-analysis-server"
+                        "list_servers() server_url for code-analysis-server "
+                        f"(expected port {CURRENT_CA_PORT})"
+                    ),
+                )
+            )
+        elif port == LEGACY_CA_PORT:
+            issues.append(
+                EditorConfigValidationIssue(
+                    level="error",
+                    message=(
+                        f"code_analysis_server.port is legacy {LEGACY_CA_PORT}; "
+                        f"code-analysis-server listens on {CURRENT_CA_PORT}"
+                    ),
+                    section="code_analysis_server",
+                    key="port",
+                    suggestion=(
+                        f"Set port to {CURRENT_CA_PORT} or "
+                        "${{AI_EDITOR_CODE_ANALYSIS_PORT}} in the container config"
                     ),
                 )
             )

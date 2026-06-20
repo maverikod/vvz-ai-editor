@@ -672,6 +672,16 @@ def _resolve_addressable_parent_short_id(
     return None
 
 
+def _internal_to_short_from_sid_index(
+    tree: CSTTree, sid_index: Dict[int, str]
+) -> Dict[str, int]:
+    """Map span node_id -> marked short_id for parent resolution."""
+    out: Dict[str, int] = {}
+    for sid, stable_id in sid_index.items():
+        out[_stable_to_internal(tree, stable_id)] = sid
+    return out
+
+
 def _strip_trailing_id_comments(source: str) -> str:
     lines = source.splitlines(keepends=True)
     out: List[str] = []
@@ -690,6 +700,91 @@ class PythonHandler(FormatHandler):
 
     def set_tree_validity(self, is_valid: bool) -> None:
         self._tree_is_valid = is_valid
+
+    def discover_marked_nodes(
+        self,
+        marked_text: str,
+        unmarked_source: str,
+        file_path: Path,
+    ) -> list[Any]:
+        """Build MAP ``DiscoveredNode`` rows from marked TREE short_ids (edit truth)."""
+        from ai_editor.core.tree_lifecycle.node_id_map import (
+            DiscoveredNode,
+            compute_content_fingerprint,
+        )
+
+        del file_path
+        tree, sid_index = _load_marked_tree(marked_text)
+        discovered: list[DiscoveredNode] = []
+        for sid in sorted(sid_index):
+            stable_id = sid_index[sid]
+            node_id = _stable_to_internal(tree, stable_id)
+            meta = tree.metadata_map[node_id]
+            cst_node = tree.node_map.get(node_id)
+            kind = (
+                get_node_kind(cst_node, [])
+                if cst_node is not None
+                else (meta.kind or meta.type)
+            )
+            content = _extract_line_span(
+                unmarked_source, meta.start_line, meta.end_line
+            )
+            discovered.append(
+                DiscoveredNode(
+                    content_fingerprint=compute_content_fingerprint(content),
+                    kind=kind,
+                    marker_short_id=sid,
+                    attributes={
+                        "start_line": meta.start_line,
+                        "end_line": meta.end_line,
+                        "node_type": meta.type,
+                        "internal_node_id": stable_id,
+                    },
+                )
+            )
+        return discovered
+
+    def preview_nodes_from_marked(
+        self,
+        marked_text: str,
+        unmarked_source: str,
+        *,
+        map_uuids: Optional[Dict[int, str]] = None,
+    ) -> List[TreeNode]:
+        """Build preview ``TreeNode`` list aligned with marked TREE short_ids."""
+        tree, sid_index = _load_marked_tree(marked_text)
+        internal_to_short = _internal_to_short_from_sid_index(tree, sid_index)
+        nodes: List[TreeNode] = []
+        for sid in sorted(sid_index):
+            stable_id = sid_index[sid]
+            node_id = _stable_to_internal(tree, stable_id)
+            meta = tree.metadata_map[node_id]
+            cst_node = tree.node_map.get(node_id)
+            kind = (
+                get_node_kind(cst_node, [])
+                if cst_node is not None
+                else (meta.kind or meta.type)
+            )
+            stable_ref = (map_uuids or {}).get(sid, stable_id)
+            nodes.append(
+                TreeNode(
+                    short_id=NodeId(sid),
+                    kind=kind,
+                    content=_extract_line_span(
+                        unmarked_source, meta.start_line, meta.end_line
+                    ),
+                    attributes={
+                        "start_line": meta.start_line,
+                        "end_line": meta.end_line,
+                        "node_type": meta.type,
+                        "internal_node_id": stable_ref,
+                    },
+                    parent_short_id=_resolve_addressable_parent_short_id(
+                        node_id, tree, internal_to_short
+                    ),
+                )
+            )
+        return nodes
 
     def _enforce_short_id_edit_gate(self) -> None:
         if not self._tree_is_valid:

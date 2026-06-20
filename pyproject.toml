@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-editor"
-version = "1.0.11"
+version = "1.0.24"
 description = "AI Editor MCP server: universal file preview, open, edit, write, and close"
 readme = { file = "docs/README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -25,6 +25,9 @@ dependencies = [
     "queuemgr>=1.0.19",
     "dulwich>=1.2.4",
     "markdown-it-py>=3.0",
+    "black>=24.0",
+    "flake8>=7.0",
+    "mypy>=1.8",
 ]
 # PostgreSQL logical backup (backup_database / restore_database) also needs OS binaries
 # pg_dump and pg_restore (e.g. Debian/Ubuntu: apt install postgresql-client). Pip cannot

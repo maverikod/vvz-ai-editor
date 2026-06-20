@@ -5,6 +5,9 @@
 **Source:** `code_analysis/commands/universal_file_edit/search_command.py`  
 **Category:** file_management
 
+> **Not registered** in the current thin-server MCP registry (`hooks_register_part2.py`). \
+> Use [`universal_file_preview`](universal_file_preview.md) drill-down for navigation instead.
+
 Author: Vasiliy Zdanovskiy  
 email: vasilyvz@gmail.com
 

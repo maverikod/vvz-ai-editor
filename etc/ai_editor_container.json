@@ -1,0 +1,138 @@
+{
+  "enable_qa_mcp_hooks": false,
+  "server_presentation": {
+    "title": "AI Editor Server",
+    "version": "1.0.7",
+    "description": "AI Editor server: universal file preview, open, edit, write, and close"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 15000,
+    "protocol": "https",
+    "servername": "ai-editor-server",
+    "advertised_host": "192.168.254.28",
+    "debug": false,
+    "log_level": "INFO",
+    "ssl": {
+      "cert": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
+      "key": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.key",
+      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    },
+    "log_dir": "/var/log/ai-editor"
+  },
+  "client": {
+    "enabled": false,
+    "protocol": "https",
+    "ssl": {
+      "cert": "/app/mtls_certificates/mtls_certificates/client/ai-editor.crt",
+      "key": "/app/mtls_certificates/mtls_certificates/client/ai-editor.key",
+      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    }
+  },
+  "registration": {
+    "enabled": true,
+    "protocol": "https",
+    "register_url": "https://192.168.254.26:3004/register",
+    "unregister_url": "https://192.168.254.26:3004/unregister",
+    "heartbeat_interval": 30,
+    "server_id": "ai-editor-server",
+    "server_name": "AI Editor Server",
+    "metadata": {
+      "server_id": "ai-editor-server",
+      "server_name": "AI Editor Server",
+      "description": "AI Editor server for project files: preview, open, edit, write, and close across Python, JSON, YAML, Markdown, and text.",
+      "version": "1.0.7"
+    },
+    "instance_uuid": "f0d5e993-8271-46a8-b70c-d67b9510182b",
+    "auto_on_startup": true,
+    "auto_on_shutdown": true,
+    "ssl": {
+      "cert": "/app/mtls_certificates/mtls_certificates/client/ai-editor.crt",
+      "key": "/app/mtls_certificates/mtls_certificates/client/ai-editor.key",
+      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    },
+    "heartbeat": {
+      "url": "https://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/proxy/heartbeat",
+      "interval": 30
+    }
+  },
+  "server_validation": {
+    "enabled": false,
+    "protocol": "mtls",
+    "timeout": 10,
+    "use_token": false,
+    "use_roles": false,
+    "tokens": {},
+    "roles": {},
+    "auth_header": "X-API-Key",
+    "roles_header": "X-Roles",
+    "health_path": "/health",
+    "check_hostname": false,
+    "ssl": {
+      "cert": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
+      "key": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.key",
+      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    }
+  },
+  "auth": {
+    "use_token": false,
+    "use_roles": false,
+    "tokens": {},
+    "roles": {}
+  },
+  "queue_manager": {
+    "enabled": true,
+    "in_memory": true,
+    "registry_path": null,
+    "shutdown_timeout": 30.0,
+    "max_concurrent_jobs": 5,
+    "max_queue_size": null,
+    "per_job_type_limits": null,
+    "completed_job_retention_seconds": 21600
+  },
+  "transport": {
+    "type": "https",
+    "verify_client": true,
+    "chk_hostname": false
+  },
+  "process_management": {
+    "shutdown_grace_seconds": 10.0
+  },
+  "code_analysis_server": {
+    "host": "${AI_EDITOR_CODE_ANALYSIS_HOST}",
+    "port": "15010",
+    "protocol": "https",
+    "timeout": 60.0,
+    "check_hostname": false,
+    "ssl": {
+      "cert": "/app/mtls_certificates/mtls_certificates/client/ai-editor.crt",
+      "key": "/app/mtls_certificates/mtls_certificates/client/ai-editor.key",
+      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "crl": null,
+      "dnscheck": false,
+      "check_hostname": false
+    }
+  },
+  "ai_editor": {
+    "git_commit_on_write": true,
+    "host": "0.0.0.0",
+    "port": 15000,
+    "log": "/var/log/ai-editor/ai_editor.log",
+    "dirs": [],
+    "storage": {
+      "workspace_root": "/var/ai-editor/editor_workspaces"
+    }
+  }
+}

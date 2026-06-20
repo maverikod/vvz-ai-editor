@@ -112,7 +112,7 @@
   },
   "code_analysis_server": {
     "host": "${AI_EDITOR_CODE_ANALYSIS_HOST}",
-    "port": 15001,
+    "port": "${AI_EDITOR_CODE_ANALYSIS_PORT}",
     "protocol": "https",
     "timeout": 60.0,
     "check_hostname": false,

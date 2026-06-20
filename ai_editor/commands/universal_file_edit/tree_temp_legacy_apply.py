@@ -92,7 +92,7 @@ def run_tree_temp_legacy_json_yaml_apply(
             None,
         )
     try:
-        root_dir = project_root_near(session.draft_path)
+        root_dir = session.core.project_root or project_root_near(session.draft_path)
         bm = BackupManager(root_dir=root_dir)
         if session.draft_path.exists():
             bm.create_backup(

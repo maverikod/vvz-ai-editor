@@ -519,7 +519,7 @@ def _run_legacy_tree_temp_apply(
             None,
         )
     try:
-        root_dir = _project_root_near(session.draft_path)
+        root_dir = session.core.project_root or _project_root_near(session.draft_path)
         bm = BackupManager(root_dir=root_dir)
         if session.draft_path.exists():
             bm.create_backup(
@@ -605,7 +605,7 @@ def apply_tree_temp_mutations(
 
     if session.core.tree_validity == SessionTreeValidity.VALID:
         try:
-            root_dir = _project_root_near(session.draft_path)
+            root_dir = session.core.project_root or _project_root_near(session.draft_path)
             bm = BackupManager(root_dir=root_dir)
             if session.draft_path.exists():
                 bm.create_backup(
@@ -623,7 +623,7 @@ def apply_tree_temp_mutations(
     roots_snap = deepcopy(session.tree_temp_roots)
 
     try:
-        root_dir = _project_root_near(session.draft_path)
+        root_dir = session.core.project_root or _project_root_near(session.draft_path)
         bm = BackupManager(root_dir=root_dir)
         if session.draft_path.exists():
             bm.create_backup(

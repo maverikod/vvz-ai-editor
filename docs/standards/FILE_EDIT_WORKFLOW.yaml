@@ -11,36 +11,32 @@ forbidden:
   skip_preview_write: PROHIBITED. universal_file_write with write_mode=commit 
     without a preceding write_mode=preview call is forbidden.
 lifecycle:
-  1_open: universal_file_open(project_id, file_path) — returns session_id
-  2_preview: universal_file_preview(project_id, file_path, 
-    session_id=session_id) — outline navigation; node_ref from draft
-  2b_search: universal_file_search(project_id, session_id, query=...) — 
-    optional; XPath/CSTQuery on session CST tree only (Python sidecar)
-  3_edit: universal_file_edit(project_id, session_id, operations=[...]) — 
-    modifies in-memory draft only, disk is never touched
-  4_write_preview: universal_file_write(project_id, session_id, 
-    write_mode=preview) — inspect unified diff
-  5_write_commit: universal_file_write(project_id, session_id, 
-    write_mode=commit) — backup + atomic write to disk
-  6_close: universal_file_close(project_id, session_id) — always call, even on 
-    abort
+  0_ca_session: 'CA session_create → session_id (agent supplies; reused on all steps)'
+  1_open: universal_file_open(project_id, file_path, session_id) — CA lock+download; workspace draft; returns format_group
+  2_preview: universal_file_preview(project_id, file_path, session_id) — outline navigation; node_ref from draft
+  3_edit: universal_file_edit(project_id, session_id, operations=[...]) — modifies workspace draft only; CA unchanged
+  4_write_preview: universal_file_write(project_id, session_id, write_mode=preview) — unified diff; no validation; no CA upload
+  5_write_commit: universal_file_write(project_id, session_id, write_mode=commit) — pre-write validation then CA upload when content differs
+  6_close: universal_file_close(project_id, session_id) — always call, even on abort
+  optional_one_shot_preview: universal_file_preview(project_id, file_path) without open — read-only CA download_without_lock
+  not_registered: universal_file_search — not in thin-server registry; use preview drill-down instead
 meta:
   author: Vasiliy Zdanovskiy
   canonical_docs: docs/commands/file_editing/WORKFLOW.md
+  detailed_guide: docs/commands/file_editing/EDITOR_GUIDE.md
+  info_command: info
   coder_brief: docs/standards/UNIVERSAL_FILE_EDIT_CODER.yaml
   description: Mandatory file edit lifecycle. Read before modifying any project 
-    file.
+    file. For full guide with examples call MCP command info.
   email: vasilyvz@gmail.com
   locale: en
   title: File Edit Workflow
-  version: '1.0'
+  version: '1.1'
 operation_shapes:
   sidecar_py:
-    fields: type, node_id (UUID from preview or universal_file_search), code_lines (list of strings)
+    fields: type, node_id (UUID from preview node_ref), code_lines (list of strings)
     note: Use code_lines, not code, for multi-line content. Single-line header
       replace (def/class line only) preserves body — see PYTHON_EDIT_SEMANTICS.md
-    search: universal_file_search(session_id, query) — XPath on session tree only;
-      returns node_ref for node_id; not project-wide
   text_md_txt:
     fields: type, node_ref (slug-path from preview), content
     note: node_ref is preferred over start_line/end_line. Line-based ops require
@@ -53,11 +49,8 @@ operation_shapes:
     note: Pass node_ref from preview into json_pointer field, not node_id. value
       accepts any JSON type.
     sentinel: 'Array append: parent_json_pointer ending in /- e.g. /items/-'
-post_edit_sequence:
-  applies_to: Python files only
-  steps:
-  - lint_code
-  - format_code
-  - type_check_code
-  - update_indexes
+post_commit_validation:
+  applies_to: Python commit via universal_file_write write_mode=commit
+  note: Editor runs flake8, mypy, docstrings in pre-write pipeline before CA upload.
+    Separate lint_code/format_code commands are optional after successful commit.
 trigger: Before modifying any project file.

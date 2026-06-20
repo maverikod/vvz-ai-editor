@@ -29,6 +29,36 @@ class WriteComparison:
     exported_bytes: bytes
 
 
+def _is_python_session(session: EditSession) -> bool:
+    from ai_editor.core.code_quality.formatter import is_python_source_path
+
+    return is_python_source_path(session.file_path)
+
+
+def _maybe_format_python_bytes(session: EditSession, exported: bytes) -> bytes:
+    from ai_editor.core.code_quality.formatter import format_python_source_text
+
+    if not _is_python_session(session):
+        return exported
+    text = exported.decode("utf-8")
+    formatted, err = format_python_source_text(text)
+    if err:
+        raise ValueError(f"format_python failed: {err}")
+    return formatted.encode("utf-8")
+
+
+def export_canonical_bytes(
+    session: EditSession,
+    *,
+    format_python: bool = False,
+) -> bytes:
+    """Format-specific canonical export; optional black pass for Python paths."""
+    exported = _export_canonical_bytes(session)
+    if format_python:
+        return _maybe_format_python_bytes(session, exported)
+    return exported
+
+
 def _export_canonical_bytes(session: EditSession) -> bytes:
     """Format-specific canonical export of Edit Subdirectory state."""
     fg = session.format_group
@@ -54,10 +84,14 @@ def _export_canonical_bytes(session: EditSession) -> bytes:
     return session.draft_path.read_text(encoding="utf-8").encode("utf-8")
 
 
-def compare_session_to_origin(session: EditSession) -> WriteComparison:
+def compare_session_to_origin(
+    session: EditSession,
+    *,
+    format_python: bool = False,
+) -> WriteComparison:
     """Byte-compare canonical export vs Origin Snapshot."""
     origin_bytes = session.abs_path.read_bytes()
-    exported_bytes = _export_canonical_bytes(session)
+    exported_bytes = export_canonical_bytes(session, format_python=format_python)
     result = (
         CompareResult.EQUAL if exported_bytes == origin_bytes else CompareResult.DIFF
     )

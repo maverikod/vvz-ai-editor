@@ -2,8 +2,8 @@
 
 **Command:** `universal_file_open`  
 **Class:** `UniversalFileOpenCommand`  
-**Source:** `code_analysis/commands/universal_file_edit/open_command.py`  
-**Category:** file_management
+**Source:** `ai_editor/commands/universal_file_edit/open_command.py`  
+**Category:** universal_file_edit
 
 Author: Vasiliy Zdanovskiy  
 email: vasilyvz@gmail.com
@@ -12,15 +12,19 @@ email: vasilyvz@gmail.com
 
 ## Purpose
 
-Start an in-memory edit session for one project file. Returns **`session_id`** and **`format_group`** (`sidecar` | `tree-temp` | `text`).
+Lock a project file on Code Analysis Server (CA), download bytes into the editor workspace, and start an in-memory edit session.
 
-**Workflow step 2.** See [WORKFLOW.md](WORKFLOW.md). Optional next step for Python: [universal_file_search.md](universal_file_search.md) (XPath on session tree).
+**Workflow step 1** (after CA `session_create`). See [WORKFLOW.md](WORKFLOW.md).
+
+Returns **`format_group`** (`sidecar` | `tree-temp` | `text`), `draft_path`, and `multi_file_bundle`.
+
+**`session_id` is required input** — the CA id from `session_create`. Open echoes it; it does not generate a new id.
 
 On open:
 
-- Deletes stale `<file>.write` lockfile and `<file>.draft` (preserves Python `.cst_sidecar`).
-- Creates initial backup when the file has no backup history.
-- Unparseable structured files open in line-based fallback (`is_invalid: true`).
+- CA: `lock_file_and_download` (existing file) or `upload_create_and_lock` (`create=True`).
+- Workspace: origin snapshot + draft under `{workspace_root}/{session_id}/`.
+- Unparseable structured files may open in line-based fallback (`is_invalid: true`).
 
 ---
 
@@ -30,7 +34,8 @@ On open:
 |-----------|------|----------|-------------|
 | `project_id` | string | **Yes** | Project UUID |
 | `file_path` | string | **Yes** | Project-relative path |
-| `create` | boolean | No | Create file if missing (default false) |
+| `session_id` | string | **Yes** | CA session id from `session_create` |
+| `create` | boolean | No | Create file on CA if missing (default false) |
 | `initial_content` | string | No | Required for new `.py`; optional for JSON/YAML/text |
 
 ---
@@ -39,48 +44,49 @@ On open:
 
 ### Success
 
-- `session_id` — UUID for edit/write/close/preview-with-draft
+- `session_id` — echo of CA session id
 - `format_group` — determines operation shape in `universal_file_edit`
-- `file_path`, `handler_id`
+- `file_path`, `session_dir`, `draft_path`, `available_operations`
+- `multi_file_bundle` — open files in this CA session
 - `is_invalid`, `fallback_reason`, `warning` when parse fallback applies
 
 ### Error
 
-`FILE_NOT_FOUND`, `PARSE_ERROR`, `UNKNOWN_FORMAT`, `SESSION_ALREADY_OPEN`, …
+`FILE_ALREADY_OPEN`, `OPEN_ERROR`, `PARSE_ERROR`, `UNKNOWN_FORMAT`, `SESSION_NOT_FOUND`, …
 
 ---
 
 ## Examples
 
-**Open existing Python file**
+**Open existing file**
 
 ```json
-{"project_id": "<uuid>", "file_path": "pkg/module.py"}
+{
+  "project_id": "<uuid>",
+  "file_path": "pkg/module.py",
+  "session_id": "<ca-session-create-id>"
+}
 ```
 
-**Create new Python file**
+**Create new Python module**
 
 ```json
 {
   "project_id": "<uuid>",
   "file_path": "pkg/new_module.py",
+  "session_id": "<ca-session-create-id>",
   "create": true,
-  "initial_content": "\"\"\"New module.\"\"\"\n\n\ndef main() -> None:\n    pass\n"
+  "initial_content": "\"\"\"New module.\"\"\"\n"
 }
 ```
 
 ---
 
-## Best practices
+## Next steps
 
-- One session per file until `universal_file_close`.
-- After server restart, `session_id` is invalid — open again.
-- `session_id` here is **not** client `session_create` / `session_open_file`.
+1. `universal_file_preview(..., session_id)` — obtain `node_ref` values from draft  
+2. `universal_file_edit` — apply operations  
+3. `universal_file_write` — preview then commit  
+4. `universal_file_close` — always
 
----
-
-## See also
-
-- [universal_file_search.md](universal_file_search.md)
-- [universal_file_preview.md](universal_file_preview.md)
-- [universal_file_edit.md](universal_file_edit.md)
+Schema source: `help(server_id="ai-editor-server", command="universal_file_open")`.

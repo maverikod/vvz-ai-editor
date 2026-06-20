@@ -6,8 +6,12 @@
 set -euo pipefail
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/dev/null
-[ -f /etc/default/ai-editor ] && . /etc/default/ai-editor
+if [ -f /etc/default/ai-editor ]; then
+  set -a
+  # shellcheck source=/dev/null
+  . /etc/default/ai-editor
+  set +a
+fi
 
 CONFIG_DIR="${AI_EDITOR_CONFIG_DIR:-/etc/ai-editor}"
 CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"

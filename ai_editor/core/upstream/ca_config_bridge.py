@@ -48,6 +48,25 @@ def build_jsonrpc_kwargs_from_ca_section(section: Mapping[str, Any]) -> Dict[str
     )
 
 
+def _coerce_port(value: Any) -> Optional[int]:
+    """Parse CA port from int or numeric string (after placeholder resolution)."""
+    if isinstance(value, int):
+        return value if 1 <= value <= 65535 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        port = int(value.strip())
+        return port if 1 <= port <= 65535 else None
+    return None
+
+
+def _normalize_ca_section(section: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return a copy with normalized port when it is a numeric string."""
+    out = dict(section)
+    coerced = _coerce_port(out.get("port"))
+    if coerced is not None:
+        out["port"] = coerced
+    return out
+
+
 def load_resolved_ca_section(config_path: Optional[Path] = None) -> Dict[str, Any]:
     """Load ``code_analysis_server`` with env and placeholder resolution."""
     path = config_path
@@ -81,8 +100,11 @@ def load_resolved_ca_section(config_path: Optional[Path] = None) -> Dict[str, An
             field="code_analysis_server",
             details={"config_path": str(path)},
         )
+    normalized = _normalize_ca_section(section)
     return {
-        **section,
-        "server_id": str(section.get("server_id") or "code-analysis-server"),
-        "command_transport": str(section.get("command_transport") or "direct"),
+        **normalized,
+        "server_id": str(normalized.get("server_id") or "code-analysis-server"),
+        "command_transport": str(
+            normalized.get("command_transport") or "direct"
+        ),
     }

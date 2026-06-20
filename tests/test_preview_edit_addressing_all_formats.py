@@ -281,7 +281,15 @@ async def test_jsonl_insert_by_preview_line_index_node_ref(tmp_path: Path) -> No
 @pytest.mark.asyncio
 async def test_py_insert_by_preview_short_id_target_node_id(tmp_path: Path) -> None:
     rel = "src/mod.py"
-    body = '"""Module."""\n\nimport os\n\ndef foo() -> int:\n    return 1\n'
+    body = (
+        '"""Module."""\n\n\n'
+        "def foo() -> int:\n"
+        '    """Return one.\n\n'
+        "    Returns:\n"
+        "        Integer one.\n"
+        '    """\n'
+        "    return 1\n"
+    )
     sid, workspace, origin, upstream = await _open_file(tmp_path, rel, body)
     blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
     func_sid = _block_short_id(_find_block_by_type(blocks, "function"))
@@ -299,11 +307,17 @@ async def test_py_insert_by_preview_short_id_target_node_id(tmp_path: Path) -> N
                             "type": "insert",
                             "target_node_id": func_sid,
                             "position": "before",
-                            "code_lines": [
-                                "",
-                                "def bar() -> int:",
-                                "    return 2",
-                            ],
+                                "code_lines": [
+                                    "",
+                                    "",
+                                    "def bar() -> int:",
+                                    '    """Return two.',
+                                    "",
+                                    "    Returns:",
+                                    "        Integer two.",
+                                    '    """',
+                                    "    return 2",
+                                ],
                         }
                     ],
                 }

@@ -49,8 +49,20 @@ class UniversalFileWriteCommand(BaseMCPCommand):
         return {
             "type": "object",
             "properties": {
-                "project_id": {"type": "string"},
-                "session_id": {"type": "string"},
+                "project_id": {
+                    "type": "string",
+                    "description": (
+                        "Project UUID. Required for CA upload on commit. "
+                        "Use list_projects to discover valid values."
+                    ),
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": (
+                        "CA session id from session_create; same id on all "
+                        "universal_file_* calls."
+                    ),
+                },
                 "file_path": {
                     "type": "string",
                     "description": (
@@ -63,10 +75,26 @@ class UniversalFileWriteCommand(BaseMCPCommand):
                     "enum": ["preview", "commit"],
                     "default": "preview",
                     "description": (
-                        "preview: unified diff vs origin (no CA upload). "
-                        "commit: upload when content differs. "
+                        "preview: unified diff vs origin (no CA upload, no validation). "
+                        "commit: pre-write validation then upload when content differs. "
                         "Sidecar (.py): omitted write_mode uses two-phase lockfile "
                         "(first call preview+lock, second call commit)."
+                    ),
+                },
+                "format_python": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "When true and file_path is .py/.pyi/.pyw, run black on "
+                        "canonical export before preview diff or CA upload."
+                    ),
+                },
+                "verify_after_upload": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "On commit upload success, download file from CA without "
+                        "lock and include ca_verify in the response."
                     ),
                 },
             },
@@ -86,6 +114,10 @@ class UniversalFileWriteCommand(BaseMCPCommand):
             )
         validated["write_mode"] = wm
         validated["write_mode_explicit"] = wm_raw is not None
+        validated["format_python"] = bool(validated.get("format_python", False))
+        validated["verify_after_upload"] = bool(
+            validated.get("verify_after_upload", False)
+        )
         return validated
 
     @classmethod
@@ -98,6 +130,8 @@ class UniversalFileWriteCommand(BaseMCPCommand):
         file_path = str(kwargs.get("file_path", ""))
         write_mode = str(kwargs.get("write_mode", "preview"))
         write_mode_explicit = bool(kwargs.get("write_mode_explicit", False))
+        format_python = bool(kwargs.get("format_python", False))
+        verify_after_upload = bool(kwargs.get("verify_after_upload", False))
 
         guard = SessionGuard(get_code_analysis_client())
         decision = guard.check(OperationKind.WRITE, ca_session_id)
@@ -114,4 +148,6 @@ class UniversalFileWriteCommand(BaseMCPCommand):
             write_mode_explicit=write_mode_explicit,
             file_path=file_path,
             client=get_code_analysis_client(),
+            format_python=format_python,
+            verify_after_upload=verify_after_upload,
         )

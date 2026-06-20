@@ -559,6 +559,65 @@ def command_op_to_edit_operation(
     raise ValueError(f"unsupported edit operation type: {action!r}")
 
 
+def _merge_prior_map_stable_identity(
+    discovered: List[DiscoveredNode],
+    prior_map: MapSection,
+) -> List[DiscoveredNode]:
+    """Keep MAP ``internal_node_id`` when short_id and content fingerprint are unchanged."""
+    prior_by_short = {entry.short_id: entry for entry in prior_map.entries}
+    merged: List[DiscoveredNode] = []
+    for node in discovered:
+        prior = prior_by_short.get(node.marker_short_id)
+        if prior is None or prior.content_fingerprint != node.content_fingerprint:
+            merged.append(node)
+            continue
+        prior_internal = (prior.attributes or {}).get("internal_node_id")
+        if not isinstance(prior_internal, str) or not prior_internal:
+            merged.append(node)
+            continue
+        attrs = dict(node.attributes)
+        attrs["internal_node_id"] = prior_internal
+        merged.append(
+            DiscoveredNode(
+                content_fingerprint=node.content_fingerprint,
+                kind=node.kind,
+                marker_short_id=node.marker_short_id,
+                attributes=attrs,
+            )
+        )
+    return merged
+
+
+def _discovered_nodes_after_mutation(
+    handler: object,
+    *,
+    session: EditSession,
+    new_marked: str,
+    denuded: str,
+) -> List[DiscoveredNode]:
+    """Build MAP discovery rows from post-mutation marked TREE (Python: CST stable_id)."""
+    from ai_editor.tree.handlers.python_handler import PythonHandler
+
+    if isinstance(handler, PythonHandler):
+        return list(
+            handler.discover_marked_nodes(
+                new_marked,
+                denuded,
+                Path(session.file_path),
+            )
+        )
+    parsed_nodes = handler.parse_content(Path(session.file_path), denuded)
+    return [
+        DiscoveredNode(
+            marker_short_id=int(node.short_id),
+            kind=node.kind,
+            content_fingerprint=compute_content_fingerprint(node.content),
+            attributes=dict(node.attributes),
+        )
+        for node in parsed_nodes
+    ]
+
+
 def _sync_map_after_tree_mutation(
     *,
     session: EditSession,
@@ -568,16 +627,14 @@ def _sync_map_after_tree_mutation(
 ) -> TreeSections:
     handler = HandlerRegistry.default_registry().resolve(session.source_abs)
     denuded = handler.unmark(new_marked)
-    parsed_nodes = handler.parse_content(Path(session.file_path), denuded)
-    discovered: List[DiscoveredNode] = [
-        DiscoveredNode(
-            marker_short_id=int(node.short_id),
-            kind=node.kind,
-            content_fingerprint=compute_content_fingerprint(node.content),
-            attributes=dict(node.attributes),
-        )
-        for node in parsed_nodes
-    ]
+    discovered = _discovered_nodes_after_mutation(
+        handler,
+        session=session,
+        new_marked=new_marked,
+        denuded=denuded,
+    )
+    if discovered and sections.map.entries:
+        discovered = _merge_prior_map_stable_identity(discovered, sections.map)
     if not discovered:
         return TreeSections(
             checksums=sections.checksums,

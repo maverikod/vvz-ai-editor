@@ -14,6 +14,7 @@ from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
 from ai_editor.commands.base_mcp_command import BaseMCPCommand
 from ai_editor.commands.universal_file_edit.errors import (
+    SESSION_FILE_PATH_REQUIRED,
     SESSION_NOT_FOUND,
     UNKNOWN_FORMAT,
     error_result_from_make_error,
@@ -76,6 +77,13 @@ class UniversalFileSearchCommand(BaseMCPCommand):
                         "that session's in-memory CST tree only."
                     ),
                 },
+                "file_path": {
+                    "type": "string",
+                    "description": (
+                        "Project-relative path. Required when the session has "
+                        "more than one open file."
+                    ),
+                },
                 "search_type": {
                     "type": "string",
                     "enum": ["simple", "xpath"],
@@ -134,6 +142,7 @@ class UniversalFileSearchCommand(BaseMCPCommand):
         self,
         project_id: str,
         session_id: str,
+        file_path: str = "",
         **kwargs: Any,
     ) -> SuccessResult | ErrorResult:
         _ = project_id
@@ -149,8 +158,17 @@ class UniversalFileSearchCommand(BaseMCPCommand):
         max_results: Optional[int] = kwargs.get("max_results")
 
         try:
-            session = get_session(session_id)
-        except ValueError:
+            session = get_session(session_id, file_path=file_path or None)
+        except ValueError as exc:
+            msg = str(exc)
+            if msg == "SESSION_FILE_PATH_REQUIRED":
+                return error_result_from_make_error(
+                    make_error(
+                        SESSION_FILE_PATH_REQUIRED,
+                        "file_path is required when the session has multiple open files",
+                        details={"session_id": session_id},
+                    )
+                )
             return error_result_from_make_error(
                 make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
             )
@@ -173,6 +191,16 @@ class UniversalFileSearchCommand(BaseMCPCommand):
             )
 
         tree_id = session.tree_id
+        if not tree_id or get_tree(tree_id) is None:
+            from ai_editor.commands.universal_file_edit.sidecar_cst_apply import (
+                _refresh_in_memory_cst_without_sidecar,
+            )
+
+            try:
+                _refresh_in_memory_cst_without_sidecar(session)
+                tree_id = session.tree_id
+            except Exception:
+                tree_id = session.tree_id
         if not tree_id or get_tree(tree_id) is None:
             return error_result_from_make_error(
                 make_error(

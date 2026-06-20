@@ -27,12 +27,19 @@ def _resolve_active_config_path() -> Path:
             return Path(cfg_path).expanduser().resolve()
     except Exception:
         pass
-    env_cfg = (
-        os.environ.get("AIEDMGR_CONFIG", "").strip()
-        or os.environ.get("CASMGR_CONFIG", "").strip()
+    for env_name in ("AIEDMGR_CONFIG", "CASMGR_CONFIG", "AI_EDITOR_CONFIG"):
+        env_cfg = os.environ.get(env_name, "").strip()
+        if env_cfg:
+            return Path(env_cfg).expanduser().resolve()
+    config_dir = os.environ.get("AI_EDITOR_CONFIG_DIR", "").strip() or "/etc/ai-editor"
+    config_file = (
+        os.environ.get("AI_EDITOR_CONFIG_FILE", "").strip()
+        or os.environ.get("CONFIG_FILE", "").strip()
+        or "ai_editor_container.json"
     )
-    if env_cfg:
-        return Path(env_cfg).expanduser().resolve()
+    container_cfg = Path(config_dir) / config_file
+    if container_cfg.is_file():
+        return container_cfg.resolve()
     return (Path.cwd() / "config.json").resolve()
 
 

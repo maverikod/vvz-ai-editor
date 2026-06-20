@@ -178,6 +178,7 @@ def run_open_execute(
         "success": True,
         "session_id": ca_session_id,
         "file_path": file_path,
+        "format_group": session.format_group,
         "session_dir": str(layout.session_dir),
         "draft_path": str(session.draft_path),
         "available_operations": list(descriptor.available_operations),

@@ -30,6 +30,7 @@ def _make_session(
     file_path: str,
     *,
     project_id: str = "proj-1",
+    format_group: str = "sidecar",
 ) -> EditSession:
     core = MagicMock()
     core.is_open = True
@@ -41,7 +42,7 @@ def _make_session(
         abs_path=Path(f"/tmp/{file_path}"),
         draft_path=Path(f"/tmp/.session/{file_path}"),
         lockfile_path=Path("/tmp/.lock"),
-        format_group="python",
+        format_group=format_group,
         handler_id="python",
         tree_id=None,
         core=core,
@@ -205,3 +206,33 @@ def test_create_session_rejects_file_open_in_other_session(tmp_path: Path) -> No
             ca_session_id=sid_b,
             project_id="proj-1",
         )
+
+
+def test_merge_preview_params_multi_file_requires_matching_file_path() -> None:
+    from ai_editor.commands.universal_file_preview.errors import (
+        INPUT_ERROR_CONFLICTING_PARAMETERS,
+        PreviewError,
+    )
+    from ai_editor.commands.universal_file_preview.session import (
+        merge_edit_session_into_preview_params,
+    )
+
+    sid = "ca-1"
+    session_a = _make_session(sid, "a.py", format_group="text")
+    session_b = _make_session(sid, "b.md", format_group="text")
+    _register_bundle(sid, [session_a, session_b])
+
+    merged = merge_edit_session_into_preview_params(
+        {
+            "session_id": sid,
+            "file_path": "b.md",
+            "_preview_abs_path": "/unused",
+        }
+    )
+    assert isinstance(merged, dict)
+    assert merged["_preview_abs_path"] == str(session_b.draft_path)
+
+    missing = merge_edit_session_into_preview_params({"session_id": sid})
+    assert isinstance(missing, PreviewError)
+    assert missing.code == INPUT_ERROR_CONFLICTING_PARAMETERS
+    assert "file_path is required" in missing.message

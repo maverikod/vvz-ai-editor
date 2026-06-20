@@ -13,11 +13,13 @@ from mcp_proxy_adapter.commands.command_registry import CommandRegistry
 
 EXPECTED: frozenset[str] = frozenset(
     {
+        "info",
         "universal_file_open",
         "universal_file_edit",
         "universal_file_write",
         "universal_file_close",
         "universal_file_preview",
+        "universal_file_search",
         "health",
     }
 )
@@ -41,7 +43,6 @@ FORBIDDEN: frozenset[str] = frozenset(
         "project_file_advisory_lock_batch",
         "project_file_lock_status",
         "universal_file_move_nodes",
-        "universal_file_search",
         "session_git_log",
         "session_git_diff",
         "session_git_show",
@@ -78,8 +79,8 @@ def test_removed_command_not_registered(name: str) -> None:
     ), f"Forbidden command {name!r} still registered on MCP help surface"
 
 
-def test_help_surface_exactly_six_commands() -> None:
-    """C-016: registry exposes exactly the six thin-workflow commands, no extras."""
+def test_help_surface_exactly_eight_commands() -> None:
+    """C-016: registry exposes thin workflow + search + info + health, no extras."""
     names = _registered_command_names()
     assert names == EXPECTED, (
         "Editor MCP help surface must list only universal_file_* workflow commands "

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Type
 
+from ai_editor.commands.universal_file_edit.workflow_brief import WORKFLOW_STEPS_TEXT
+
 
 def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
     """Return command metadata dict for universal_file_close.
@@ -35,12 +37,7 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "**not** the editor DB client-session id and there is **no** separate "
             "`session_close_file` MCP command on the AI Editor; CA unlock runs "
             "inside this command via the upstream client.\n\n"
-            "universal_file_close is the final step in the universal file edit workflow:\n"
-            "  1. universal_file_open  — lock+download (or upload+lock); workspace draft\n"
-            "  2. universal_file_preview — obtain node_ref values\n"
-            "  3. universal_file_edit  — apply operations to the in-memory draft\n"
-            "  4. universal_file_write — preview diff, then commit to disk\n"
-            "  5. universal_file_close — CA unlock + workspace cleanup  (THIS COMMAND)\n\n"
+            f"{WORKFLOW_STEPS_TEXT}\n"
             "Close orchestration per call:\n"
             "  1. Best-effort CA unlock via `CodeAnalysisClient.unlock_session_file` "
             "(CA RPC `session_close_file`).\n"

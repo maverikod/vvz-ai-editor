@@ -4,19 +4,24 @@
 
 meta:
   title: Universal File Edit — Coder Brief
-  version: '1.0'
+  version: '1.1'
   locale: en
   audience: coder_model
   schema_source: 'help(server_id="ai-editor-server", command="<name>")'
+  detailed_guide_command: info
   invoke: 'call_server(server_id="ai-editor-server", copy_number=1, command="...", params={...})'
 
 commands:
+  info: info
   preview: universal_file_preview
-  search: universal_file_search
   open: universal_file_open
   edit: universal_file_edit
   write: universal_file_write
   close: universal_file_close
+
+not_registered:
+  search: universal_file_search
+  note: Use universal_file_preview drill-down instead in thin-server registry.
 
 deprecated_do_not_use:
   - cst_load_file
@@ -35,10 +40,10 @@ deprecated_do_not_use:
   - replace_file_lines
 
 invariants:
-  disk_write: Only universal_file_write commit writes canonical file; edit never touches disk.
-  one_session_per_file: Until universal_file_close.
+  disk_write: Only universal_file_write commit uploads to CA; edit never touches CA canonical file.
+  one_session_per_file: Until universal_file_close for (project_id, file_path).
   session_invalid_on_server_restart: Re-open required.
-  session_id_not_client_session: Unrelated to session_create / session_open_file.
+  session_id_is_ca_session: From CA session_create; agent supplies on every universal_file_* call; open echoes it.
 
 identity:
   stable_id:
@@ -53,63 +58,65 @@ identity:
     client_rule: Prefer node_ref from preview; if STALE_NODE_ID, re-preview — stable_id unchanged.
 
 lifecycle:
+  - step: 0
+    command: CA session_create
+    when: Before first universal_file_open
+    returns: [session_id]
+    note: Same session_id on all universal_file_* calls
   - step: 1
-    command: universal_file_preview
-    when: Before open (discover node_ref); before edit when targets unknown or after text line shifts
-    params_required: [project_id, file_path]
-    params_optional: [node_ref, session_id, selector]
-  - step: 2
     command: universal_file_open
     when: Start edit session
-    params_required: [project_id, file_path]
+    params_required: [project_id, file_path, session_id]
     params_optional: [create, initial_content]
-    returns: [session_id, format_group]
-  - step: 2b
-    command: universal_file_search
-    when: Optional; XPath/CSTQuery on session CST tree (Python sidecar only)
-    params_required: [project_id, session_id]
-    params_optional: [query, search_type, include_code, require_one, max_results]
-    note: Searches in-memory draft tree for session_id only — not project-wide
+    returns: [format_group, draft_path, multi_file_bundle]
+  - step: 2
+    command: universal_file_preview
+    when: After open; before edit when targets unknown; after text edits
+    params_required: [project_id, file_path]
+    params_optional: [session_id, node_ref, selector]
+    note: With session_id reads workspace draft; without open uses one-shot CA read
   - step: 3
     command: universal_file_edit
     when: Repeat; mutates draft only
     params_required: [project_id, session_id, operations]
+    params_optional: [file_path]
   - step: 4a
     command: universal_file_write
-    when: Preview diff — always before commit
-    note_tree_temp: write_mode=preview required
-    note_sidecar_text: first call creates lockfile, returns diff
+    when: Preview diff — before commit
+    params: [write_mode=preview]
+    note: No validation, no CA upload
   - step: 4b
     command: universal_file_write
-    when: Commit to disk
-    note_tree_temp: write_mode=commit after preview in same session
-    note_sidecar_text: second call when lock valid
+    when: Commit to CA after preview
+    params: [write_mode=commit]
+    note: Pre-write validation then upload_session_file_content when content differs
   - step: 5
     command: universal_file_close
     when: Always — after commit or abort
     params_required: [project_id, session_id]
+    params_optional: [file_path]
 
 format_groups:
   sidecar:
     extensions: ['.py', '.pyi', '.pyw']
-    draft: '<file>.cst_sidecar'
+    draft: workspace edit subdir draft + sidecar
     preview_node_ref: stable_uuid
     edit_address_field: node_id
-    write_phases: two_call_lockfile  # preview then commit; write_mode may also work
+    write_phases: explicit_write_mode_preferred  # preview then commit; legacy two-call lockfile if write_mode omitted
   tree_temp:
     extensions: ['.json', '.yaml', '.yml', '.jsonl', '.ndjson']
-    draft: '<file>.draft'
+    draft: workspace edit subdir draft + in-memory tree
     preview_node_ref: json_pointer  # e.g. /timeout
     edit_address_field: json_pointer  # NOT node_id
     write_phases: explicit_write_mode  # preview then commit
   text:
     extensions: ['.md', '.txt', '.rst', '.adoc']
-    draft: '<file>.draft'
+    draft: workspace edit subdir draft file
     preview_node_ref:
       markdown: slug_path  # e.g. intro.setup
       plain: zero_based_line_index_string  # e.g. '3'
     edit_address_field: node_ref  # preferred; or start_line/end_line
-    write_phases: two_call_lockfile
+    write_phases: explicit_write_mode_preferred
 
 node_ref_mapping:
   rule: preview returns node_ref (= stable_id); edit uses format-specific field name
@@ -118,7 +125,7 @@ node_ref_mapping:
   text_markdown: node_ref → node_ref
   text_plain_line_index: start_line = int(node_ref) + 1  # if using lines
 
-operation_types: [replace, insert, delete]
+operation_types: [replace, insert, delete, move]
 
 operations:
   sidecar:
@@ -203,30 +210,33 @@ forbidden:
   direct_ide_edit_on_project_files: when server available
   reuse_text_line_numbers_after_edit: re-preview with session_id (text format only)
   ancestor_descendant_in_one_python_batch: parent + child node_ids in same batch
-  commit_without_preview: tree-temp always; sidecar/text strongly required
+  commit_without_preview: strongly required; preview has no validation
   use_search_line_as_edit_target: fulltext_search line ≠ draft coordinates
 
 common_errors:
-  SESSION_NOT_FOUND: reopen session
+  SESSION_NOT_FOUND: reopen session or fix CA session_id
+  FILE_ALREADY_OPEN: close owning session first
+  VALIDATION_ERROR: fix flake8/mypy/docstrings on commit
+  UPSTREAM_UPLOAD_FAILED: fix content or CA connectivity; retry commit
   STALE_NODE_ID: unexpected stable_id loss — re-preview with session_id
   UNKNOWN_NODE_REF: preview again; check format_group field mapping
   NESTED_BATCH_FORBIDDEN: split batch — do not combine parent and child targets
   ANCHOR_MISMATCH: re-preview or fix anchors
-  WRITE_FAILED: fix validation; backup restored
-  PARSE_ERROR: fix snippet syntax
+  OPEN_FILE_USE_WORKSPACE_PREVIEW: file open — pass session_id to preview draft
 
 parse_error_fallback:
   flag: is_invalid
   behavior: line_based edit until successful commit restores structural editing
 
-post_commit_python:
-  sequence: [lint_code, format_code, type_check_code]
-  update_indexes: only if project-wide rebuild needed
+commit_validation:
+  when: universal_file_write write_mode=commit
+  pipeline: [quality_tools, handler_validator]
+  python_tools: [black_parseable, flake8, mypy, docstrings]
 
 discovery_read_only:
   before_edit: [fulltext_search, semantic_search, fs_grep]
-  in_session_tree_search: universal_file_search  # XPath on open session CST tree only
-  then: universal_file_preview for drill-down; node_ref from search or preview for edit
+  in_session_navigation: universal_file_preview
+  then: node_ref from preview for edit
 
 multi_line_payload:
   python: use code_lines array not code string

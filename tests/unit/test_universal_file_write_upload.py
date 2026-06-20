@@ -16,6 +16,7 @@ from ai_editor.commands.universal_file_edit.write_compare import (
     CompareResult,
     WriteComparison,
 )
+from ai_editor.core.file_validation.pre_write_pipeline import PreWriteValidationOutcome
 from ai_editor.core.upstream.session_guard import GuardDecision
 
 
@@ -44,6 +45,10 @@ def _diff_comparison() -> WriteComparison:
     )
 
 
+def _validation_ok() -> PreWriteValidationOutcome:
+    return PreWriteValidationOutcome(success=True)
+
+
 @pytest.mark.asyncio
 async def test_upload_success_writes_origin_snapshot() -> None:
     cmd = UniversalFileWriteCommand()
@@ -69,11 +74,15 @@ async def test_upload_success_writes_origin_snapshot() -> None:
                     "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
-                    result = await cmd.execute(
-                        project_id="proj-1",
-                        session_id="sess-1",
-                        write_mode="commit",
-                    )
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        return_value=_validation_ok(),
+                    ):
+                        result = await cmd.execute(
+                            project_id="proj-1",
+                            session_id="sess-1",
+                            write_mode="commit",
+                        )
 
     assert isinstance(result, SuccessResult)
     assert result.data["unchanged"] is False
@@ -111,11 +120,15 @@ async def test_upload_runtime_error_preserves_origin() -> None:
                     "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
-                    result = await cmd.execute(
-                        project_id="proj-1",
-                        session_id="sess-1",
-                        write_mode="commit",
-                    )
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        return_value=_validation_ok(),
+                    ):
+                        result = await cmd.execute(
+                            project_id="proj-1",
+                            session_id="sess-1",
+                            write_mode="commit",
+                        )
 
     assert isinstance(result, ErrorResult)
     assert result.code == "UPSTREAM_UPLOAD_FAILED"
@@ -149,11 +162,15 @@ async def test_upload_generic_exception_preserves_origin() -> None:
                     "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
-                    result = await cmd.execute(
-                        project_id="proj-1",
-                        session_id="sess-1",
-                        write_mode="commit",
-                    )
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        return_value=_validation_ok(),
+                    ):
+                        result = await cmd.execute(
+                            project_id="proj-1",
+                            session_id="sess-1",
+                            write_mode="commit",
+                        )
 
     assert isinstance(result, ErrorResult)
     assert result.code == "UPSTREAM_UPLOAD_FAILED"

@@ -88,6 +88,20 @@ def _resolve_flat_line_index(source: str, node_ref: str) -> Tuple[int, int]:
     return start_line, start_line
 
 
+def _resolve_md_preview_short_id(source: str, node_ref: str) -> Tuple[int, int]:
+    """Map markdown preview integer short_id to inclusive 1-based line bounds."""
+    from ai_editor.tree.handlers.markdown_handler import MarkdownHandler
+
+    sid = int(str(node_ref).strip())
+    nodes = MarkdownHandler().parse_content(Path("dummy.md"), source)
+    for node in nodes:
+        if int(node.short_id) == sid:
+            start_line = int(node.attributes.get("start_line", 1))
+            end_line = int(node.attributes.get("end_line", start_line))
+            return start_line, end_line
+    raise ValueError(f"Unknown short_id: {sid}")
+
+
 def resolve_text_block_line_range(
     draft_path: Path,
     node_ref: str,
@@ -98,6 +112,12 @@ def resolve_text_block_line_range(
     source = _read_source(draft_path)
     suffix = draft_path.suffix.lower()
     if suffix == ".md" or draft_path.name.endswith(".md.draft"):
+        ref = str(node_ref).strip()
+        if ref.isdigit() and not session_is_invalid:
+            try:
+                return _resolve_md_preview_short_id(source, ref)
+            except ValueError:
+                pass
         bounds = resolve_markdown_line_range(
             source,
             node_ref,

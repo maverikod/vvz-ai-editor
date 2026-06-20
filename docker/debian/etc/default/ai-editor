@@ -28,8 +28,10 @@ AI_EDITOR_ULIMIT_NOFILE=65536:65536
 # Set to 1 on recreate to docker pull before container recreate.
 # AI_EDITOR_PULL_ON_RECREATE=0
 
-# Placeholders in /etc/ai-editor/ai_editor_container.json — REQUIRED before start:
+# Placeholders in /etc/ai-editor/ai_editor_container.json — REQUIRED before start.
+# Assignments here are auto-exported by ai-editor-docker / config-preflight (set -a).
 # AI_EDITOR_ADVERTISED_HOST=your-host-or-ip
 # AI_EDITOR_REGISTRATION_HOST=mcp-proxy-host
 # AI_EDITOR_REGISTRATION_PORT=3004
 # AI_EDITOR_CODE_ANALYSIS_HOST=code-analysis-host
+# AI_EDITOR_CODE_ANALYSIS_PORT=15010

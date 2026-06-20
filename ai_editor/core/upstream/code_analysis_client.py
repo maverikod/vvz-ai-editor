@@ -25,11 +25,17 @@ from .ca_config_bridge import (
 from .code_analysis_file_transfer import (
     download_bytes_without_lock,
     download_file_bytes,
+    ensure_file_id_for_path,
     normalize_rel_path,
     resolve_file_id_for_path,
     upload_bytes_transfer_id,
     upload_create_save,
 )
+
+try:
+    import httpx
+except ImportError:  # pragma: no cover
+    httpx = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +162,23 @@ class CodeAnalysisClient:
                 return pool.submit(_blocking).result()
         return _blocking()
 
+    def _upstream_target_label(self) -> str:
+        kwargs = _build_jsonrpc_kwargs(self._section)
+        return (
+            f"{kwargs.get('protocol', 'https')}://"
+            f"{kwargs.get('host', '127.0.0.1')}:{kwargs.get('port', 15010)}"
+        )
+
+    def _reraise_connect_error(self, command: str, exc: BaseException) -> None:
+        if httpx is not None and isinstance(
+            exc, (httpx.ConnectTimeout, httpx.ConnectError)
+        ):
+            raise RuntimeError(
+                "Code Analysis Server unreachable at "
+                f"{self._upstream_target_label()} while calling {command!r}: {exc}"
+            ) from exc
+        raise exc
+
     def _call_blocking(self, command: str, params: Dict[str, Any]) -> Any:
         """Run one CA RPC in a fresh event loop (safe from any thread)."""
         loop = asyncio.new_event_loop()
@@ -165,6 +188,8 @@ class CodeAnalysisClient:
                 rpc.execute_command(command=command, params=params)
             )
             return _unwrap_command_result(response)
+        except BaseException as exc:
+            self._reraise_connect_error(command, exc)
         finally:
             loop.close()
 
@@ -184,11 +209,19 @@ class CodeAnalysisClient:
 
         if in_async:
             with ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(self._call_blocking, command, payload).result()
+                try:
+                    return pool.submit(self._call_blocking, command, payload).result()
+                except BaseException as exc:
+                    self._reraise_connect_error(command, exc)
 
         rpc = self._ensure_rpc()
-        response = self._run_async(rpc.execute_command(command=command, params=payload))
-        return _unwrap_command_result(response)
+        try:
+            response = self._run_async(
+                rpc.execute_command(command=command, params=payload)
+            )
+            return _unwrap_command_result(response)
+        except BaseException as exc:
+            self._reraise_connect_error(command, exc)
 
     def list_projects(self, *, include_deleted: bool = False) -> List[Dict[str, Any]]:
         data = self.call("list_projects", {"include_deleted": include_deleted})
@@ -312,7 +345,7 @@ class CodeAnalysisClient:
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
         if not sid or not pid or not rel:
             _raise_missing_session_path(session_id, project_id, file_path)
-        file_id = resolve_file_id_for_path(self, pid, rel)
+        file_id = ensure_file_id_for_path(self, pid, rel, session_id=sid)
         self.call(
             "session_open_file",
             {"session_id": sid, "project_id": pid, "file_id": file_id},

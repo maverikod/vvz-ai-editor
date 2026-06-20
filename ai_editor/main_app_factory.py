@@ -14,7 +14,7 @@ from typing import Any
 from mcp_proxy_adapter.api.core.app_factory import AppFactory
 
 from ai_editor.main_app_events import register_startup_shutdown_events
-from ai_editor.main_server_presentation import resolve_server_presentation
+from ai_editor.main_server_presentation import resolve_server_presentation_legacy
 from ai_editor.openapi_mcp_proxy_compat import patch_app_openapi_for_mcp_proxy
 
 
@@ -23,7 +23,7 @@ def create_app_with_events(
     config_path: Path,
 ) -> Any:
     """Create FastAPI app and register startup/shutdown events."""
-    title, description, version = resolve_server_presentation(app_config)
+    title, description, version = resolve_server_presentation_legacy(app_config)
     app_factory = AppFactory()
     app = app_factory.create_app(
         title=title,

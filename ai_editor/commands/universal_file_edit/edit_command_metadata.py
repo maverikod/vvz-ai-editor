@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Type
 
+from ai_editor.commands.universal_file_edit.workflow_brief import WORKFLOW_STEPS_TEXT
+
 
 def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
     """Return command metadata dict for universal_file_edit.
@@ -28,12 +30,7 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
         "email": cls.email,
         "detailed_description": (
             "Apply a batch of mutation operations to an open edit session draft.\n\n"
-            "universal_file_edit is step 3 in the universal file edit workflow:\n"
-            "  1. universal_file_open  — open a file (or create it), get session_id\n"
-            "  2. universal_file_preview — obtain node_ref values from the current draft\n"
-            "  3. universal_file_edit  — apply one or more operations to the in-memory draft\n"
-            "  4. universal_file_write — first call: preview diff; second call: commit to disk\n"
-            "  5. universal_file_close — release the session\n\n"
+            f"{WORKFLOW_STEPS_TEXT}\n"
             "Operation shape follows universal_file_preview node_ref (by file type):\n\n"
             "Python (.py, .pyi, .pyw):\n"
             "  Operations target CST nodes by stable UUID (node_ref from universal_file_preview).\n"
@@ -86,7 +83,8 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "fallback (is_invalid=True), format_group becomes text and line-based edits are used "
             "until a successful commit restores structural editing.\n\n"
             "The original file on disk is never touched by this command. "
-            "Changes reach disk only after universal_file_write (commit phase)."
+            "Changes reach Code Analysis Server only after universal_file_write "
+            "(write_mode=commit) succeeds."
         ),
         "parameters": {
             "project_id": {
@@ -100,20 +98,30 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
             },
             "session_id": {
                 "description": (
-                    "Active session UUID returned by universal_file_open. "
-                    "Sessions are invalidated on server restart."
+                    "CA session id from session_create; same id passed to all "
+                    "universal_file_* commands. Required on every edit call."
                 ),
                 "type": "string",
                 "required": True,
-                "examples": ["4b4255c7-6a0c-4396-94c6-6f2bcf297912"],
+                "examples": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"],
+            },
+            "file_path": {
+                "description": (
+                    "Project-relative path. Required when the CA session has more "
+                    "than one open file (see multi_file_bundle from open). "
+                    "Optional when exactly one file is open."
+                ),
+                "type": "string",
+                "required": False,
+                "examples": ["config/settings.yaml"],
             },
             "operations": {
                 "description": (
                     "Batch of edit operations. Shape must match universal_file_preview:\n"
-                    "  Python : {type, node_id, code_lines}\n"
+                    "  Python : {type, node_id, code_lines} or move with target_node_id\n"
                     "  JSON/YAML: {type, json_pointer, value} or {type, node_id, value}\n"
                     "  text   : {type, node_ref, content} or {type, start_line, end_line, content}\n"
-                    "Supported type values: replace, insert, delete."
+                    "Supported type values: replace, insert, delete, move."
                 ),
                 "type": "array",
                 "required": True,
@@ -317,9 +325,26 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
         ],
         "error_cases": {
             "SESSION_NOT_FOUND": {
-                "description": "The session_id is not registered on the server.",
+                "description": (
+                    "The session_id is not registered locally, or file_path does not "
+                    "match an open file in that CA session."
+                ),
                 "message": "Unknown session: {session_id}",
-                "solution": "Open a new session with universal_file_open. Sessions are lost on server restart.",
+                "solution": (
+                    "Open the file with universal_file_open. Local bundles are lost "
+                    "on server restart."
+                ),
+            },
+            "SESSION_FILE_PATH_REQUIRED": {
+                "description": (
+                    "The CA session has multiple open files and file_path was omitted."
+                ),
+                "message": (
+                    "file_path is required when the session has multiple open files"
+                ),
+                "solution": (
+                    "Pass file_path from multi_file_bundle or close other files first."
+                ),
             },
             "NESTED_BATCH_FORBIDDEN": {
                 "description": (
@@ -411,7 +436,7 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "For text: pass anchor_head and anchor_tail together to verify the target range before replace/delete.",
             "For text append: use position='last' without start_line — no need to know the line count.",
             "Multiple operations in one batch are validated together before any modification is applied.",
-            "The original file is never touched until universal_file_write (commit phase).",
+            "The original file is never touched until universal_file_write (write_mode=commit).",
             "After server restart all sessions are lost — re-open with universal_file_open.",
         ],
     }

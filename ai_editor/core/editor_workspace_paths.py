@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ai_editor.core.exceptions import ValidationError
+from ai_editor.core.server_instance import _resolve_active_config_path
 from ai_editor.core.storage_paths import _resolve_path, load_raw_config
 
 
@@ -23,7 +24,7 @@ def _normalize_file_path(file_path: str) -> str:
 
 def resolve_workspace_root(*, config_path: Path | None = None) -> Path:
     """Load workspace root from config (C-018)."""
-    cfg = (config_path or Path("config.json")).resolve()
+    cfg = (config_path or _resolve_active_config_path()).resolve()
     if not cfg.is_file():
         raise ValidationError(f"Config not found: {cfg}", field="config_path")
     raw = load_raw_config(cfg)

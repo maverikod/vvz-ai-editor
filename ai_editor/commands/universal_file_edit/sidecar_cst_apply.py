@@ -39,6 +39,7 @@ from ai_editor.core.edit_session.edit_operations_adapter import (
 from ai_editor.core.cst_tree.models import CSTTree, ROOT_NODE_ID_SENTINEL
 from ai_editor.core.cst_tree.node_stable_id import logical_source_from_module
 from ai_editor.core.cst_tree.tree_builder import (
+    create_tree_from_code,
     get_tree,
     load_file_to_tree,
     rollback_tree_to_code,
@@ -50,6 +51,18 @@ from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
 def _edit_source_path(session: EditSession) -> Path:
     """Workspace draft source inside the edit subdir (not project origin path)."""
     return session.core.session_source_path
+
+
+def _refresh_in_memory_cst_without_sidecar(session: EditSession) -> None:
+    """Reload in-memory CST from session draft without touching the MAP tree file."""
+    source_path = _edit_source_path(session)
+    source_text = source_path.read_text(encoding="utf-8")
+    reloaded = create_tree_from_code(
+        str(source_path),
+        source_text,
+        persist_sidecar=False,
+    )
+    session.tree_id = reloaded.tree_id
 
 
 class StaleNodeIdError(ValueError):
@@ -144,21 +157,58 @@ def _preview_short_id_to_stable_id(
     from ai_editor.commands.universal_file_preview.marked_tree_loader import (
         resolve_format_handler,
     )
+    from ai_editor.core.edit_session.edit_operations_adapter import (
+        session_has_valid_tree,
+    )
+    from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
 
     source_abs = session.core.source_abs
     if source_abs.suffix.lower() not in (".py", ".pyi", ".pyw"):
         return None
-    handler = resolve_format_handler(source_abs)
-    content = session.core.session_source_path.read_text(encoding="utf-8")
-    internal_id: Optional[str] = None
-    for node in handler.parse_content(source_abs, content):
-        if int(node.short_id) == sid:
-            raw_internal = node.attributes.get("internal_node_id")
-            if isinstance(raw_internal, str) and raw_internal:
-                internal_id = raw_internal
-            break
-    if internal_id is None:
-        return None
+
+    start_line: Optional[int] = None
+    end_line: Optional[int] = None
+    node_type: Optional[str] = None
+    if session_has_valid_tree(session.core):
+        try:
+            sections = parse_tree_file(
+                session.core.session_tree_path.read_text(encoding="utf-8")
+            )
+            for entry in sections.map.entries:
+                if entry.short_id == sid:
+                    attrs = entry.attributes or {}
+                    start_raw = attrs.get("start_line")
+                    end_raw = attrs.get("end_line")
+                    if isinstance(start_raw, int):
+                        start_line = start_raw
+                    if isinstance(end_raw, int):
+                        end_line = end_raw
+                    raw_type = attrs.get("node_type")
+                    if isinstance(raw_type, str):
+                        node_type = raw_type
+                    break
+        except Exception:
+            pass
+
+    if start_line is None or end_line is None:
+        handler = resolve_format_handler(source_abs)
+        content = session.core.session_source_path.read_text(encoding="utf-8")
+        for node in handler.parse_content(source_abs, content):
+            if int(node.short_id) == sid:
+                attrs = node.attributes or {}
+                start_raw = attrs.get("start_line")
+                end_raw = attrs.get("end_line")
+                if isinstance(start_raw, int):
+                    start_line = start_raw
+                if isinstance(end_raw, int):
+                    end_line = end_raw
+                raw_type = attrs.get("node_type")
+                if isinstance(raw_type, str):
+                    node_type = raw_type
+                break
+        if start_line is None or end_line is None:
+            return None
+
     tid = session.tree_id
     tree = get_tree(tid) if tid else None
     if tree is None:
@@ -166,11 +216,25 @@ def _preview_short_id_to_stable_id(
             tree = load_file_to_tree(str(_edit_source_path(session)))
         except Exception:
             tree = None
-    if tree is not None:
-        meta = tree.metadata_map.get(internal_id)
-        if meta is not None and meta.stable_id:
-            return meta.stable_id
-    return internal_id
+    if tree is None:
+        return None
+
+    candidates = [
+        meta
+        for meta in tree.metadata_map.values()
+        if meta.start_line == start_line and meta.end_line == end_line
+    ]
+    if node_type is not None:
+        typed = [meta for meta in candidates if meta.type == node_type]
+        if typed:
+            candidates = typed
+    if len(candidates) == 1:
+        return candidates[0].stable_id
+    if len(candidates) > 1:
+        for meta in candidates:
+            if meta.kind in ("function", "method", "class", "import", "stmt"):
+                return meta.stable_id
+    return None
 
 
 def _translate_sidecar_preview_short_ids(
@@ -543,6 +607,11 @@ def _run_valid_session_sidecar_batch(
             "WRITE_FAILED",
             {"path": str(session.core.session_tree_path)},
         )
+
+    try:
+        _refresh_in_memory_cst_without_sidecar(session)
+    except Exception:
+        pass
 
     session.draft_path = session.core.session_source_path
     session.dirty = True

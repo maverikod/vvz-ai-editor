@@ -67,6 +67,26 @@ def test_load_resolved_ca_section_missing_section(tmp_path: Path) -> None:
         load_resolved_ca_section(cfg)
 
 
+def test_load_resolved_ca_section_resolves_port_placeholder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = tmp_path / "config.json"
+    cfg.write_text(
+        json.dumps(
+            {
+                "code_analysis_server": {
+                    "host": "ca.example.test",
+                    "port": "${AI_EDITOR_CODE_ANALYSIS_PORT}",
+                    "protocol": "https",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    section = load_resolved_ca_section(cfg)
+    assert section["port"] == 15010
+
+
 def test_load_resolved_ca_section_resolves_placeholder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -130,6 +130,17 @@ def check_config_placeholders(
     _resolved, resolve_errors = _resolve_node(raw, env)
     errors.extend(resolve_errors)
 
+    ca_section = _resolved.get("code_analysis_server")
+    if isinstance(ca_section, dict):
+        port_raw = ca_section.get("port")
+        port_text = str(port_raw).strip() if port_raw is not None else ""
+        if port_text == "15001":
+            errors.append(
+                "code_analysis_server.port resolves to legacy 15001; "
+                "code-analysis-server listens on 15010 — set "
+                "AI_EDITOR_CODE_ANALYSIS_PORT=15010"
+            )
+
     remaining = _collect_placeholder_names(_resolved)
     for name in sorted(remaining):
         token = f"${{{name}}}"

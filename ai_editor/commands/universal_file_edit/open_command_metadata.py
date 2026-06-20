@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Type
 
+from ai_editor.commands.universal_file_edit.workflow_brief import WORKFLOW_STEPS_TEXT
+
 
 def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
     """Return command metadata dict for universal_file_open.
@@ -45,12 +47,7 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "session live under `{workspace_root}/{session_id}/`. The success "
             "response includes session_dir (Editor Session Directory) and draft_path "
             "(draft copy under the file's Edit Subdirectory).\n\n"
-            "universal_file_open is step 1 in the universal file edit workflow:\n"
-            "  1. universal_file_open  — lock+download; workspace draft\n"
-            "  2. universal_file_preview — node_ref values from the draft\n"
-            "  3. universal_file_edit  — apply operations to the draft\n"
-            "  4. universal_file_write — preview diff, then commit to CA\n"
-            "  5. universal_file_close — unlock on CA and clean workspace artefacts\n\n"
+            f"{WORKFLOW_STEPS_TEXT}\n"
             "Multi-file: the same CA session_id may open multiple files; "
             "multi_file_bundle and repeat_open describe the bundle state.\n\n"
             "Parse-error fallback: when a structured file cannot be parsed, the session "
@@ -131,6 +128,9 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
                         "universal_file_* calls."
                     ),
                     "file_path": "Project-relative path of the opened file.",
+                    "format_group": (
+                        "Handler routing group: sidecar, tree-temp, or text."
+                    ),
                     "session_dir": (
                         "Absolute Editor Session Directory: "
                         "{workspace_root}/{session_id}/."
@@ -173,6 +173,7 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 "example": {
                     "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                     "file_path": "config/settings.yaml",
+                    "format_group": "tree-temp",
                     "session_dir": "/var/editor-workspace/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                     "draft_path": (
                         "/var/editor-workspace/a1b2c3d4-e5f6-7890-abcd-ef1234567890/"
@@ -242,18 +243,25 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
                     "Pass a non-empty CA session_id obtained from session_create."
                 ),
             },
-            "PARSE_ERROR": {
+            "FILE_ALREADY_OPEN": {
                 "description": (
-                    "The same project file is already open in another CA session "
-                    "bundle, the file is already open under this session_id, or an "
-                    "unrecoverable parse error at open (no text fallback). "
-                    "For .py/.json/.yaml parse errors at open, text-mode fallback is "
-                    "used instead when possible (is_invalid in success response)."
+                    "The same project file is already open in another CA session bundle, "
+                    "or the file is already open under this session_id."
                 ),
                 "message": "File already open in session {session_id}: {file_path}",
                 "solution": (
                     "Close the owning universal_file_close session for that file, "
                     "or use a different file_path, and retry."
+                ),
+            },
+            "PARSE_ERROR": {
+                "description": (
+                    "Unrecoverable parse error at open when text fallback is not used."
+                ),
+                "message": "Cannot parse file: {exc}",
+                "solution": (
+                    "Fix syntax errors in the file. For .py/.json/.yaml, text-mode "
+                    "fallback is used when possible (is_invalid in success response)."
                 ),
             },
             "OPEN_ERROR": {
@@ -293,6 +301,6 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "Always call universal_file_close when done to unlock on CA and free workspace memory.",
             "Always call universal_file_preview after open to obtain node_ref values for edits.",
             "If is_invalid is True, fix parse errors and commit before expecting node-based edits.",
-            "One open file per (project_id, file_path) at a time — a second open returns PARSE_ERROR.",
+            "One open file per (project_id, file_path) at a time — a second open returns FILE_ALREADY_OPEN.",
         ],
     }

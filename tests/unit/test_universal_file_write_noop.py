@@ -16,6 +16,7 @@ from ai_editor.commands.universal_file_edit.write_compare import (
     CompareResult,
     WriteComparison,
 )
+from ai_editor.core.file_validation.pre_write_pipeline import PreWriteValidationOutcome
 from ai_editor.core.upstream.session_guard import GuardDecision, OperationKind
 
 
@@ -75,7 +76,7 @@ async def test_write_commit_equal_returns_noop_without_upload() -> None:
     assert result.data["session_id"] == "sess-1"
     assert result.data["project_id"] == "proj-1"
     assert result.data["file_path"] == "src/foo.py"
-    mock_compare.assert_called_once_with(session)
+    mock_compare.assert_called_once_with(session, format_python=False)
     client.upload_session_file_content.assert_not_called()
     client.upload_create_and_lock.assert_not_called()
 
@@ -109,11 +110,15 @@ async def test_write_commit_diff_uploads_and_syncs_origin() -> None:
                     "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
-                    result = await cmd.execute(
-                        project_id="proj-1",
-                        session_id="sess-1",
-                        write_mode="commit",
-                    )
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        return_value=PreWriteValidationOutcome(success=True),
+                    ):
+                        result = await cmd.execute(
+                            project_id="proj-1",
+                            session_id="sess-1",
+                            write_mode="commit",
+                        )
 
     assert isinstance(result, SuccessResult)
     assert result.data["unchanged"] is False

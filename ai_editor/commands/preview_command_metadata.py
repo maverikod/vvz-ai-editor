@@ -50,9 +50,9 @@ def get_universal_file_preview_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "  the entire source is returned as a single text block instead of the\n"
             "  structured CST rendering. Set full_text_max_lines=0 to disable.\n\n"
             "Edit session integration:\n"
-            "  Pass session_id from universal_file_open to preview the current draft\n"
-            "  (in-memory CST tree for sidecar, tree_temp_roots for tree-temp, draft file for text).\n"
-            "  This session_id is unrelated to client session commands (session_create, …).\n\n"
+            "  Pass session_id (CA id from session_create / universal_file_open) to preview "
+            "the current workspace draft\n"
+            "  (in-memory CST tree for sidecar, tree_temp_roots for tree-temp, draft file for text).\n\n"
             "One-shot preview (file not open in workspace):\n"
             "  When no editor bundle exists for (project_id, file_path), preview downloads file bytes from\n"
             "  Code Analysis Server via Upstream Client download_without_lock (C-023) without session_open_file\n"
@@ -135,6 +135,20 @@ def get_universal_file_preview_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 "type": "string",
                 "required": False,
             },
+            "max_chars": {
+                "description": (
+                    "Max characters in paginated preview output for invalid/fallback "
+                    "sessions. Default from server preview config."
+                ),
+                "type": "integer",
+                "required": False,
+            },
+            "preview_offset": {
+                "description": "Character offset for paginated preview output. Default 0.",
+                "type": "integer",
+                "required": False,
+                "default": 0,
+            },
         },
         "return_value": {
             "success": {
@@ -208,53 +222,85 @@ def get_universal_file_preview_metadata(cls: Type[Any]) -> Dict[str, Any]:
         "error_cases": {
             "UNKNOWN_EXTENSION": {
                 "description": "File extension not supported by any preview handler.",
-                "solution": "Use a supported extension: .py, .json, .yaml, .yml, .md, .txt, .rst, .adoc, .jsonl.",
+                "message": "Unsupported file extension: {suffix}",
+                "solution": (
+                    "Use a supported extension: .py, .json, .yaml, .yml, .md, .txt, "
+                    ".rst, .adoc, .jsonl, .ndjson."
+                ),
             },
             "UNKNOWN_NODE_REF": {
                 "description": "node_ref not found in the current file tree.",
-                "solution": "Re-run preview without node_ref to get valid node_ref values from the current file state.",
+                "message": "Unknown node_ref: {node_ref}",
+                "solution": (
+                    "Re-run preview without node_ref to get valid node_ref values "
+                    "from the current file state."
+                ),
             },
             "FILE_STRUCTURE_ERROR": {
                 "description": "File could not be parsed (e.g. invalid JSON or YAML syntax).",
-                "solution": "Fix the file syntax, or open it with universal_file_open which falls back to text mode.",
-            },
-            "GLOB_IN_FILE_PATH": {
-                "description": "file_path contains glob characters (* ? [).",
-                "solution": "Provide a single literal file path.",
+                "message": "{parser}: {message}",
+                "solution": (
+                    "Fix the file syntax, or open it with universal_file_open which "
+                    "falls back to text mode."
+                ),
             },
             "INVALID_SELECTOR_FORM": {
-                "description": "Selector string does not contain ':' and does not start with '-'.",
-                "solution": "Use slice syntax (e.g. '0:5', '-3:') or a list of indices/identifiers.",
-            },
-            "FILE_LOCKED": {
                 "description": (
-                    "File is locked by another universal_file_open edit session "
-                    "(preview without session_id). universal_file_open returns PARSE_ERROR "
-                    "for the same lock."
+                    "Selector string does not contain ':' and does not start with '-'."
                 ),
+                "message": "Invalid selector form: {selector}",
                 "solution": (
-                    "Pass the owning session_id from universal_file_open, or call "
-                    "universal_file_close on that session."
+                    "Use slice syntax (e.g. '0:5', '-3:') or a list of indices/identifiers."
                 ),
             },
             "CONFLICTING_PARAMETERS": {
-                "description": "Unknown or invalid session_id when resolving edit draft.",
-                "solution": "Re-open the file with universal_file_open and use the new session_id.",
+                "description": (
+                    "Mutually exclusive preview parameters (e.g. tree_id with session_id "
+                    "for Python handler)."
+                ),
+                "message": "{conflict detail}",
+                "solution": (
+                    "Use session_id only, or omit tree_id when previewing an open session."
+                ),
             },
             "HANDLER_ERROR": {
                 "description": "Unexpected failure inside a preview handler.",
+                "message": "{handler error}",
                 "solution": "Retry; if persistent, check server logs and file content.",
             },
             "OPEN_FILE_USE_WORKSPACE_PREVIEW": {
                 "description": (
-                    "The file is already open in the editor workspace for this project_id and file_path. "
-                    "One-shot upstream download is not used for open files."
+                    "The file is already open in the editor workspace for this "
+                    "project_id and file_path. One-shot upstream download is not used."
                 ),
+                "message": "File is open; use workspace preview with session_id",
                 "solution": (
-                    "Call universal_file_open first (or reuse existing open), then call universal_file_preview "
-                    "with session_id set to the CA session id that owns the open bundle to preview the "
+                    "Pass session_id (CA id from universal_file_open) to preview the "
                     "workspace draft (open-file preview mode)."
                 ),
+            },
+            "SESSION_NOT_FOUND": {
+                "description": (
+                    "session_id failed SessionGuard PREVIEW validation (unknown CA session)."
+                ),
+                "message": "CA session not found or invalid: {session_id}",
+                "solution": "Create a new CA session via session_create and re-open the file.",
+            },
+            "UPSTREAM_ERROR": {
+                "description": (
+                    "One-shot preview: CA download_without_lock failed (file missing, "
+                    "network, or transfer error)."
+                ),
+                "message": "{upstream error}",
+                "solution": (
+                    "Verify file_path exists in the project and CA connectivity; "
+                    "or open the file with universal_file_open first."
+                ),
+            },
+            "VALIDATION_ERROR": {
+                "description": "Parameter validation failed before preview execution.",
+                "message": "{ValidationError message}",
+                "solution": "Fix parameters per get_schema() and retry.",
             },
         },
         "best_practices": [

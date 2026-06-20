@@ -20,6 +20,9 @@ def test_bundled_container_template_loads() -> None:
     data = load_bundled_template()
     assert data["code_analysis_server"]["host"] == "${AI_EDITOR_CODE_ANALYSIS_HOST}"
     assert (
+        data["code_analysis_server"]["port"] == "${AI_EDITOR_CODE_ANALYSIS_PORT}"
+    )
+    assert (
         data["ai_editor"]["storage"]["workspace_root"]
         == "/var/ai-editor/editor_workspaces"
     )

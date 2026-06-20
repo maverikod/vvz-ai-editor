@@ -60,6 +60,29 @@ def _read_source_text(*, preview_abs_path: Path) -> str:
         return source
 
 
+def _load_python_nodes_from_valid_session(
+    core: object,
+    edit_sess: object,
+) -> List[TreeNode] | None:
+    """Load preview nodes for a valid Python edit session MAP sidecar."""
+    from ai_editor.commands.universal_file_edit.session import EditSession
+    from ai_editor.tree.handlers.python_handler import PythonHandler
+
+    assert isinstance(edit_sess, EditSession)
+    handler = resolve_format_handler(core.session_source_path)
+    if not isinstance(handler, PythonHandler):
+        return None
+    sections = parse_tree_file(core.session_tree_path.read_text(encoding="utf-8"))
+    unmarked = handler.unmark(sections.tree)
+    map_uuids = {entry.short_id: entry.uuid for entry in sections.map.entries}
+    nodes = handler.preview_nodes_from_marked(
+        sections.tree,
+        unmarked,
+        map_uuids=map_uuids,
+    )
+    return nodes if nodes else None
+
+
 def _load_nodes_from_valid_edit_session(session_id: str) -> List[TreeNode] | None:
     """Load MAP/TREE short_ids from an open valid universal_file_edit session."""
     from ai_editor.commands.universal_file_edit.session import get_session
@@ -79,6 +102,11 @@ def _load_nodes_from_valid_edit_session(session_id: str) -> List[TreeNode] | Non
         or not core.session_tree_path.is_file()
     ):
         return None
+    if edit_sess.handler_id == "python":
+        try:
+            return _load_python_nodes_from_valid_session(core, edit_sess)
+        except Exception:
+            return None
     try:
         sections = parse_tree_file(core.session_tree_path.read_text(encoding="utf-8"))
         marked_root = _parse_marked_tree_root(sections, edit_sess.handler_id)

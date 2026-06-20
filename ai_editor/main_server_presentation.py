@@ -2,11 +2,8 @@
 Resolve OpenAPI / MCP server title, description, and version from config.
 
 Adapter contract (mcp-proxy-adapter >= 8.10.13):
-- ``AppFactory.create_app(title=..., description=..., version=...)`` → OpenAPI + ``help`` ``tool_info``.
-- Proxy ``list_servers`` description: ``registration.metadata.description`` (see
-  ``build_server_metadata`` in the adapter; same pattern as ``mcp_terminal`` /
-  ``model_access_core``). Top-level ``registration.description`` is optional legacy
-  for ``RegistrationClient`` only.
+- ``AppFactory.create_app(title=..., description=..., version=...)`` → OpenAPI + ``help`` ``tool_info`` (help tier).
+- Proxy ``list_servers`` description: ``registration.metadata.description`` (list tier, brief).
 
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
@@ -14,24 +11,25 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Dict, Tuple
+
+from ai_editor.commands.universal_file_edit.workflow_brief import (
+    SERVER_HELP_DESCRIPTION,
+    SERVER_LIST_DESCRIPTION,
+)
 
 _DEFAULT_TITLE = "AI Editor Server"
 
-_DEFAULT_DESCRIPTION = """\
-AI Editor server for Python projects: CST editing, code indexes, search, \
-refactoring helpers, and quality checks.
 
-### MCP Proxy (recommended)
-- Discover servers: `list_servers`
-- Discover projects: `list_projects` (use returned `project_id`)
-- Call commands: `call_server(server_id="ai-editor-server", copy_number=1, command="<name>", params={...})`
-- Use `project_id` and project-relative `file_path`; do not pass host `root_dir`.
-- Long-running commands return `job_id`; poll with `queue_get_job_status` / `queue_get_job_logs`.
+@dataclass(frozen=True)
+class ServerPresentation:
+    """Resolved server presentation tiers."""
 
-### Direct API
-- Schema: `GET /openapi.json` (transport and mTLS per `config.json`)
-"""
+    title: str
+    help_description: str
+    list_description: str
+    version: str
 
 
 def _package_version() -> str:
@@ -43,14 +41,14 @@ def _package_version() -> str:
         return "1.0.4"
 
 
-def resolve_server_presentation(app_config: Dict[str, Any]) -> Tuple[str, str, str]:
+def resolve_server_presentation(app_config: Dict[str, Any]) -> ServerPresentation:
     """
-    Build (title, description, version) for FastAPI and proxy registration.
+    Build presentation tiers for FastAPI/help and proxy list_servers.
 
-    Priority:
-    1. ``server_presentation`` section (recommended; survives SimpleConfig load)
-    2. ``registration.server_name`` / ``registration.description`` / ``registration.version``
-    3. Built-in defaults and package version
+    Config keys under ``server_presentation``:
+    - ``description`` — help tier (OpenAPI / server help); enough to start working.
+    - ``list_description`` — brief card for ``list_servers`` (optional).
+    - ``title``, ``version``
     """
     pres = app_config.get("server_presentation")
     if not isinstance(pres, dict):
@@ -71,11 +69,15 @@ def resolve_server_presentation(app_config: Dict[str, Any]) -> Tuple[str, str, s
         or reg_meta.get("server_id")
         or _DEFAULT_TITLE
     )
-    description = (
+    help_description = (
         pres.get("description")
-        or reg_meta.get("description")
-        or reg.get("description")
-        or _DEFAULT_DESCRIPTION
+        or reg_meta.get("help_description")
+        or SERVER_HELP_DESCRIPTION
+    )
+    list_description = (
+        pres.get("list_description")
+        or reg_meta.get("list_description")
+        or SERVER_LIST_DESCRIPTION
     )
     version = (
         pres.get("version")
@@ -83,17 +85,29 @@ def resolve_server_presentation(app_config: Dict[str, Any]) -> Tuple[str, str, s
         or reg.get("version")
         or _package_version()
     )
-    return str(title), str(description), str(version)
+    return ServerPresentation(
+        title=str(title),
+        help_description=str(help_description),
+        list_description=str(list_description),
+        version=str(version),
+    )
+
+
+def resolve_server_presentation_legacy(
+    app_config: Dict[str, Any],
+) -> Tuple[str, str, str]:
+    """Backward-compatible 3-tuple: title, help_description, version."""
+    p = resolve_server_presentation(app_config)
+    return p.title, p.help_description, p.version
 
 
 def sync_registration_presentation(app_config: Dict[str, Any]) -> None:
     """
     Copy presentation into ``registration.metadata`` for proxy registration.
 
-    ``RegistrationConfig`` (SimpleConfig) only accepts ``metadata`` as an extra
-    dict; ``description`` / ``version`` must live there for ``build_server_metadata``.
-  """
-    title, description, version = resolve_server_presentation(app_config)
+    ``metadata.description`` uses the **list** tier (brief). Help tier is for OpenAPI only.
+    """
+    pres = resolve_server_presentation(app_config)
     reg = app_config.setdefault("registration", {})
     if not isinstance(reg, dict):
         return
@@ -103,15 +117,16 @@ def sync_registration_presentation(app_config: Dict[str, Any]) -> None:
         meta = {}
         reg["metadata"] = meta
 
-    meta["description"] = description
-    meta["version"] = version
+    meta["description"] = pres.list_description
+    meta["list_description"] = pres.list_description
+    meta["help_description"] = pres.help_description
+    meta["version"] = pres.version
     if reg.get("server_id"):
         meta.setdefault("server_id", reg["server_id"])
-    if title:
-        meta.setdefault("server_name", title)
+    if pres.title:
+        meta.setdefault("server_name", pres.title)
         if not reg.get("server_name"):
-            reg["server_name"] = title
+            reg["server_name"] = pres.title
 
-    # Legacy path used by RegistrationClient._prepare_registration_data
-    reg["description"] = description
-    reg["version"] = version
+    reg["description"] = pres.list_description
+    reg["version"] = pres.version

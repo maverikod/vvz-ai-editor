@@ -8,7 +8,7 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
@@ -17,6 +17,99 @@ if TYPE_CHECKING:
 def normalize_rel_path(file_path: str) -> str:
     """Normalize project-relative path for CA file index matching (C-023)."""
     return str(file_path or "").strip().replace("\\", "/")
+
+
+def _row_relative_path(item: Dict[str, Any]) -> str:
+    return normalize_rel_path(
+        str(
+            item.get("relative_path") or item.get("path") or item.get("file_path") or ""
+        )
+    )
+
+
+def _file_id_from_row(item: Dict[str, Any]) -> str:
+    return str(item.get("file_id") or item.get("id") or "").strip()
+
+
+def list_project_file_rows_for_path(
+    client: "CodeAnalysisClient",
+    project_id: str,
+    file_path: str,
+) -> List[Dict[str, Any]]:
+    """Return ``list_project_files`` rows for one exact project-relative path."""
+    pid = str(project_id or "").strip()
+    rel = normalize_rel_path(file_path)
+    data = client.call(
+        "list_project_files",
+        {"project_id": pid, "file_pattern": rel},
+    )
+    files = data.get("files") if isinstance(data, dict) else data
+    if not isinstance(files, list):
+        raise RuntimeError("list_project_files returned no files list")
+    return [
+        item
+        for item in files
+        if isinstance(item, dict) and _row_relative_path(item) == rel
+    ]
+
+
+def read_project_file_bytes_via_lines(
+    client: "CodeAnalysisClient",
+    project_id: str,
+    file_path: str,
+    *,
+    chunk_size: int = 500,
+) -> bytes:
+    """Read a project file via ``get_file_lines`` (works without ``files.id``)."""
+    pid = str(project_id or "").strip()
+    rel = normalize_rel_path(file_path)
+    probe = client.call(
+        "get_file_lines",
+        {
+            "project_id": pid,
+            "file_path": rel,
+            "start_line": 1,
+            "end_line": 1,
+        },
+    )
+    if not isinstance(probe, dict):
+        raise RuntimeError("get_file_lines returned invalid payload")
+    try:
+        total_lines = int(probe.get("total_lines") or 0)
+    except (TypeError, ValueError):
+        total_lines = 0
+    if total_lines <= 0:
+        return b""
+    start_line = 1
+    parts: List[str] = []
+    while start_line <= total_lines:
+        end_line = min(start_line + chunk_size - 1, total_lines)
+        data = client.call(
+            "get_file_lines",
+            {
+                "project_id": pid,
+                "file_path": rel,
+                "start_line": start_line,
+                "end_line": end_line,
+            },
+        )
+        if not isinstance(data, dict):
+            raise RuntimeError("get_file_lines returned invalid payload")
+        lines = data.get("lines")
+        if not isinstance(lines, list):
+            raise RuntimeError("get_file_lines returned no lines list")
+        if not lines:
+            break
+        parts.extend(str(line) for line in lines)
+        start_line += len(lines)
+        if start_line > total_lines:
+            break
+    if not parts:
+        return b""
+    text = "\n".join(parts)
+    if total_lines > 0:
+        text += "\n"
+    return text.encode("utf-8")
 
 
 def resolve_file_id_for_path(
@@ -35,25 +128,54 @@ def resolve_file_id_for_path(
             field="file_path",
             details={"project_id": project_id, "file_path": file_path},
         )
-    data = client.call("list_project_files", {"project_id": pid})
-    files = data.get("files") if isinstance(data, dict) else data
-    if not isinstance(files, list):
-        raise RuntimeError("list_project_files returned no files list")
-    for item in files:
-        if not isinstance(item, dict):
-            continue
-        row_path = normalize_rel_path(
-            str(
-                item.get("relative_path")
-                or item.get("path")
-                or item.get("file_path")
-                or ""
-            )
+    for item in list_project_file_rows_for_path(client, pid, rel):
+        fid = _file_id_from_row(item)
+        if fid:
+            return fid
+    raise RuntimeError(f"file not found in project index: {rel!r}")
+
+
+def ensure_file_id_for_path(
+    client: "CodeAnalysisClient",
+    project_id: str,
+    file_path: str,
+    *,
+    session_id: str,
+) -> str:
+    """Resolve ``files.id``, registering disk-only paths on CA when needed."""
+    from ai_editor.core.exceptions import ValidationError
+
+    pid = str(project_id or "").strip()
+    rel = normalize_rel_path(file_path)
+    sid = str(session_id or "").strip()
+    if not sid:
+        raise ValidationError(
+            "session_id is required to register an unindexed project file",
+            field="session_id",
+            details={"project_id": project_id, "file_path": file_path},
         )
-        if row_path == rel:
-            fid = str(item.get("file_id") or item.get("id") or "").strip()
-            if fid:
-                return fid
+    rows = list_project_file_rows_for_path(client, pid, rel)
+    if not rows:
+        raise RuntimeError(f"file not found in project index: {rel!r}")
+    for item in rows:
+        fid = _file_id_from_row(item)
+        if fid:
+            return fid
+    content = read_project_file_bytes_via_lines(client, pid, rel)
+    saved = upload_create_save(
+        client,
+        session_id=sid,
+        project_id=pid,
+        file_path=rel,
+        content=content,
+    )
+    fid = str(saved.get("file_id") or "").strip()
+    if fid:
+        return fid
+    for item in list_project_file_rows_for_path(client, pid, rel):
+        fid = _file_id_from_row(item)
+        if fid:
+            return fid
     raise RuntimeError(f"file not found in project index: {rel!r}")
 
 
@@ -145,14 +267,19 @@ def download_bytes_without_lock(
             field="file_path",
             details={"project_id": project_id, "file_path": file_path},
         )
-    file_id = resolve_file_id_for_path(client, pid, rel)
-    return download_file_bytes(
-        client,
-        session_id=None,
-        project_id=pid,
-        file_id=file_id,
-        lock_mode="none",
-    )
+    rows = list_project_file_rows_for_path(client, pid, rel)
+    if not rows:
+        raise RuntimeError(f"file not found in project index: {rel!r}")
+    file_id = _file_id_from_row(rows[0])
+    if file_id:
+        return download_file_bytes(
+            client,
+            session_id=None,
+            project_id=pid,
+            file_id=file_id,
+            lock_mode="none",
+        )
+    return read_project_file_bytes_via_lines(client, pid, rel)
 
 
 def upload_create_save(

@@ -2,7 +2,7 @@
 
 **Command:** `universal_file_write`  
 **Class:** `UniversalFileWriteCommand`  
-**Source:** `code_analysis/commands/universal_file_edit/write_command.py`  
+**Source:** `ai_editor/commands/universal_file_edit/write_command.py`  
 **Category:** file_management
 
 Author: Vasiliy Zdanovskiy  
@@ -12,33 +12,26 @@ email: vasilyvz@gmail.com
 
 ## Purpose
 
-Generate code from the session draft, show a diff against the on-disk file, and optionally **commit** with backup.
+Compare workspace draft (canonical export) to origin snapshot, show a unified diff, and optionally **commit** to Code Analysis Server.
 
-**Workflow step 4.** Always inspect preview before commit ([FILE_EDIT_WORKFLOW.yaml](../../standards/FILE_EDIT_WORKFLOW.yaml)).
+**Workflow steps 4a–4b.** Always call `write_mode=preview` before `write_mode=commit` ([FILE_EDIT_WORKFLOW.yaml](../../standards/FILE_EDIT_WORKFLOW.yaml)).
 
 ---
 
 ## Write modes
 
-### tree-temp (JSON/YAML)
-
-Every call requires explicit mode:
-
 | write_mode | Effect |
 |------------|--------|
-| `preview` | Unified diff only; no disk write |
-| `commit` | Backup + atomic write + index update path |
+| `preview` (default) | Unified diff only; **no** validation; **no** CA upload |
+| `commit` | Pre-write validation → CA upload when content differs; `unchanged=true` when equal (no CA RPC) |
 
-**Forbidden:** `commit` without a preceding `preview` in the same session.
+### Pre-write validation (commit only)
 
-### sidecar (Python) / text
+For Python and structured files: serialize to temp → quality tools (flake8, mypy, black-parseable) → handler validator (docstrings, JSON/YAML parse). On failure: `VALIDATION_ERROR`; origin and draft unchanged.
 
-Two-phase **PID lockfile** on the canonical file:
+### Sidecar legacy (`.py`, `write_mode` omitted)
 
-1. First call (no valid lock) → diff preview, `<file>.write` lock created
-2. Second call (lock PID matches, lock newer than draft) → backup + commit
-
-`write_mode` may also be accepted where implemented — check `help(universal_file_write)`.
+Two-phase PID lockfile: first call → preview + lock; second call (same server PID) → commit. Prefer explicit `write_mode=preview` then `commit`.
 
 ---
 
@@ -46,10 +39,12 @@ Two-phase **PID lockfile** on the canonical file:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `project_id` | string | **Yes** | Project UUID |
-| `session_id` | string | **Yes** | Active edit session |
-| `write_mode` | string | tree-temp: **Yes** | `preview` or `commit` |
-| `commit_message` | string | No | Optional git commit after write (when enabled in config) |
+| `project_id` | string | **Yes** | Project UUID (CA upload) |
+| `session_id` | string | **Yes** | CA session id |
+| `file_path` | string | Conditional | Required when session has multiple open files |
+| `write_mode` | string | No | `preview` (default) or `commit` |
+| `format_python` | boolean | No | Run black on export before diff/upload |
+| `verify_after_upload` | boolean | No | Read-back from CA after successful upload |
 
 ---
 
@@ -57,54 +52,51 @@ Two-phase **PID lockfile** on the canonical file:
 
 ### Success (preview)
 
-- Unified diff text (committed → draft)
-- Lockfile state / `preview_only: true` where applicable
+- `phase`: `preview`
+- `has_changes`, `diff`
+- `uploaded`: false
 
 ### Success (commit)
 
-- Diff of applied change
-- Backup UUID when created
-- Index update triggers for Python
+- `phase`: `committed`
+- `unchanged`, `uploaded`, `has_changes`, `diff`
+- Optional `ca_verify` when `verify_after_upload=true`
 
 ### Error
 
-`SESSION_NOT_FOUND`, `WRITE_FAILED` (backup restored on failure), `DRAFT_NOT_FOUND`, validation errors on Python commit.
+`VALIDATION_ERROR`, `UPSTREAM_UPLOAD_FAILED`, `SESSION_NOT_FOUND`, `SESSION_FILE_PATH_REQUIRED`, `WRITE_FAILED`
 
 ---
 
 ## Examples
 
-**tree-temp**
+**Preview diff**
 
 ```json
-{"project_id": "<uuid>", "session_id": "<session>", "write_mode": "preview"}
+{
+  "project_id": "<uuid>",
+  "session_id": "<ca-session-id>",
+  "file_path": "pkg/module.py",
+  "write_mode": "preview"
+}
 ```
 
-```json
-{"project_id": "<uuid>", "session_id": "<session>", "write_mode": "commit"}
-```
-
-**sidecar / text (two calls)**
+**Commit to CA**
 
 ```json
-{"project_id": "<uuid>", "session_id": "<session>"}
-```
-
-```json
-{"project_id": "<uuid>", "session_id": "<session>"}
+{
+  "project_id": "<uuid>",
+  "session_id": "<ca-session-id>",
+  "file_path": "pkg/module.py",
+  "write_mode": "commit"
+}
 ```
 
 ---
 
-## Best practices
+## Related
 
-- Read the full diff before the commit call.
-- On Python validation failure, fix `code_lines` in edit and retry write — do not bypass with direct file tools.
-- Run `format_code`, `lint_code`, `type_check_code` after successful commit.
-
----
-
-## See also
-
-- [universal_file_close.md](universal_file_close.md)
 - [WORKFLOW.md](WORKFLOW.md)
+- [universal_file_close.md](universal_file_close.md) — always call after commit or abort
+
+Schema source: `help(server_id="ai-editor-server", command="universal_file_write")`.

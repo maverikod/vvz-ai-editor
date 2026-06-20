@@ -95,8 +95,8 @@ class UniversalFileEditCommand(BaseMCPCommand):
                 "session_id": {
                     "type": "string",
                     "description": (
-                        "CA session id returned by universal_file_open "
-                        "(same value as upstream session id)."
+                        "CA session id from session_create; same id on all "
+                        "universal_file_* calls."
                     ),
                 },
                 "file_path": {

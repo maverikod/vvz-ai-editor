@@ -29,7 +29,7 @@ from ai_editor.core.tree_lifecycle import (
     is_tree_valid,
     validate_or_recreate_tree_file,
 )
-from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
+from ai_editor.core.tree_lifecycle.node_id_map import NodeIdMapError, parse_tree_file
 from ai_editor.tree.edit_operations import EditOperation
 from ai_editor.tree.handler_registry import HandlerRegistry
 from ai_editor.tree.sibling_convention import sibling_tree_path
@@ -215,14 +215,6 @@ class EditSession:
             )
             tree_abs = session_tree_path
 
-            if session_source_path.suffix == ".py" and not session_tree_path.is_file():
-                try:
-                    from ai_editor.core.cst_tree import tree_builder as cst_builder
-
-                    cst_builder.load_file_to_tree(str(session_source_path))
-                except Exception:
-                    pass
-
             tree_validity = SessionTreeValidity.INVALID
             tree_checksum: Optional[str] = None
             if session_tree_path.is_file():
@@ -275,6 +267,8 @@ class EditSession:
                 workspace_file_subtree_root=ws_subtree,
             )
             _active_sessions[session_id] = session
+            if ws_origin.suffix.lower() in (".py", ".pyi", ".pyw"):
+                _mut.try_revalidate(session)
             return session
 
         session_dir = source_abs.parent / f"{source_abs.name}-{session_id}"
@@ -431,8 +425,15 @@ class EditSession:
         self.tree_checksum = compute_content_checksum(
             self.session_tree_path.read_text(encoding="utf-8")
         )
-        self.tree_validity = SessionTreeValidity.VALID
-        self.session_repo.commit_full(message="session: mutation")
+        try:
+            parse_tree_file(self.session_tree_path.read_text(encoding="utf-8"))
+            self.tree_validity = SessionTreeValidity.VALID
+            self.session_repo.commit_full(message="session: mutation")
+        except NodeIdMapError:
+            self.tree_validity = SessionTreeValidity.INVALID
+            self.tree_checksum = None
+            self.session_repo.commit_degraded(message="session: cst sidecar mutation")
+            _mut.try_revalidate(self)
         self._record_history_commit(self.session_repo.log()[0].hash)
 
     def _post_mutation_full(self) -> None:

@@ -18,7 +18,14 @@ Read-only structured view of any supported project file. Returns navigable block
 - Works **without** an edit session for initial inspection.
 - Supported: `.py`, `.json`, `.yaml`, `.yml`, `.md`, `.txt`, `.rst`, `.adoc`, `.jsonl`, `.ndjson`.
 
-**Workflow:** Step 1 (optional before open) for outline navigation. After open, use drill-down here **or** [`universal_file_search`](universal_file_search.md) for XPath on the session CST tree (Python sidecar). See [WORKFLOW.md](WORKFLOW.md).
+**Workflow:** Step 2 after open (or one-shot read before open). See [WORKFLOW.md](WORKFLOW.md).
+
+Two modes:
+
+- **Workspace draft** — pass `session_id` (CA id) after `universal_file_open`; reads current draft.
+- **One-shot** — omit open; `project_id` + `file_path` only; CA `download_without_lock` (read-only, no lock).
+
+If the file is already open but `session_id` is omitted → `OPEN_FILE_USE_WORKSPACE_PREVIEW`.
 
 ---
 
@@ -29,7 +36,7 @@ Read-only structured view of any supported project file. Returns navigable block
 | `project_id` | string | **Yes** | Project UUID from `list_projects` |
 | `file_path` | string | **Yes** | Project-relative path; no globs |
 | `node_ref` | string | No | Drill-down target from a prior response; omit for file root |
-| `session_id` | string | No | From `universal_file_open` — preview **draft**, not on-disk file |
+| `session_id` | string | No | CA session id — after open, preview **draft**; optional on one-shot read |
 | `selector` | string or array | No | Slice blocks: `"0:5"`, `"-3:"`, or explicit block ids |
 | `preview_lines` | integer | No | Max blocks at root (default 20) |
 | `full_text_max_lines` | integer | No | Python: return full source as one block when file is shorter (default 200) |

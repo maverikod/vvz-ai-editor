@@ -18,6 +18,11 @@ markdown-it-py>=3.0
 # PostgreSQL driver (основная СУБД в конфиге)
 psycopg[binary]>=3.1
 
+# Code quality (required in Docker image; used before every write)
+black>=24.0
+flake8>=7.0
+mypy>=1.8
+
 # --- Системные утилиты (НЕ pip): логический бэкап/restore при driver.type=postgres ---
 # MCP-команды backup_database / restore_database вызывают pg_dump / pg_restore.
 # Установка клиента PostgreSQL (пример Debian/Ubuntu):

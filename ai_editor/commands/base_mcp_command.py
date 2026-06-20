@@ -45,16 +45,9 @@ class BaseMCPCommand(Command):
 
     @staticmethod
     def _resolve_config_path() -> Path:
-        try:
-            from mcp_proxy_adapter.config import get_config
+        from ai_editor.core.server_instance import _resolve_active_config_path
 
-            cfg = get_config()
-            cfg_path = getattr(cfg, "config_path", None)
-            if isinstance(cfg_path, str) and cfg_path.strip():
-                return Path(cfg_path).expanduser().resolve()
-        except Exception:
-            pass
-        return (Path.cwd() / "config.json").resolve()
+        return _resolve_active_config_path()
 
     @staticmethod
     def _get_raw_config() -> Dict[str, Any]:

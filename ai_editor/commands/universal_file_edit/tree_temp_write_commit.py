@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Tuple, cast
 
@@ -103,18 +101,25 @@ def commit_tree_temp_to_disk(
     except Exception as exc:
         raise ValueError(f"Tree-temp source serialization failed: {exc}") from exc
 
+    from ai_editor.core.file_validation.pre_write_pipeline import (
+        promote_temp_to_target,
+        validate_before_promote,
+    )
+
+    outcome = validate_before_promote(
+        session.handler_id,
+        source_code=code,
+        target_path=session.abs_path,
+    )
+    if not outcome.success:
+        raise ValueError(outcome.error_message or "Pre-write validation failed")
+
     tmp_path: str | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=session.abs_path.suffix,
-            dir=str(session.abs_path.parent),
-            delete=False,
-            encoding="utf-8",
-        ) as tmp:
-            tmp.write(code)
-            tmp_path = tmp.name
-        os.replace(tmp_path, str(session.abs_path))
+        if outcome.temp_path is None:
+            raise ValueError("Validation succeeded but temp file is missing")
+        tmp_path = str(outcome.temp_path)
+        promote_temp_to_target(outcome.temp_path, session.abs_path)
         tmp_path = None
     except OSError:
         if tmp_path:

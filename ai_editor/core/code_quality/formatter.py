@@ -11,6 +11,33 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_PYTHON_SUFFIXES = frozenset({".py", ".pyi", ".pyw"})
+
+
+def is_python_source_path(file_path: str) -> bool:
+    """Return True when path uses a Python handler suffix."""
+    return Path(file_path).suffix.lower() in _PYTHON_SUFFIXES
+
+
+def format_python_source_text(source: str) -> Tuple[str, Optional[str]]:
+    """Format Python source text with black (in-memory).
+
+    Returns:
+        Tuple of (formatted_source, error_message). On success error is None.
+    """
+    try:
+        import black
+
+        try:
+            formatted = black.format_str(source, mode=black.FileMode())
+            return formatted, None
+        except black.NothingChanged:
+            return source, None
+    except ImportError:
+        return source, "Black formatter not installed"
+    except Exception as exc:
+        return source, str(exc)
+
 
 def format_code_with_black(file_path: Path) -> Tuple[bool, Optional[str]]:
     """

@@ -11,11 +11,13 @@ from mcp_proxy_adapter.commands.command_registry import CommandRegistry
 
 EXPECTED_WORKFLOW_COMMANDS: frozenset[str] = frozenset(
     {
+        "info",
         "universal_file_open",
         "universal_file_edit",
         "universal_file_write",
         "universal_file_close",
         "universal_file_preview",
+        "universal_file_search",
         "health",
     }
 )
@@ -39,7 +41,6 @@ FORBIDDEN_LEGACY_COMMANDS: frozenset[str] = frozenset(
         "project_file_advisory_lock_batch",
         "project_file_lock_status",
         "universal_file_move_nodes",
-        "universal_file_search",
         "universal_file_save",
         "session_git_log",
         "session_git_diff",
@@ -70,8 +71,8 @@ def _registered_command_names() -> set[str]:
     return set(reg.get_all_commands().keys())
 
 
-def test_help_lists_universal_file_workflow_and_health_only() -> None:
-    """C-022 (6) / C-016: help exposes exactly the thin workflow + health."""
+def test_help_lists_universal_file_workflow_search_and_health() -> None:
+    """C-022 / C-016: help exposes thin workflow + search + health."""
     names = _registered_command_names()
     assert names == EXPECTED_WORKFLOW_COMMANDS, (
         "Editor MCP help surface must list only universal_file_* workflow commands "

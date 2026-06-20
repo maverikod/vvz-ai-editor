@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -50,69 +49,42 @@ def validate_and_write_temp(
     Returns:
         Tuple of (temp_file_path, error_result or None, validation_results or None)
     """
-    temp_fd, temp_path_str = tempfile.mkstemp(
-        suffix=".py", prefix="cst_compose_", dir=target_path.parent
+    from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
+    from ai_editor.core.file_validation.pre_write_pipeline import (
+        validate_before_promote,
+        validation_error_result,
     )
-    temp_file = Path(temp_path_str)
 
-    try:
-        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
-            f.write(source_code)
-    except Exception as e:
-        os.close(temp_fd)
+    outcome = validate_before_promote(
+        HANDLER_PYTHON,
+        source_code=source_code,
+        target_path=target_path,
+        skip_quality_tools=validate_syntax_only,
+        validate_docstrings=validate_docstrings,
+    )
+    if not outcome.success:
         return (
-            temp_file,
+            target_path,
+            validation_error_result(
+                error_message=outcome.error_message or "Validation failed",
+                quality_results=outcome.quality_results,
+                handler_results=outcome.handler_results,
+            ),
+            {**outcome.quality_results, **outcome.handler_results},
+        )
+
+    temp_file = outcome.temp_path
+    if temp_file is None:
+        return (
+            target_path,
             ErrorResult(
-                message=f"Failed to write temporary file: {e}",
+                message="Validation succeeded but temp file is missing",
                 code="TEMP_FILE_ERROR",
-                details={"error": str(e)},
             ),
             None,
         )
 
-    from ..core.cst_module.validation import validate_file_in_temp
-
-    validation_success, _validation_error, validation_results = validate_file_in_temp(
-        source_code=source_code,
-        temp_file_path=temp_file,
-        validate_linter=not validate_syntax_only,
-        validate_type_checker=not validate_syntax_only,
-        validate_docstrings=(not validate_syntax_only) and validate_docstrings,
-    )
-
-    if not validation_success:
-        error_parts = []
-        for validation_type, result in validation_results.items():
-            if not result.success:
-                if result.error_message:
-                    error_parts.append(f"{validation_type}: {result.error_message}")
-                elif result.errors:
-                    error_parts.append(
-                        f"{validation_type}: {len(result.errors)} error(s)"
-                    )
-        error_message = "; ".join(error_parts) if error_parts else "Validation failed"
-        validation_details = {
-            vt: {
-                "success": result.success,
-                "error_message": result.error_message,
-                "errors": result.errors[:10],
-            }
-            for vt, result in validation_results.items()
-        }
-        temp_file.unlink()
-        return (
-            temp_file,
-            ErrorResult(
-                message=f"Validation failed: {error_message}",
-                code="VALIDATION_ERROR",
-                details={
-                    "error": error_message,
-                    "validation_results": validation_details,
-                },
-            ),
-            validation_results,
-        )
-
+    validation_results = {**outcome.quality_results, **outcome.handler_results}
     return (temp_file, None, validation_results)
 
 

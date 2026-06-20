@@ -493,7 +493,14 @@ DEFAULT_TIMEOUT = 30
 
 
 def greet(name: str) -> str:
-    """Return a greeting string."""
+    """Return a greeting string.
+
+    Args:
+        name: Person to greet.
+
+    Returns:
+        Greeting string for ``name``.
+    """
     return f"Hello, {name}!"
 '''
 

@@ -137,7 +137,7 @@ def test_open_workspace_mode_uses_edit_subdir_not_sibling(tmp_path: Path) -> Non
         assert session.source_abs == origin_path.resolve()
         assert session.workspace_session_root == session_root.resolve()
         assert session.workspace_file_subtree_root == file_subtree.resolve()
-        assert session.tree_validity == SessionTreeValidity.INVALID
+        assert session.tree_validity == SessionTreeValidity.VALID
         assert session.session_dir != origin_path.parent / f"{origin_path.name}-dummy"
         assert session.session_source_path == edit_subdir / "foo.py"
         assert session.session_source_path.read_text(

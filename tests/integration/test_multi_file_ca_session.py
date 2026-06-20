@@ -19,6 +19,9 @@ from ai_editor.commands.universal_file_edit.close_command import (
 )
 from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
 from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+from ai_editor.commands.universal_file_edit.search_command import (
+    UniversalFileSearchCommand,
+)
 from ai_editor.commands.universal_file_edit.session import release_session
 from ai_editor.commands.universal_file_edit.write_command import (
     UniversalFileWriteCommand,
@@ -27,8 +30,8 @@ from ai_editor.core.editor_workspace_paths import file_workspace_layout
 from ai_editor.core.upstream.code_analysis_client import CaSessionStatus
 
 _ORIGIN_BY_PATH = {
-    "pkg/a.py": b"alpha line\n",
-    "other/b.py": b"beta line\n",
+    "pkg/a.py": b'"""Alpha module."""\n\nx = 1\n',
+    "other/b.py": b'"""Beta module."""\n\ny = 1\n',
 }
 
 _GET_CA_CLIENT_PATCHES = (
@@ -205,6 +208,17 @@ async def test_multi_file_write_and_close_by_file_path(tmp_path: Path) -> None:
         assert upstream.upload_session_file_content.call_count == 0
 
         edit_cmd = UniversalFileEditCommand()
+        search_cmd = UniversalFileSearchCommand()
+        search_b = await search_cmd.execute(
+            session_id=sid,
+            project_id=project_id,
+            file_path=file_b,
+            search_type="simple",
+            start_line=3,
+            end_line=3,
+        )
+        assert isinstance(search_b, SuccessResult)
+        y_ref = search_b.data["matches"][0]["node_ref"]
         edit_b = await edit_cmd.execute(
             session_id=sid,
             project_id=project_id,
@@ -212,9 +226,8 @@ async def test_multi_file_write_and_close_by_file_path(tmp_path: Path) -> None:
             operations=[
                 {
                     "type": "replace",
-                    "start_line": 1,
-                    "end_line": 1,
-                    "content": "beta edited\n",
+                    "node_ref": y_ref,
+                    "code_lines": ["y = 2"],
                 }
             ],
         )
@@ -224,6 +237,7 @@ async def test_multi_file_write_and_close_by_file_path(tmp_path: Path) -> None:
             session_id=sid,
             project_id=project_id,
             file_path=file_b,
+            write_mode="commit",
         )
         assert isinstance(write_b, SuccessResult)
         assert write_b.data.get("unchanged") is not True

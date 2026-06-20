@@ -127,6 +127,21 @@ def test_legacy_ca_endpoint_rejected(tmp_path: Path) -> None:
     assert any("legacy default" in i.message for i in errors)
 
 
+def test_legacy_ca_port_rejected(tmp_path: Path) -> None:
+    cfg = _minimal_adapter_config(tmp_path)
+    cfg["code_analysis_server"] = build_code_analysis_server_section(
+        host="code-analysis-server",
+        port=LEGACY_CA_PORT,
+        protocol="http",
+    )
+    cfg["ai_editor"] = build_ai_editor_section(server_host="0.0.0.0", server_port=8080)
+    path = _write_config(tmp_path, cfg)
+
+    issues, _ = collect_config_validation_issues(path)
+    errors = [i for i in issues if i.level == "error"]
+    assert any("legacy 15001" in i.message for i in errors)
+
+
 def test_valid_http_config_passes(tmp_path: Path) -> None:
     cfg = _minimal_adapter_config(tmp_path)
     cfg = merge_editor_extensions(

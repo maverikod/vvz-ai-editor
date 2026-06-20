@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, cast
+from typing import Any, Dict, cast
 
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
 from ai_editor.commands.universal_file_edit.errors import (
     SESSION_FILE_PATH_REQUIRED,
     SESSION_NOT_FOUND,
+    WRITE_FAILED,
     error_result_from_make_error,
     make_error,
 )
@@ -31,6 +32,13 @@ from ai_editor.commands.universal_file_edit.write_compare import (
     CompareResult,
     compare_session_to_origin,
 )
+from ai_editor.core.file_validation.pre_write_pipeline import (
+    validate_before_promote,
+    validation_error_result,
+)
+from ai_editor.commands.universal_file_edit.write_command_extras import (
+    verify_ca_readback,
+)
 from ai_editor.core.file_handlers.diff_support import unified_diff_text
 
 from . import write_command_phases as phases
@@ -42,15 +50,62 @@ def _run_write_preview(
     session: EditSession,
     *,
     write_mode_explicit: bool,
+    format_python: bool = False,
 ) -> SuccessResult | ErrorResult:
     if session.format_group == FORMAT_TREE_TEMP:
-        return phases.tree_temp_preview(session)
+        return phases.tree_temp_preview(session, format_python=format_python)
     if session.format_group == FORMAT_TEXT:
-        return phases.text_preview(session)
+        return phases.text_preview(session, format_python=format_python)
 
     if write_mode_explicit:
-        return phases.sidecar_preview(session)
-    return phases.sidecar_first_call_preview(session, os.getpid())
+        return phases.sidecar_preview(session, format_python=format_python)
+    return phases.sidecar_first_call_preview(
+        session,
+        os.getpid(),
+        format_python=format_python,
+    )
+
+
+def _commit_response_data(
+    *,
+    session: EditSession,
+    project_id: str,
+    ca_session_id: str,
+    comparison: Any,
+    uploaded: bool,
+    verify_after_upload: bool,
+    format_python: bool,
+    client: Any,
+) -> Dict[str, Any]:
+    diff = ""
+    if comparison.result != CompareResult.EQUAL:
+        diff = unified_diff_text(
+            comparison.origin_bytes.decode("utf-8"),
+            comparison.exported_bytes.decode("utf-8"),
+            before_label=str(session.abs_path),
+            after_label=str(session.abs_path),
+        )
+    data: Dict[str, Any] = {
+        "success": True,
+        "phase": "committed",
+        "write_mode": "commit",
+        "unchanged": comparison.result == CompareResult.EQUAL,
+        "uploaded": uploaded,
+        "has_changes": comparison.result != CompareResult.EQUAL,
+        "diff": diff,
+        "session_id": ca_session_id,
+        "project_id": project_id,
+        "file_path": session.file_path,
+        "format_python": format_python,
+    }
+    if verify_after_upload and uploaded:
+        data["ca_verify"] = verify_ca_readback(
+            client,
+            project_id=project_id,
+            file_path=session.file_path,
+            expected_bytes=comparison.exported_bytes,
+        )
+    return data
 
 
 def _run_write_commit_ca(
@@ -59,22 +114,40 @@ def _run_write_commit_ca(
     project_id: str,
     ca_session_id: str,
     client: Any,
+    format_python: bool = False,
+    verify_after_upload: bool = False,
 ) -> SuccessResult | ErrorResult:
-    comparison = compare_session_to_origin(session)
+    try:
+        comparison = compare_session_to_origin(session, format_python=format_python)
+    except ValueError as exc:
+        return error_result_from_make_error(make_error(WRITE_FAILED, str(exc)))
     if comparison.result == CompareResult.EQUAL:
         return SuccessResult(
-            data={
-                "success": True,
-                "phase": "committed",
-                "write_mode": "commit",
-                "unchanged": True,
-                "uploaded": False,
-                "has_changes": False,
-                "diff": "",
-                "session_id": ca_session_id,
-                "project_id": project_id,
-                "file_path": session.file_path,
-            }
+            data=_commit_response_data(
+                session=session,
+                project_id=project_id,
+                ca_session_id=ca_session_id,
+                comparison=comparison,
+                uploaded=False,
+                verify_after_upload=False,
+                format_python=format_python,
+                client=client,
+            )
+        )
+
+    source_text = comparison.exported_bytes.decode("utf-8")
+    validation = validate_before_promote(
+        session.handler_id,
+        source_code=source_text,
+        target_path=session.abs_path,
+    )
+    if validation.temp_path is not None:
+        validation.temp_path.unlink(missing_ok=True)
+    if not validation.success:
+        return validation_error_result(
+            error_message=validation.error_message or "Validation failed",
+            quality_results=validation.quality_results,
+            handler_results=validation.handler_results,
         )
 
     try:
@@ -100,25 +173,17 @@ def _run_write_commit_ca(
         )
 
     session.abs_path.write_bytes(accepted)
-    diff = unified_diff_text(
-        comparison.origin_bytes.decode("utf-8"),
-        comparison.exported_bytes.decode("utf-8"),
-        before_label=str(session.abs_path),
-        after_label=str(session.abs_path),
-    )
     return SuccessResult(
-        data={
-            "success": True,
-            "phase": "committed",
-            "write_mode": "commit",
-            "unchanged": False,
-            "uploaded": True,
-            "has_changes": True,
-            "diff": diff,
-            "session_id": ca_session_id,
-            "project_id": project_id,
-            "file_path": session.file_path,
-        }
+        data=_commit_response_data(
+            session=session,
+            project_id=project_id,
+            ca_session_id=ca_session_id,
+            comparison=comparison,
+            uploaded=True,
+            verify_after_upload=verify_after_upload,
+            format_python=format_python,
+            client=client,
+        )
     )
 
 
@@ -143,7 +208,8 @@ async def run_write_execute(
     client: Any,
     **kwargs: Any,
 ) -> SuccessResult | ErrorResult:
-    _ = kwargs
+    format_python = bool(kwargs.get("format_python", False))
+    verify_after_upload = bool(kwargs.get("verify_after_upload", False))
     try:
         session = resolve_session_for_command(
             session_id,
@@ -169,6 +235,8 @@ async def run_write_execute(
             project_id=project_id,
             ca_session_id=session_id,
             client=client,
+            format_python=format_python,
+            verify_after_upload=verify_after_upload,
         )
 
     if write_mode != "preview":
@@ -187,9 +255,12 @@ async def run_write_execute(
             project_id=project_id,
             ca_session_id=session_id,
             client=client,
+            format_python=format_python,
+            verify_after_upload=verify_after_upload,
         )
 
     return _run_write_preview(
         session,
         write_mode_explicit=write_mode_explicit,
+        format_python=format_python,
     )

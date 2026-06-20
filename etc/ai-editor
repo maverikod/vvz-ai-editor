@@ -1,0 +1,36 @@
+# AI Editor Docker service defaults (host-visible settings).
+# Managed by package ai-editor-docker.
+# restart:  systemctl restart ai-editor-docker   (stop + start, same container)
+# recreate: ai-editor-docker recreate             (remove + create; after config edits)
+
+AI_EDITOR_USER=ai-editor
+AI_EDITOR_GROUP=ai-editor
+
+AI_EDITOR_PORT=15000
+
+AI_EDITOR_CONFIG_DIR=/etc/ai-editor
+AI_EDITOR_CONFIG_FILE=ai_editor_container.json
+AI_EDITOR_LOG_DIR=/var/log/ai-editor
+AI_EDITOR_DATA_DIR=/var/ai-editor
+AI_EDITOR_MTLS_DIR=/etc/ai-editor/mtls_certificates
+
+AI_EDITOR_CONTAINER=ai-editor
+AI_EDITOR_NETWORK_PRIMARY=smart-assistant
+AI_EDITOR_NETWORK_SECONDARY=ai-editor-net
+AI_EDITOR_DOCKER_DNS_NAME=ai-editor-server
+
+AI_EDITOR_SHM_SIZE=1g
+AI_EDITOR_ULIMIT_NOFILE=65536:65536
+
+# PostgreSQL password for container (ai_editor.database.password_env).
+# AI_EDITOR_POSTGRES_PASSWORD=
+
+# Set to 1 on recreate to docker pull before container recreate.
+# AI_EDITOR_PULL_ON_RECREATE=0
+
+# Placeholders in /etc/ai-editor/ai_editor_container.json — REQUIRED before start:
+AI_EDITOR_ADVERTISED_HOST=192.168.254.28
+AI_EDITOR_REGISTRATION_HOST=192.168.254.26
+AI_EDITOR_REGISTRATION_PORT=3004
+AI_EDITOR_CODE_ANALYSIS_HOST=192.168.254.26
+AI_EDITOR_CODE_ANALYSIS_PORT=15010
