@@ -15,6 +15,7 @@ from ai_editor.commands.base_mcp_command import BaseMCPCommand
 from ai_editor.commands.preview_command_metadata import (
     get_universal_file_preview_metadata,
 )
+from ai_editor.commands.preview_command_schema import get_universal_file_preview_schema
 from ai_editor.commands.universal_file_preview_runtime import run_preview_execute
 from ai_editor.core.exceptions import ValidationError
 from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
@@ -40,96 +41,7 @@ class UniversalFilePreviewCommand(BaseMCPCommand):
 
     @classmethod
     def get_schema(cls) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "project_id": {
-                    "type": "string",
-                    "description": (
-                        "Project UUID. Use list_projects to discover valid values."
-                    ),
-                },
-                "file_path": {
-                    "type": "string",
-                    "description": (
-                        "Literal project-relative file path. Wildcards are not allowed."
-                    ),
-                },
-                "session_id": {
-                    "type": "string",
-                    "description": (
-                        "CA session id from session_create / universal_file_open. "
-                        "Required when the file is already open in the workspace "
-                        "(open-file preview mode); optional for one-shot upstream preview."
-                    ),
-                },
-                "node_ref": {
-                    "type": "string",
-                    "description": (
-                        "Stable node identifier for drill-down. Omit for file root."
-                    ),
-                },
-                "selector": {
-                    "description": (
-                        "Subset of focus blocks: slice string ('0:5', '-3:'), "
-                        "list of int indices, or list of node_ref strings."
-                    ),
-                    "oneOf": [
-                        {"type": "string"},
-                        {
-                            "type": "array",
-                            "items": {
-                                "oneOf": [{"type": "integer"}, {"type": "string"}]
-                            },
-                        },
-                    ],
-                },
-                "preview_lines": {
-                    "type": "integer",
-                    "default": 20,
-                    "description": (
-                        "Max blocks returned when selector is omitted. Default 20."
-                    ),
-                },
-                "value_preview_len": {
-                    "type": "integer",
-                    "default": 120,
-                    "description": (
-                        "Max character length for inline scalar previews. Default 120."
-                    ),
-                },
-                "full_text_max_lines": {
-                    "type": "integer",
-                    "default": 200,
-                    "description": (
-                        "Python only: return full source as one block when line count "
-                        "is below this threshold. Set 0 to disable."
-                    ),
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": (
-                        "Max characters in paginated preview output for invalid/fallback "
-                        "sessions. Default from server preview config."
-                    ),
-                },
-                "preview_offset": {
-                    "type": "integer",
-                    "default": 0,
-                    "description": (
-                        "Character offset for paginated preview output. Default 0."
-                    ),
-                },
-                "tree_id": {
-                    "type": "string",
-                    "description": (
-                        "Legacy in-memory TreeSession UUID. Prefer session_id."
-                    ),
-                },
-            },
-            "required": ["project_id", "file_path"],
-            "additionalProperties": False,
-        }
+        return get_universal_file_preview_schema()
 
     @classmethod
     def metadata(cls: type["UniversalFilePreviewCommand"]) -> Dict[str, Any]:

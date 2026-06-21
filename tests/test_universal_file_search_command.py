@@ -9,15 +9,10 @@ from ai_editor.commands.universal_file_edit.search_command import (
     UniversalFileSearchCommand,
 )
 from ai_editor.commands.universal_file_edit.session import release_session
+from tests.fixtures.validation_passing_python import SEARCH_MODULE
 from tests.thin_editor_ca_mocks import open_ca_file, upstream_context
 
 _PROJECT_UUID = "cafebabe-cafe-4caf-babe-cafebabecafe"
-_MODULE = '''"""Search test module."""
-
-def foo() -> int:
-    """Return one."""
-    return 1
-'''
 
 
 @pytest.mark.asyncio
@@ -27,7 +22,7 @@ async def test_search_xpath_finds_function_def(tmp_path) -> None:
         tmp_path,
         project_id=_PROJECT_UUID,
         file_path=rel,
-        content=_MODULE.encode("utf-8"),
+        content=SEARCH_MODULE.encode("utf-8"),
     )
     cmd = UniversalFileSearchCommand()
     try:

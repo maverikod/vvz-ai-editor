@@ -30,7 +30,7 @@ from ..errors import (
     PreviewError,
     input_error,
 )
-from ..invalid_preview import invalid_source_node
+from ..invalid_preview import invalid_preview_line_params, invalid_source_node
 from ..models import Node, NodeKind
 
 logger = logging.getLogger(__name__)
@@ -240,9 +240,13 @@ class JsonFileHandler(FileHandler):
                     )
             return _json_value_to_node(doc, "")
         except json.JSONDecodeError as exc:
-            return invalid_source_node(file_path, exc)
+            return invalid_source_node(
+                file_path, exc, **invalid_preview_line_params(budget)
+            )
         except Exception as exc:
-            return invalid_source_node(file_path, exc)
+            return invalid_source_node(
+                file_path, exc, **invalid_preview_line_params(budget)
+            )
 
     def resolve_node_ref(
         self,

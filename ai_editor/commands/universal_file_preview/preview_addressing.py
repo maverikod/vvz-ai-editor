@@ -2,7 +2,7 @@
 Preview addressing mode: identifier navigation vs invalid-source line pagination.
 
 Normal (parseable) files: node_ref / selector only.
-Invalid-source fallback: preview_offset / max_chars over raw text only.
+Invalid-source fallback: preview_offset (line index) / preview_lines / max_chars.
 
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
@@ -47,7 +47,7 @@ def uses_identifier_addressing(params: dict[str, Any]) -> bool:
 
 
 def uses_line_fallback_addressing(params: dict[str, Any]) -> bool:
-    """True when the caller requests invalid-source char pagination."""
+    """True when the caller requests invalid-source line pagination."""
     return int(params.get("preview_offset") or 0) > 0
 
 

@@ -33,7 +33,7 @@ from ..errors import (
     PreviewError,
     input_error,
 )
-from ..invalid_preview import invalid_source_node
+from ..invalid_preview import invalid_preview_line_params, invalid_source_node
 from ..models import Node, NodeKind
 
 
@@ -294,9 +294,13 @@ class YamlFileHandler(FileHandler):
                     )
             return _yaml_value_to_node(doc, "")
         except yaml.YAMLError as exc:
-            return invalid_source_node(file_path, exc)
+            return invalid_source_node(
+                file_path, exc, **invalid_preview_line_params(budget)
+            )
         except Exception as exc:
-            return invalid_source_node(file_path, exc)
+            return invalid_source_node(
+                file_path, exc, **invalid_preview_line_params(budget)
+            )
 
     def resolve_node_ref(
         self,

@@ -44,8 +44,8 @@ from ai_editor.commands.universal_file_preview.preview_addressing import (
     parse_error_from_focus,
     preview_source_is_parseable,
 )
-from ai_editor.commands.universal_file_preview.preview_pagination import (
-    apply_preview_pagination,
+from ai_editor.commands.universal_file_preview.invalid_preview import (
+    apply_invalid_line_pagination,
 )
 from ai_editor.commands.universal_file_preview.response import build_envelope
 from ai_editor.commands.universal_file_preview.session import (
@@ -163,11 +163,7 @@ def _run_preview_on_abs_path(
         )
         focus_attrs = navigation_result.focus_node.attributes or {}
         if navigation_result.focus_node.is_invalid:
-            paginated = apply_preview_pagination(
-                envelope,
-                offset=budget.preview_offset,
-                max_chars=budget.max_chars,
-            )
+            paginated = apply_invalid_line_pagination(envelope, focus_attrs)
             paginated["mode_notice"] = mode_notice_text(
                 True,
                 parse_error_from_focus(focus_attrs),

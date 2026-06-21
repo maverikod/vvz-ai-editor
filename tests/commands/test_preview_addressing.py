@@ -184,6 +184,7 @@ async def test_invalid_json_root_preview_via_command(tmp_path: Path) -> None:
     assert data.get("mode_notice")
     assert "line-based" in str(data.get("mode_notice")).lower()
     assert "preview_total_chars" in data
+    assert "preview_total_lines" in data
     assert data.get("preview_has_more") is False
 
 

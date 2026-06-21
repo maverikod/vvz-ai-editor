@@ -266,7 +266,25 @@ def test_json_handler_invalid_preserves_broken_trailing_text(tmp_path: Path) -> 
     assert node.is_invalid is True
     assert node.attributes.get("text") == broken
     assert node.attributes.get("full_text") is True
+    assert node.attributes.get("preview_has_more") is False
     assert "{}" not in node.attributes.get("text", "")
+
+
+def test_json_handler_invalid_large_file_limits_preview_lines(tmp_path: Path) -> None:
+    """Invalid JSON still obeys preview_lines cap on the visible text window."""
+    source = "\n".join(f'{{"n": {i},' for i in range(40))
+    bad = tmp_path / "big_broken.json"
+    bad.write_text(source, encoding="utf-8")
+    node = JsonFileHandler().open_root(
+        str(bad), None, PreviewBudget(preview_lines=8, value_preview_len=120)
+    )
+    assert not isinstance(node, PreviewError)
+    assert node.is_invalid is True
+    assert node.attributes["preview_lines_returned"] == 8
+    assert node.attributes["preview_total_lines"] == 40
+    assert node.attributes["preview_has_more"] is True
+    assert node.attributes["full_text"] is False
+    assert node.attributes["text"].count("\n") == 8
 
 
 def test_preview_broken_json_with_uuid_node_ref_requires_line_addressing(

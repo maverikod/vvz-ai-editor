@@ -54,7 +54,9 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "opens in line-based fallback instead of failing. The response includes "
             "is_invalid, fallback_reason, warning, and mode_notice.\n"
             "After fixing syntax and committing, structural editing is restored "
-            "automatically."
+            "automatically.\n\n"
+            "After open, call universal_file_preview for node_ref values: marked-tree "
+            "formats return integer short_id; invalid sessions use line pagination only."
         ),
         "parameters": {
             "project_id": {

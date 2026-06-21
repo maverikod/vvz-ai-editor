@@ -47,7 +47,7 @@ from .marked_tree_loader import (
 )
 from .models import Block, NavigationResult, Node, NodeKind
 from .node_ref_params import normalize_optional_node_ref
-from .invalid_preview import invalid_source_node
+from .invalid_preview import invalid_preview_line_params, invalid_source_node
 
 from .tree_temp_preview_focus import looks_like_sidecar_stable_id
 
@@ -345,7 +345,11 @@ def navigate_marked_tree(
     try:
         tree = loader(preview_abs_path, session_id)
     except Exception as exc:
-        invalid = invalid_source_node(str(preview_abs_path), exc)
+        invalid = invalid_source_node(
+            str(preview_abs_path),
+            exc,
+            **invalid_preview_line_params(budget),
+        )
         return NavigationResult(
             focus_node=invalid,
             total_blocks=0,

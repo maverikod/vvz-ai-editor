@@ -22,6 +22,7 @@ from ai_editor.commands.universal_file_edit.edit_command import (
 )
 from ai_editor.commands.universal_file_preview import UniversalFilePreviewCommand
 from ai_editor.core.json_tree import tree_builder as jtb
+from tests.fixtures.validation_passing_python import BAR_INSERT_LINES, MOD_WITH_FOO
 from tests.thin_editor_ca_mocks import (
     DEFAULT_CA_SESSION_ID,
     clear_ca_session,
@@ -281,15 +282,7 @@ async def test_jsonl_insert_by_preview_line_index_node_ref(tmp_path: Path) -> No
 @pytest.mark.asyncio
 async def test_py_insert_by_preview_short_id_target_node_id(tmp_path: Path) -> None:
     rel = "src/mod.py"
-    body = (
-        '"""Module."""\n\n\n'
-        "def foo() -> int:\n"
-        '    """Return one.\n\n'
-        "    Returns:\n"
-        "        Integer one.\n"
-        '    """\n'
-        "    return 1\n"
-    )
+    body = MOD_WITH_FOO
     sid, workspace, origin, upstream = await _open_file(tmp_path, rel, body)
     blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
     func_sid = _block_short_id(_find_block_by_type(blocks, "function"))
@@ -307,17 +300,7 @@ async def test_py_insert_by_preview_short_id_target_node_id(tmp_path: Path) -> N
                             "type": "insert",
                             "target_node_id": func_sid,
                             "position": "before",
-                                "code_lines": [
-                                    "",
-                                    "",
-                                    "def bar() -> int:",
-                                    '    """Return two.',
-                                    "",
-                                    "    Returns:",
-                                    "        Integer two.",
-                                    '    """',
-                                    "    return 2",
-                                ],
+                            "code_lines": BAR_INSERT_LINES,
                         }
                     ],
                 }

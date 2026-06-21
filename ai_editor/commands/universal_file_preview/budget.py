@@ -27,13 +27,15 @@ class PreviewBudget:
                        Must be >= 1.
         value_preview_len: Max characters for any inline scalar or name.
                           Must be >= 1.
-        full_text_max_lines: When a Python file has fewer lines than this
-                             threshold, the Python handler returns the entire
-                             file source as a single text block (C-023).
-                             Default 200. Value 0 disables the fallback.
-        max_chars: Max characters for the post-render preview payload.
-                   Applied after rendering, not inside handlers.
-        preview_offset: Character offset into the serialized preview for pagination.
+        full_text_max_lines: When a marked-tree file has fewer lines than this
+                             threshold, handlers may return annotated full source
+                             as a single text block (C-023). Default 200. Value 0
+                             disables the fallback.
+        max_chars: Optional cap on characters returned within one plain-text
+                   preview window (invalid/fallback mode). Truncates with ….
+        preview_offset: Line offset for plain-text preview pagination when the
+                        source is invalid or otherwise falls back to raw text.
+                        Ignored for structural (parseable) previews.
     """
 
     preview_lines: int

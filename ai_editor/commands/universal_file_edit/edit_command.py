@@ -110,13 +110,9 @@ class UniversalFileEditCommand(BaseMCPCommand):
                 "operations": {
                     "type": "array",
                     "description": (
-                        "Batch of edit operations. Shape must match universal_file_preview "
-                        "node_ref. Supported type values: insert, delete, replace, move. "
-                        "Python .py uses {type,node_id,code_lines}; "
-                        "JSON/YAML uses {type,json_pointer,value} or short_id/node_ref; "
-                        "move uses {type,node_id|node_ref,target_node_id|parent_node_id,position}; "
-                        "text/markdown uses {type,node_ref,content} or line ranges when "
-                        "preview or is_invalid fallback requires it."
+                        "Batch of edit operations. Identifier fields must match preview/search: "
+                        "Python node_id (int short_id string or search UUID); JSON/YAML "
+                        "node_ref/short_id or json_pointer; text node_ref or line ranges."
                     ),
                     "items": {"type": "object"},
                 },

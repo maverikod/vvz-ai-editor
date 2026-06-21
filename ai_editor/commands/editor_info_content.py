@@ -90,7 +90,7 @@ Errors: `FILE_ALREADY_OPEN`, `OPEN_ERROR`, `SESSION_NOT_FOUND`.
 ```
 
 - Read-only; **no** flake8/mypy/docstring validation.
-- Each block has `node_ref` for drill-down.
+- Each block has `node_ref` for drill-down (marked-tree: **integer short_id**; see format table).
 - If file is open but `session_id` omitted → `OPEN_FILE_USE_WORKSPACE_PREVIEW`.
 
 **One-shot (file not open):** omit `session_id`; uses CA `download_without_lock`.
@@ -104,7 +104,7 @@ Errors: `FILE_ALREADY_OPEN`, `OPEN_ERROR`, `SESSION_NOT_FOUND`.
   "operations": [
     {
       "type": "replace",
-      "node_id": "<uuid-from-preview>",
+      "node_id": "5",
       "code_lines": [
         "def hello() -> str:",
         "    \"\"\"Say hello.\"\"\"",
@@ -161,16 +161,17 @@ Always call, including after failed commit or cancel. Uncommitted draft is disca
 
 | format_group | Extensions | Preview `node_ref` | Edit field |
 |--------------|------------|--------------------|------------|
-| sidecar | `.py`, `.pyi`, `.pyw` | stable UUID | `node_id` + `code_lines` |
-| tree-temp | `.json`, `.yaml`, `.yml`, … | JSON Pointer `/key` | `json_pointer` + `value` |
-| text | `.md`, `.txt`, `.rst`, `.adoc` | slug or line index | `node_ref` + `content` |
+| sidecar | `.py`, `.pyi`, `.pyw` | **int short_id** (marked-tree) | `node_id` + `code_lines` (int string or search UUID) |
+| tree-temp | `.json`, `.yaml`, `.yml`, … | **int short_id** (marked-tree) or JSON Pointer (legacy) | `node_ref` / `short_id` or `json_pointer` + `value` |
+| text | `.md`, `.txt`, `.rst`, `.adoc` | int short_id (`.md`) or line index (`.txt`) | `node_ref` + `content` or `start_line`/`end_line` |
+| invalid | any (parse error) | none — line pagination | line-based `content` / `start_line` |
 
 ### Python (sidecar) example — insert method
 
 ```json
 {
   "type": "insert",
-  "target_node_id": "<sibling-method-uuid>",
+  "target_node_id": "3",
   "position": "after",
   "code_lines": ["", "def new_method(self) -> None:", "    pass"]
 }
@@ -181,16 +182,19 @@ Do not combine parent + child nodes in one batch (`NESTED_BATCH_FORBIDDEN`).
 ### JSON/YAML example
 
 ```json
+{"type": "replace", "node_ref": "3", "value": 60}
 {"type": "replace", "json_pointer": "/timeout", "value": 60}
 {"type": "insert", "parent_json_pointer": "/items/-", "value": {"id": 1}}
 ```
 
-Pass preview `node_ref` into `json_pointer`, not `node_id`.
+Marked-tree: pass int short_id as string in `node_ref`. Legacy tree-temp: use `json_pointer`.
 
 ### Text example
 
 ```json
+{"type": "replace", "node_ref": "4", "content": "## Setup\\n\\nUpdated.\\n"}
 {"type": "replace", "node_ref": "intro.setup", "content": "## Setup\\n\\nUpdated.\\n"}
+```
 ```
 
 Re-preview after each edit before the next line-targeted operation.
@@ -294,18 +298,23 @@ def build_editor_info_payload() -> Dict[str, Any]:
         "format_groups": {
             "sidecar": {
                 "extensions": [".py", ".pyi", ".pyw"],
-                "preview_node_ref": "stable UUID",
-                "edit_fields": "node_id, code_lines",
+                "preview_node_ref": "integer MAP short_id (marked-tree); search uses UUID",
+                "edit_fields": "node_id (short_id string or search UUID), code_lines",
             },
             "tree-temp": {
                 "extensions": [".json", ".yaml", ".yml", ".jsonl", ".ndjson"],
-                "preview_node_ref": "JSON Pointer",
-                "edit_fields": "json_pointer, value",
+                "preview_node_ref": "integer short_id (marked-tree) or JSON Pointer (legacy)",
+                "edit_fields": "node_ref/short_id or json_pointer, value",
             },
             "text": {
                 "extensions": [".md", ".txt", ".rst", ".adoc"],
-                "preview_node_ref": "slug path or line index",
+                "preview_node_ref": "int short_id (.md) or zero-based line index (.txt)",
                 "edit_fields": "node_ref or start_line/end_line, content",
+            },
+            "invalid_fallback": {
+                "extensions": ["any on parse error"],
+                "preview_node_ref": "empty — use preview_offset line pagination",
+                "edit_fields": "line-based content or start_line/end_line",
             },
         },
         "examples": {
@@ -325,7 +334,7 @@ def build_editor_info_payload() -> Dict[str, Any]:
                 "operations": [
                     {
                         "type": "replace",
-                        "node_id": "<uuid-from-preview>",
+                        "node_id": "5",
                         "code_lines": ["def f() -> str:", '    return "ok"'],
                     }
                 ],

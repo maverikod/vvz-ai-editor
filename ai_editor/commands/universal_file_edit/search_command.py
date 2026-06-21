@@ -68,7 +68,9 @@ class UniversalFileSearchCommand(BaseMCPCommand):
             "properties": {
                 "project_id": {
                     "type": "string",
-                    "description": "Project UUID.",
+                    "description": (
+                        "Project UUID. Use list_projects to discover valid project_id values."
+                    ),
                 },
                 "session_id": {
                     "type": "string",
