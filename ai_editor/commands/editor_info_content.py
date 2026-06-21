@@ -161,7 +161,7 @@ Always call, including after failed commit or cancel. Uncommitted draft is disca
 
 | format_group | Extensions | Preview `node_ref` | Edit field |
 |--------------|------------|--------------------|------------|
-| sidecar | `.py`, `.pyi`, `.pyw` | **int short_id** (marked-tree) | `node_id` + `code_lines` (int string or search UUID) |
+| sidecar | `.py`, `.pyi`, `.pyw` | **int short_id** (marked-tree) | `node_id` + `code_lines` (int string from preview or search) |
 | tree-temp | `.json`, `.yaml`, `.yml`, … | **int short_id** (marked-tree) or JSON Pointer (legacy) | `node_ref` / `short_id` or `json_pointer` + `value` |
 | text | `.md`, `.txt`, `.rst`, `.adoc` | int short_id (`.md`) or line index (`.txt`) | `node_ref` + `content` or `start_line`/`end_line` |
 | invalid | any (parse error) | none — line pagination | line-based `content` / `start_line` |
@@ -298,8 +298,8 @@ def build_editor_info_payload() -> Dict[str, Any]:
         "format_groups": {
             "sidecar": {
                 "extensions": [".py", ".pyi", ".pyw"],
-                "preview_node_ref": "integer MAP short_id (marked-tree); search uses UUID",
-                "edit_fields": "node_id (short_id string or search UUID), code_lines",
+                "preview_node_ref": "integer MAP short_id (marked-tree; preview and search)",
+                "edit_fields": "node_id (int short_id string from preview or search), code_lines",
             },
             "tree-temp": {
                 "extensions": [".json", ".yaml", ".yml", ".jsonl", ".ndjson"],

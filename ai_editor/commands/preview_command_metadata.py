@@ -224,7 +224,7 @@ _ERROR_CASES = {
 _BEST_PRACTICES = [
     "Call universal_file_preview before universal_file_edit to obtain valid node_ref values.",
     "Marked-tree (.py/.json/.yaml/.md): response node_ref is integer short_id — pass as string in the next request.",
-    "universal_file_search returns UUID stable_id (not short_id); use as node_id in edit.",
+    "universal_file_search returns the same int MAP short_id as preview; use node_ref as node_id in edit.",
     "On invalid files: never pass node_ref; paginate with preview_offset (lines) and preview_lines.",
     "Re-fetch preview after each edit before relying on node_ref or line numbers.",
     "Use full_text_max_lines=0 to force structural tree output on small files.",

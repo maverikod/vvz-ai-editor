@@ -111,7 +111,7 @@ class UniversalFileEditCommand(BaseMCPCommand):
                     "type": "array",
                     "description": (
                         "Batch of edit operations. Identifier fields must match preview/search: "
-                        "Python node_id (int short_id string or search UUID); JSON/YAML "
+                        "Python node_id (int short_id string from preview or search); JSON/YAML "
                         "node_ref/short_id or json_pointer; text node_ref or line ranges."
                     ),
                     "items": {"type": "object"},

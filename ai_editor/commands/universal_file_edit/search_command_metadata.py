@@ -64,7 +64,8 @@ _RETURN_VALUE = {
             "tree_id": "In-memory CST tree UUID (internal; same session tree).",
             "search_type": "xpath or simple.",
             "matches": (
-                "List of match dicts: stable_id and node_ref (both CST UUID), type, name, lines."
+                "List of match dicts: node_ref (integer MAP short_id), stable_id (CST UUID), "
+                "type, name, lines."
             ),
             "total_matches": "Count before max_results truncation.",
             "returned_matches": "Count in matches after truncation.",
@@ -89,8 +90,8 @@ _USAGE_EXAMPLES = [
             "include_code": True,
         },
         "explanation": (
-            "Runs only on the session tree. Use matches[0].node_ref (UUID) as node_id "
-            "in universal_file_edit — not the int short_id from universal_file_preview."
+            "Runs only on the session tree. Use matches[0].node_ref (int MAP short_id) as node_id "
+            "in universal_file_edit — same token as universal_file_preview."
         ),
     },
     {
@@ -156,6 +157,6 @@ _BEST_PRACTICES = [
     "Always pass session_id from the same universal_file_open session you edit.",
     "Pass file_path when multi_file_bundle from open lists more than one file.",
     "Remember: searches the session draft tree only — not disk after uncommitted close.",
-    "Use node_ref from matches as node_id in universal_file_edit (CST UUID, not preview short_id).",
+    "Use node_ref from matches as node_id in universal_file_edit (int MAP short_id, same as preview).",
     "Combine include_code=true with require_one=true for find-and-replace planning.",
 ]

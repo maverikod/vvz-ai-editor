@@ -35,7 +35,7 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "Operation shape follows universal_file_preview node_ref (by file type):\n\n"
             f"{EDIT_IDENTIFIER_SECTION}\n"
             "Python (.py, .pyi, .pyw) operation fields:\n"
-            "  Fields: type, node_id (int short_id string from preview, or UUID from search), "
+            "  Fields: type, node_id (int short_id string from preview or search), "
             "code_lines (recommended) or code.\n"
             "  type is mapped to action automatically: replace | insert | delete | move.\n"
             "  For insert (container): parent_node_id (__root__ for module level), position first|last.\n"
@@ -119,7 +119,7 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "operations": {
                 "description": (
                     "Batch of edit operations. Identifier fields must match preview/search:\n"
-                    "  Python: {type, node_id} — int short_id string from preview or UUID from search\n"
+                    "  Python: {type, node_id} — int short_id string from preview or search\n"
                     "  JSON/YAML marked-tree: {type, node_ref|short_id} or legacy {json_pointer, value}\n"
                     "  text/md: {type, node_ref|start_line/end_line, content}\n"
                     "Supported type values: replace, insert, delete, move."
@@ -184,7 +184,7 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 },
                 "explanation": (
                     "Preview returns integer node_ref (e.g. 5) — pass as string in node_id. "
-                    "Alternatively use UUID from universal_file_search matches."
+                    "Alternatively use node_ref from universal_file_search matches."
                 ),
             },
             {
@@ -436,7 +436,7 @@ def get_universal_file_edit_metadata(cls: Type[Any]) -> Dict[str, Any]:
         "best_practices": [
             "Call universal_file_preview before the first universal_file_edit to obtain node_ref values.",
             "Marked-tree preview returns int short_id — pass as string in node_id/node_ref.",
-            "universal_file_search returns UUID stable_id — pass as node_id (not short_id).",
+            "universal_file_search node_ref matches preview short_id — pass as node_id.",
             "For Python (sidecar): use code_lines (list of strings) for multi-line code to avoid JSON escaping issues.",
             "For Python sibling insert: target_node_id + position before|after (not parent_node_id + before).",
             "For Python: do not combine parent and child node targets in one batch (NESTED_BATCH_FORBIDDEN).",

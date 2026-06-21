@@ -24,8 +24,11 @@ from ai_editor.commands.universal_file_edit.format_group import FORMAT_SIDECAR
 from ai_editor.commands.universal_file_edit.search_command_metadata import (
     get_universal_file_search_metadata,
 )
-from ai_editor.commands.universal_file_edit.session import get_session
+from dataclasses import dataclass
+
+from ai_editor.commands.universal_file_edit.session import EditSession, get_session
 from ai_editor.core.cst_tree.models import TreeNodeMetadata
+from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
 from ai_editor.core.cst_tree.tree_builder import get_tree
 from ai_editor.core.cst_tree.tree_finder import find_nodes
 
@@ -35,10 +38,84 @@ TREE_NOT_AVAILABLE = "TREE_NOT_AVAILABLE"
 INVALID_SEARCH = "INVALID_SEARCH"
 
 
-def _match_to_response(meta: TreeNodeMetadata) -> Dict[str, Any]:
+@dataclass(frozen=True)
+class _ShortIdLookup:
+    """Indexes for CST stable_id → MAP short_id resolution."""
+
+    by_uuid: Dict[str, int]
+    by_internal_node_id: Dict[str, int]
+    by_line_span: Dict[tuple[int, int, str], int]
+
+
+def _build_short_id_lookup(session: EditSession) -> _ShortIdLookup:
+    """Load MAP indexes from the session tree (same sidecar preview uses)."""
+    from ai_editor.core.edit_session.edit_operations_adapter import (
+        session_has_valid_tree,
+    )
+
+    empty = _ShortIdLookup(by_uuid={}, by_internal_node_id={}, by_line_span={})
+    if not session_has_valid_tree(session.core):
+        return empty
+    tree_path = session.core.session_tree_path
+    if not tree_path.is_file():
+        return empty
+    try:
+        sections = parse_tree_file(tree_path.read_text(encoding="utf-8"))
+    except Exception:
+        return empty
+
+    by_uuid: Dict[str, int] = {}
+    by_internal_node_id: Dict[str, int] = {}
+    by_line_span: Dict[tuple[int, int, str], int] = {}
+    for entry in sections.map.entries:
+        by_uuid[entry.uuid] = entry.short_id
+        attrs = entry.attributes or {}
+        internal_id = attrs.get("internal_node_id")
+        if isinstance(internal_id, str) and internal_id:
+            by_internal_node_id[internal_id] = entry.short_id
+        start_line = attrs.get("start_line")
+        end_line = attrs.get("end_line")
+        node_type = attrs.get("node_type")
+        if (
+            isinstance(start_line, int)
+            and isinstance(end_line, int)
+            and isinstance(node_type, str)
+        ):
+            by_line_span[(start_line, end_line, node_type)] = entry.short_id
+    return _ShortIdLookup(
+        by_uuid=by_uuid,
+        by_internal_node_id=by_internal_node_id,
+        by_line_span=by_line_span,
+    )
+
+
+def _node_ref_from_stable_id(
+    meta: TreeNodeMetadata,
+    *,
+    lookup: _ShortIdLookup,
+) -> tuple[Any, str]:
+    """Map CST match metadata to presentation-layer MAP short_id when known."""
+    short_id = lookup.by_uuid.get(meta.stable_id)
+    if short_id is None:
+        short_id = lookup.by_internal_node_id.get(meta.stable_id)
+    if short_id is None:
+        short_id = lookup.by_line_span.get((meta.start_line, meta.end_line, meta.type))
+    if short_id is not None:
+        return short_id, "short_id"
+    return meta.stable_id, "uuid"
+
+
+def _match_to_response(
+    meta: TreeNodeMetadata,
+    *,
+    lookup: _ShortIdLookup,
+) -> Dict[str, Any]:
     """Serialize one TreeNodeMetadata for universal edit workflow."""
     data = meta.to_dict()
-    data["node_ref"] = meta.stable_id
+    node_ref, kind = _node_ref_from_stable_id(meta, lookup=lookup)
+    data["node_ref"] = node_ref
+    if kind == "uuid":
+        data["node_ref_kind"] = "uuid"
     return data
 
 
@@ -241,6 +318,7 @@ class UniversalFileSearchCommand(BaseMCPCommand):
             return ErrorResult(message=f"universal_file_search failed: {exc}")
 
         total_matches = len(matches)
+        short_id_lookup = _build_short_id_lookup(session)
 
         if require_one:
             if total_matches == 0:
@@ -257,15 +335,18 @@ class UniversalFileSearchCommand(BaseMCPCommand):
                     )
                 )
             if total_matches > 1:
-                candidates = [
-                    {
-                        "node_ref": m.stable_id,
+                candidates = []
+                for m in matches[:10]:
+                    node_ref, kind = _node_ref_from_stable_id(m, lookup=short_id_lookup)
+                    candidate: Dict[str, Any] = {
+                        "node_ref": node_ref,
                         "name": m.name,
                         "type": m.type,
                         "start_line": m.start_line,
                     }
-                    for m in matches[:10]
-                ]
+                    if kind == "uuid":
+                        candidate["node_ref_kind"] = "uuid"
+                    candidates.append(candidate)
                 return error_result_from_make_error(
                     make_error(
                         "NonUniqueMatch",
@@ -281,7 +362,9 @@ class UniversalFileSearchCommand(BaseMCPCommand):
         if max_results is not None and max_results > 0:
             matches = matches[:max_results]
 
-        match_dicts: List[Dict[str, Any]] = [_match_to_response(m) for m in matches]
+        match_dicts: List[Dict[str, Any]] = [
+            _match_to_response(m, lookup=short_id_lookup) for m in matches
+        ]
 
         data: Dict[str, Any] = {
             "success": True,
@@ -294,7 +377,13 @@ class UniversalFileSearchCommand(BaseMCPCommand):
             "returned_matches": len(match_dicts),
         }
         if require_one and len(matches) == 1:
-            data["node_ref"] = matches[0].stable_id
+            node_ref, kind = _node_ref_from_stable_id(
+                matches[0],
+                lookup=short_id_lookup,
+            )
+            data["node_ref"] = node_ref
+            if kind == "uuid":
+                data["node_ref_kind"] = "uuid"
             data["match"] = match_dicts[0]
 
         return SuccessResult(data=data)
