@@ -43,12 +43,16 @@ def register_commands_part2(reg: registry) -> None:
         from ai_editor.commands.universal_file_edit.search_command import (
             UniversalFileSearchCommand,
         )
+        from ai_editor.commands.universal_file_edit.node_at_line_command import (
+            UniversalFileNodeAtLineCommand,
+        )
 
         reg.register(UniversalFileOpenCommand, "custom")
         reg.register(UniversalFileEditCommand, "custom")
         reg.register(UniversalFileWriteCommand, "custom")
         reg.register(UniversalFileCloseCommand, "custom")
         reg.register(UniversalFileSearchCommand, "custom")
+        reg.register(UniversalFileNodeAtLineCommand, "custom")
         logger.info("Registered universal_file_edit commands")
     except ImportError as e:
         logger.warning("Failed to import universal_file_edit commands: %s", e)

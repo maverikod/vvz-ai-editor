@@ -101,15 +101,26 @@ def commit_tree_temp_to_disk(
     except Exception as exc:
         raise ValueError(f"Tree-temp source serialization failed: {exc}") from exc
 
+    from ai_editor.commands.universal_file_edit.edit_draft_path_utils import (
+        project_root_near,
+    )
     from ai_editor.core.file_validation.pre_write_pipeline import (
         promote_temp_to_target,
         validate_before_promote,
     )
 
+    project_root = session.core.project_root
+    if project_root is None:
+        try:
+            project_root = project_root_near(session.abs_path)
+        except ValueError:
+            project_root = None
+
     outcome = validate_before_promote(
         session.handler_id,
         source_code=code,
         target_path=session.abs_path,
+        project_root=project_root,
     )
     if not outcome.success:
         raise ValueError(outcome.error_message or "Pre-write validation failed")

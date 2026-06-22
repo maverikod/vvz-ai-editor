@@ -165,13 +165,19 @@ class UniversalFileSearchCommand(BaseMCPCommand):
                 },
                 "search_type": {
                     "type": "string",
-                    "enum": ["simple", "xpath"],
+                    "enum": ["simple", "xpath", "text"],
                     "default": "xpath",
-                    "description": "xpath (CSTQuery in query) or simple (field filters).",
+                    "description": (
+                        "xpath (CSTQuery in query), simple (field filters), "
+                        "or text (substring in node source)."
+                    ),
                 },
                 "query": {
                     "type": "string",
-                    "description": "CSTQuery selector (required for xpath search_type).",
+                    "description": (
+                        "CSTQuery selector (xpath), substring (text), or optional "
+                        "xpath override for simple search."
+                    ),
                 },
                 "node_type": {
                     "type": "string",
@@ -187,11 +193,11 @@ class UniversalFileSearchCommand(BaseMCPCommand):
                 },
                 "start_line": {
                     "type": "integer",
-                    "description": "Simple search: minimum start_line.",
+                    "description": "Simple/text search: minimum start_line.",
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "Simple search: maximum end_line.",
+                    "description": "Simple/text search: maximum end_line.",
                 },
                 "include_code": {
                     "type": "boolean",
@@ -252,13 +258,13 @@ class UniversalFileSearchCommand(BaseMCPCommand):
                 make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
             )
 
-        if session.format_group != FORMAT_SIDECAR or session.is_invalid:
+        if session.format_group != FORMAT_SIDECAR:
             return error_result_from_make_error(
                 make_error(
                     UNKNOWN_FORMAT,
                     (
                         "universal_file_search applies only to an open Python sidecar "
-                        "edit session (CST tree). JSON/YAML/text or is_invalid sessions "
+                        "edit session (CST tree). JSON/YAML/text sessions "
                         "are not supported."
                     ),
                     {

@@ -136,10 +136,21 @@ def _run_write_commit_ca(
         )
 
     source_text = comparison.exported_bytes.decode("utf-8")
+    project_root = session.core.project_root
+    if project_root is None:
+        from ai_editor.commands.universal_file_edit.edit_draft_path_utils import (
+            project_root_near,
+        )
+
+        try:
+            project_root = project_root_near(session.abs_path)
+        except ValueError:
+            project_root = None
     validation = validate_before_promote(
         session.handler_id,
         source_code=source_text,
         target_path=session.abs_path,
+        project_root=project_root,
     )
     if validation.temp_path is not None:
         validation.temp_path.unlink(missing_ok=True)

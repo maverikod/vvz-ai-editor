@@ -101,6 +101,7 @@ def validate_before_promote(
     target_path: Path,
     skip_quality_tools: bool = False,
     validate_docstrings: bool = True,
+    project_root: Optional[Path] = None,
 ) -> PreWriteValidationOutcome:
     """
     Write temp file and run quality + handler validation.
@@ -126,6 +127,7 @@ def validate_before_promote(
             handler_id,
             temp_file_path=temp_path,
             source_code=source_code,
+            project_root=project_root,
         )
     if not quality_ok:
         _cleanup_temp(temp_path)

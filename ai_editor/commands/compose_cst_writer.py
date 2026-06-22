@@ -49,11 +49,19 @@ def validate_and_write_temp(
     Returns:
         Tuple of (temp_file_path, error_result or None, validation_results or None)
     """
+    from ai_editor.commands.universal_file_edit.edit_draft_path_utils import (
+        project_root_near,
+    )
     from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
     from ai_editor.core.file_validation.pre_write_pipeline import (
         validate_before_promote,
         validation_error_result,
     )
+
+    try:
+        project_root = project_root_near(target_path)
+    except ValueError:
+        project_root = None
 
     outcome = validate_before_promote(
         HANDLER_PYTHON,
@@ -61,6 +69,7 @@ def validate_and_write_temp(
         target_path=target_path,
         skip_quality_tools=validate_syntax_only,
         validate_docstrings=validate_docstrings,
+        project_root=project_root,
     )
     if not outcome.success:
         return (

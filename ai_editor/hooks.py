@@ -65,6 +65,9 @@ register_auto_import_module("ai_editor.commands.universal_file_edit.close_comman
 register_auto_import_module("ai_editor.commands.universal_file_edit.move_nodes_command")
 register_auto_import_module("ai_editor.commands.universal_file_edit.search_command")
 register_auto_import_module(
+    "ai_editor.commands.universal_file_edit.node_at_line_command"
+)
+register_auto_import_module(
     "ai_editor.commands.universal_file_edit.session_undo_command"
 )
 register_auto_import_module(

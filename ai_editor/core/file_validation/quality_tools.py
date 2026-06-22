@@ -11,11 +11,14 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from ai_editor.core.code_quality.formatter import format_python_source_text
 from ai_editor.core.code_quality.linter import lint_with_flake8
-from ai_editor.core.code_quality.type_checker import type_check_with_mypy
+from ai_editor.core.code_quality.type_checker import (
+    resolve_mypy_config_for_single_file,
+    type_check_with_mypy,
+)
 from ai_editor.core.file_validation.results import ValidationResult
 from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
 
@@ -35,6 +38,7 @@ def run_quality_tools(
     *,
     temp_file_path: Path,
     source_code: str,
+    project_root: Optional[Path] = None,
 ) -> Tuple[bool, str | None, Dict[str, ValidationResult]]:
     """Run flake8, mypy, and black-format checks for Python files."""
     if handler_id != HANDLER_PYTHON:
@@ -56,10 +60,19 @@ def run_quality_tools(
         t0 = time.perf_counter()
         return lint_with_flake8(temp_file_path, ignore=None), time.perf_counter() - t0
 
+    mypy_probe = (
+        project_root / "__init__.py" if project_root is not None else temp_file_path
+    )
+    mypy_config = resolve_mypy_config_for_single_file(mypy_probe)
+
     def _mypy_job() -> Tuple[Tuple[bool, str | None, list[str]], float]:
         t0 = time.perf_counter()
         return (
-            type_check_with_mypy(temp_file_path, config_file=None, ignore_errors=False),
+            type_check_with_mypy(
+                temp_file_path,
+                config_file=mypy_config,
+                ignore_errors=False,
+            ),
             time.perf_counter() - t0,
         )
 
