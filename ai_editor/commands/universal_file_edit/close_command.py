@@ -188,12 +188,23 @@ class UniversalFileCloseCommand(BaseMCPCommand):
                 session.file_path,
             )
         fg = session.format_group
-        if fg == FORMAT_SIDECAR:
-            payload = self._close_sidecar(session)
-        else:
-            payload = self._close_tree_temp_or_text(session)
-        session.core.close()
-        release_session(ca_session_id, session.file_path)
+        payload: Dict[str, Any] = {"success": True, "draft_rebuilt": False}
+        try:
+            if fg == FORMAT_SIDECAR:
+                payload = self._close_sidecar(session)
+            else:
+                payload = self._close_tree_temp_or_text(session)
+        except (FileNotFoundError, OSError) as exc:
+            logger.warning(
+                "close format cleanup skipped for %s/%s: %s",
+                ca_session_id,
+                session.file_path,
+                exc,
+            )
+        try:
+            session.core.close()
+        finally:
+            release_session(ca_session_id, session.file_path)
         remaining = list_bundle_file_paths(ca_session_id)
         payload["closed_file_path"] = session.file_path
         payload["remaining_open_files"] = remaining
@@ -205,15 +216,20 @@ class UniversalFileCloseCommand(BaseMCPCommand):
             pid,
             session.file_path,
         )
-        remove_file_subtree(file_subtree_dir=layout.file_subtree_dir)
+        workspace_subtree_removed = False
+        if layout.file_subtree_dir.is_dir():
+            remove_file_subtree(file_subtree_dir=layout.file_subtree_dir)
+            workspace_subtree_removed = True
+        session_dir_removed = False
         if is_last_file and layout.session_dir.is_dir():
             shutil.rmtree(layout.session_dir)
+            session_dir_removed = True
         payload["session_id"] = ca_session_id
         payload["project_id"] = pid
         payload["file_path"] = session.file_path
         payload["unlock_ok"] = unlock_ok
-        payload["workspace_subtree_removed"] = True
-        payload["session_dir_removed"] = is_last_file
+        payload["workspace_subtree_removed"] = workspace_subtree_removed
+        payload["session_dir_removed"] = session_dir_removed
         return SuccessResult(data=payload)
 
     def _close_sidecar(self, session: EditSession) -> Dict[str, Any]:
