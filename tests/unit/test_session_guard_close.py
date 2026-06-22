@@ -180,6 +180,65 @@ async def test_close_releases_bundle_when_workspace_file_missing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_close_releases_bundle_when_core_close_raises() -> None:
+    """Core session cleanup errors must not block bundle release or success."""
+    cmd = UniversalFileCloseCommand()
+    session, mock_core = _mock_session()
+    mock_core.close.side_effect = OSError("workspace gone")
+    workspace = Path("/tmp/workspace")
+
+    client = MagicMock()
+    client.unlock_session_file.return_value = False
+
+    with patch(
+        "ai_editor.commands.universal_file_edit.close_command.get_code_analysis_client",
+        return_value=client,
+    ):
+        with patch(
+            "ai_editor.commands.universal_file_edit.close_command.resolve_session_for_command",
+            return_value=session,
+        ):
+            with patch.object(
+                cmd,
+                "_close_tree_temp_or_text",
+                return_value={"success": True, "draft_rebuilt": False},
+            ):
+                with patch(
+                    "ai_editor.commands.universal_file_edit.close_command.resolve_workspace_root",
+                    return_value=workspace,
+                ):
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.close_command.list_bundle_file_paths",
+                        side_effect=[["src/foo.py"], []],
+                    ):
+                        with patch(
+                            "ai_editor.commands.universal_file_edit.close_command.file_workspace_layout",
+                        ) as mock_layout:
+                            layout = MagicMock()
+                            layout.file_subtree_dir = MagicMock()
+                            layout.file_subtree_dir.is_dir.return_value = False
+                            layout.session_dir = MagicMock()
+                            layout.session_dir.is_dir.return_value = False
+                            mock_layout.return_value = layout
+                            with patch(
+                                "ai_editor.commands.universal_file_edit.close_command.release_session",
+                            ) as mock_release:
+                                result = await cmd.execute(
+                                    project_id="proj-1",
+                                    session_id="sess-1",
+                                )
+                                assert isinstance(result, SuccessResult)
+                                assert result.data["success"] is True
+                                assert result.data["unlock_ok"] is False
+                                assert result.data["workspace_subtree_removed"] is False
+                                mock_core.close.assert_called_once()
+                                mock_release.assert_called_once_with(
+                                    "sess-1",
+                                    session.file_path,
+                                )
+
+
+@pytest.mark.asyncio
 async def test_close_proceeds_on_allow_terminating_decision() -> None:
     cmd = UniversalFileCloseCommand()
     session, _mock_core = _mock_session()

@@ -203,6 +203,13 @@ class UniversalFileCloseCommand(BaseMCPCommand):
             )
         try:
             session.core.close()
+        except (FileNotFoundError, OSError) as exc:
+            logger.warning(
+                "close core cleanup skipped for %s/%s: %s",
+                ca_session_id,
+                session.file_path,
+                exc,
+            )
         finally:
             release_session(ca_session_id, session.file_path)
         remaining = list_bundle_file_paths(ca_session_id)
@@ -217,13 +224,29 @@ class UniversalFileCloseCommand(BaseMCPCommand):
             session.file_path,
         )
         workspace_subtree_removed = False
-        if layout.file_subtree_dir.is_dir():
-            remove_file_subtree(file_subtree_dir=layout.file_subtree_dir)
-            workspace_subtree_removed = True
+        try:
+            if layout.file_subtree_dir.is_dir():
+                remove_file_subtree(file_subtree_dir=layout.file_subtree_dir)
+                workspace_subtree_removed = True
+        except (FileNotFoundError, OSError) as exc:
+            logger.warning(
+                "close workspace subtree removal skipped for %s/%s: %s",
+                ca_session_id,
+                session.file_path,
+                exc,
+            )
         session_dir_removed = False
-        if is_last_file and layout.session_dir.is_dir():
-            shutil.rmtree(layout.session_dir)
-            session_dir_removed = True
+        try:
+            if is_last_file and layout.session_dir.is_dir():
+                shutil.rmtree(layout.session_dir)
+                session_dir_removed = True
+        except (FileNotFoundError, OSError) as exc:
+            logger.warning(
+                "close session dir removal skipped for %s/%s: %s",
+                ca_session_id,
+                session.file_path,
+                exc,
+            )
         payload["session_id"] = ca_session_id
         payload["project_id"] = pid
         payload["file_path"] = session.file_path
