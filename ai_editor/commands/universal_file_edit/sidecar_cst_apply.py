@@ -10,9 +10,12 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
+import logging
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
+
+logger = logging.getLogger(__name__)
 
 import libcst as cst
 
@@ -611,7 +614,12 @@ def _run_valid_session_sidecar_batch(
     try:
         _refresh_in_memory_cst_without_sidecar(session)
     except Exception:
-        pass
+        logger.warning(
+            "In-memory CST refresh failed after MAP tree edit for %s; "
+            "session.tree_id is stale — export_canonical_bytes will use pre-edit tree",
+            session.core.session_source_path,
+            exc_info=True,
+        )
 
     session.draft_path = session.core.session_source_path
     session.dirty = True

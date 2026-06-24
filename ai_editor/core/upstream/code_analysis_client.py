@@ -388,6 +388,11 @@ class CodeAnalysisClient:
         transfer_id = upload_bytes_transfer_id(
             self, content, filename=Path(rel).name or "upload.bin"
         )
+        # validate_syntax_only=True: the editor has already run full local validation
+        # (black, flake8, mypy, docstrings) on the exact bytes being uploaded.
+        # Telling CA to check syntax only avoids a false VALIDATION_ERROR that arises
+        # when the CA runs semantic validation against its own in-memory session state
+        # (the pre-edit original) rather than the uploaded content.
         saved = self.call(
             "project_file_transfer_upload_save",
             {
@@ -398,6 +403,7 @@ class CodeAnalysisClient:
                 "unlock_after_write": False,
                 "backup": True,
                 "dry_run": False,
+                "validate_syntax_only": True,
             },
         )
         return _accepted_upload_bytes(saved, content)
