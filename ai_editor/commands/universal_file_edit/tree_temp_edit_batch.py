@@ -246,6 +246,9 @@ def _resolve_json_insert_anchor_and_position(
         return after_sid, "after"
 
     parent_ptr = str(mop.get("parent_json_pointer", ""))
+    # RFC 6901 §4: strip trailing "/-" append sentinel before pointer resolution.
+    if parent_ptr.endswith("/-"):
+        parent_ptr = parent_ptr[:-2] or ""
     root = _session_marked_root(session)
     parent_node = _node_at_json_pointer(root, parent_ptr) if parent_ptr else root
 

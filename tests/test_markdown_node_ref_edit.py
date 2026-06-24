@@ -410,3 +410,117 @@ def test_preview_parent_section_line_range_through_subsections(tmp_path: Path) -
     attrs = envelope["focus"]["attributes"]
     assert attrs["start_line"] == "1"
     assert int(attrs["end_line"]) == len(_PARENT_WITH_SUBS.splitlines())
+
+
+_MD_MULTI_SECTION = """\
+# Title
+
+First paragraph.
+
+## Section
+
+Body text.
+"""
+
+
+# A-3: clean session — position="last" with no prior structural edit appends at EOF.
+@pytest.mark.asyncio
+async def test_md_position_last_clean_session_appends_at_eof(tmp_path: Path) -> None:
+    rel = "notes/clean_last.md"
+    clear_ca_session(DEFAULT_CA_SESSION_ID)
+    reset_ca_session(DEFAULT_CA_SESSION_ID, rel)
+    sid, workspace, origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=_MD_MULTI_SECTION.encode("utf-8"),
+    )
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "insert",
+                            "position": "last",
+                            "content": "\n## Appended\n\nShould be at end.\n",
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(res, SuccessResult), getattr(res, "message", res)
+    await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_PROJECT_UUID,
+        session_id=sid,
+        file_path=rel,
+    )
+    text = origin.read_text(encoding="utf-8")
+    assert text.index("## Appended") > text.index("Body text.")
+
+
+# A-2 + A-4: node_ref replace + position="last" in the SAME batch — footer must land at EOF.
+@pytest.mark.asyncio
+async def test_md_position_last_after_node_ref_replace_in_same_batch(
+    tmp_path: Path,
+) -> None:
+    rel = "notes/batch_last.md"
+    clear_ca_session(DEFAULT_CA_SESSION_ID)
+    reset_ca_session(DEFAULT_CA_SESSION_ID, rel)
+    sid, workspace, origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=_MD_MULTI_SECTION.encode("utf-8"),
+    )
+    ensure_session_marked_tree(sid, rel)
+    # short_id=3 is the "## Section" heading (level-2 heading, 3rd node in the MAP).
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "replace",
+                            "node_ref": "3",
+                            "content": "## Renamed\n\nBody text.\n",
+                        },
+                        {
+                            "type": "insert",
+                            "position": "last",
+                            "content": "\n## Footer\n\nLast line.\n",
+                        },
+                    ],
+                }
+            )
+        )
+    assert isinstance(res, SuccessResult), getattr(res, "message", res)
+    await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_PROJECT_UUID,
+        session_id=sid,
+        file_path=rel,
+    )
+    text = origin.read_text(encoding="utf-8")
+    # Footer must appear AFTER the renamed section, never near the top.
+    assert "## Footer" in text, text
+    assert "## Renamed" in text, text
+    assert text.index("## Footer") > text.index("## Renamed"), (
+        f"## Footer should be after ## Renamed, got:\n{text}"
+    )
+    # Must not be on line 1 or 2 — was the bug: inserted right after the first line.
+    footer_line = next(
+        i + 1 for i, ln in enumerate(text.splitlines()) if "## Footer" in ln
+    )
+    assert footer_line > 3, f"## Footer landed too early (line {footer_line}):\n{text}"

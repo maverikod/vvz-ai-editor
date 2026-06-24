@@ -236,8 +236,15 @@ def _run_valid_text_tree_apply(
         session.core.session_tree_path.write_text(tree_snapshot, encoding="utf-8")
         session.core.session_source_path.write_text(source_snapshot, encoding="utf-8")
 
+    # position="last" cannot be represented as a tree-node operation: "last_child of
+    # root" places content inside the first section heading rather than at EOF.
+    # Separate these ops and apply them as plain-text appends AFTER all tree ops so
+    # the insert line is computed from the post-edit source, not a pre-edit snapshot.
+    tree_ops = [op for op in operations if op.get("position") != "last"]
+    append_ops = [op for op in operations if op.get("position") == "last"]
+
     try:
-        for op in operations:
+        for op in tree_ops:
             sections = parse_tree_file(
                 session.core.session_tree_path.read_text(encoding="utf-8")
             )
@@ -258,6 +265,21 @@ def _run_valid_text_tree_apply(
             WRITE_FAILED,
             {"path": str(session.core.session_tree_path)},
         )
+
+    if append_ops:
+        current = session.core.session_source_path.read_text(encoding="utf-8")
+        buffer = current.splitlines(keepends=True)
+        for op in append_ops:
+            content_raw = op.get("content", "")
+            content_str = content_raw if isinstance(content_raw, str) else str(content_raw)
+            op_type = op.get("type", "replace")
+            if op_type == "delete":
+                if buffer:
+                    buffer.pop()
+            else:
+                appended = content_str if content_str.endswith("\n") else content_str + "\n"
+                buffer.append(appended)
+        apply_source_mutation(session, "".join(buffer))
 
     line_count = len(
         session.core.session_source_path.read_text(encoding="utf-8").splitlines()

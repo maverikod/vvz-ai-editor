@@ -277,3 +277,47 @@ async def test_json_replace_one_element_list_stays_array(tmp_path: Path) -> None
                 {"project_id": _PROJECT_UUID, "session_id": sid}
             )
         )
+
+
+# A-1: RFC 6901 "/-" append sentinel must be accepted and append to the array.
+@pytest.mark.asyncio
+async def test_insert_array_element_via_rfc6901_append_sentinel(
+    tmp_path: Path,
+) -> None:
+    """parent_json_pointer ending in '/-' must resolve the array and append."""
+    rel = "records/sentinel.json"
+    body = b'{"items":["a","b"]}\n'
+    sid, workspace, origin, upstream = await _prep(tmp_path, rel, body)
+    ed = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        result = await ed.execute(
+            **ed.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "operations": [
+                        {
+                            "type": "insert",
+                            "parent_json_pointer": "/items/-",
+                            "value": "c",
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(result, SuccessResult), getattr(result, "message", result)
+    await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_PROJECT_UUID,
+        session_id=sid,
+        file_path=rel,
+    )
+    data = json.loads(origin.read_text(encoding="utf-8"))
+    assert data["items"] == ["a", "b", "c"], data["items"]
+    with upstream_context(workspace=workspace, upstream=upstream):
+        await UniversalFileCloseCommand().execute(
+            **UniversalFileCloseCommand().validate_params(
+                {"project_id": _PROJECT_UUID, "session_id": sid}
+            )
+        )
