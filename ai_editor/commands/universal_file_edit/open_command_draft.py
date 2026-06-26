@@ -23,6 +23,7 @@ from ai_editor.commands.universal_file_edit.format_group import (
     FORMAT_TREE_TEMP,
     FormatDescriptor,
     draft_path_for_edit_source,
+    format_descriptor_from_hint,
     lockfile_path_for_edit_source,
     resolve_format_group_for_edit_source,
 )
@@ -35,6 +36,7 @@ def resolve_and_create_draft(
     workspace_origin_path: Path,
     workspace_edit_subdir: Path,
     project_id: str,
+    format_group_hint: Optional[str] = None,
 ) -> Union[FormatDescriptor, Dict[str, Any]]:
     """Resolve format group for workspace open; CoreEditSession owns on-disk draft."""
     origin = workspace_origin_path.resolve()
@@ -43,10 +45,19 @@ def resolve_and_create_draft(
     try:
         descriptor = resolve_format_group_for_edit_source(edit_source_path)
     except ValueError:
-        return make_error(
-            UNKNOWN_FORMAT,
-            f"Unsupported file type: {origin.suffix}",
-        )
+        if format_group_hint:
+            try:
+                descriptor = format_descriptor_from_hint(format_group_hint, edit_source_path)
+            except ValueError:
+                return make_error(
+                    UNKNOWN_FORMAT,
+                    f"Unsupported file type: {origin.suffix!r} (invalid hint: {format_group_hint!r})",
+                )
+        else:
+            return make_error(
+                UNKNOWN_FORMAT,
+                f"Unsupported file type: {origin.suffix}",
+            )
     original_fg = descriptor.format_group
     try:
         tree_id = _prepare_open_metadata(origin, edit_root, descriptor, project_id)

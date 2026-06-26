@@ -44,6 +44,14 @@ _FORMAT_AVAILABLE_OPERATIONS = {
     FORMAT_TEXT: list(_SIX_EDIT_OPERATIONS),
 }
 
+# Default handler when building a descriptor from an explicit format_group hint
+# (used only for files with unknown/absent extensions).
+_FORMAT_TO_DEFAULT_HANDLER: dict = {
+    FORMAT_SIDECAR: "python",
+    FORMAT_TREE_TEMP: "json",
+    FORMAT_TEXT: "text",
+}
+
 
 @dataclass
 class FormatDescriptor:
@@ -146,6 +154,30 @@ def resolve_format_group_for_edit_source(edit_source_path: Path) -> FormatDescri
     available_ops = list(_FORMAT_AVAILABLE_OPERATIONS[format_group])
     return FormatDescriptor(
         format_group=format_group,
+        handler_id=handler_id,
+        draft_path=draft_path,
+        lockfile_path=lockfile_path,
+        available_operations=available_ops,
+    )
+
+
+def format_descriptor_from_hint(hint: str, edit_source_path: Path) -> FormatDescriptor:
+    """Build a FormatDescriptor from an explicit format_group hint.
+
+    Used only when the file extension is unknown or absent and the caller
+    passes an explicit format_group to universal_file_open.
+
+    Raises:
+        ValueError: with code UNKNOWN_FORMAT_HINT when hint is not a valid group.
+    """
+    handler_id = _FORMAT_TO_DEFAULT_HANDLER.get(hint)
+    if handler_id is None:
+        raise ValueError(f"UNKNOWN_FORMAT_HINT: {hint!r}")
+    draft_path = draft_path_for_edit_source(edit_source_path)
+    lockfile_path = lockfile_path_for_edit_source(edit_source_path)
+    available_ops = list(_FORMAT_AVAILABLE_OPERATIONS[hint])
+    return FormatDescriptor(
+        format_group=hint,
         handler_id=handler_id,
         draft_path=draft_path,
         lockfile_path=lockfile_path,

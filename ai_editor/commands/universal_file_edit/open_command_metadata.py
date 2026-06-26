@@ -118,6 +118,23 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 "type": "string",
                 "required": False,
             },
+            "format_group": {
+                "description": (
+                    "Explicit format group override. Applied only when the file "
+                    "extension is unknown or absent (e.g. Makefile, .env, .sh). "
+                    "Ignored when the extension is already recognised by the handler "
+                    "registry. "
+                    "Valid values: "
+                    "sidecar — Python CST structural editing; "
+                    "tree-temp — JSON/YAML tree editing; "
+                    "text — plain line-based editing. "
+                    "When omitted and the extension is unknown, the command returns "
+                    "UNKNOWN_FORMAT."
+                ),
+                "type": "string",
+                "required": False,
+                "enum": ["sidecar", "tree-temp", "text"],
+            },
         },
         "return_value": {
             "success": {
@@ -288,11 +305,16 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 "solution": "Fix parameters per get_schema() and retry.",
             },
             "UNKNOWN_FORMAT": {
-                "description": "File extension not supported by any handler.",
+                "description": (
+                    "File extension not supported by any handler, and no valid "
+                    "format_group hint was supplied."
+                ),
                 "message": "Unsupported file type: {suffix}",
                 "solution": (
-                    "Use a supported extension: .py, .json, .yaml, .yml, .md, .txt, "
-                    ".rst, .adoc."
+                    "Either use a supported extension (.py, .json, .yaml, .yml, "
+                    ".md, .txt, .toml, .ini, .cfg) or pass format_group with one "
+                    "of: sidecar, tree-temp, text to force a handler for files "
+                    "with unknown or absent extensions."
                 ),
             },
         },

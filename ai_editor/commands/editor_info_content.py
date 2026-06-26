@@ -73,8 +73,9 @@ Response highlights: `format_group`, `draft_path`, `multi_file_bundle`.
 
 - Existing file: CA `lock_file_and_download`.
 - New file: `create=true`, `initial_content` (required for `.py`).
+- Unknown extension (e.g. `Makefile`, `.env`): pass `format_group` (`sidecar` / `tree-temp` / `text`) to force a handler; omitting it returns `UNKNOWN_FORMAT`.
 
-Errors: `FILE_ALREADY_OPEN`, `OPEN_ERROR`, `SESSION_NOT_FOUND`.
+Errors: `FILE_ALREADY_OPEN`, `OPEN_ERROR`, `SESSION_NOT_FOUND`, `UNKNOWN_FORMAT`.
 
 ### Step 2 — preview
 
@@ -165,6 +166,8 @@ Always call, including after failed commit or cancel. Uncommitted draft is disca
 | tree-temp | `.json`, `.yaml`, `.yml`, … | **int short_id** (marked-tree) or JSON Pointer (legacy) | `node_ref` / `short_id` or `json_pointer` + `value` |
 | text | `.md`, `.txt`, `.rst`, `.adoc` | int short_id (`.md`) or line index (`.txt`) | `node_ref` + `content` or `start_line`/`end_line` |
 | invalid | any (parse error) | none — line pagination | line-based `content` / `start_line` |
+
+For files with unknown or absent extensions, pass `format_group` in `universal_file_open` to override auto-detection. The parameter is ignored when the extension is already recognised.
 
 ### Python (sidecar) example — insert method
 
@@ -300,16 +303,19 @@ def build_editor_info_payload() -> Dict[str, Any]:
                 "extensions": [".py", ".pyi", ".pyw"],
                 "preview_node_ref": "integer MAP short_id (marked-tree; preview and search)",
                 "edit_fields": "node_id (int short_id string from preview or search), code_lines",
+                "force_hint": "pass format_group=sidecar for unknown-extension files to route via Python CST",
             },
             "tree-temp": {
                 "extensions": [".json", ".yaml", ".yml", ".jsonl", ".ndjson"],
                 "preview_node_ref": "integer short_id (marked-tree) or JSON Pointer (legacy)",
                 "edit_fields": "node_ref/short_id or json_pointer, value",
+                "force_hint": "pass format_group=tree-temp for unknown-extension files to route via JSON/YAML tree",
             },
             "text": {
                 "extensions": [".md", ".txt", ".rst", ".adoc"],
                 "preview_node_ref": "int short_id (.md) or zero-based line index (.txt)",
                 "edit_fields": "node_ref or start_line/end_line, content",
+                "force_hint": "pass format_group=text for unknown-extension files (Makefile, .env, .sh, …) to route via plain-text line editing",
             },
             "invalid_fallback": {
                 "extensions": ["any on parse error"],

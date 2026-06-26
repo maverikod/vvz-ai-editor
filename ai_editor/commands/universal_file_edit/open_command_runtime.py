@@ -59,6 +59,7 @@ def run_open_execute(
     file_path = str(kwargs.get("file_path", "")).strip()
     create = bool(kwargs.get("create", False))
     initial_content = str(kwargs.get("initial_content", "") or "")
+    format_group_hint = str(kwargs.get("format_group", "") or "").strip() or None
 
     if project_id:
         existing_sid = lookup_ca_session_id(project_id, file_path)
@@ -105,7 +106,7 @@ def run_open_execute(
     layout.origin_path.write_bytes(raw_bytes)
 
     descriptor_result = resolve_and_create_draft(
-        layout.origin_path, paths.edit_subdir, project_id
+        layout.origin_path, paths.edit_subdir, project_id, format_group_hint
     )
     if isinstance(descriptor_result, dict):
         return error_result_from_make_error(descriptor_result)
