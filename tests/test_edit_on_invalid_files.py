@@ -343,6 +343,90 @@ async def test_open_invalid_yaml_sets_is_invalid_and_warning(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_open_recovers_when_upstream_save_validation_rejects(
+    tmp_path: Path,
+) -> None:
+    """CA save-validation rejecting an unparsable file must not fail OPEN.
+
+    Regression: lock_file_and_download began registering disk-only paths via a
+    validating upload_save (commit 7fbe28a), so an invalid file raised
+    OPEN_ERROR (operation 'save') before the local invalid_fallback path ran.
+    Open must recover by reading raw bytes without validation and degrade to
+    line-based fallback.
+    """
+    from ai_editor.commands.universal_file_edit.open_command import (
+        UniversalFileOpenCommand,
+    )
+
+    rel = "broken.py"
+    broken = b"def f(\n"
+    workspace = make_workspace(tmp_path)
+    upstream = mock_upstream(origins={rel: broken})
+
+    def _reject_on_save(session_id: str, project_id: str, file_path: str) -> bytes:
+        _ = session_id, project_id, file_path
+        raise RuntimeError(
+            "{'code': 'CST_REPLACE_ERROR', 'message': \"Replacement source is "
+            "not valid Python: '(' was never closed\", "
+            "'data': {'handler_id': 'python', 'operation': 'save'}}"
+        )
+
+    upstream.lock_file_and_download.side_effect = _reject_on_save
+
+    op = UniversalFileOpenCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        opened = await op.execute(
+            **op.validate_params(
+                {
+                    "session_id": DEFAULT_CA_SESSION_ID,
+                    "project_id": _PROJECT_UUID,
+                    "file_path": rel,
+                }
+            )
+        )
+    assert isinstance(opened, SuccessResult), opened
+    assert opened.data.get("is_invalid") is True
+    assert opened.data.get("format_group") == "text"
+    assert opened.data.get("warning")
+    assert "line-based fallback" in str(opened.data.get("warning"))
+    # The raw, unparsable bytes were recovered via the non-validating read path.
+    upstream.download_without_lock.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_open_propagates_non_parse_upstream_error(tmp_path: Path) -> None:
+    """A non-parse upstream failure (e.g. connectivity) must still fail closed."""
+    from ai_editor.commands.universal_file_edit.open_command import (
+        UniversalFileOpenCommand,
+    )
+
+    rel = "sample.py"
+    workspace = make_workspace(tmp_path)
+    upstream = mock_upstream(origins={rel: b"def f():\n    return 1\n"})
+
+    def _unreachable(session_id: str, project_id: str, file_path: str) -> bytes:
+        _ = session_id, project_id, file_path
+        raise RuntimeError("Code Analysis Server unreachable at https://host:15010")
+
+    upstream.lock_file_and_download.side_effect = _unreachable
+
+    op = UniversalFileOpenCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        opened = await op.execute(
+            **op.validate_params(
+                {
+                    "session_id": DEFAULT_CA_SESSION_ID,
+                    "project_id": _PROJECT_UUID,
+                    "file_path": rel,
+                }
+            )
+        )
+    assert isinstance(opened, ErrorResult)
+    assert opened.code == "OPEN_ERROR"
+    upstream.download_without_lock.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_open_invalid_py_falls_back_to_text(tmp_path: Path) -> None:
     from ai_editor.commands.universal_file_edit.open_command import (
         UniversalFileOpenCommand,

@@ -48,6 +48,46 @@ from ai_editor.core.editor_workspace_paths import (
 from ai_editor.core.edit_session.workspace_layout import allocate_edit_subdir
 from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
 
+# Markers in an upstream RuntimeError that mean the file could not be parsed or
+# failed Code Analysis save-validation. Open of an existing file must degrade to
+# line-based invalid_fallback in these cases instead of failing closed, so the
+# raw content can still be downloaded and edited. Commit-time validation is
+# unaffected (this only governs OPEN/READ).
+_PARSE_FALLBACK_ERROR_MARKERS = (
+    "validation_failed",
+    "validation_error",
+    "cst_replace_error",
+    "is not valid",
+    "invalid json",
+    "invalid yaml",
+    "invalid python",
+    "invalid syntax",
+    "syntaxerror",
+    "syntax error",
+    "parse error",
+    "parse_error",
+    "failed to parse",
+    "cannot parse",
+    "could not parse",
+    "was never closed",
+    "mapping values are not allowed",
+    "expecting",
+    "'operation': 'save'",
+    '"operation": "save"',
+)
+
+
+def _is_parse_fallback_error(exc: BaseException) -> bool:
+    """Return True when an upstream open error is a parse/save-validation failure.
+
+    Such errors mean the on-disk file is syntactically invalid for its handler.
+    Open must still succeed in line-based invalid_fallback mode, so the caller
+    recovers by reading the raw bytes without validation. Connectivity, lock, or
+    not-found errors are excluded so they keep propagating as OPEN_ERROR.
+    """
+    text = str(exc).lower()
+    return any(marker in text for marker in _PARSE_FALLBACK_ERROR_MARKERS)
+
 
 def run_open_execute(
     command: Any,
@@ -88,7 +128,21 @@ def run_open_execute(
                 ca_session_id, project_id, file_path
             )
     except RuntimeError as exc:
-        return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
+        # Open of an existing file must not fail closed when Code Analysis rejects
+        # the content as unparsable (save-validation on registration/lock). Fetch
+        # the raw bytes without validation so the local resolver opens the file in
+        # line-based invalid_fallback mode. The create path keeps its own behavior.
+        recovered: Optional[bytes] = None
+        if not create and _is_parse_fallback_error(exc):
+            try:
+                recovered = client.download_without_lock(
+                    project_id=project_id, file_path=file_path
+                )
+            except RuntimeError:
+                recovered = None
+        if recovered is None:
+            return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
+        raw_bytes = recovered
 
     workspace_root = resolve_workspace_root()
     is_repeat_open = bundle_file_count(ca_session_id) >= 1
