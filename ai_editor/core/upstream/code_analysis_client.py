@@ -384,7 +384,6 @@ class CodeAnalysisClient:
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
         if not sid or not pid or not rel:
             _raise_missing_session_path(session_id, project_id, file_path)
-        file_id = resolve_file_id_for_path(self, pid, rel)
         transfer_id = upload_bytes_transfer_id(
             self, content, filename=Path(rel).name or "upload.bin"
         )
@@ -398,7 +397,7 @@ class CodeAnalysisClient:
             {
                 "session_id": sid,
                 "project_id": pid,
-                "file_id": file_id,
+                "file_path": rel,
                 "transfer_id": transfer_id,
                 "unlock_after_write": False,
                 "backup": True,
