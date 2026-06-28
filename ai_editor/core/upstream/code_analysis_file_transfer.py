@@ -289,8 +289,16 @@ def upload_create_save(
     project_id: str,
     file_path: str,
     content: bytes,
+    lock_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Upload new file content and save on CA in create mode (C-010, C-023)."""
+    """Upload new file content and save on CA in create mode (C-010, C-023).
+
+    When ``lock_mode`` is given (e.g. ``"full"``), the save command acquires the
+    session file lock atomically with registering the new file, so the file is
+    never registered-but-unlocked. Combined with ``unlock_after_write=False`` the
+    lock is retained after the write. Leave ``lock_mode`` as ``None`` for callers
+    that only need to register a disk-only path without holding a lock.
+    """
     from ai_editor.core.exceptions import ValidationError
 
     sid = str(session_id or "").strip()
@@ -308,18 +316,18 @@ def upload_create_save(
         )
     filename = Path(rel).name or "upload.bin"
     transfer_id = upload_bytes_transfer_id(client, content, filename=filename)
-    saved = client.call(
-        "project_file_transfer_upload_save",
-        {
-            "session_id": sid,
-            "project_id": pid,
-            "file_path": rel,
-            "transfer_id": transfer_id,
-            "unlock_after_write": False,
-            "backup": True,
-            "dry_run": False,
-        },
-    )
+    params: Dict[str, Any] = {
+        "session_id": sid,
+        "project_id": pid,
+        "file_path": rel,
+        "transfer_id": transfer_id,
+        "unlock_after_write": False,
+        "backup": True,
+        "dry_run": False,
+    }
+    if lock_mode is not None:
+        params["lock_mode"] = lock_mode
+    saved = client.call("project_file_transfer_upload_save", params)
     if not isinstance(saved, dict):
         raise RuntimeError("project_file_transfer_upload_save returned invalid payload")
     return saved

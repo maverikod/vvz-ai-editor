@@ -414,10 +414,22 @@ class CodeAnalysisClient:
     def upload_create_and_lock(
         self, *, session_id: str, project_id: str, file_path: str, content: bytes
     ) -> bytes:
-        """Open Stage create path: upload, save, lock (C-010)."""
+        """Open Stage create path: upload + atomic lock, then confirm (C-010).
+
+        The transfer save itself acquires the session lock (lock_mode="full",
+        unlock_after_write=False), so the brand-new file is never registered in
+        CA without a lock. session_open_file then re-affirms the same
+        session-scoped lock (idempotent for the owning session) and keeps the
+        open/close lifecycle symmetric with session_close_file on close.
+        """
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
         saved = upload_create_save(
-            self, session_id=sid, project_id=pid, file_path=rel, content=content
+            self,
+            session_id=sid,
+            project_id=pid,
+            file_path=rel,
+            content=content,
+            lock_mode="full",
         )
         file_id = str(saved.get("file_id") or "").strip() or resolve_file_id_for_path(
             self, pid, rel

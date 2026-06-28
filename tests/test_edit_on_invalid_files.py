@@ -394,6 +394,57 @@ async def test_open_recovers_when_upstream_save_validation_rejects(
 
 
 @pytest.mark.asyncio
+async def test_open_fallback_releases_orphaned_lock(tmp_path: Path) -> None:
+    """CA lock acquired in session_open_file must be released before fallback download.
+
+    Scenario C: lock_file_and_download succeeds at session_open_file but then
+    the download step fails with a parse-like error. The fallback must call
+    unlock_session_file before download_without_lock so the lock does not
+    become orphaned in CA.
+    """
+    from ai_editor.commands.universal_file_edit.open_command import (
+        UniversalFileOpenCommand,
+    )
+
+    rel = "broken.py"
+    broken = b"def f(\n"
+    workspace = make_workspace(tmp_path)
+    upstream = mock_upstream(origins={rel: broken})
+
+    def _lock_then_fail_download(
+        session_id: str, project_id: str, file_path: str
+    ) -> bytes:
+        # Simulates: session_open_file succeeded (lock acquired), then
+        # the download step returned an error that looks like a parse failure.
+        raise RuntimeError("is not valid Python: unexpected EOF while parsing")
+
+    upstream.lock_file_and_download.side_effect = _lock_then_fail_download
+
+    op = UniversalFileOpenCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        opened = await op.execute(
+            **op.validate_params(
+                {
+                    "session_id": DEFAULT_CA_SESSION_ID,
+                    "project_id": _PROJECT_UUID,
+                    "file_path": rel,
+                }
+            )
+        )
+
+    assert isinstance(opened, SuccessResult), opened
+    assert opened.data.get("is_invalid") is True
+    # The defensive unlock must have been called regardless of whether a lock
+    # was actually held — unlock_session_file is best-effort and safe to call.
+    upstream.unlock_session_file.assert_called_once_with(
+        session_id=DEFAULT_CA_SESSION_ID,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+    )
+    upstream.download_without_lock.assert_called()
+
+
+@pytest.mark.asyncio
 async def test_open_propagates_non_parse_upstream_error(tmp_path: Path) -> None:
     """A non-parse upstream failure (e.g. connectivity) must still fail closed."""
     from ai_editor.commands.universal_file_edit.open_command import (

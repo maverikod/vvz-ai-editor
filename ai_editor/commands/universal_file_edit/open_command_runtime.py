@@ -134,6 +134,13 @@ def run_open_execute(
         # line-based invalid_fallback mode. The create path keeps its own behavior.
         recovered: Optional[bytes] = None
         if not create and _is_parse_fallback_error(exc):
+            # If session_open_file succeeded before the error, a CA lock was
+            # acquired but will be orphaned unless released here.
+            client.unlock_session_file(
+                session_id=ca_session_id,
+                project_id=project_id,
+                file_path=file_path,
+            )
             try:
                 recovered = client.download_without_lock(
                     project_id=project_id, file_path=file_path

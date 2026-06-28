@@ -90,6 +90,92 @@ def test_upload_session_file_content_uses_file_path_not_file_id(
     assert result == b"# content"
 
 
+def test_upload_create_and_lock_locks_atomically_on_transfer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Create path must lock the new file atomically via the transfer save.
+
+    The brand-new file (not yet in CA's DB) must never be registered without a
+    lock: project_file_transfer_upload_save carries lock_mode="full" with
+    unlock_after_write=False so the lock is acquired and retained as part of the
+    transfer. session_open_file then re-affirms the same session lock.
+    """
+    import ai_editor.core.upstream.code_analysis_file_transfer as _xfer
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    client = CodeAnalysisClient(config_path=Path("config.json"))
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_call(cmd: str, params: dict[str, Any] | None = None) -> Any:
+        calls.append((cmd, dict(params or {})))
+        if cmd == "project_file_transfer_upload_save":
+            return {"file_id": "fid-1"}
+        return {}
+
+    monkeypatch.setattr(client, "call", fake_call)
+    monkeypatch.setattr(
+        _xfer,
+        "upload_bytes_transfer_id",
+        lambda _client, _content, filename: "tid-create",
+    )
+
+    client.upload_create_and_lock(
+        session_id="sess-1",
+        project_id="proj-1",
+        file_path="lmrs/new.py",
+        content=b"x = 1\n",
+    )
+
+    save_calls = [p for cmd, p in calls if cmd == "project_file_transfer_upload_save"]
+    assert save_calls, "transfer save was never called on create"
+    save = save_calls[0]
+    assert save.get("lock_mode") == "full", "create transfer must lock atomically"
+    assert save.get("unlock_after_write") is False, "lock must be retained after write"
+    assert save.get("file_path") == "lmrs/new.py"
+    # The session lock is also affirmed explicitly for open/close symmetry.
+    assert any(cmd == "session_open_file" for cmd, _ in calls)
+
+
+def test_upload_create_save_without_lock_mode_omits_param(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Disk-only registration (no lock_mode) must not send lock_mode to CA.
+
+    The non-create path registers an unindexed file purely to obtain its
+    file_id; it acquires the lock separately via session_open_file, so the
+    transfer save must omit lock_mode to preserve that behavior.
+    """
+    import ai_editor.core.upstream.code_analysis_file_transfer as _xfer
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    client = CodeAnalysisClient(config_path=Path("config.json"))
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_call(cmd: str, params: dict[str, Any] | None = None) -> Any:
+        calls.append((cmd, dict(params or {})))
+        return {"file_id": "fid-2"}
+
+    monkeypatch.setattr(client, "call", fake_call)
+    monkeypatch.setattr(
+        _xfer,
+        "upload_bytes_transfer_id",
+        lambda _client, _content, filename: "tid-reg",
+    )
+
+    _xfer.upload_create_save(
+        client,
+        session_id="sess-1",
+        project_id="proj-1",
+        file_path="lmrs/existing.py",
+        content=b"y = 2\n",
+    )
+
+    save = [p for cmd, p in calls if cmd == "project_file_transfer_upload_save"][0]
+    assert "lock_mode" not in save, "registration save must omit lock_mode"
+
+
 def test_run_async_from_active_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     import asyncio
 
