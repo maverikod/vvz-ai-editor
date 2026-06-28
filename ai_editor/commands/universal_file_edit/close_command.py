@@ -16,6 +16,7 @@ from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
 from ai_editor.commands.base_mcp_command import BaseMCPCommand
 from ai_editor.commands.universal_file_edit.errors import (
+    MODIFIED_NOT_WRITTEN,
     SESSION_FILE_PATH_REQUIRED,
     SESSION_NOT_FOUND,
     error_result_from_make_error,
@@ -34,6 +35,9 @@ from ai_editor.commands.universal_file_edit.session import (
 )
 from ai_editor.commands.universal_file_edit.close_command_metadata import (
     get_universal_file_close_metadata,
+)
+from ai_editor.commands.universal_file_edit.write_command_runtime import (
+    run_write_execute,
 )
 from ai_editor.core.edit_session.workspace_layout import remove_file_subtree
 from ai_editor.core.editor_workspace_paths import (
@@ -114,6 +118,18 @@ class UniversalFileCloseCommand(BaseMCPCommand):
                         "Optional when exactly one file is open."
                     ),
                 },
+                "write_before_close": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Controls close when the file has unsaved edits (modified "
+                        "but not committed). true: run the full write/commit "
+                        "sequence (lock-then-transfer for a new file) before "
+                        "closing. false (default): reject the close with "
+                        "MODIFIED_NOT_WRITTEN so edits are never silently "
+                        "discarded. Ignored when the file is unmodified."
+                    ),
+                },
             },
             "required": ["project_id", "session_id"],
             "additionalProperties": False,
@@ -133,6 +149,7 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         project_id: str,
         session_id: str,
         file_path: str = "",
+        write_before_close: bool = False,
         **kwargs: Any,
     ) -> SuccessResult | ErrorResult:
         """Execute the close command.
@@ -141,10 +158,17 @@ class UniversalFileCloseCommand(BaseMCPCommand):
             project_id: Required by schema; used for CA unlock and workspace paths.
             session_id: CA session identifier.
             file_path: Project-relative path when the session holds multiple files.
+            write_before_close: When the file has unsaved edits, ``True`` writes
+                (commits) before closing; ``False`` (default, matching the
+                established "close never silently writes" semantics) rejects the
+                close with MODIFIED_NOT_WRITTEN. Ignored when the file is
+                unmodified.
             **kwargs: Unused; accepted for adapter compatibility.
 
         Returns:
-            SuccessResult with cleanup details, or ErrorResult on session not found.
+            SuccessResult with cleanup details, or ErrorResult on session not found
+            or on a modified-but-unwritten file when ``write_before_close`` is
+            ``False``.
         """
         _ = kwargs
         ca_session_id = str(session_id or "").strip()
@@ -174,19 +198,58 @@ class UniversalFileCloseCommand(BaseMCPCommand):
             return error_result_from_make_error(
                 make_error(SESSION_NOT_FOUND, f"Unknown session: {ca_session_id}")
             )
-        is_last_file = len(list_bundle_file_paths(ca_session_id)) == 1
         client = get_code_analysis_client()
-        unlock_ok = client.unlock_session_file(
-            session_id=ca_session_id,
-            project_id=pid,
-            file_path=session.file_path,
-        )
-        if not unlock_ok:
-            logger.info(
-                "close unlock best-effort failed for %s/%s",
-                ca_session_id,
-                session.file_path,
+
+        # R5: handle unsaved edits before any cleanup. When the file is modified
+        # but not committed, either write it first (write_before_close=true) or
+        # refuse to close so the edits are not silently discarded.
+        if session.modified:
+            if not write_before_close:
+                return error_result_from_make_error(
+                    make_error(
+                        MODIFIED_NOT_WRITTEN,
+                        (
+                            "File has unsaved changes; commit with "
+                            "universal_file_write or pass write_before_close=true "
+                            "to write on close"
+                        ),
+                        details={
+                            "session_id": ca_session_id,
+                            "file_path": session.file_path,
+                        },
+                    )
+                )
+            write_result = await run_write_execute(
+                project_id=pid,
+                session_id=ca_session_id,
+                write_mode="commit",
+                write_mode_explicit=True,
+                file_path=session.file_path,
+                client=client,
             )
+            if isinstance(write_result, ErrorResult):
+                # Do not close on write failure: the caller keeps the session to
+                # retry or to discard explicitly.
+                return write_result
+
+        is_last_file = len(list_bundle_file_paths(ca_session_id)) == 1
+        # R4: release the CA lock only when the file exists on CA. A new file that
+        # was opened locally (R1) and never committed holds no CA lock, so there
+        # is nothing to release — closing just discards the local draft.
+        if session.persisted_on_ca:
+            unlock_ok = client.unlock_session_file(
+                session_id=ca_session_id,
+                project_id=pid,
+                file_path=session.file_path,
+            )
+            if not unlock_ok:
+                logger.info(
+                    "close unlock best-effort failed for %s/%s",
+                    ca_session_id,
+                    session.file_path,
+                )
+        else:
+            unlock_ok = False
         fg = session.format_group
         payload: Dict[str, Any] = {"success": True, "draft_rebuilt": False}
         try:

@@ -62,8 +62,10 @@ class UniversalFileOpenCommand(BaseMCPCommand):
                     "type": "boolean",
                     "default": False,
                     "description": (
-                        "When True, create the file on Code Analysis Server if "
-                        "it does not exist (upload+lock branch)."
+                        "When True, open a NEW file from initial_content with zero "
+                        "Code Analysis calls (CA-local-only). The file is registered "
+                        "and locked on CA atomically on its first "
+                        "universal_file_write commit, not at open."
                     ),
                 },
                 "initial_content": {
@@ -98,18 +100,24 @@ class UniversalFileOpenCommand(BaseMCPCommand):
                 message="session_id is required for universal_file_open",
                 code=cast(Any, "SESSION_INVALID"),
             )
-        guard = SessionGuard(get_code_analysis_client())
-        decision = guard.check(OperationKind.OPEN, ca_session_id)
-        if decision == GuardDecision.REJECT:
-            return ErrorResult(
-                message=f"CA session not found or invalid: {ca_session_id}",
-                code=cast(Any, "SESSION_NOT_FOUND"),
-            )
-        if decision == GuardDecision.ALLOW_TERMINATING:
-            return ErrorResult(
-                message="internal guard misclassification for open",
-                code=cast(Any, "OPEN_ERROR"),
-            )
+        # R1: opening a NEW file is CA-local-only — it must issue zero CA calls.
+        # The Session Guard validates the session over CA (session_list_file_locks),
+        # so it is skipped for create=true. The CA session is validated instead at
+        # the first commit (the WRITE guard), which is when CA is first contacted.
+        create = bool(kwargs.get("create", False))
+        if not create:
+            guard = SessionGuard(get_code_analysis_client())
+            decision = guard.check(OperationKind.OPEN, ca_session_id)
+            if decision == GuardDecision.REJECT:
+                return ErrorResult(
+                    message=f"CA session not found or invalid: {ca_session_id}",
+                    code=cast(Any, "SESSION_NOT_FOUND"),
+                )
+            if decision == GuardDecision.ALLOW_TERMINATING:
+                return ErrorResult(
+                    message="internal guard misclassification for open",
+                    code=cast(Any, "OPEN_ERROR"),
+                )
         try:
             return run_open_execute(self, **kwargs)
         except ValidationError as exc:

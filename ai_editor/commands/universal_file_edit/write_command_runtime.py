@@ -121,7 +121,13 @@ def _run_write_commit_ca(
         comparison = compare_session_to_origin(session, format_python=format_python)
     except ValueError as exc:
         return error_result_from_make_error(make_error(WRITE_FAILED, str(exc)))
-    if comparison.result == CompareResult.EQUAL:
+    # R3: a new file (create=true, never committed) is not yet on CA, so the
+    # local origin snapshot is not a CA baseline. It must always be persisted on
+    # commit even when no edit changed it since open. An already-persisted file
+    # with no changes is a true no-op and skips the upload.
+    is_new_file = not session.persisted_on_ca
+    if comparison.result == CompareResult.EQUAL and not is_new_file:
+        session.modified = False
         return SuccessResult(
             data=_commit_response_data(
                 session=session,
@@ -162,12 +168,25 @@ def _run_write_commit_ca(
         )
 
     try:
-        accepted = client.upload_session_file_content(
-            session_id=ca_session_id,
-            project_id=project_id,
-            file_path=session.file_path,
-            content=comparison.exported_bytes,
-        )
+        if is_new_file:
+            # R3 lock-then-transfer: the CA lock row is created before the file is
+            # written. upload_create_and_lock saves under lock_mode="full" (lock
+            # precedes the save) and registers the file, so a new file never
+            # depends on the watcher having pre-indexed the row. The old failure
+            # mode "file not found in project index" cannot occur here.
+            accepted = client.upload_create_and_lock(
+                session_id=ca_session_id,
+                project_id=project_id,
+                file_path=session.file_path,
+                content=comparison.exported_bytes,
+            )
+        else:
+            accepted = client.upload_session_file_content(
+                session_id=ca_session_id,
+                project_id=project_id,
+                file_path=session.file_path,
+                content=comparison.exported_bytes,
+            )
     except RuntimeError as exc:
         logger.error("universal_file_write upload failed: %s", exc)
         return ErrorResult(
@@ -183,6 +202,10 @@ def _run_write_commit_ca(
             details={"upstream_error": str(exc)},
         )
 
+    # The file now exists on CA under a session lock; subsequent commits use the
+    # update-existing path and close (R4) will release the lock.
+    session.persisted_on_ca = True
+    session.modified = False
     session.abs_path.write_bytes(accepted)
     return SuccessResult(
         data=_commit_response_data(

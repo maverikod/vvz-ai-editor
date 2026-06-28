@@ -8,7 +8,8 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Type, cast
+import hashlib
+from typing import Any, Dict, List, Optional, Type, cast
 
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
@@ -44,6 +45,27 @@ from ai_editor.core.upstream.session_guard import (
     OperationKind,
     SessionGuard,
 )
+
+
+def _draft_sha256(session: EditSession) -> Optional[str]:
+    """Return the SHA-256 of the session draft, or None when it is absent.
+
+    All format groups serialize the edited content to ``session.draft_path``
+    (sidecar writes the source draft, tree-temp serializes its tree, text writes
+    the draft directly), so comparing this digest before and after an edit batch
+    detects whether the batch changed anything (R6 modified-flag semantics).
+
+    Args:
+        session: The EditSession whose draft file is hashed.
+
+    Returns:
+        Hex SHA-256 of the draft bytes, or None when the draft file is missing.
+    """
+    draft_path = session.draft_path
+    try:
+        return hashlib.sha256(draft_path.read_bytes()).hexdigest()
+    except (FileNotFoundError, OSError):
+        return None
 
 
 class UniversalFileEditCommand(BaseMCPCommand):
@@ -178,6 +200,7 @@ class UniversalFileEditCommand(BaseMCPCommand):
             )
 
         fg = session.format_group
+        draft_sha_before = _draft_sha256(session)
         if fg == FORMAT_SIDECAR:
             validation = validate_sidecar_nested_batch(operations, session.tree_id)
             if validation is not None:
@@ -187,6 +210,13 @@ class UniversalFileEditCommand(BaseMCPCommand):
             result = await self._apply_tree_temp(session, operations)
         else:
             result = await self._apply_text(session, operations)
+
+        # R6: mark the file modified only when the edit produced a non-empty diff.
+        # An edit that leaves the draft byte-identical (e.g. a no-op operation)
+        # does not change the flag, so close (R5) is not triggered by no-ops.
+        if isinstance(result, SuccessResult):
+            if _draft_sha256(session) != draft_sha_before:
+                session.modified = True
 
         if session.is_invalid and isinstance(result, SuccessResult):
             payload = dict(result.data)

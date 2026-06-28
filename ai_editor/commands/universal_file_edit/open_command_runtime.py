@@ -115,18 +115,25 @@ def run_open_execute(
 
     client = get_code_analysis_client()
 
+    if create:
+        # R1: opening a NEW file is CA-local-only. No upload, no lock, no CA
+        # round-trip happens here — the file is materialized from initial_content
+        # into the local workspace draft and marked not-yet-persisted. The CA lock
+        # row and the file registration are created later, atomically, on the first
+        # successful commit (R3 lock-then-transfer in universal_file_write).
+        raw_bytes = initial_content.encode("utf-8")
+        return _build_open_result(
+            ca_session_id=ca_session_id,
+            project_id=project_id,
+            file_path=file_path,
+            raw_bytes=raw_bytes,
+            create=True,
+            persisted_on_ca=False,
+            format_group_hint=format_group_hint,
+        )
+
     try:
-        if create:
-            raw_bytes = client.upload_create_and_lock(
-                session_id=ca_session_id,
-                project_id=project_id,
-                file_path=file_path,
-                content=initial_content.encode("utf-8"),
-            )
-        else:
-            raw_bytes = client.lock_file_and_download(
-                ca_session_id, project_id, file_path
-            )
+        raw_bytes = client.lock_file_and_download(ca_session_id, project_id, file_path)
     except RuntimeError as exc:
         # Open of an existing file must not fail closed when Code Analysis rejects
         # the content as unparsable (save-validation on registration/lock). Fetch
@@ -151,6 +158,47 @@ def run_open_execute(
             return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
         raw_bytes = recovered
 
+    return _build_open_result(
+        ca_session_id=ca_session_id,
+        project_id=project_id,
+        file_path=file_path,
+        raw_bytes=raw_bytes,
+        create=False,
+        persisted_on_ca=True,
+        format_group_hint=format_group_hint,
+    )
+
+
+def _build_open_result(
+    *,
+    ca_session_id: str,
+    project_id: str,
+    file_path: str,
+    raw_bytes: bytes,
+    create: bool,
+    persisted_on_ca: bool,
+    format_group_hint: Optional[str],
+) -> Union[SuccessResult, ErrorResult]:
+    """Materialize the workspace draft and register the EditSession.
+
+    Shared tail for both open paths: it writes ``raw_bytes`` to the workspace
+    origin snapshot, resolves the format descriptor, creates the draft, and opens
+    the command-layer session. ``persisted_on_ca`` is threaded into the session so
+    a new file (R1) is recorded as not-yet-persisted until its first commit (R3).
+
+    Args:
+        ca_session_id: CA session identifier and bundle key.
+        project_id: Project UUID owning the file.
+        file_path: Project-relative path of the opened file.
+        raw_bytes: Initial content written to the workspace origin snapshot.
+        create: True when this open created a new file (sets the ``created`` flag).
+        persisted_on_ca: Whether the file already exists on Code Analysis.
+        format_group_hint: Optional explicit format group for unknown extensions.
+
+    Returns:
+        SuccessResult with the open payload, or ErrorResult on a draft/session
+        failure (unparsable content, file already open, or unknown session).
+    """
     workspace_root = resolve_workspace_root()
     is_repeat_open = bundle_file_count(ca_session_id) >= 1
     if not is_repeat_open:
@@ -192,6 +240,7 @@ def run_open_execute(
                 file_path=file_path,
                 project_id=project_id,
                 ca_session_id=ca_session_id,
+                persisted_on_ca=persisted_on_ca,
                 project_root=paths.edit_subdir,
                 workspace_session_root=layout.session_dir,
                 workspace_file_subtree_root=layout.file_subtree_dir,
@@ -205,6 +254,9 @@ def run_open_execute(
                     session.handler_id, session.tree_temp_roots
                 )
                 apply_source_mutation(session, draft_text)
+                # A new tree-temp file's draft is serialized from initial_content
+                # at open; that is setup, not a user edit, so keep modified clear.
+                session.modified = False
         else:
             session = create_session(
                 abs_path=paths.origin_path,
@@ -212,6 +264,7 @@ def run_open_execute(
                 file_path=file_path,
                 project_id=project_id,
                 ca_session_id=ca_session_id,
+                persisted_on_ca=persisted_on_ca,
                 project_root=paths.edit_subdir,
                 tree_id=tree_id,
                 workspace_session_root=layout.session_dir,

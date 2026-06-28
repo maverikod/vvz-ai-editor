@@ -65,8 +65,15 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "changes are discarded.\n\n"
             "text (.md, .txt, .rst, .adoc, …):\n"
             "  Uncommitted edits in the workspace draft are discarded.\n\n"
-            "Uncommitted edits (universal_file_edit without universal_file_write commit)\n"
-            "are silently discarded on close. Always commit before closing if changes matter."
+            "Unsaved edits and close (R5): by default close refuses a file with "
+            "uncommitted edits and returns MODIFIED_NOT_WRITTEN — nothing is "
+            "discarded and the session stays open. Pass write_before_close=true to "
+            "commit (lock-then-transfer for a new file) and then close. A file with "
+            "no pending edits closes normally regardless of the flag.\n\n"
+            "New files (R1/R3): a file opened with create=true is held only in the "
+            "local workspace until its first universal_file_write commit, which "
+            "creates the CA lock and registers the file atomically. Closing such a "
+            "file before any commit releases no CA lock and simply discards the draft."
         ),
         "parameters": {
             "project_id": {
@@ -97,6 +104,18 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 "required": False,
                 "examples": ["config/settings.yaml"],
             },
+            "write_before_close": {
+                "description": (
+                    "How to close a file that has unsaved edits (modified but not "
+                    "committed). true: run the full universal_file_write commit "
+                    "(lock-then-transfer for a new file) before closing. false "
+                    "(default): reject with MODIFIED_NOT_WRITTEN so edits are never "
+                    "silently discarded. Ignored when the file is unmodified."
+                ),
+                "type": "boolean",
+                "required": False,
+                "examples": [False, True],
+            },
         },
         "return_value": {
             "success": {
@@ -122,7 +141,8 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
                     ),
                     "unlock_ok": (
                         "True when upstream CA unlock succeeded; False on best-effort "
-                        "failure — local cleanup still completed."
+                        "failure or when the file held no CA lock (a new file that "
+                        "was never committed) — local cleanup still completed."
                     ),
                     "workspace_subtree_removed": (
                         "True when the File Subtree for this file was removed."
@@ -224,6 +244,21 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 "solution": (
                     "Pass the project-relative file_path to close, or close each "
                     "remaining path from remaining_open_files until the session ends."
+                ),
+            },
+            "MODIFIED_NOT_WRITTEN": {
+                "description": (
+                    "The file has uncommitted edits and write_before_close was "
+                    "false (the default). The session is left open and unchanged."
+                ),
+                "message": (
+                    "File has unsaved changes; commit with universal_file_write "
+                    "or pass write_before_close=true to write on close"
+                ),
+                "solution": (
+                    "Commit with universal_file_write (write_mode=commit) then "
+                    "close, or call close again with write_before_close=true to "
+                    "write and close in one step."
                 ),
             },
         },

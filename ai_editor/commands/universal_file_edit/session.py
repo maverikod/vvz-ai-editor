@@ -46,6 +46,16 @@ class EditSession:
     core: CoreEditSession
     source_sha256_at_open: Optional[str] = None
     dirty: bool = False
+    # True once the file exists on Code Analysis (an existing file opened with a
+    # lock, or a new file persisted by a successful commit). False for a new file
+    # opened with create=true that has never been committed: it lives only in the
+    # local workspace draft and holds no CA lock yet. Drives R3 (lock-then-create
+    # on first commit) and R4 (release the CA lock on close only when it exists).
+    persisted_on_ca: bool = True
+    # True when at least one edit produced a non-empty diff since open or the last
+    # successful commit. Set by universal_file_edit, cleared by a successful
+    # universal_file_write commit, consulted by universal_file_close (R5/R6).
+    modified: bool = False
     tree_temp_roots: Optional[List[TreeNode]] = None
     sidecar_write_intent: Optional[str] = None
     fallback_reason: Optional[str] = None
@@ -155,6 +165,7 @@ def create_session(
     initial_source_text: Optional[str] = None,
     ca_session_id: str,
     project_id: str = "",
+    persisted_on_ca: bool = True,
     workspace_session_root: Optional[Path] = None,
     workspace_file_subtree_root: Optional[Path] = None,
     workspace_origin_path: Optional[Path] = None,
@@ -164,6 +175,10 @@ def create_session(
 
     ``ca_session_id`` is the CA session identifier and the sole bundle key.
     Multiple files opened under the same ``ca_session_id`` share one bundle.
+
+    ``persisted_on_ca`` records whether the file already exists on Code Analysis.
+    Pass ``False`` for a new file opened with ``create=true`` (R1): it is held
+    only in the local draft until the first successful commit promotes it (R3).
     """
     ca_id = str(ca_session_id or "").strip()
     if not ca_id:
@@ -229,6 +244,8 @@ def create_session(
         core=core,
         source_sha256_at_open=source_sha256_at_open,
         dirty=False,
+        persisted_on_ca=persisted_on_ca,
+        modified=False,
         tree_temp_roots=tree_temp_roots,
         sidecar_write_intent=sidecar_write_intent,
         fallback_reason=fallback_reason,
