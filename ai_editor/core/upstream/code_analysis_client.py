@@ -384,6 +384,12 @@ class CodeAnalysisClient:
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
         if not sid or not pid or not rel:
             _raise_missing_session_path(session_id, project_id, file_path)
+        # At commit time the file is always already in the CA index: existing files
+        # were indexed before open, and create=true files were registered at open via
+        # upload_create_and_lock. project_file_transfer_upload_save therefore needs the
+        # "update existing" mode, which is keyed by file_id (sending file_path triggers
+        # the create-new branch and CA rejects it with FILE_ALREADY_INDEXED).
+        file_id = resolve_file_id_for_path(self, pid, rel)
         transfer_id = upload_bytes_transfer_id(
             self, content, filename=Path(rel).name or "upload.bin"
         )
@@ -397,7 +403,7 @@ class CodeAnalysisClient:
             {
                 "session_id": sid,
                 "project_id": pid,
-                "file_path": rel,
+                "file_id": file_id,
                 "transfer_id": transfer_id,
                 "unlock_after_write": False,
                 "backup": True,

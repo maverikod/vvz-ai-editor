@@ -44,15 +44,17 @@ def test_validate_empty() -> None:
     assert client.validate_ca_session("") == CaSessionStatus.INVALID
 
 
-def test_upload_session_file_content_uses_file_path_not_file_id(
+def test_upload_session_file_content_uses_file_id_not_file_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """upload_session_file_content must send file_path (not file_id) to CA.
+    """upload_session_file_content must send file_id (not file_path) to CA.
 
-    Regression: the commit path previously sent file_id to project_file_transfer_upload_save,
-    but that command only accepts file_path. CA responds with -32600 'command is required'
-    when file_id is used without file_path.
+    At commit time the file is always already in the CA index (existing files are
+    indexed before open; create=true files are registered at open via
+    upload_create_and_lock). project_file_transfer_upload_save's "update existing"
+    mode is keyed by file_id. Sending file_path instead triggers the create-new
+    branch and CA rejects an already-indexed path with FILE_ALREADY_INDEXED.
     """
     import ai_editor.core.upstream.code_analysis_client as _mod
     from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
@@ -73,6 +75,11 @@ def test_upload_session_file_content_uses_file_path_not_file_id(
         "upload_bytes_transfer_id",
         lambda _client, _content, filename: "tid-001",
     )
+    monkeypatch.setattr(
+        _mod,
+        "resolve_file_id_for_path",
+        lambda _client, _pid, _rel: "fid-123",
+    )
 
     result = client.upload_session_file_content(
         session_id="sess-1",
@@ -84,9 +91,11 @@ def test_upload_session_file_content_uses_file_path_not_file_id(
     save_calls = [p for cmd, p in calls if cmd == "project_file_transfer_upload_save"]
     assert save_calls, "project_file_transfer_upload_save was never called"
     params = save_calls[0]
-    assert "file_path" in params, "file_path must be sent to project_file_transfer_upload_save"
-    assert "file_id" not in params, "file_id must NOT be sent (causes -32600 from CA)"
-    assert params["file_path"] == "lmrs/contracts.py"
+    assert "file_id" in params, "file_id must be sent (update-existing mode)"
+    assert "file_path" not in params, (
+        "file_path must NOT be sent (triggers create-new → FILE_ALREADY_INDEXED)"
+    )
+    assert params["file_id"] == "fid-123"
     assert result == b"# content"
 
 
