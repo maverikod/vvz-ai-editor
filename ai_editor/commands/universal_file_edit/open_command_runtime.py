@@ -35,6 +35,7 @@ from ai_editor.commands.universal_file_edit.session import (
     bundle_file_count,
     create_session,
     lookup_ca_session_id,
+    purge_stale_open_index_entry,
 )
 from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (
     serialize_tree_temp_roots,
@@ -46,7 +47,10 @@ from ai_editor.core.editor_workspace_paths import (
     resolve_workspace_root,
 )
 from ai_editor.core.edit_session.workspace_layout import allocate_edit_subdir
-from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+from ai_editor.core.upstream.code_analysis_client import (
+    CaSessionStatus,
+    get_code_analysis_client,
+)
 
 # Markers in an upstream RuntimeError that mean the file could not be parsed or
 # failed Code Analysis save-validation. Open of an existing file must degrade to
@@ -101,19 +105,26 @@ def run_open_execute(
     initial_content = str(kwargs.get("initial_content", "") or "")
     format_group_hint = str(kwargs.get("format_group", "") or "").strip() or None
 
+    client = get_code_analysis_client()
+
     if project_id:
         existing_sid = lookup_ca_session_id(project_id, file_path)
     else:
         existing_sid = None
     if existing_sid is not None:
-        return error_result_from_make_error(
-            make_error(
-                FILE_ALREADY_OPEN,
-                f"File already open in session {existing_sid}: {file_path}",
-            )
+        ca_status = client.validate_ca_session(existing_sid)
+        purged = purge_stale_open_index_entry(
+            project_id,
+            file_path,
+            ca_session_dead=ca_status == CaSessionStatus.NOT_FOUND,
         )
-
-    client = get_code_analysis_client()
+        if not purged:
+            return error_result_from_make_error(
+                make_error(
+                    FILE_ALREADY_OPEN,
+                    f"File already open in session {existing_sid}: {file_path}",
+                )
+            )
 
     if create:
         # R1: opening a NEW file is CA-local-only. No upload, no lock, no CA

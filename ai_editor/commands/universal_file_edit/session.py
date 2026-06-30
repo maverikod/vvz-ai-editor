@@ -306,6 +306,59 @@ def release_session(session_id: str, file_path: Optional[str] = None) -> None:
         _session_bundles.pop(session_id, None)
 
 
+def purge_stale_open_index_entry(
+    project_id: str,
+    file_path: str,
+    *,
+    ca_session_dead: bool,
+) -> bool:
+    """Purge a stale ``_file_open_index`` entry when its CA session is dead.
+
+    The open-time guard rejects a re-open while ``_file_open_index`` still maps
+    the path to a session id. That mapping is normally cleared by
+    ``release_session`` on close, but a CA-side ``session_delete force=true``
+    drops the CA session without notifying the editor, orphaning the entry. This
+    helper detects such a dead entry and removes it so the open can proceed.
+
+    Staleness combines two independent signals; the entry is stale when **either**
+    holds:
+
+    - **Local:** no live ``EditSession`` backs the registered id — the bundle or
+      the file's session is missing, or its ``core.is_open`` is ``False``.
+    - **CA:** ``ca_session_dead`` is ``True``, i.e. CA reported the session as
+      ``NOT_FOUND``. CA-unreachable must map to ``False`` here so a possibly-live
+      lock is never torn down on the basis of CA being unavailable.
+
+    This function only reads the module registries and delegates cleanup to
+    ``release_session``; it performs no Code Analysis round-trip.
+
+    Args:
+        project_id: Project UUID owning the file.
+        file_path: Project-relative path of the file being opened.
+        ca_session_dead: ``True`` only when CA reported the registered session as
+            ``NOT_FOUND``.
+
+    Returns:
+        ``True`` when a stale entry was found and removed; ``False`` when nothing
+        is registered for the path or the registered session is genuinely live.
+    """
+    sid = _file_open_index.get(_file_key(project_id, file_path))
+    if sid is None:
+        return False
+    bundle = _session_bundles.get(sid)
+    session = bundle.get(_norm_file_path(file_path)) if bundle is not None else None
+    is_stale = (
+        bundle is None
+        or session is None
+        or session.core.is_open is False
+        or ca_session_dead is True
+    )
+    if not is_stale:
+        return False
+    release_session(sid, file_path)
+    return True
+
+
 def active_session_uses_abs_path(abs_path: Path) -> bool:
     """Return True if any registered core session uses this resolved absolute path."""
     target = abs_path.resolve()
