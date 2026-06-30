@@ -384,12 +384,24 @@ class CodeAnalysisClient:
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
         if not sid or not pid or not rel:
             _raise_missing_session_path(session_id, project_id, file_path)
-        # At commit time the file is always already in the CA index: existing files
-        # were indexed before open, and create=true files were registered at open via
-        # upload_create_and_lock. project_file_transfer_upload_save therefore needs the
-        # "update existing" mode, which is keyed by file_id (sending file_path triggers
-        # the create-new branch and CA rejects it with FILE_ALREADY_INDEXED).
-        file_id = resolve_file_id_for_path(self, pid, rel)
+        # Resolve the files-table id for the "update existing" mode (keyed by
+        # file_id; sending file_path would trigger the create-new branch and CA
+        # would reject it with FILE_ALREADY_INDEXED).
+        #
+        # Normally the file is already indexed at commit time, but that invariant
+        # is not guaranteed: a file can be present on disk (returned by
+        # list_project_files) yet carry a null file_id if its registration row was
+        # never persisted. The open path heals this via ensure_file_id_for_path, so
+        # the commit path mirrors it — resolve first, and on the "file not found in
+        # project index" miss, register the disk-only path and retry. A genuinely
+        # missing path (no list_project_files rows) still surfaces that same error
+        # as terminal from ensure_file_id_for_path.
+        try:
+            file_id = resolve_file_id_for_path(self, pid, rel)
+        except RuntimeError as exc:
+            if "file not found in project index" not in str(exc):
+                raise
+            file_id = ensure_file_id_for_path(self, pid, rel, session_id=sid)
         transfer_id = upload_bytes_transfer_id(
             self, content, filename=Path(rel).name or "upload.bin"
         )
