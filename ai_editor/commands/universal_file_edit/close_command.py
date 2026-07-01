@@ -44,6 +44,10 @@ from ai_editor.core.editor_workspace_paths import (
     file_workspace_layout,
     resolve_workspace_root,
 )
+from ai_editor.core.host_filesystem import (
+    HostFileOperationError,
+    handle_host_file_error,
+)
 from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
 from ai_editor.core.upstream.session_guard import (
     GuardDecision,
@@ -174,7 +178,14 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         ca_session_id = str(session_id or "").strip()
         pid = str(project_id or "").strip()
         guard = SessionGuard(get_code_analysis_client())
-        decision = guard.check(OperationKind.CLOSE, ca_session_id)
+        try:
+            decision = guard.check(OperationKind.CLOSE, ca_session_id)
+        except HostFileOperationError as exc:
+            return ErrorResult(
+                message=str(exc),
+                code=cast(Any, exc.code or "HOST_FILE_OPERATION_ERROR"),
+                details=exc.details,
+            )
         if decision == GuardDecision.REJECT:
             return ErrorResult(
                 message="session_id is required for universal_file_close",
@@ -292,24 +303,28 @@ class UniversalFileCloseCommand(BaseMCPCommand):
                 remove_file_subtree(file_subtree_dir=layout.file_subtree_dir)
                 workspace_subtree_removed = True
         except (FileNotFoundError, OSError) as exc:
-            logger.warning(
-                "close workspace subtree removal skipped for %s/%s: %s",
-                ca_session_id,
-                session.file_path,
-                exc,
+            host_exc = handle_host_file_error(
+                file_name=str(layout.file_subtree_dir),
+                caller_file=__file__,
+                method_name="UniversalFileCloseCommand:remove_file_subtree",
+                exc=exc,
+                logger=logger,
             )
+            payload["workspace_subtree_cleanup_error"] = host_exc.details
         session_dir_removed = False
         try:
             if is_last_file and layout.session_dir.is_dir():
                 shutil.rmtree(layout.session_dir)
                 session_dir_removed = True
         except (FileNotFoundError, OSError) as exc:
-            logger.warning(
-                "close session dir removal skipped for %s/%s: %s",
-                ca_session_id,
-                session.file_path,
-                exc,
+            host_exc = handle_host_file_error(
+                file_name=str(layout.session_dir),
+                caller_file=__file__,
+                method_name="UniversalFileCloseCommand:rmtree_session_dir",
+                exc=exc,
+                logger=logger,
             )
+            payload["session_dir_cleanup_error"] = host_exc.details
         payload["session_id"] = ca_session_id
         payload["project_id"] = pid
         payload["file_path"] = session.file_path

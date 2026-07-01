@@ -36,6 +36,10 @@ from ai_editor.core.file_validation.pre_write_pipeline import (
     validate_before_promote,
     validation_error_result,
 )
+from ai_editor.core.host_filesystem import (
+    HostFileOperationError,
+    guard_host_file_operation,
+)
 from ai_editor.commands.universal_file_edit.write_command_extras import (
     verify_ca_readback,
 )
@@ -205,8 +209,21 @@ def _run_write_commit_ca(
     # The file now exists on CA under a session lock; subsequent commits use the
     # update-existing path and close (R4) will release the lock.
     session.persisted_on_ca = True
+    try:
+        guard_host_file_operation(
+            file_name=session.abs_path,
+            caller_file=__file__,
+            method_name="_run_write_commit_ca:write_origin_snapshot",
+            operation=lambda: session.abs_path.write_bytes(accepted),
+            logger=logger,
+        )
+    except HostFileOperationError as exc:
+        return ErrorResult(
+            message=str(exc),
+            code=cast(Any, exc.code or "HOST_FILE_OPERATION_ERROR"),
+            details=exc.details,
+        )
     session.modified = False
-    session.abs_path.write_bytes(accepted)
     return SuccessResult(
         data=_commit_response_data(
             session=session,

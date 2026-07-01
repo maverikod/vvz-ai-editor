@@ -7,11 +7,19 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ai_editor.core.host_filesystem import (
+    guard_host_file_operation,
+    handle_host_file_error,
+)
+
 if TYPE_CHECKING:
     from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_rel_path(file_path: str) -> str:
@@ -31,6 +39,48 @@ def _file_id_from_row(item: Dict[str, Any]) -> str:
     return str(item.get("file_id") or item.get("id") or "").strip()
 
 
+def _project_name(client: "CodeAnalysisClient", project_id: str) -> str:
+    try:
+        project = client.get_project(project_id)
+    except Exception:
+        return ""
+    if not isinstance(project, dict):
+        return ""
+    return str(project.get("name") or "").strip().replace("\\", "/").strip("/")
+
+
+def candidate_rel_paths_for_project(
+    client: "CodeAnalysisClient",
+    project_id: str,
+    file_path: str,
+) -> List[str]:
+    """Return project-relative lookup candidates for a caller-supplied path.
+
+    The public editor API expects project-relative paths, but agents sometimes
+    pass ``<project-name>/path.py`` after selecting a project_id for that same
+    project. CA treats the shorter suffix as canonical, so use it as a recovery
+    candidate without changing the caller-visible file_path stored in the editor
+    session.
+    """
+    rel = normalize_rel_path(file_path)
+    candidates: List[str] = []
+    if rel:
+        candidates.append(rel)
+    project_name = _project_name(client, project_id)
+    prefix = f"{project_name}/" if project_name else ""
+    if prefix and rel.startswith(prefix):
+        stripped = rel[len(prefix) :]
+        if stripped:
+            candidates.append(stripped)
+    seen = set()
+    unique: List[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            unique.append(candidate)
+    return unique
+
+
 def list_project_file_rows_for_path(
     client: "CodeAnalysisClient",
     project_id: str,
@@ -38,31 +88,38 @@ def list_project_file_rows_for_path(
 ) -> List[Dict[str, Any]]:
     """Return ``list_project_files`` rows for one exact project-relative path."""
     pid = str(project_id or "").strip()
-    rel = normalize_rel_path(file_path)
-    data = client.call(
-        "list_project_files",
-        {"project_id": pid, "file_pattern": rel},
-    )
-    files = data.get("files") if isinstance(data, dict) else data
-    if not isinstance(files, list):
-        raise RuntimeError("list_project_files returned no files list")
-    return [
-        item
-        for item in files
-        if isinstance(item, dict) and _row_relative_path(item) == rel
-    ]
+    candidates = candidate_rel_paths_for_project(client, pid, file_path)
+    last_files: Any = None
+    for rel in candidates:
+        data = client.call(
+            "list_project_files",
+            {"project_id": pid, "file_pattern": rel},
+        )
+        files = data.get("files") if isinstance(data, dict) else data
+        last_files = files
+        if not isinstance(files, list):
+            raise RuntimeError("list_project_files returned no files list")
+        rows = [
+            item
+            for item in files
+            if isinstance(item, dict) and _row_relative_path(item) == rel
+        ]
+        if rows:
+            return rows
+    if last_files is None:
+        return []
+    return []
 
 
-def read_project_file_bytes_via_lines(
+def _read_project_file_bytes_via_lines_one_path(
     client: "CodeAnalysisClient",
     project_id: str,
-    file_path: str,
+    rel: str,
     *,
-    chunk_size: int = 500,
+    chunk_size: int,
 ) -> bytes:
-    """Read a project file via ``get_file_lines`` (works without ``files.id``)."""
+    """Read one canonical relative path through CA's raw line API."""
     pid = str(project_id or "").strip()
-    rel = normalize_rel_path(file_path)
     probe = client.call(
         "get_file_lines",
         {
@@ -112,6 +169,30 @@ def read_project_file_bytes_via_lines(
     return text.encode("utf-8")
 
 
+def read_project_file_bytes_via_lines(
+    client: "CodeAnalysisClient",
+    project_id: str,
+    file_path: str,
+    *,
+    chunk_size: int = 500,
+) -> bytes:
+    """Read a project file via ``get_file_lines`` (works without ``files.id``)."""
+    pid = str(project_id or "").strip()
+    errors: List[str] = []
+    for rel in candidate_rel_paths_for_project(client, pid, file_path):
+        try:
+            return _read_project_file_bytes_via_lines_one_path(
+                client, pid, rel, chunk_size=chunk_size
+            )
+        except RuntimeError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise RuntimeError(errors[-1])
+    raise RuntimeError(
+        f"file not found in project index: {normalize_rel_path(file_path)!r}"
+    )
+
+
 def resolve_file_id_for_path(
     client: "CodeAnalysisClient",
     project_id: str,
@@ -156,27 +237,90 @@ def ensure_file_id_for_path(
         )
     rows = list_project_file_rows_for_path(client, pid, rel)
     if not rows:
+        disk_registration = _read_project_file_bytes_from_disk(
+            client,
+            pid,
+            rel,
+        )
+        if disk_registration is None:
+            raise RuntimeError(f"file not found in project index: {rel!r}")
+        canonical_rel, content = disk_registration
+        saved = upload_create_save(
+            client,
+            session_id=sid,
+            project_id=pid,
+            file_path=canonical_rel,
+            content=content,
+        )
+        fid = str(saved.get("file_id") or "").strip()
+        if fid:
+            return fid
+        for item in list_project_file_rows_for_path(client, pid, canonical_rel):
+            fid = _file_id_from_row(item)
+            if fid:
+                return fid
         raise RuntimeError(f"file not found in project index: {rel!r}")
     for item in rows:
         fid = _file_id_from_row(item)
         if fid:
             return fid
-    content = read_project_file_bytes_via_lines(client, pid, rel)
+    canonical_rel = _row_relative_path(rows[0]) or rel
+    content = read_project_file_bytes_via_lines(client, pid, canonical_rel)
     saved = upload_create_save(
         client,
         session_id=sid,
         project_id=pid,
-        file_path=rel,
+        file_path=canonical_rel,
         content=content,
     )
     fid = str(saved.get("file_id") or "").strip()
     if fid:
         return fid
-    for item in list_project_file_rows_for_path(client, pid, rel):
+    for item in list_project_file_rows_for_path(client, pid, canonical_rel):
         fid = _file_id_from_row(item)
         if fid:
             return fid
     raise RuntimeError(f"file not found in project index: {rel!r}")
+
+
+def _read_project_file_bytes_from_disk(
+    client: "CodeAnalysisClient",
+    project_id: str,
+    file_path: str,
+) -> tuple[str, bytes] | None:
+    """Read an existing disk file for CA registration when the index is stale."""
+    try:
+        root = client.get_project_root(project_id)
+    except Exception as exc:
+        logger.debug("cannot resolve project root for disk fallback: %s", exc)
+        return None
+    root = root.resolve()
+    for rel in candidate_rel_paths_for_project(client, project_id, file_path):
+        candidate = (root / rel).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        try:
+            if not candidate.is_file():
+                continue
+        except OSError as exc:
+            raise handle_host_file_error(
+                file_name=candidate,
+                caller_file=__file__,
+                method_name="ensure_file_id_for_path:is_file",
+                exc=exc,
+                logger=logger,
+            ) from exc
+        content = guard_host_file_operation(
+            file_name=candidate,
+            caller_file=__file__,
+            method_name="ensure_file_id_for_path:read_bytes",
+            operation=candidate.read_bytes,
+            logger=logger,
+        )
+        return rel, content
+    return None
 
 
 def download_transfer_to_bytes(

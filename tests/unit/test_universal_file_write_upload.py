@@ -104,6 +104,58 @@ async def test_upload_success_writes_origin_snapshot() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upload_success_origin_snapshot_permission_error_is_structured() -> None:
+    cmd = UniversalFileWriteCommand()
+    session = _mock_session()
+    session.modified = True
+    comparison = _diff_comparison()
+    accepted_bytes = b"x = 2\n"
+    client = MagicMock()
+    client.upload_session_file_content.return_value = accepted_bytes
+    session.abs_path.write_bytes.side_effect = PermissionError(
+        13,
+        "Permission denied",
+        "/workspace/src/foo.py",
+    )
+
+    with patch(
+        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+        return_value=client,
+    ):
+        with patch(
+            "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+        ) as mock_guard_cls:
+            mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
+            with patch(
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+                return_value=session,
+            ):
+                with patch(
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+                    return_value=comparison,
+                ):
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        return_value=_validation_ok(),
+                    ):
+                        result = await cmd.execute(
+                            project_id="proj-1",
+                            session_id="sess-1",
+                            write_mode="commit",
+                        )
+
+    assert isinstance(result, ErrorResult)
+    assert result.code == "HOST_FILE_OPERATION_ERROR"
+    assert result.details is not None
+    assert result.details["reason"] == "permission_denied"
+    assert result.details["method_name"] == (
+        "_run_write_commit_ca:write_origin_snapshot"
+    )
+    assert session.modified is True
+    assert session.persisted_on_ca is True
+
+
+@pytest.mark.asyncio
 async def test_upload_runtime_error_preserves_origin() -> None:
     cmd = UniversalFileWriteCommand()
     session = _mock_session()
@@ -250,7 +302,9 @@ async def test_commit_locally_rejects_incomplete_docstrings(tmp_path: Path) -> N
         exported_bytes=_INCOMPLETE_DOCSTRING_PY.encode("utf-8"),
     )
     client = MagicMock()
-    client.upload_session_file_content.return_value = _INCOMPLETE_DOCSTRING_PY.encode("utf-8")
+    client.upload_session_file_content.return_value = _INCOMPLETE_DOCSTRING_PY.encode(
+        "utf-8"
+    )
 
     with patch(
         "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",

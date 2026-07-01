@@ -46,7 +46,11 @@ from ai_editor.core.editor_workspace_paths import (
     file_workspace_layout,
     resolve_workspace_root,
 )
-from ai_editor.core.edit_session.workspace_layout import allocate_edit_subdir
+from ai_editor.core.edit_session.workspace_layout import (
+    allocate_edit_subdir,
+    edit_subdir_name,
+)
+from ai_editor.core.host_filesystem import host_file_operation
 from ai_editor.core.upstream.code_analysis_client import (
     CaSessionStatus,
     get_code_analysis_client,
@@ -213,17 +217,38 @@ def _build_open_result(
     workspace_root = resolve_workspace_root()
     is_repeat_open = bundle_file_count(ca_session_id) >= 1
     if not is_repeat_open:
-        ensure_session_directory(workspace_root, ca_session_id)
+        with host_file_operation(
+            file_name=workspace_root / ca_session_id,
+            caller_file=__file__,
+            method_name="_build_open_result:ensure_session_directory",
+        ):
+            ensure_session_directory(workspace_root, ca_session_id)
     layout = file_workspace_layout(workspace_root, ca_session_id, project_id, file_path)
-    ensure_file_subtree(layout)
+    with host_file_operation(
+        file_name=layout.file_subtree_dir,
+        caller_file=__file__,
+        method_name="_build_open_result:ensure_file_subtree",
+    ):
+        ensure_file_subtree(layout)
 
-    paths = allocate_edit_subdir(
-        file_subtree_dir=layout.file_subtree_dir,
-        origin_filename=layout.origin_path.name,
-    )
+    edit_subdir = layout.file_subtree_dir / edit_subdir_name(layout.origin_path.name)
+    with host_file_operation(
+        file_name=edit_subdir,
+        caller_file=__file__,
+        method_name="_build_open_result:allocate_edit_subdir",
+    ):
+        paths = allocate_edit_subdir(
+            file_subtree_dir=layout.file_subtree_dir,
+            origin_filename=layout.origin_path.name,
+        )
 
-    layout.origin_path.parent.mkdir(parents=True, exist_ok=True)
-    layout.origin_path.write_bytes(raw_bytes)
+    with host_file_operation(
+        file_name=layout.origin_path,
+        caller_file=__file__,
+        method_name="_build_open_result:write_origin_snapshot",
+    ):
+        layout.origin_path.parent.mkdir(parents=True, exist_ok=True)
+        layout.origin_path.write_bytes(raw_bytes)
 
     descriptor_result = resolve_and_create_draft(
         layout.origin_path, paths.edit_subdir, project_id, format_group_hint

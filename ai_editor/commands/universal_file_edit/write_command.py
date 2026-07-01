@@ -18,6 +18,7 @@ from ai_editor.commands.universal_file_edit.write_command_runtime import (
     run_write_execute,
 )
 from ai_editor.core.exceptions import ValidationError
+from ai_editor.core.host_filesystem import HostFileOperationError
 from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
 from ai_editor.core.upstream.session_guard import (
     GuardDecision,
@@ -134,7 +135,14 @@ class UniversalFileWriteCommand(BaseMCPCommand):
         verify_after_upload = bool(kwargs.get("verify_after_upload", False))
 
         guard = SessionGuard(get_code_analysis_client())
-        decision = guard.check(OperationKind.WRITE, ca_session_id)
+        try:
+            decision = guard.check(OperationKind.WRITE, ca_session_id)
+        except HostFileOperationError as exc:
+            return ErrorResult(
+                message=str(exc),
+                code=cast(Any, exc.code or "HOST_FILE_OPERATION_ERROR"),
+                details=exc.details,
+            )
         if decision == GuardDecision.REJECT:
             return ErrorResult(
                 message="invalid CA session",

@@ -10,6 +10,8 @@ import logging
 import shutil
 from pathlib import Path
 
+from ai_editor.core.host_filesystem import host_file_operation
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,5 +48,11 @@ def cleanup_zombie_ca_session(
         return False
     _purge_bundle(sid)
     if session_dir.is_dir():
-        shutil.rmtree(session_dir)
+        with host_file_operation(
+            file_name=session_dir,
+            caller_file=__file__,
+            method_name="cleanup_zombie_ca_session:rmtree",
+            logger=logger,
+        ):
+            shutil.rmtree(session_dir)
     return True

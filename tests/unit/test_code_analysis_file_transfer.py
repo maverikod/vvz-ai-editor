@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from ai_editor.core.upstream.code_analysis_file_transfer import (
+    candidate_rel_paths_for_project,
     ensure_file_id_for_path,
     list_project_file_rows_for_path,
     read_project_file_bytes_via_lines,
     resolve_file_id_for_path,
 )
+from ai_editor.core.host_filesystem import HostFileOperationError
 
 
 def _client_with_calls(mapping: dict[str, Any]) -> MagicMock:
@@ -115,6 +118,153 @@ def test_ensure_file_id_registers_unindexed_disk_file() -> None:
 
     fid = ensure_file_id_for_path(client, "proj-1", "notes.txt", session_id="sess-1")
     assert fid == "new-file-id"
+
+
+def test_ensure_file_id_registers_disk_present_index_missing_file(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "gateway.py"
+    target.write_text("print('ok')\n", encoding="utf-8")
+    client = MagicMock()
+    client.get_project.return_value = {"id": "proj-1", "name": "lmrs"}
+    client.get_project_root.return_value = tmp_path
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def _call(command: str, params: dict[str, Any] | None = None) -> Any:
+        payload = dict(params or {})
+        calls.append((command, payload))
+        if command == "list_project_files":
+            return {"files": []}
+        if command == "project_file_transfer_upload_save":
+            assert payload["file_path"] == "gateway.py"
+            return {"file_id": "fid-disk"}
+        raise AssertionError(f"unexpected call: {command} {payload}")
+
+    client.call.side_effect = _call
+    client.run_in_isolated_loop.return_value = MagicMock(transfer_id="tr-disk")
+
+    fid = ensure_file_id_for_path(
+        client,
+        "proj-1",
+        "lmrs/gateway.py",
+        session_id="sess-1",
+    )
+
+    assert fid == "fid-disk"
+    assert any(
+        command == "project_file_transfer_upload_save"
+        and params["file_path"] == "gateway.py"
+        for command, params in calls
+    )
+
+
+def test_ensure_file_id_disk_fallback_permission_error_is_structured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "gateway.py"
+    target.write_text("print('ok')\n", encoding="utf-8")
+    client = MagicMock()
+    client.get_project.return_value = {"id": "proj-1", "name": "lmrs"}
+    client.get_project_root.return_value = tmp_path
+    client.call.return_value = {"files": []}
+
+    def _deny(self: Path) -> bytes:
+        if self == target:
+            raise PermissionError(13, "Permission denied", str(target))
+        return b""
+
+    monkeypatch.setattr(Path, "read_bytes", _deny)
+
+    with pytest.raises(HostFileOperationError) as exc_info:
+        ensure_file_id_for_path(
+            client,
+            "proj-1",
+            "lmrs/gateway.py",
+            session_id="sess-1",
+        )
+
+    assert exc_info.value.code == "HOST_FILE_OPERATION_ERROR"
+    assert exc_info.value.details["reason"] == "permission_denied"
+    assert exc_info.value.details["method_name"] == (
+        "ensure_file_id_for_path:read_bytes"
+    )
+
+
+def test_candidate_rel_paths_strips_project_name_prefix() -> None:
+    client = MagicMock()
+    client.get_project.return_value = {"id": "proj-1", "name": "lmrs"}
+
+    assert candidate_rel_paths_for_project(
+        client,
+        "proj-1",
+        "lmrs/gateway.py",
+    ) == ["lmrs/gateway.py", "gateway.py"]
+
+
+def test_resolve_file_id_recovers_from_project_name_prefixed_path() -> None:
+    client = _client_with_calls(
+        {
+            (
+                "list_project_files",
+                (
+                    ("file_pattern", "lmrs/gateway.py"),
+                    ("project_id", "proj-1"),
+                ),
+            ): {"files": []},
+            (
+                "list_project_files",
+                (
+                    ("file_pattern", "gateway.py"),
+                    ("project_id", "proj-1"),
+                ),
+            ): {"files": [{"relative_path": "gateway.py", "file_id": "fid-gw"}]},
+        }
+    )
+    client.get_project.return_value = {"id": "proj-1", "name": "lmrs"}
+
+    assert resolve_file_id_for_path(client, "proj-1", "lmrs/gateway.py") == "fid-gw"
+
+
+def test_ensure_file_id_registers_with_canonical_stripped_path() -> None:
+    client = MagicMock()
+    client.get_project.return_value = {"id": "proj-1", "name": "lmrs"}
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def _call(command: str, params: dict[str, Any] | None = None) -> Any:
+        payload = dict(params or {})
+        calls.append((command, payload))
+        if command == "list_project_files":
+            if payload["file_pattern"] == "lmrs/gateway.py":
+                return {"files": []}
+            if payload["file_pattern"] == "gateway.py":
+                return {"files": [{"relative_path": "gateway.py", "file_id": None}]}
+        if command == "get_file_lines":
+            assert payload["file_path"] == "gateway.py"
+            return {"lines": ["print('ok')"], "total_lines": 1}
+        if command == "project_file_transfer_upload_save":
+            assert payload["file_path"] == "gateway.py"
+            return {"file_id": "fid-gw"}
+        raise AssertionError(f"unexpected call: {command} {payload}")
+
+    client.call.side_effect = _call
+    client.run_in_isolated_loop.return_value = MagicMock(transfer_id="tr-1")
+
+    fid = ensure_file_id_for_path(
+        client,
+        "proj-1",
+        "lmrs/gateway.py",
+        session_id="sess-1",
+    )
+
+    assert fid == "fid-gw"
+    assert any(
+        command == "project_file_transfer_upload_save"
+        and params["file_path"] == "gateway.py"
+        for command, params in calls
+    )
 
 
 def test_list_project_file_rows_filters_exact_path() -> None:
