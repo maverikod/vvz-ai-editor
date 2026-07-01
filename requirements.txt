@@ -10,9 +10,9 @@ svo-client>=3.2.0
 lark>=1.1.0
 libcst>=1.1.0
 embed-client>=3.1.9.3
-mcp-proxy-adapter>=8.10.13
+mcp-proxy-adapter>=8.10.15
 code-analysis-client>=1.0.9
-queuemgr>=1.0.19
+queuemgr>=1.0.20
 markdown-it-py>=3.0
 
 # PostgreSQL driver (основная СУБД в конфиге)
