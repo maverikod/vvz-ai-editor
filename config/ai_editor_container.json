@@ -41,10 +41,10 @@
     "register_url": "https://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/register",
     "unregister_url": "https://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/unregister",
     "heartbeat_interval": 30,
-    "server_id": "ai-editor-server",
+    "server_id": "ai-editor-server${AI_EDITOR_SERVER_ID_SUFFIX}",
     "server_name": "AI Editor Server",
     "metadata": {
-      "server_id": "ai-editor-server",
+      "server_id": "ai-editor-server${AI_EDITOR_SERVER_ID_SUFFIX}",
       "server_name": "AI Editor Server",
       "description": "AI Editor server for project files: preview, open, edit, write, and close across Python, JSON, YAML, Markdown, and text.",
       "version": "1.0.7"

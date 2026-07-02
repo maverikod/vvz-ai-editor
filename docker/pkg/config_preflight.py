@@ -23,6 +23,12 @@ _PLACEHOLDER_RE = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 _ENV_DEFAULTS: dict[str, str] = {
     "AI_EDITOR_REGISTRATION_PORT": "3004",
     "AI_EDITOR_CODE_ANALYSIS_PORT": "15010",
+    # mcp-proxy published on the docker host gateway of the smart-assistant docker
+    # network; matches the current production topology (override per-host if needed).
+    "AI_EDITOR_REGISTRATION_HOST": "172.18.0.1",
+    # "-vvz" host suffix used on the current production host (192.168.254.26);
+    # override per-host when installing elsewhere.
+    "AI_EDITOR_SERVER_ID_SUFFIX": "-vvz",
 }
 
 _REQUIRED_FOR_AI_EDITOR: frozenset[str] = frozenset(
