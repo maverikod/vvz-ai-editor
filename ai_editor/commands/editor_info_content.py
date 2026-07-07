@@ -250,7 +250,7 @@ def build_editor_info_payload() -> Dict[str, Any]:
             "step": "1",
             "name": "open",
             "command": "universal_file_open",
-            "note": "CA lock + download; returns format_group, draft_path",
+            "note": "Existing file: CA lock+download; create=true: local draft only",
         },
         {
             "step": "2",
@@ -274,7 +274,7 @@ def build_editor_info_payload() -> Dict[str, Any]:
             "step": "4b",
             "name": "write commit",
             "command": "universal_file_write",
-            "note": "write_mode=commit; validate then CA upload",
+            "note": "write_mode=commit; validate, ensure CA lock, then upload/create",
         },
         {
             "step": "5",
