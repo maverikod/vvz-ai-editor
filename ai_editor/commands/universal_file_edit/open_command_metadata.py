@@ -40,7 +40,8 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "orchestration internally; do not call separate MCP session_open_file or "
             "download commands. When create=False, the server calls "
             "lock_file_and_download (session_open_file lock, then chunked download). "
-            "When create=True, it calls upload_create_and_lock (upload, save, lock).\n\n"
+            "When create=True, open creates only a local draft; the file does not "
+            "exist on CA until the first write commit, which uses lock-then-transfer.\n\n"
             "File identity: project_id + project-relative file_path (no file_id in "
             "the MCP request).\n\n"
             "Workspace layout: under configured workspace_root, files for one CA "
@@ -92,8 +93,9 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
             },
             "create": {
                 "description": (
-                    "When True, create the file on Code Analysis Server if it does not "
-                    "exist (upload_create_and_lock branch). "
+                    "When True, open a new local draft for a file that does not yet "
+                    "exist on Code Analysis Server. No CA file registration or lock "
+                    "is attempted until universal_file_write(write_mode='commit'). "
                     "For .py files, initial_content is required. "
                     "For JSON/YAML, initial_content is written as raw text when "
                     "provided; otherwise an empty object {} is written. "
@@ -235,8 +237,8 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
                     ),
                 },
                 "explanation": (
-                    "create=True uploads initial_content to CA and locks the new file. "
-                    "Run universal_file_preview before editing."
+                    "create=True creates a local draft only. The first commit uploads "
+                    "and locks the new file on CA. Run universal_file_preview before editing."
                 ),
             },
         ],

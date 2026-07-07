@@ -90,6 +90,10 @@ def test_upload_session_file_content_uses_file_id_not_file_path(
 
     save_calls = [p for cmd, p in calls if cmd == "project_file_transfer_upload_save"]
     assert save_calls, "project_file_transfer_upload_save was never called"
+    assert calls[0] == (
+        "session_open_file",
+        {"session_id": "sess-1", "project_id": "proj-1", "file_id": "fid-123"},
+    )
     params = save_calls[0]
     assert "file_id" in params, "file_id must be sent (update-existing mode)"
     assert "file_path" not in params, (
@@ -97,6 +101,50 @@ def test_upload_session_file_content_uses_file_id_not_file_path(
     )
     assert params["file_id"] == "fid-123"
     assert result == b"# content"
+
+
+def test_upload_session_file_content_fails_before_transfer_when_lock_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Existing-file commit must fail if CA refuses to lock the file."""
+    import ai_editor.core.upstream.code_analysis_client as _mod
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    client = CodeAnalysisClient(config_path=Path("config.json"))
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_call(cmd: str, params: dict[str, Any] | None = None) -> Any:
+        calls.append((cmd, dict(params or {})))
+        if cmd == "session_open_file":
+            raise RuntimeError("LOCK_DENIED")
+        return {}
+
+    monkeypatch.setattr(client, "call", fake_call)
+    monkeypatch.setattr(
+        _mod,
+        "upload_bytes_transfer_id",
+        lambda _client, _content, filename: "tid-should-not-exist",
+    )
+    monkeypatch.setattr(
+        _mod,
+        "resolve_file_id_for_path",
+        lambda _client, _pid, _rel: "fid-locked",
+    )
+
+    with pytest.raises(RuntimeError, match="LOCK_DENIED"):
+        client.upload_session_file_content(
+            session_id="sess-1",
+            project_id="proj-1",
+            file_path="lmrs/contracts.py",
+            content=b"# content",
+        )
+
+    assert calls == [
+        (
+            "session_open_file",
+            {"session_id": "sess-1", "project_id": "proj-1", "file_id": "fid-locked"},
+        )
+    ]
 
 
 def test_upload_create_and_lock_locks_atomically_on_transfer(

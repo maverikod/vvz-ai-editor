@@ -77,6 +77,57 @@ async def test_write_commit_equal_returns_noop_without_upload() -> None:
     assert result.data["project_id"] == "proj-1"
     assert result.data["file_path"] == "src/foo.py"
     mock_compare.assert_called_once_with(session, format_python=False)
+    client.ensure_session_file_lock.assert_called_once_with(
+        session_id="sess-1",
+        project_id="proj-1",
+        file_path="src/foo.py",
+    )
+    client.upload_session_file_content.assert_not_called()
+    client.upload_create_and_lock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_write_commit_equal_fails_when_lock_check_fails() -> None:
+    cmd = UniversalFileWriteCommand()
+    session = _mock_session()
+    comparison = WriteComparison(
+        result=CompareResult.EQUAL,
+        origin_bytes=b"x = 1\n",
+        exported_bytes=b"x = 1\n",
+    )
+    client = MagicMock()
+    client.ensure_session_file_lock.side_effect = RuntimeError("LOCK_DENIED")
+
+    with patch(
+        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+        return_value=client,
+    ):
+        with patch(
+            "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+        ) as mock_guard_cls:
+            mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
+            with patch(
+                "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+                return_value=session,
+            ):
+                with patch(
+                    "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+                    return_value=comparison,
+                ):
+                    result = await cmd.execute(
+                        project_id="proj-1",
+                        session_id="sess-1",
+                        write_mode="commit",
+                    )
+
+    assert isinstance(result, ErrorResult)
+    assert result.code == "UPSTREAM_LOCK_FAILED"
+    assert result.message == "LOCK_DENIED"
+    client.ensure_session_file_lock.assert_called_once_with(
+        session_id="sess-1",
+        project_id="proj-1",
+        file_path="src/foo.py",
+    )
     client.upload_session_file_content.assert_not_called()
     client.upload_create_and_lock.assert_not_called()
 

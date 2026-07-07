@@ -132,6 +132,28 @@ def _run_write_commit_ca(
     # with no changes is a true no-op and skips the upload.
     is_new_file = not session.persisted_on_ca
     if comparison.result == CompareResult.EQUAL and not is_new_file:
+        try:
+            client.ensure_session_file_lock(
+                session_id=ca_session_id,
+                project_id=project_id,
+                file_path=session.file_path,
+            )
+        except RuntimeError as exc:
+            logger.error("universal_file_write lock check failed: %s", exc)
+            return ErrorResult(
+                message=str(exc),
+                code=cast(Any, "UPSTREAM_LOCK_FAILED"),
+                details={"upstream_error": str(exc)},
+            )
+        except Exception as exc:
+            logger.error(
+                "universal_file_write lock check failed: %s", exc, exc_info=True
+            )
+            return ErrorResult(
+                message=str(exc),
+                code=cast(Any, "UPSTREAM_LOCK_FAILED"),
+                details={"upstream_error": str(exc)},
+            )
         session.modified = False
         return SuccessResult(
             data=_commit_response_data(

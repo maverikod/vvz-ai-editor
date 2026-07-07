@@ -354,6 +354,30 @@ class CodeAnalysisClient:
             self, session_id=sid, project_id=pid, file_id=file_id, lock_mode="none"
         )
 
+    def ensure_session_file_lock(
+        self, *, session_id: str, project_id: str, file_path: str
+    ) -> str:
+        """Ensure an existing CA file is locked by this session before write.
+
+        Existing files are normally locked during universal_file_open, but commit
+        re-affirms the lock immediately before upload so a lost/stale lock fails
+        as a write error instead of writing unlocked.
+        """
+        sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
+        if not sid or not pid or not rel:
+            _raise_missing_session_path(session_id, project_id, file_path)
+        try:
+            file_id = resolve_file_id_for_path(self, pid, rel)
+        except RuntimeError as exc:
+            if "file not found in project index" not in str(exc):
+                raise
+            file_id = ensure_file_id_for_path(self, pid, rel, session_id=sid)
+        self.call(
+            "session_open_file",
+            {"session_id": sid, "project_id": pid, "file_id": file_id},
+        )
+        return file_id
+
     def unlock_session_file(
         self, *, session_id: str, project_id: str, file_path: str
     ) -> bool:
@@ -384,24 +408,11 @@ class CodeAnalysisClient:
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
         if not sid or not pid or not rel:
             _raise_missing_session_path(session_id, project_id, file_path)
-        # Resolve the files-table id for the "update existing" mode (keyed by
-        # file_id; sending file_path would trigger the create-new branch and CA
-        # would reject it with FILE_ALREADY_INDEXED).
-        #
-        # Normally the file is already indexed at commit time, but that invariant
-        # is not guaranteed: a file can be present on disk (returned by
-        # list_project_files) yet carry a null file_id if its registration row was
-        # never persisted. The open path heals this via ensure_file_id_for_path, so
-        # the commit path mirrors it — resolve first, and on the "file not found in
-        # project index" miss, register the disk-only path and retry. A genuinely
-        # missing path (no list_project_files rows) still surfaces that same error
-        # as terminal from ensure_file_id_for_path.
-        try:
-            file_id = resolve_file_id_for_path(self, pid, rel)
-        except RuntimeError as exc:
-            if "file not found in project index" not in str(exc):
-                raise
-            file_id = ensure_file_id_for_path(self, pid, rel, session_id=sid)
+        # Resolve file_id and re-affirm the session lock immediately before
+        # upload. If the file cannot be locked, the write must fail.
+        file_id = self.ensure_session_file_lock(
+            session_id=sid, project_id=pid, file_path=rel
+        )
         transfer_id = upload_bytes_transfer_id(
             self, content, filename=Path(rel).name or "upload.bin"
         )
@@ -432,7 +443,7 @@ class CodeAnalysisClient:
     def upload_create_and_lock(
         self, *, session_id: str, project_id: str, file_path: str, content: bytes
     ) -> bytes:
-        """Open Stage create path: upload + atomic lock, then confirm (C-010).
+        """Write Stage create path: upload + atomic lock, then confirm (C-010).
 
         The transfer save itself acquires the session lock (lock_mode="full",
         unlock_after_write=False), so the brand-new file is never registered in
