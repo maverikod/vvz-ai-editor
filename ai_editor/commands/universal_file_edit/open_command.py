@@ -101,7 +101,7 @@ class UniversalFileOpenCommand(BaseMCPCommand):
                 message="session_id is required for universal_file_open",
                 code=cast(Any, "SESSION_INVALID"),
             )
-        # R1: opening a NEW file is CA-local-only — it must issue zero CA calls.
+        # R1: opening a NEW file is local-draft-only — it must issue zero CA calls.
         # The Session Guard validates the session over CA (session_list_file_locks),
         # so it is skipped for create=true. The CA session is validated instead at
         # the first commit (the WRITE guard), which is when CA is first contacted.

@@ -26,11 +26,11 @@ Thin MCP server for universal file editing via Code Analysis Server (CA).
 ### Quick start (edit one file)
 
 0. **CA** `session_create` → `session_id` (you supply this on every step; `open` does not create it).
-1. `universal_file_open(project_id, file_path, session_id)` — lock on CA, workspace draft.
+1. `universal_file_open(project_id, file_path, session_id)` — existing file: lock on CA, workspace draft; new file with `create=true`: local draft only.
 2. `universal_file_preview(project_id, file_path, session_id)` — get `node_ref` targets from draft.
 3. `universal_file_edit(project_id, session_id, operations)` — mutate draft only.
 4. `universal_file_write(..., write_mode=preview)` — diff only (no validation, no CA upload).
-5. `universal_file_write(..., write_mode=commit)` — validate, then upload to CA if changed.
+5. `universal_file_write(..., write_mode=commit)` — validate, ensure/reaffirm CA lock, then upload/create on CA.
 6. `universal_file_close(project_id, session_id)` — always (unlock CA, cleanup workspace).
 
 **Multi-file session:** pass `file_path` on edit / write / close when more than one file is open.
@@ -52,11 +52,11 @@ WORKFLOW_BRIEF_HELP = SERVER_HELP_DESCRIPTION
 WORKFLOW_STEPS_TEXT = (
     "universal file edit workflow:\n"
     "  0. CA session_create → session_id (agent supplies on every step)\n"
-    "  1. universal_file_open(project_id, file_path, session_id) — CA lock+download; workspace draft\n"
+    "  1. universal_file_open(project_id, file_path, session_id) — existing file CA lock+download; create=true local draft\n"
     "  2. universal_file_preview(project_id, file_path, session_id) — node_ref from draft\n"
     "  3. universal_file_edit(project_id, session_id, operations) — draft only\n"
     "  4. universal_file_write(..., write_mode=preview) — diff only\n"
-    "  5. universal_file_write(..., write_mode=commit) — validate then CA upload\n"
+    "  5. universal_file_write(..., write_mode=commit) — validate, ensure CA lock, then upload/create\n"
     "  6. universal_file_close(project_id, session_id) — always\n"
     "  Full guide: command info\n"
 )

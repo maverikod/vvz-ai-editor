@@ -20,7 +20,8 @@ AI Editor is a **thin MCP server** between the agent and **Code Analysis Server 
 
 - The agent obtains `session_id` from CA **`session_create`** and passes the same id to every `universal_file_*` call.
 - `universal_file_open` **does not** generate `session_id`; it echoes the CA id.
-- CA **locks** the file on open and **unlocks** on close.
+- Existing files are **locked** on open and **unlocked** on close.
+- New files opened with `create=true` stay as a local draft until the first commit.
 - The editor keeps a **workspace draft** under `{workspace_root}/{session_id}/`.
 - Changes reach CA **only** on `universal_file_write` with `write_mode=commit`.
 - `universal_file_edit` mutates the draft only; CA canonical bytes are unchanged until commit.
@@ -31,7 +32,7 @@ AI Editor is a **thin MCP server** between the agent and **Code Analysis Server 
 |---------|------|
 | `health` | Server liveness and dependency checks |
 | `info` | This guide (detailed workflow) |
-| `universal_file_open` | CA lock + download → workspace draft |
+| `universal_file_open` | Existing file: CA lock + download; new file: local draft |
 | `universal_file_preview` | Read-only navigation; `node_ref` from draft or one-shot CA read |
 | `universal_file_edit` | Apply operations to draft |
 | `universal_file_write` | Preview diff or commit (validate → CA upload) |
@@ -71,8 +72,8 @@ list_projects   →  project_id (if unknown)
 
 Response highlights: `format_group`, `draft_path`, `multi_file_bundle`.
 
-- Existing file: CA `lock_file_and_download`.
-- New file: `create=true`, `initial_content` (required for `.py`).
+- Existing file: CA `lock_file_and_download` is mandatory; lock failure is an open error.
+- New file: `create=true`, `initial_content` (required for `.py`); no CA registration/lock happens until write commit.
 - Unknown extension (e.g. `Makefile`, `.env`): pass `format_group` (`sidecar` / `tree-temp` / `text`) to force a handler; omitting it returns `UNKNOWN_FORMAT`.
 
 Errors: `FILE_ALREADY_OPEN`, `OPEN_ERROR`, `SESSION_NOT_FOUND`, `UNKNOWN_FORMAT`.
@@ -142,8 +143,9 @@ Returns unified `diff`. No validation, no CA upload.
 }
 ```
 
-- Equal to origin → `unchanged=true`, no CA RPC.
-- Diff → pre-write validation → `upload_session_file_content` on success.
+- Existing file, equal to origin → reaffirm CA lock, then `unchanged=true`.
+- Existing file, diff → pre-write validation → reaffirm CA lock → `upload_session_file_content` on success.
+- New file → create/register+lock on CA atomically, then upload on success.
 - Python validation: black-parseable, flake8, mypy, docstrings.
 - Failure → `VALIDATION_ERROR`; fix via edit and retry.
 
@@ -215,6 +217,7 @@ If structured parse fails on open: `is_invalid=true`, line-based editing until s
 | Error | Action |
 |-------|--------|
 | `VALIDATION_ERROR` on commit | edit → write preview → write commit |
+| `UPSTREAM_LOCK_FAILED` | lock was missing/denied; re-open or resolve the CA session/lock before retry |
 | `UPSTREAM_UPLOAD_FAILED` | fix content/connectivity; retry commit or close |
 | Cancel uncommitted work | `universal_file_close` without commit |
 | Server restart | local bundle lost; open again |
