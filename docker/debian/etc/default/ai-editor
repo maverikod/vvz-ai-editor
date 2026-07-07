@@ -28,18 +28,16 @@ AI_EDITOR_ULIMIT_NOFILE=65536:65536
 # Set to 1 on recreate to docker pull before container recreate.
 # AI_EDITOR_PULL_ON_RECREATE=0
 
-# Placeholders in /etc/ai-editor/ai_editor_container.json — REQUIRED before start.
+# Placeholders in /etc/ai-editor/ai_editor_container.json.
 # Assignments here are auto-exported by ai-editor-docker / config-preflight (set -a).
-# AI_EDITOR_ADVERTISED_HOST=your-host-or-ip
-# AI_EDITOR_CODE_ANALYSIS_HOST=code-analysis-host
-# AI_EDITOR_CODE_ANALYSIS_PORT=15010
+AI_EDITOR_ADVERTISED_HOST=ai-editor-server
+AI_EDITOR_CODE_ANALYSIS_HOST=casmgr
+AI_EDITOR_CODE_ANALYSIS_PORT=15010
 
-# registration.register_url / unregister_url / heartbeat.url default (out of the box,
-# no override needed) to the mcp-proxy published on the docker host gateway of the
-# smart-assistant docker network; matches the current production topology
-# (192.168.254.26). Uncomment to override when the proxy is reachable elsewhere.
-# AI_EDITOR_REGISTRATION_HOST=172.18.0.1
-# AI_EDITOR_REGISTRATION_PORT=3004
+# registration.register_url / unregister_url / heartbeat.url use the mcp-proxy
+# Docker alias on the smart-assistant network.
+AI_EDITOR_REGISTRATION_HOST=mcp-proxy
+AI_EDITOR_REGISTRATION_PORT=3004
 
 # registration.server_id / registration.metadata.server_id default to
 # "ai-editor-server-vvz" (the "-vvz" host suffix used on the current production host,

@@ -11,7 +11,10 @@ from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 from ai_editor.commands.universal_file_edit.edit_command import (
     UniversalFileEditCommand,
 )
-from ai_editor.commands.universal_file_edit.errors import FORMAT_INVALID_ON_OPEN
+from ai_editor.commands.universal_file_edit.errors import (
+    FORMAT_INVALID_ON_OPEN,
+    READ_ONLY_SESSION,
+)
 from ai_editor.commands.universal_file_edit.session import get_session
 from ai_editor.commands.universal_file_edit.write_command import (
     UniversalFileWriteCommand,
@@ -434,6 +437,8 @@ async def test_open_fallback_releases_orphaned_lock(tmp_path: Path) -> None:
 
     assert isinstance(opened, SuccessResult), opened
     assert opened.data.get("is_invalid") is True
+    assert opened.data.get("read_only") is True
+    assert "read-only" in str(opened.data.get("read_only_reason"))
     # The defensive unlock must have been called regardless of whether a lock
     # was actually held — unlock_session_file is best-effort and safe to call.
     upstream.unlock_session_file.assert_called_once_with(
@@ -442,6 +447,41 @@ async def test_open_fallback_releases_orphaned_lock(tmp_path: Path) -> None:
         file_path=rel,
     )
     upstream.download_without_lock.assert_called()
+
+    ed = UniversalFileEditCommand()
+    wr = UniversalFileWriteCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        edit = await ed.execute(
+            project_id=_PROJECT_UUID,
+            session_id=DEFAULT_CA_SESSION_ID,
+            file_path=rel,
+            operations=[
+                {
+                    "type": "replace",
+                    "start_line": 1,
+                    "end_line": 1,
+                    "content": "def fixed():\n    return 1\n",
+                }
+            ],
+        )
+        preview = await wr.execute(
+            project_id=_PROJECT_UUID,
+            session_id=DEFAULT_CA_SESSION_ID,
+            file_path=rel,
+            write_mode="preview",
+        )
+        commit = await wr.execute(
+            project_id=_PROJECT_UUID,
+            session_id=DEFAULT_CA_SESSION_ID,
+            file_path=rel,
+            write_mode="commit",
+        )
+    assert isinstance(edit, ErrorResult)
+    assert edit.code == READ_ONLY_SESSION
+    assert isinstance(preview, ErrorResult)
+    assert preview.code == READ_ONLY_SESSION
+    assert isinstance(commit, ErrorResult)
+    assert commit.code == READ_ONLY_SESSION
 
 
 @pytest.mark.asyncio

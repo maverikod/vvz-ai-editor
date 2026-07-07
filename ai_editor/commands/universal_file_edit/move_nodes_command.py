@@ -18,6 +18,7 @@ from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 from ai_editor.commands.base_mcp_command import BaseMCPCommand
 from ai_editor.commands.universal_file_edit.errors import (
     PARSE_ERROR,
+    READ_ONLY_SESSION,
     SESSION_NOT_FOUND,
     WRITE_FAILED,
     error_result_for_edit,
@@ -541,6 +542,15 @@ class UniversalFileMoveNodesCommand(BaseMCPCommand):
         except ValueError:
             return error_result_from_make_error(
                 make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+            )
+        if session.read_only:
+            return error_result_from_make_error(
+                make_error(
+                    READ_ONLY_SESSION,
+                    session.read_only_reason
+                    or "Session is read-only; editing commands are blocked.",
+                    details={"session_id": session_id, "file_path": session.file_path},
+                )
             )
 
         if session.format_group != FORMAT_SIDECAR:

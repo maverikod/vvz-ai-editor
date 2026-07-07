@@ -65,6 +65,8 @@ class EditSession:
     workspace_file_subtree_root: Optional[Path] = None
     workspace_origin_path: Optional[Path] = None
     workspace_edit_subdir: Optional[Path] = None
+    read_only: bool = False
+    read_only_reason: Optional[str] = None
 
 
 def _norm_file_path(file_path: str) -> str:
@@ -170,6 +172,8 @@ def create_session(
     workspace_file_subtree_root: Optional[Path] = None,
     workspace_origin_path: Optional[Path] = None,
     workspace_edit_subdir: Optional[Path] = None,
+    read_only: bool = False,
+    read_only_reason: Optional[str] = None,
 ) -> EditSession:
     """Open a core EditSession and register command-layer metadata.
 
@@ -255,6 +259,8 @@ def create_session(
         workspace_file_subtree_root=workspace_file_subtree_root,
         workspace_origin_path=workspace_origin_path,
         workspace_edit_subdir=workspace_edit_subdir,
+        read_only=read_only,
+        read_only_reason=read_only_reason,
     )
     bundle[norm_path] = session
     if pid:

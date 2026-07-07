@@ -110,6 +110,8 @@ def run_open_execute(
     format_group_hint = str(kwargs.get("format_group", "") or "").strip() or None
 
     client = get_code_analysis_client()
+    read_only = False
+    read_only_reason: Optional[str] = None
 
     if project_id:
         existing_sid = lookup_ca_session_id(project_id, file_path)
@@ -172,6 +174,12 @@ def run_open_execute(
         if recovered is None:
             return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
         raw_bytes = recovered
+        read_only = True
+        read_only_reason = (
+            "Opened without a Code Analysis lock; this session is read-only. "
+            "Editing and write commands are blocked. Re-open with a lock to "
+            "modify the file."
+        )
 
     return _build_open_result(
         ca_session_id=ca_session_id,
@@ -181,6 +189,8 @@ def run_open_execute(
         create=False,
         persisted_on_ca=True,
         format_group_hint=format_group_hint,
+        read_only=read_only,
+        read_only_reason=read_only_reason,
     )
 
 
@@ -193,6 +203,8 @@ def _build_open_result(
     create: bool,
     persisted_on_ca: bool,
     format_group_hint: Optional[str],
+    read_only: bool = False,
+    read_only_reason: Optional[str] = None,
 ) -> Union[SuccessResult, ErrorResult]:
     """Materialize the workspace draft and register the EditSession.
 
@@ -282,6 +294,8 @@ def _build_open_result(
                 workspace_file_subtree_root=layout.file_subtree_dir,
                 workspace_origin_path=paths.origin_path,
                 workspace_edit_subdir=paths.edit_subdir,
+                read_only=read_only,
+                read_only_reason=read_only_reason,
                 **tree_temp_kwargs,
                 **session_extra,
             )
@@ -307,6 +321,8 @@ def _build_open_result(
                 workspace_file_subtree_root=layout.file_subtree_dir,
                 workspace_origin_path=paths.origin_path,
                 workspace_edit_subdir=paths.edit_subdir,
+                read_only=read_only,
+                read_only_reason=read_only_reason,
                 **session_extra,
             )
     except ValueError as exc:
@@ -333,7 +349,10 @@ def _build_open_result(
         "session_dir": str(layout.session_dir),
         "draft_path": str(session.draft_path),
         "available_operations": list(descriptor.available_operations),
+        "read_only": session.read_only,
     }
+    if session.read_only:
+        data["read_only_reason"] = session.read_only_reason
     if create:
         data["created"] = True
     if fallback_info is not None:

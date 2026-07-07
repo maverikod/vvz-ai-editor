@@ -1,4 +1,4 @@
-# Docker build context for mcp-terminal bootstrap (keep paths project-relative).
+# Docker build context for ai-editor packaging (keep paths project-relative).
 .git/
 .venv/
 venv/
@@ -11,5 +11,17 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .mypy_cache/
-data/*.db
+data/
+docker/dist/
+build/
+dist/
+htmlcov/
+test_reports/
+tests/
 test_data/
+.agents/
+.codex/
+.cursor/
+backups/
+client/dist/
+*.egg-info/

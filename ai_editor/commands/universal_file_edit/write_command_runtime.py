@@ -13,6 +13,7 @@ from typing import Any, Dict, cast
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
 from ai_editor.commands.universal_file_edit.errors import (
+    READ_ONLY_SESSION,
     SESSION_FILE_PATH_REQUIRED,
     SESSION_NOT_FOUND,
     WRITE_FAILED,
@@ -278,6 +279,15 @@ async def run_write_execute(
             )
         return error_result_from_make_error(
             make_error(SESSION_NOT_FOUND, f"Unknown session: {session_id}")
+        )
+    if session.read_only:
+        return error_result_from_make_error(
+            make_error(
+                READ_ONLY_SESSION,
+                session.read_only_reason
+                or "Session is read-only; write commands are blocked.",
+                details={"session_id": session_id, "file_path": session.file_path},
+            )
         )
 
     if write_mode == "commit":
