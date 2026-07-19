@@ -167,6 +167,7 @@ def type_check_with_mypy(
     file_path: Path,
     config_file: Optional[Path] = None,
     ignore_errors: bool = False,
+    project_root: Optional[Path] = None,
 ) -> Tuple[bool, Optional[str], List[str]]:
     """
     Type check Python code using mypy as a library.
@@ -175,6 +176,7 @@ def type_check_with_mypy(
         file_path: Path to Python file to type check
         config_file: Optional path to mypy config file
         ignore_errors: If True, treat errors as warnings
+        project_root: Optional import root for project-local modules
 
     Returns:
         Tuple of (success, error_message, list_of_errors)
@@ -186,13 +188,20 @@ def type_check_with_mypy(
     # library API inside the server process can therefore fail in non-obvious ways.
     # To keep the MCP command robust, always run mypy via subprocess with sanitized
     # environment (see `_type_check_with_subprocess`).
-    return _type_check_with_subprocess(file_path, config_file, ignore_errors)
+    return _type_check_with_subprocess(
+        file_path,
+        config_file,
+        ignore_errors,
+        project_root=project_root,
+    )
 
 
 def _type_check_with_subprocess(
     file_path: Path,
     config_file: Optional[Path] = None,
     ignore_errors: bool = False,
+    *,
+    project_root: Optional[Path] = None,
 ) -> Tuple[bool, Optional[str], List[str]]:
     """
     Run mypy in a subprocess with sanitized environment.
@@ -206,6 +215,7 @@ def _type_check_with_subprocess(
         file_path: Path to Python file to type check.
         config_file: Optional path to mypy config file.
         ignore_errors: If True, treat errors as warnings.
+        project_root: Optional import root for project-local modules.
 
     Returns:
         Tuple of (success, error_message, list_of_errors).
@@ -216,6 +226,7 @@ def _type_check_with_subprocess(
         cmd: list[str]
         cwd: Optional[str] = None
         tmp_config: Optional[Path] = None
+        project_root_resolved = project_root.resolve() if project_root else None
 
         if config_file:
             # Preserve config support, but always keep single-file target scope.
@@ -237,9 +248,13 @@ def _type_check_with_subprocess(
                 f.write(_MYPY_EXCLUDE_VENV_CONFIG)
                 tmp_config = Path(f.name)
             cmd = ["mypy", str(target_file), "--config-file", str(tmp_config)]
+            if project_root_resolved is not None:
+                cwd = str(project_root_resolved)
 
         env = os.environ.copy()
         env.pop("PYTHONPATH", None)
+        if project_root_resolved is not None:
+            env["MYPYPATH"] = str(project_root_resolved)
 
         result = subprocess.run(
             cmd,

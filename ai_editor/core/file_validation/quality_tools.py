@@ -76,6 +76,7 @@ def run_quality_tools(
                 temp_file_path,
                 config_file=mypy_config,
                 ignore_errors=False,
+                project_root=project_root,
             ),
             time.perf_counter() - t0,
         )

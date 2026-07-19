@@ -63,6 +63,7 @@ def test_run_quality_tools_passes_mypy_config_from_project_root(
     assert ok is True and err is None
     mock_mypy.assert_called_once()
     assert mock_mypy.call_args.kwargs["config_file"] == expected_config.resolve()
+    assert mock_mypy.call_args.kwargs["project_root"] == project_root
 
 
 def test_run_quality_tools_mypy_config_none_without_project_root(

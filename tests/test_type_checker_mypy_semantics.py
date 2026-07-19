@@ -55,6 +55,7 @@ def test_write_path_mypy_uses_project_context_for_draft_imports(tmp_path) -> Non
             config=effective_config,
             cwd=Path(kwargs["cwd"]),
             pythonpath=kwargs["env"].get("PYTHONPATH"),
+            mypypath=kwargs["env"].get("MYPYPATH"),
             source=staged_target.read_text(encoding="utf-8"),
         )
         return CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -86,6 +87,72 @@ def test_write_path_mypy_uses_project_context_for_draft_imports(tmp_path) -> Non
     assert observed["config"] == config.resolve()
     assert observed["cwd"] == project_root.resolve()
     assert observed["pythonpath"] is None
+    assert observed["mypypath"] == str(project_root.resolve())
+    assert outcome.temp_path is not None
+    outcome.temp_path.unlink(missing_ok=True)
+
+
+def test_write_path_mypy_uses_project_context_without_config(tmp_path) -> None:
+    project_root = tmp_path / "project"
+    package = project_root / "tmp_live_bf98dd98_pkg_1054"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "neighbor.py").write_text("VALUE: int = 7\n", encoding="utf-8")
+    target = package / "changed.py"
+    observed: dict[str, Any] = {}
+    source = '''
+"""Changed module."""
+
+from tmp_live_bf98dd98_pkg_1054.neighbor import VALUE
+
+
+def read_value() -> int:
+    """Return the neighboring project value.
+
+    Returns:
+        The neighboring project value.
+    """
+    return VALUE
+'''
+
+    def fake_run(cmd, **kwargs):  # noqa: ANN001
+        staged_target = Path(cmd[1])
+        observed.update(
+            target=staged_target,
+            cwd=Path(kwargs["cwd"]),
+            pythonpath=kwargs["env"].get("PYTHONPATH"),
+            mypypath=kwargs["env"].get("MYPYPATH"),
+            source=staged_target.read_text(encoding="utf-8"),
+        )
+        return CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with (
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_ruff",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.code_quality.type_checker.subprocess.run",
+            fake_run,
+        ),
+    ):
+        outcome = validate_draft_in_project_context(
+            HANDLER_PYTHON,
+            source_code=source,
+            target_path=target,
+            project_root=project_root,
+        )
+
+    assert outcome.success is True
+    assert observed["target"].parent == package
+    assert observed["source"] == source
+    assert observed["cwd"] == project_root.resolve()
+    assert observed["pythonpath"] is None
+    assert observed["mypypath"] == str(project_root.resolve())
     assert outcome.temp_path is not None
     outcome.temp_path.unlink(missing_ok=True)
 

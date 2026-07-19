@@ -228,7 +228,6 @@ async def test_create_commit_validates_new_python_file_at_project_relative_path(
     project_root = tmp_path / "project"
     package = project_root / "tmp_live_bf98dd98_pkg"
     package.mkdir(parents=True)
-    (project_root / "pyproject.toml").write_text("[tool.mypy]\n", encoding="utf-8")
     (package / "__init__.py").write_text("", encoding="utf-8")
     (package / "neighbor.py").write_text("VALUE: int = 7\n", encoding="utf-8")
     final_target = package / "changed.py"
