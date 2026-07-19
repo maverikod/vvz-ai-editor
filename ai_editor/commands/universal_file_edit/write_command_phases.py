@@ -8,7 +8,6 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
-import os
 import shutil
 import tempfile
 from dataclasses import replace
@@ -112,11 +111,11 @@ def validate_draft_in_project_context(
 ) -> PreWriteValidationOutcome:
     """Validate a draft from the authoritative project environment.
 
-    Edit sessions may keep their draft outside the project tree.  Running mypy
+    Edit sessions may keep their draft outside the project tree. Running mypy
     directly against that path changes import resolution and can report a false
-    ``import-not-found``.  A short-lived staging path under ``project_root``
-    gives the draft the same root, config, and import path as the real file
-    while leaving both the draft and the project file untouched.
+    ``import-not-found``. When the real target is inside ``project_root``, write
+    the QA temp file beside the real target so validation sees the same package
+    and sibling-module context while leaving the project file untouched.
     """
     if project_root is None:
         return validate_before_promote(
@@ -135,10 +134,19 @@ def validate_draft_in_project_context(
     except ValueError:
         relative_target = Path(target.name)
 
+    if target.is_relative_to(root):
+        return validate_before_promote(
+            handler_id,
+            source_code=source_code,
+            target_path=target,
+            skip_quality_tools=skip_quality_tools,
+            validate_docstrings=validate_docstrings,
+            project_root=root,
+        )
+
     staging_root = Path(tempfile.mkdtemp(prefix=".ai_editor_validation_", dir=root))
     staged_target = staging_root / relative_target
     staged_target.parent.mkdir(parents=True, exist_ok=True)
-    staged_target.write_text(source_code, encoding="utf-8")
     try:
         outcome = validate_before_promote(
             handler_id,

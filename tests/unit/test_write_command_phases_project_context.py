@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from ai_editor.commands.universal_file_edit.write_command_phases import (
     validate_draft_in_project_context,
 )
 from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
 from ai_editor.core.file_validation.results import ValidationResult
-
 
 _VALID_DRAFT = '''
 """Draft module."""
@@ -112,3 +114,44 @@ def read_value() -> int:
     assert outcome.success is False
     assert outcome.temp_path is None
     assert outcome.quality_results["type_checker"].success is False
+
+
+def test_real_quality_runner_resolves_project_sibling_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "project"
+    package = project_root / "samplepkg"
+    package.mkdir(parents=True)
+    (project_root / "pyproject.toml").write_text("[tool.mypy]\n", encoding="utf-8")
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "neighbor.py").write_text("VALUE: int = 7\n", encoding="utf-8")
+    target = package / "changed.py"
+    target.write_text('"""Old module."""\n', encoding="utf-8")
+    source = '''
+"""Changed module."""
+
+from samplepkg.neighbor import VALUE
+
+
+def read_value() -> int:
+    """Return the neighboring project value."""
+    return VALUE
+'''
+
+    venv_bin = Path(sys.executable).parent
+    monkeypatch.setenv("PATH", f"{venv_bin}:{os.environ.get('PATH', '')}")
+    outcome = validate_draft_in_project_context(
+        HANDLER_PYTHON,
+        source_code=source,
+        target_path=target,
+        project_root=project_root,
+        validate_docstrings=False,
+    )
+
+    assert outcome.success is True
+    assert outcome.temp_path is not None
+    assert outcome.temp_path.parent == target.parent
+    assert outcome.temp_path.name.startswith(".ai_editor_write_")
+    assert not any(project_root.glob(".ai_editor_validation_*"))
+    outcome.temp_path.unlink(missing_ok=True)

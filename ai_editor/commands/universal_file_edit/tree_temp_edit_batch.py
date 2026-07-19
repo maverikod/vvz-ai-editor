@@ -46,6 +46,7 @@ from ai_editor.core.edit_session.edit_operations_adapter import (
     _node_at_json_pointer,
     _parse_marked_tree_root,
     _resolve_pointer_to_short_id,
+    _root_short_id,
     _wrapper_short_id,
     command_op_to_edit_operation,
     resolve_node_ref_to_short_id,
@@ -196,13 +197,17 @@ def validate_tree_temp_operation(
             raise ValueError("insert key must be a non-empty string")
         if mop.get("before_key") is not None and mop.get("after_key") is not None:
             raise ValueError("before_key and after_key are mutually exclusive")
-        if mop.get("before_json_pointer") is not None and mop.get(
-            "after_json_pointer"
-        ) is not None:
+        if (
+            mop.get("before_json_pointer") is not None
+            and mop.get("after_json_pointer") is not None
+        ):
             raise ValueError(
                 "before_json_pointer and after_json_pointer are mutually exclusive"
             )
-        if mop.get("before_node_id") is not None and mop.get("after_node_id") is not None:
+        if (
+            mop.get("before_node_id") is not None
+            and mop.get("after_node_id") is not None
+        ):
             raise ValueError("before_node_id and after_node_id are mutually exclusive")
 
 
@@ -304,6 +309,8 @@ def _resolve_json_insert_anchor_and_position(
     # RFC 6901 §4: strip trailing "/-" append sentinel before pointer resolution.
     if parent_ptr.endswith("/-"):
         parent_ptr = parent_ptr[:-2] or ""
+    if parent_ptr == "/":
+        parent_ptr = ""
     root = _session_marked_root(session)
     parent_node = _node_at_json_pointer(root, parent_ptr) if parent_ptr else root
 
@@ -350,6 +357,8 @@ def _resolve_json_insert_anchor_and_position(
             if not inner:
                 raise ValueError("cannot append to empty array without index")
             return _wrapper_short_id(inner[-1]), "after"
+        if parent_ptr == "":
+            return _root_short_id(sections), "last_child"
         return _wrapper_short_id(parent_node), "last_child"
     if insert_position == "first":
         if isinstance(parent_node, list):
@@ -361,6 +370,8 @@ def _resolve_json_insert_anchor_and_position(
             if not inner:
                 raise ValueError("cannot prepend to empty array without index")
             return _wrapper_short_id(inner[0]), "before"
+        if parent_ptr == "":
+            return _root_short_id(sections), "first_child"
         return _wrapper_short_id(parent_node), "first_child"
     raise ValueError(
         "insert requires integer anchor short_id, json_pointer parent, or sibling keys"
@@ -673,7 +684,9 @@ def apply_tree_temp_mutations(
 
     if session.core.tree_validity == SessionTreeValidity.VALID and not config_handler:
         try:
-            root_dir = session.core.project_root or _project_root_near(session.draft_path)
+            root_dir = session.core.project_root or _project_root_near(
+                session.draft_path
+            )
             bm = BackupManager(root_dir=root_dir)
             if session.draft_path.exists():
                 bm.create_backup(

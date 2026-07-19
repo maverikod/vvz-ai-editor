@@ -32,6 +32,50 @@ from ai_editor.commands.universal_file_edit.errors import (
 )
 
 
+def _preserve_def_trivia_when_omitted(
+    old_node: cst.CSTNode,
+    new_node: cst.CSTNode,
+) -> cst.CSTNode:
+    """Carry declaration trivia through full replacements when omitted."""
+    if not isinstance(old_node, (cst.ClassDef, cst.FunctionDef)):
+        return new_node
+    if not isinstance(new_node, (cst.ClassDef, cst.FunctionDef)):
+        return new_node
+    if not isinstance(old_node.body, cst.IndentedBlock):
+        return new_node
+    if not isinstance(new_node.body, cst.IndentedBlock):
+        return new_node
+
+    body = new_node.body
+    if old_node.body.header.comment is not None and body.header.comment is None:
+        body = body.with_changes(header=old_node.body.header)
+
+    old_body = list(old_node.body.body)
+    new_body = list(body.body)
+    for index, new_statement in enumerate(new_body):
+        if index >= len(old_body):
+            break
+        old_statement = old_body[index]
+        changes = {}
+        if not new_statement.leading_lines and old_statement.leading_lines:
+            changes["leading_lines"] = old_statement.leading_lines
+        new_trailing = getattr(new_statement, "trailing_whitespace", None)
+        old_trailing = getattr(old_statement, "trailing_whitespace", None)
+        if (
+            new_trailing is not None
+            and old_trailing is not None
+            and new_trailing.comment is None
+            and old_trailing.comment is not None
+        ):
+            changes["trailing_whitespace"] = old_trailing
+        if changes:
+            new_body[index] = new_statement.with_changes(**changes)
+
+    if new_body != list(body.body):
+        body = body.with_changes(body=new_body)
+    return new_node.with_changes(body=body) if body != new_node.body else new_node
+
+
 def replace_node(
     module: cst.Module, tree: CSTTree, node_id: str, new_code: str
 ) -> cst.Module:
@@ -120,6 +164,15 @@ def replace_node(
         new_def = replacements_list[0]
         if old_def.decorators:
             replacements_list = [new_def.with_changes(decorators=old_def.decorators)]
+
+    if (
+        len(replacements_list) == 1
+        and isinstance(node, (cst.FunctionDef, cst.ClassDef))
+        and isinstance(replacements_list[0], (cst.FunctionDef, cst.ClassDef))
+    ):
+        replacements_list = [
+            _preserve_def_trivia_when_omitted(node, replacements_list[0])
+        ]
 
     node_type = metadata.type if metadata else "unknown"
     parent_id = metadata.parent_id if metadata else None

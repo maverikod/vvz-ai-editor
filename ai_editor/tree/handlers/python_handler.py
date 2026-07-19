@@ -21,7 +21,6 @@ import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider
 
 from ai_editor.core.cst_tree.models import (
-    ROOT_NODE_ID_SENTINEL,
     CSTTree,
     TreeNodeMetadata,
     TreeOperation,
@@ -43,6 +42,7 @@ from ai_editor.tree.tree_node import TreeNode
 
 _METADATA_ID_KEY = "___id___"
 _META_KEY = "___meta___"
+_ORIGINAL_COMMENT_META_KEY = "original_comment"
 _TRAILING_ID_COMMENT_RE = re.compile(r"\s+# ___id___:\d+(?: ___meta___:\{[^}]*\})?\s*$")
 _ID_COMMENT_VALUE_RE = re.compile(r"# ___id___:(\d+)")
 _META_IN_COMMENT_RE = re.compile(r"___meta___:(\{[^}]*\})")
@@ -200,9 +200,14 @@ def _comment_trailing(
     ws = existing.whitespace
     if not ws.value:
         ws = cst.SimpleWhitespace(" ")
+    meta = dict(extra_meta or {})
+    if existing.comment is not None and not _ID_COMMENT_VALUE_RE.search(
+        existing.comment.value
+    ):
+        meta.setdefault(_ORIGINAL_COMMENT_META_KEY, existing.comment.value)
     return cst.TrailingWhitespace(
         whitespace=ws,
-        comment=cst.Comment(_format_marker_comment(sid, extra_meta)),
+        comment=cst.Comment(_format_marker_comment(sid, meta or None)),
         newline=existing.newline,
     )
 
@@ -211,6 +216,10 @@ def _clear_id_comment_trailing(tw: cst.TrailingWhitespace) -> cst.TrailingWhites
     """Remove ``___id___`` marker comment and padding space added for libcst."""
     if tw.comment is None or not _ID_COMMENT_VALUE_RE.search(tw.comment.value):
         return tw
+    extra = _extra_meta_from_comment_value(tw.comment.value)
+    original_comment = extra.get(_ORIGINAL_COMMENT_META_KEY)
+    if isinstance(original_comment, str) and original_comment.startswith("#"):
+        return tw.with_changes(comment=cst.Comment(original_comment))
     ws = tw.whitespace
     if ws.value == " ":
         ws = cst.SimpleWhitespace("")

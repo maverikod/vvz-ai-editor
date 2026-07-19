@@ -5,13 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
+from mcp_proxy_adapter.commands.result import SuccessResult
 
 from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
+from ai_editor.commands.universal_file_edit.write_command import (
+    UniversalFileWriteCommand,
+)
 from ai_editor.commands.universal_file_preview import UniversalFilePreviewCommand
 from ai_editor.commands.universal_file_edit.session import get_session
 from ai_editor.core.edit_session.edit_session import SessionTreeValidity
 from ai_editor.core.edit_session.edit_operations_adapter import session_has_map_tree
+from ai_editor.core.cst_tree.tree_builder import get_tree
 from tests.thin_editor_ca_mocks import (
     DEFAULT_CA_SESSION_ID,
     clear_ca_session,
@@ -58,6 +62,16 @@ def _alpha_block(blocks: list[dict]) -> dict:
             if "name='alpha'" in attrs or "FunctionDef" in attrs:
                 return block
     return next(b for b in blocks if (b.get("summary") or {}).get("type") == "function")
+
+
+def _class_stable_id(session_id: str, file_path: str, name: str) -> str:
+    sess = get_session(session_id, file_path)
+    tree = get_tree(sess.tree_id or "")
+    assert tree is not None
+    for node_id, metadata in tree.metadata_map.items():
+        if metadata.type == "ClassDef" and metadata.name == name:
+            return metadata.stable_id or node_id
+    raise AssertionError(f"class node not found: {name}")
 
 
 def _internal_node_id_from_block(block: dict) -> str:
@@ -245,4 +259,74 @@ async def test_python_map_uuid_stable_for_untouched_nodes_after_edit(
                 }
             )
         )
-    assert isinstance(res_by_uuid, SuccessResult), getattr(res_by_uuid, "message", res_by_uuid)
+    assert isinstance(res_by_uuid, SuccessResult), getattr(
+        res_by_uuid, "message", res_by_uuid
+    )
+
+
+@pytest.mark.asyncio
+async def test_python_class_replace_code_lines_preserves_header_trailing_comment_in_write_diff(
+    tmp_path: Path,
+) -> None:
+    rel = "wf_test/header_comment.py"
+    source = (
+        "class Foo:  # type: ignore[misc]\n"
+        "    def value(self) -> int:\n"
+        "        return 1\n"
+    )
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=source.encode(),
+    )
+    preview = await _preview(workspace, upstream, sid, rel)
+    assert preview.data.get("blocks")
+    foo_ref = _class_stable_id(sid, rel, "Foo")
+
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "replace",
+                            "node_id": foo_ref,
+                            "code_lines": [
+                                "class Foo:",
+                                "    def value(self) -> int:",
+                                "        return 2",
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(res, SuccessResult), getattr(res, "message", res)
+
+    draft = get_session(sid, rel).core.session_source_path.read_text(encoding="utf-8")
+    assert "class Foo:  # type: ignore[misc]\n" in draft
+    assert "        return 2\n" in draft
+
+    write = UniversalFileWriteCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        write_res = await write.execute(
+            **write.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "write_mode": "preview",
+                }
+            )
+        )
+    assert isinstance(write_res, SuccessResult), getattr(
+        write_res, "message", write_res
+    )
+    diff = str(write_res.data.get("diff") or "")
+    assert "class Foo:  # type: ignore[misc]" in diff
+    assert "-class Foo:  # type: ignore[misc]" not in diff

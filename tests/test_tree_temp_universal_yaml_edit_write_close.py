@@ -19,6 +19,7 @@ from ai_editor.commands.universal_file_edit.close_command import (
 from ai_editor.commands.universal_file_edit.edit_command import (
     UniversalFileEditCommand,
 )
+from ai_editor.commands.universal_file_preview import UniversalFilePreviewCommand
 from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
 from ai_editor.core.yaml_tree import tree_builder as ytb
 from tests.thin_editor_ca_mocks import (
@@ -216,6 +217,93 @@ async def test_yaml_object_insert_after_key(tmp_path: Path) -> None:
                 {"project_id": _YAML_PROJECT_UUID, "session_id": sid}
             )
         )
+
+
+async def _insert_yaml_root_key_and_preview(
+    tmp_path: Path,
+    *,
+    rel: str,
+    operation: dict[str, object],
+) -> tuple[str, object]:
+    body = b"first: 1\nthird: 3\n"
+    sid, workspace, origin, upstream = await _prep(tmp_path, rel, body)
+    ed = UniversalFileEditCommand()
+    preview = UniversalFilePreviewCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        edit_res = await ed.execute(
+            **ed.validate_params(
+                {
+                    "project_id": _YAML_PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [operation],
+                }
+            )
+        )
+        assert isinstance(edit_res, SuccessResult)
+        assert edit_res.data.get("updated") is True
+        preview_res = await preview.execute(
+            **preview.validate_params(
+                {
+                    "project_id": _YAML_PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                }
+            )
+        )
+    assert isinstance(preview_res, SuccessResult)
+    await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_YAML_PROJECT_UUID,
+        session_id=sid,
+    )
+    committed_text = origin.read_text(encoding="utf-8")
+    with upstream_context(workspace=workspace, upstream=upstream):
+        await UniversalFileCloseCommand().execute(
+            **UniversalFileCloseCommand().validate_params(
+                {"project_id": _YAML_PROJECT_UUID, "session_id": sid}
+            )
+        )
+    return committed_text, preview_res
+
+
+@pytest.mark.asyncio
+async def test_yaml_root_key_insert_with_empty_parent_pointer(
+    tmp_path: Path,
+) -> None:
+    committed_text, preview_res = await _insert_yaml_root_key_and_preview(
+        tmp_path,
+        rel="records/root_empty_parent.yml",
+        operation={
+            "type": "insert",
+            "parent_json_pointer": "",
+            "key": "second",
+            "value": 2,
+        },
+    )
+    data = yaml.safe_load(committed_text)
+    assert data == {"first": 1, "third": 3, "second": 2}
+    assert "second" in str(preview_res.data)
+
+
+@pytest.mark.asyncio
+async def test_yaml_root_key_insert_with_slash_parent_pointer(
+    tmp_path: Path,
+) -> None:
+    committed_text, preview_res = await _insert_yaml_root_key_and_preview(
+        tmp_path,
+        rel="records/root_slash_parent.yml",
+        operation={
+            "type": "insert",
+            "parent_json_pointer": "/",
+            "key": "second",
+            "value": 2,
+        },
+    )
+    data = yaml.safe_load(committed_text)
+    assert data == {"first": 1, "third": 3, "second": 2}
+    assert "second" in str(preview_res.data)
 
 
 @pytest.mark.asyncio

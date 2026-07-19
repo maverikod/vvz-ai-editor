@@ -50,22 +50,6 @@ from . import write_command_phases as phases
 logger = logging.getLogger(__name__)
 
 
-_TEMP_VALIDATION_PATH_MARKERS = (
-    ".ai_editor_validation_",
-    ".ai_editor_write_",
-    "temp copy",
-    "temporary copy",
-)
-
-
-def _is_false_temp_copy_import_diagnostic(message: str) -> bool:
-    normalized = message.lower()
-    return (
-        "import-not-found" in normalized
-        and any(marker in normalized for marker in _TEMP_VALIDATION_PATH_MARKERS)
-    )
-
-
 def _is_unavailable_quality_tool(result: Any) -> bool:
     return not result.errors and str(result.error_message or "").lower() in {
         "flake8 not installed",
@@ -87,13 +71,6 @@ def _validation_failure_is_non_blocking(validation: Any) -> bool:
 
     for result in failures:
         if _is_unavailable_quality_tool(result):
-            continue
-        diagnostics = [
-            str(item) for item in (result.errors or [result.error_message]) if item
-        ]
-        if diagnostics and all(
-            _is_false_temp_copy_import_diagnostic(item) for item in diagnostics
-        ):
             continue
         return False
     return True

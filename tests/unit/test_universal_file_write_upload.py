@@ -58,7 +58,7 @@ def _validation_ok() -> PreWriteValidationOutcome:
 
 
 @pytest.mark.asyncio
-async def test_commit_ignores_only_temp_copy_import_not_found_diagnostic() -> None:
+async def test_commit_blocks_temp_copy_import_not_found_diagnostic() -> None:
     cmd = UniversalFileWriteCommand()
     session = _mock_session()
     comparison = _diff_comparison()
@@ -78,29 +78,37 @@ async def test_commit_ignores_only_temp_copy_import_not_found_diagnostic() -> No
         },
     )
 
-    with patch(
-        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
-        return_value=client,
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
-    ) as mock_guard_cls, patch(
-        "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
-        return_value=session,
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
-        return_value=comparison,
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
-        return_value=validation,
+    with (
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=client,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+        ) as mock_guard_cls,
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+            return_value=session,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+            return_value=comparison,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+            return_value=validation,
+        ),
     ):
         mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
         result = await cmd.execute(
             project_id="proj-1", session_id="sess-1", write_mode="commit"
         )
 
-    assert isinstance(result, SuccessResult)
-    assert result.data["uploaded"] is True
-    client.upload_session_file_content.assert_called_once()
+    assert isinstance(result, ErrorResult)
+    assert result.code == "VALIDATION_ERROR"
+    assert result.details is not None
+    assert result.details["preview_diff"]["status"] == "validation_failure"
+    client.upload_session_file_content.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -121,20 +129,26 @@ async def test_commit_keeps_genuine_validation_diagnostic_as_validation_error() 
         },
     )
 
-    with patch(
-        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
-        return_value=client,
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
-    ) as mock_guard_cls, patch(
-        "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
-        return_value=session,
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
-        return_value=comparison,
-    ), patch(
-        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
-        return_value=validation,
+    with (
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=client,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+        ) as mock_guard_cls,
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+            return_value=session,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+            return_value=comparison,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+            return_value=validation,
+        ),
     ):
         mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
         result = await cmd.execute(
