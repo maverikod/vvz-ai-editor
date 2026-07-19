@@ -83,7 +83,7 @@ Importance indicates business/operational impact and urgency. See the full crite
 
 ### 2.7 After each file edit (code files)
 
-1. **Checks:** run black, flake8, mypy. Fix all reported issues before continuing.
+1. **Checks:** run black, flake8, Ruff, mypy. Fix all reported issues before continuing.
 2. **Size:** if the file exceeds **350–400 lines**, split it immediately (e.g. facade + smaller modules, or extract logical blocks). One class = one file (except small exceptions/enums); large classes split into facade + smaller parts.
 3. **Indices:** run the project's code_mapper (or equivalent) after each batch of file changes so that code_analysis indices stay up to date. Do not leave a file over the limit "for later".
 
@@ -97,7 +97,7 @@ It is **critical** to keep code in small files: after each write step, run code_
 
 ### 2.9 After creating production code
 
-- **Always** run black, flake8, and mypy and fix **all** errors.
+- **Always** run black, flake8, Ruff, and mypy and fix **all** errors.
 - Run the code_mapper command after each batch of file changes.
 - **Mandatory:** split files larger than 400 lines into smaller ones.
 
@@ -138,7 +138,7 @@ It is **critical** to keep code in small files: after each write step, run code_
 - [ ] Documentation in `docs/`; reports in `docs/reports/`; plans/TZ in `docs/plans/`; standards in `docs/standards/`.
 - [ ] test_data: read/write code only via code-analysis-server (MCP). No read_file, no direct file tools on `test_data/`.
 - [ ] Before write: backup (old_code). Optional git commit after write where supported.
-- [ ] After code edit: black, flake8, mypy; fix all; check size 350–400 lines; run code_mapper.
+- [ ] After code edit: black, flake8, Ruff, mypy; fix all; check size 350–400 lines; run code_mapper.
 - [ ] Commit after change (or after batch); push only on request.
 - [ ] Docstrings: Author and email in header. Code/comments/docstrings in English.
 - [ ] No changes outside project. No --break-system-packages. .venv activated. Read file before editing.

@@ -51,6 +51,6 @@ operation_shapes:
     sentinel: 'Array append: parent_json_pointer ending in /- e.g. /items/-'
 post_commit_validation:
   applies_to: Python commit via universal_file_write write_mode=commit
-  note: Editor runs flake8, mypy, docstrings in pre-write pipeline before CA upload.
+  note: Editor runs black parseability, flake8, Ruff, mypy, and docstrings in pre-write pipeline before CA upload.
     Separate lint_code/format_code commands are optional after successful commit.
 trigger: Before modifying any project file.

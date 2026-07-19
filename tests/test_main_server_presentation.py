@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Dict
+
 from ai_editor.commands.universal_file_edit.workflow_brief import (
     SERVER_HELP_DESCRIPTION,
     SERVER_LIST_DESCRIPTION,
@@ -40,10 +42,11 @@ def test_default_tiers_differ() -> None:
     assert pres.list_description == SERVER_LIST_DESCRIPTION
     assert pres.help_description == SERVER_HELP_DESCRIPTION
     assert len(pres.list_description) < len(pres.help_description)
+    assert "Ruff" in pres.help_description
 
 
 def test_sync_registration_for_proxy() -> None:
-    app_config = {
+    app_config: Dict[str, Any] = {
         "server_presentation": {
             "title": "My Server",
             "description": "Help tier text",

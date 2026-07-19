@@ -22,6 +22,7 @@ SERVER_LIST_DESCRIPTION = (
 # Server-level help (OpenAPI tool_info) — enough for a model to start working.
 SERVER_HELP_DESCRIPTION = """\
 Thin MCP server for universal file editing via Code Analysis Server (CA).
+Python commit validation includes black parseability, Flake8, Ruff, Mypy, and docstring policy.
 
 ### Quick start (edit one file)
 

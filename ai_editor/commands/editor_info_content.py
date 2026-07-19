@@ -93,7 +93,7 @@ Errors: `FILE_ALREADY_OPEN`, `OPEN_ERROR`, `SESSION_NOT_FOUND`, `UNKNOWN_FORMAT`
 }
 ```
 
-- Read-only; **no** flake8/mypy/docstring validation.
+- Read-only; **no** flake8/ruff/mypy/docstring validation.
 - Each block has `node_ref` for drill-down (marked-tree: **integer short_id**; see format table).
 - If file is open but `session_id` omitted → `OPEN_FILE_USE_WORKSPACE_PREVIEW`.
 
@@ -148,7 +148,7 @@ Returns unified `diff`. No validation, no CA upload.
 - Existing file, equal to origin → reaffirm CA lock, then `unchanged=true`.
 - Existing file, diff → pre-write validation → reaffirm CA lock → `upload_session_file_content` on success.
 - New file → create/register+lock on CA atomically, then upload on success.
-- Python validation: black-parseable, flake8, mypy, docstrings.
+- Python validation: black-parseable, flake8, Ruff, mypy, docstrings.
 - Failure → `VALIDATION_ERROR`; fix via edit and retry.
 
 ### Step 6 — close
@@ -313,7 +313,16 @@ def build_editor_info_payload() -> Dict[str, Any]:
                 "force_hint": "pass format_group=sidecar for unknown-extension files to route via Python CST",
             },
             "tree-temp": {
-                "extensions": [".json", ".yaml", ".yml", ".jsonl", ".ndjson", ".ini", ".cfg", ".toml"],
+                "extensions": [
+                    ".json",
+                    ".yaml",
+                    ".yml",
+                    ".jsonl",
+                    ".ndjson",
+                    ".ini",
+                    ".cfg",
+                    ".toml",
+                ],
                 "preview_node_ref": "integer short_id (marked-tree) or JSON Pointer (legacy)",
                 "edit_fields": "node_ref/short_id or json_pointer, value",
                 "force_hint": "pass format_group=tree-temp for unknown-extension files to route via the structured tree handler (JSON/YAML/INI/TOML)",

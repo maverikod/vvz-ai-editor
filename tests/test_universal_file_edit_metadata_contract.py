@@ -9,6 +9,10 @@ from mcp_proxy_adapter.commands.result import SuccessResult
 from ai_editor.commands.universal_file_edit.edit_command import (
     UniversalFileEditCommand,
 )
+from ai_editor.commands.editor_info_content import build_editor_info_payload
+from ai_editor.commands.universal_file_edit.write_command import (
+    UniversalFileWriteCommand,
+)
 from ai_editor.commands.universal_file_edit.errors import (
     PUBLIC_EDIT_OPERATION,
     PUBLIC_EDIT_OPERATION_TYPES,
@@ -28,7 +32,10 @@ def test_metadata_matches_callable_format_boundaries() -> None:
     operation_description = metadata["parameters"]["operations"]["description"]
 
     assert "Structured config (.json, .yaml, .yml, .ini, .cfg, .toml)" in description
-    assert "Structured tree operations are replace | insert | delete | move." in description
+    assert (
+        "Structured tree operations are replace | insert | delete | move."
+        in description
+    )
     assert "INI/TOML use the same node_ref/json_pointer" in description
     assert "structured types are replace, insert, delete, move" in operation_description
 
@@ -47,7 +54,29 @@ def test_diagnostic_remediation_uses_public_callable_edit_catalog() -> None:
 
     assert PUBLIC_EDIT_OPERATION in remediation
     assert "replace_range" not in remediation
-    assert all(operation in operation_description for operation in PUBLIC_EDIT_OPERATION_TYPES)
+    assert all(
+        operation in operation_description for operation in PUBLIC_EDIT_OPERATION_TYPES
+    )
+
+
+def test_info_metadata_advertises_ruff_python_validation_gate() -> None:
+    payload = build_editor_info_payload()
+    markdown = payload["markdown"]
+
+    assert (
+        "Python validation: black-parseable, flake8, Ruff, mypy, docstrings."
+        in markdown
+    )
+    assert "black-parseable, flake8, mypy, docstrings" not in markdown
+
+
+def test_write_metadata_advertises_ruff_python_validation_gate() -> None:
+    metadata = UniversalFileWriteCommand.metadata()
+    rendered = repr(metadata)
+
+    assert "black-parseable, flake8, Ruff, mypy" in rendered
+    assert "flake8/Ruff/mypy/docstring" in rendered
+    assert "black-parseable, flake8, mypy" not in rendered
 
 
 @pytest.mark.asyncio
@@ -130,12 +159,17 @@ async def test_advertised_operations_are_callable_via_public_edit_api(
     command = UniversalFileEditCommand()
     apply_handler = Mock(return_value=SuccessResult(data={"success": True}))
 
-    with edit_guard_context(), patch(
-        "ai_editor.commands.universal_file_edit.edit_command.get_session",
-        return_value=session,
-    ), patch.object(command, handler_name, apply_handler), patch(
-        "ai_editor.commands.universal_file_edit.edit_command.validate_sidecar_nested_batch",
-        return_value=None,
+    with (
+        edit_guard_context(),
+        patch(
+            "ai_editor.commands.universal_file_edit.edit_command.get_session",
+            return_value=session,
+        ),
+        patch.object(command, handler_name, apply_handler),
+        patch(
+            "ai_editor.commands.universal_file_edit.edit_command.validate_sidecar_nested_batch",
+            return_value=None,
+        ),
     ):
         for operation in operations:
             result = await command.execute(

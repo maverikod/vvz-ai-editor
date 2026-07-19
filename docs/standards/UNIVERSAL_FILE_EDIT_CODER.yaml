@@ -216,7 +216,7 @@ forbidden:
 common_errors:
   SESSION_NOT_FOUND: reopen session or fix CA session_id
   FILE_ALREADY_OPEN: close owning session first
-  VALIDATION_ERROR: fix flake8/mypy/docstrings on commit
+  VALIDATION_ERROR: fix flake8/Ruff/mypy/docstrings on commit
   UPSTREAM_UPLOAD_FAILED: fix content or CA connectivity; retry commit
   STALE_NODE_ID: unexpected stable_id loss — re-preview with session_id
   UNKNOWN_NODE_REF: preview again; check format_group field mapping
@@ -231,7 +231,7 @@ parse_error_fallback:
 commit_validation:
   when: universal_file_write write_mode=commit
   pipeline: [quality_tools, handler_validator]
-  python_tools: [black_parseable, flake8, mypy, docstrings]
+  python_tools: [black_parseable, flake8, ruff, mypy, docstrings]
 
 discovery_read_only:
   before_edit: [fulltext_search, semantic_search, fs_grep]

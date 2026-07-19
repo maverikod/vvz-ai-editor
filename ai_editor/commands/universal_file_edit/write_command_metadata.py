@@ -33,7 +33,7 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "  compare_session_to_origin; if equal — success no-op "
             "(unchanged=true, no CA RPC).\n"
             "  If diff — serialize to temp file, run quality tools (Python: "
-            "black-parseable, flake8, mypy), then handler-specific validation "
+            "black-parseable, flake8, Ruff, mypy), then handler-specific validation "
             "(compile + docstrings for .py; JSON/YAML parse for structured files). "
             "On validation failure returns VALIDATION_ERROR with full error lists; "
             "origin and draft unchanged.\n"
@@ -155,7 +155,7 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
                     "write_mode": "preview",
                 },
                 "explanation": (
-                    "Inspect diff placement only; no flake8/mypy/docstring checks."
+                    "Inspect diff placement only; no flake8/Ruff/mypy/docstring checks."
                 ),
             },
             {
@@ -220,7 +220,7 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 ),
                 "message": "Validation failed: {details}",
                 "solution": (
-                    "Fix reported flake8/mypy/docstring/syntax issues and retry commit."
+                    "Fix reported flake8/Ruff/mypy/docstring/syntax issues and retry commit."
                 ),
             },
             "WRITE_FAILED": {
@@ -243,7 +243,7 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
         },
         "best_practices": [
             "Always call write_mode=preview before commit to verify diff placement.",
-            "Expect VALIDATION_ERROR on commit for Python docstring, flake8, or mypy issues.",
+            "Expect VALIDATION_ERROR on commit for Python docstring, flake8, Ruff, or mypy issues.",
             "write_mode=commit with equal content returns unchanged=true without CA RPC.",
             "On upload failure, fix issues and retry commit or call universal_file_close.",
             "Supply file_path when the CA session has multiple open files.",

@@ -27,7 +27,7 @@ Compare workspace draft (canonical export) to origin snapshot, show a unified di
 
 ### Pre-write validation (commit only)
 
-For Python and structured files: serialize to temp → quality tools (flake8, mypy, black-parseable) → handler validator (docstrings, JSON/YAML parse). On failure: `VALIDATION_ERROR`; origin and draft unchanged.
+For Python and structured files: serialize to temp → quality tools (black-parseable, flake8, Ruff, mypy) → handler validator (docstrings, JSON/YAML parse). On failure: `VALIDATION_ERROR`; origin and draft unchanged.
 
 ### Sidecar legacy (`.py`, `write_mode` omitted)
 

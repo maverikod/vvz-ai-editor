@@ -62,10 +62,10 @@ After `universal_file_open`, pass the same `session_id` to `universal_file_previ
 
 ### Explicit modes (recommended)
 
-- `write_mode=preview` — unified diff; **no** flake8/mypy/docstring checks; **no** CA upload.
+- `write_mode=preview` — unified diff; **no** flake8/Ruff/mypy/docstring checks; **no** CA upload.
 - `write_mode=commit` — compare draft vs origin; if equal → `unchanged=true` (no CA RPC); if diff → pre-write validation then `upload_session_file_content`.
 
-Pre-write validation order (commit): temp serialize → quality tools (Python: black-parseable, flake8, mypy) → handler validator (docstrings, JSON/YAML parse). On failure: `VALIDATION_ERROR`, origin and draft unchanged.
+Pre-write validation order (commit): temp serialize → quality tools (Python: black-parseable, flake8, Ruff, mypy) → handler validator (docstrings, JSON/YAML parse). On failure: `VALIDATION_ERROR`, origin and draft unchanged.
 
 ### Sidecar legacy (`.py`, `write_mode` omitted)
 

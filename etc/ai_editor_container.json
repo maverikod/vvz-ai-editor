@@ -46,7 +46,7 @@
     "metadata": {
       "server_id": "ai-editor-server",
       "server_name": "AI Editor Server",
-      "description": "AI Editor server for project files: preview, open, edit, write, and close across Python, JSON, YAML, Markdown, and text.",
+      "description": "AI Editor server for project files: preview, open, edit, write, and close across Python, JSON, YAML, Markdown, and text. Python commit validation includes Black, Flake8, Ruff, Mypy, and docstring policy.",
       "version": "1.0.7"
     },
     "instance_uuid": "f0d5e993-8271-46a8-b70c-d67b9510182b",
