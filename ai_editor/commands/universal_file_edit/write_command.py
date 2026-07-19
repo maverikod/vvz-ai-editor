@@ -133,6 +133,10 @@ class UniversalFileWriteCommand(BaseMCPCommand):
         write_mode_explicit = bool(kwargs.get("write_mode_explicit", False))
         format_python = bool(kwargs.get("format_python", False))
         verify_after_upload = bool(kwargs.get("verify_after_upload", False))
+        try:
+            command_project_root = self._resolve_project_root(project_id)
+        except Exception:
+            command_project_root = None
 
         guard = SessionGuard(get_code_analysis_client())
         try:
@@ -156,6 +160,7 @@ class UniversalFileWriteCommand(BaseMCPCommand):
             write_mode_explicit=write_mode_explicit,
             file_path=file_path,
             client=get_code_analysis_client(),
+            command_project_root=command_project_root,
             format_python=format_python,
             verify_after_upload=verify_after_upload,
         )

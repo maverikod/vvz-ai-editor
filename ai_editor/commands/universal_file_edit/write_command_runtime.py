@@ -91,7 +91,14 @@ def _resolve_validation_project_root(
     *,
     project_id: str,
     client: Any,
+    command_project_root: Any = None,
 ) -> Path | None:
+    command_root_path = _pathlike_value(command_project_root)
+    if command_root_path is not None:
+        resolved = command_root_path.resolve()
+        if resolved.is_absolute() and resolved.is_dir():
+            return resolved
+
     if project_id and hasattr(client, "get_project_root"):
         try:
             root = client.get_project_root(project_id)
@@ -205,6 +212,7 @@ def _run_write_commit_ca(
     client: Any,
     format_python: bool = False,
     verify_after_upload: bool = False,
+    command_project_root: Any = None,
 ) -> SuccessResult | ErrorResult:
     try:
         comparison = compare_session_to_origin(
@@ -274,6 +282,7 @@ def _run_write_commit_ca(
         session,
         project_id=project_id,
         client=client,
+        command_project_root=command_project_root,
     )
     if project_root is None and _pathlike_value(session.abs_path) is not None:
         from ai_editor.commands.universal_file_edit.edit_draft_path_utils import (
@@ -415,6 +424,7 @@ async def run_write_execute(
     write_mode_explicit: bool = False,
     file_path: str = "",
     client: Any,
+    command_project_root: Any = None,
     **kwargs: Any,
 ) -> SuccessResult | ErrorResult:
     format_python = bool(kwargs.get("format_python", False))
@@ -455,6 +465,7 @@ async def run_write_execute(
             client=client,
             format_python=format_python,
             verify_after_upload=verify_after_upload,
+            command_project_root=command_project_root,
         )
 
     if write_mode != "preview":

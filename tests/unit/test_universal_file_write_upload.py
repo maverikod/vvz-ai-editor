@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
+from ai_editor.commands.universal_file_edit import write_command_phases
 from ai_editor.commands.universal_file_edit.session import EditSession
 from ai_editor.commands.universal_file_edit.write_command import (
     UniversalFileWriteCommand,
@@ -280,8 +281,18 @@ def read_value() -> int:
         exported_bytes=exported,
     )
     client = MagicMock()
-    client.get_project_root.return_value = project_root
     client.upload_create_and_lock.return_value = exported
+    observed_validation: dict[str, Path] = {}
+    real_validate = write_command_phases.validate_draft_in_project_context
+
+    def observe_validation(*args, **kwargs):  # noqa: ANN002, ANN003
+        observed_validation["target_path"] = kwargs["target_path"]
+        observed_validation["project_root"] = kwargs["project_root"]
+        return real_validate(
+            *args,
+            **kwargs,
+        )
+
     venv_bin = Path(sys.executable).parent
     monkeypatch.setenv("PATH", f"{venv_bin}:{os.environ.get('PATH', '')}")
 
@@ -293,6 +304,11 @@ def read_value() -> int:
         patch(
             "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
         ) as mock_guard_cls,
+        patch.object(
+            UniversalFileWriteCommand,
+            "_resolve_project_root",
+            return_value=project_root,
+        ),
         patch(
             "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
             return_value=session,
@@ -300,6 +316,10 @@ def read_value() -> int:
         patch(
             "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
             return_value=comparison,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+            side_effect=observe_validation,
         ),
     ):
         mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
@@ -313,9 +333,12 @@ def read_value() -> int:
     assert isinstance(result, SuccessResult)
     assert result.data["uploaded"] is True
     assert session.persisted_on_ca is True
+    assert observed_validation["project_root"] == project_root.resolve()
+    assert observed_validation["target_path"] == final_target
     assert final_target.exists() is False
     assert not any(project_root.glob(".ai_editor_validation_*"))
     assert not any(package.glob(".ai_editor_write_*"))
+    client.get_project_root.assert_not_called()
     client.upload_create_and_lock.assert_called_once_with(
         session_id="sess-create",
         project_id="proj-1",
