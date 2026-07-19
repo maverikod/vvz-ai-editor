@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-editor"
-version = "1.0.50"
+version = "1.0.51"
 description = "AI Editor MCP server: universal file preview, open, edit, write, and close"
 readme = { file = "docs/README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -27,6 +27,7 @@ dependencies = [
     "markdown-it-py>=3.0",
     "black>=24.0",
     "flake8>=7.0",
+    "ruff>=0.6.0",
     "mypy>=1.8",
 ]
 # PostgreSQL logical backup (backup_database / restore_database) also needs OS binaries
@@ -44,6 +45,7 @@ dev = [
     "anyio>=4.0",
     "black>=24.0",
     "flake8>=7.0",
+    "ruff>=0.6.0",
     "mypy>=1.8",
 ]
 
@@ -57,3 +59,31 @@ include = ["ai_editor*", "aiedmgr_entry*"]
 # Portable shell launcher (#!/usr/bin/env bash); not pip console_scripts with host shebang.
 [tool.setuptools]
 script-files = ["scripts/aiedmgr", "scripts/aiedcfg"]
+
+[tool.ruff]
+line-length = 88
+include = [
+    "ai_editor/core/code_quality/**/*.py",
+    "ai_editor/core/file_validation/**/*.py",
+    "ai_editor/core/cst_module/**/*.py",
+    "tests/unit/test_quality_tools_mypy_config.py",
+    "tests/test_type_checker_mypy_semantics.py",
+]
+extend-exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+    "env",
+    "ENV",
+    "env.bak",
+    "venv.bak",
+    ".eggs",
+    "docs/ai_reports",
+    "scripts",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

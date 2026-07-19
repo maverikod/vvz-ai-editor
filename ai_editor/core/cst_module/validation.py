@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from ai_editor.core.cst_module.utils import compile_module
-from ai_editor.core.cst_module.docstring_validator import validate_module_docstrings
 from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
 from ai_editor.core.file_validation.handler_validators import run_handler_validator
 from ai_editor.core.file_validation.quality_tools import run_quality_tools
@@ -47,7 +46,7 @@ def validate_file_in_temp(
     Validate entire file in temporary file.
 
     Order:
-    1. Quality tools (flake8, mypy, black) when enabled for Python.
+    1. Quality tools (flake8, ruff, mypy, black) when enabled for Python.
     2. Handler validator (compile + docstrings for Python).
     """
     t_start = time.perf_counter()
@@ -78,8 +77,8 @@ def validate_file_in_temp(
             source_code=source_code,
         )
         for name, item in quality_results.items():
-            if name == "linter" and not validate_linter:
-                results["linter"] = ValidationResult(success=True, errors=[])
+            if name in {"linter", "ruff_linter"} and not validate_linter:
+                results[name] = ValidationResult(success=True, errors=[])
                 continue
             if name == "type_checker" and not validate_type_checker:
                 results["type_checker"] = ValidationResult(success=True, errors=[])
@@ -88,7 +87,7 @@ def validate_file_in_temp(
         if not quality_ok:
             skipped = {
                 k: ValidationResult(success=True, errors=[])
-                for k in ("linter", "type_checker", "black")
+                for k in ("linter", "ruff_linter", "type_checker", "black")
                 if k not in results
             }
             results.update(skipped)
@@ -99,6 +98,7 @@ def validate_file_in_temp(
             return False, quality_err, results
     else:
         results["linter"] = ValidationResult(success=True, errors=[])
+        results["ruff_linter"] = ValidationResult(success=True, errors=[])
         results["type_checker"] = ValidationResult(success=True, errors=[])
         results["black"] = ValidationResult(success=True, errors=[])
 

@@ -7,6 +7,7 @@ email: vasilyvz@gmail.com
 
 from pathlib import Path
 from subprocess import CompletedProcess
+from typing import Any
 from unittest.mock import patch
 
 from ai_editor.commands.universal_file_edit.write_command_phases import (
@@ -19,7 +20,6 @@ from ai_editor.core.code_quality.type_checker import (
 )
 from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
 from ai_editor.core.file_validation.results import ValidationResult
-
 
 _PROJECT_CONTEXT_DRAFT = '''
 """Draft module validated in the project context."""
@@ -45,7 +45,7 @@ def test_write_path_mypy_uses_project_context_for_draft_imports(tmp_path) -> Non
     (project_root / "support.py").write_text("VALUE: int = 7\n", encoding="utf-8")
     target = tmp_path / "isolated" / "draft.py"
     target.parent.mkdir()
-    observed = {}
+    observed: dict[str, Any] = {}
 
     def fake_run(cmd, **kwargs):  # noqa: ANN001
         staged_target = Path(cmd[1])
@@ -59,12 +59,19 @@ def test_write_path_mypy_uses_project_context_for_draft_imports(tmp_path) -> Non
         )
         return CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    with patch(
-        "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
-        return_value=(True, None, []),
-    ), patch(
-        "ai_editor.core.code_quality.type_checker.subprocess.run",
-        fake_run,
+    with (
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_ruff",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.code_quality.type_checker.subprocess.run",
+            fake_run,
+        ),
     ):
         outcome = validate_draft_in_project_context(
             HANDLER_PYTHON,
@@ -88,7 +95,7 @@ def test_write_path_preserves_genuine_mypy_validation_error(tmp_path) -> None:
     project_root.mkdir()
     (project_root / "pyproject.toml").write_text("[tool.mypy]\n", encoding="utf-8")
     target = tmp_path / "isolated" / "draft.py"
-    observed = {}
+    observed: dict[str, Any] = {}
 
     def fake_run(cmd, **kwargs):  # noqa: ANN001
         staged_target = Path(cmd[1]).resolve()
@@ -96,12 +103,19 @@ def test_write_path_preserves_genuine_mypy_validation_error(tmp_path) -> None:
         line = f"{staged_target}:5: error: Incompatible return value"
         return CompletedProcess(cmd, 1, stdout=line + "\n", stderr="")
 
-    with patch(
-        "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
-        return_value=(True, None, []),
-    ), patch(
-        "ai_editor.core.code_quality.type_checker.subprocess.run",
-        fake_run,
+    with (
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_ruff",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.code_quality.type_checker.subprocess.run",
+            fake_run,
+        ),
     ):
         outcome = validate_draft_in_project_context(
             HANDLER_PYTHON,

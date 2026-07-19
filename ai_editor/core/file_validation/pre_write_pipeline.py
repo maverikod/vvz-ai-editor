@@ -3,7 +3,7 @@ Pre-write validation pipeline for universal file commands.
 
 Order:
 1. Write serialized source to a temporary file (caller supplies canonical text).
-2. Run quality tools (flake8, mypy, black) on the temp file for Python.
+2. Run quality tools (flake8, ruff, mypy, black) on the temp file for Python.
 3. Run handler-specific validator (docstrings, JSON/YAML parse, etc.).
 4. On success the caller promotes the temp file or proceeds with upload.
 
@@ -121,7 +121,9 @@ def validate_before_promote(
             error_message=f"Failed to write temporary file: {exc}",
         )
 
-    quality_ok, quality_err, quality_results = True, None, {}
+    quality_ok: bool = True
+    quality_err: str | None = None
+    quality_results: Dict[str, ValidationResult] = {}
     if not skip_quality_tools:
         quality_ok, quality_err, quality_results = run_quality_tools(
             handler_id,

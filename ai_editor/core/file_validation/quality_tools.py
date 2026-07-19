@@ -1,5 +1,5 @@
 """
-Quality-tool checks (flake8, mypy, black) on a temporary file before promotion.
+Quality-tool checks (flake8, ruff, mypy, black) on a temporary file before promotion.
 
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from ai_editor.core.code_quality.formatter import format_python_source_text
-from ai_editor.core.code_quality.linter import lint_with_flake8
+from ai_editor.core.code_quality.linter import lint_with_flake8, lint_with_ruff
 from ai_editor.core.code_quality.type_checker import (
     resolve_mypy_config_for_single_file,
     type_check_with_mypy,
@@ -40,7 +40,7 @@ def run_quality_tools(
     source_code: str,
     project_root: Optional[Path] = None,
 ) -> Tuple[bool, str | None, Dict[str, ValidationResult]]:
-    """Run flake8, mypy, and black-format checks for Python files."""
+    """Run flake8, ruff, mypy, and black-format checks for Python files."""
     if handler_id != HANDLER_PYTHON:
         return True, None, {}
 
@@ -60,6 +60,10 @@ def run_quality_tools(
         t0 = time.perf_counter()
         return lint_with_flake8(temp_file_path, ignore=None), time.perf_counter() - t0
 
+    def _ruff_job() -> Tuple[Tuple[bool, str | None, list[str]], float]:
+        t0 = time.perf_counter()
+        return lint_with_ruff(temp_file_path, ignore=None), time.perf_counter() - t0
+
     mypy_probe = (
         project_root / "__init__.py" if project_root is not None else temp_file_path
     )
@@ -76,15 +80,18 @@ def run_quality_tools(
             time.perf_counter() - t0,
         )
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         f_lint = pool.submit(_flake8_job)
+        f_ruff = pool.submit(_ruff_job)
         f_mypy = pool.submit(_mypy_job)
         (linter_ok, linter_err, linter_errors), lint_sec = f_lint.result()
+        (ruff_ok, ruff_err, ruff_errors), ruff_sec = f_ruff.result()
         (mypy_ok, mypy_err, mypy_errors), mypy_sec = f_mypy.result()
 
     logger.info(
-        "[PROFILE] run_quality_tools flake8=%.3fs mypy=%.3fs total=%.3fs",
+        "[PROFILE] run_quality_tools flake8=%.3fs ruff=%.3fs mypy=%.3fs total=%.3fs",
         lint_sec,
+        ruff_sec,
         mypy_sec,
         time.perf_counter() - t_start,
     )
@@ -93,13 +100,18 @@ def run_quality_tools(
         error_message=linter_err,
         errors=linter_errors,
     )
+    results["ruff_linter"] = ValidationResult(
+        success=ruff_ok,
+        error_message=ruff_err,
+        errors=ruff_errors,
+    )
     results["type_checker"] = ValidationResult(
         success=mypy_ok,
         error_message=mypy_err,
         errors=mypy_errors,
     )
 
-    if linter_ok and mypy_ok:
+    if linter_ok and ruff_ok and mypy_ok:
         return True, None, results
 
     parts: list[str] = []

@@ -49,12 +49,16 @@ def test_run_quality_tools_passes_mypy_config_from_project_root(
             "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
             return_value=(True, None, []),
         ):
-            ok, err, _ = run_quality_tools(
-                HANDLER_PYTHON,
-                temp_file_path=temp_file,
-                source_code=_VALID_PY,
-                project_root=project_root,
-            )
+            with patch(
+                "ai_editor.core.file_validation.quality_tools.lint_with_ruff",
+                return_value=(True, None, []),
+            ):
+                ok, err, _ = run_quality_tools(
+                    HANDLER_PYTHON,
+                    temp_file_path=temp_file,
+                    source_code=_VALID_PY,
+                    project_root=project_root,
+                )
 
     assert ok is True and err is None
     mock_mypy.assert_called_once()
@@ -79,10 +83,45 @@ def test_run_quality_tools_mypy_config_none_without_project_root(
                 "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
                 return_value=(True, None, []),
             ):
-                run_quality_tools(
-                    HANDLER_PYTHON,
-                    temp_file_path=temp_file,
-                    source_code=_VALID_PY,
-                )
+                with patch(
+                    "ai_editor.core.file_validation.quality_tools.lint_with_ruff",
+                    return_value=(True, None, []),
+                ):
+                    run_quality_tools(
+                        HANDLER_PYTHON,
+                        temp_file_path=temp_file,
+                        source_code=_VALID_PY,
+                    )
 
     mock_resolve.assert_called_once_with(temp_file)
+
+
+def test_run_quality_tools_records_ruff_linter_result(tmp_path: Path) -> None:
+    temp_file = tmp_path / "sample.py"
+    temp_file.write_text(_VALID_PY, encoding="utf-8")
+
+    with (
+        patch(
+            "ai_editor.core.file_validation.quality_tools.type_check_with_mypy",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_flake8",
+            return_value=(True, None, []),
+        ),
+        patch(
+            "ai_editor.core.file_validation.quality_tools.lint_with_ruff",
+            return_value=(False, "Found 1 ruff errors", ["sample.py:1:1: F401 unused"]),
+        ),
+    ):
+        ok, err, results = run_quality_tools(
+            HANDLER_PYTHON,
+            temp_file_path=temp_file,
+            source_code=_VALID_PY,
+        )
+
+    assert ok is False
+    assert err == "ruff_linter: Found 1 ruff errors"
+    assert results["linter"].success is True
+    assert results["ruff_linter"].success is False
+    assert results["type_checker"].success is True

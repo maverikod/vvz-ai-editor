@@ -26,7 +26,7 @@ Rule IDs: `CR-*`, `LAYOUT-*`, `NAME-*`. A matching file in `.cursor/agents/*.md`
 
 **CR-003:** Root [`projectid`](../projectid) (UUID + `description`) must be valid for this repo’s tooling. Watched projects (e.g. under `test_data/`) each have their own `projectid` at project root.
 
-**CR-007 (this repo):** on touched production paths run **`black`**, **`flake8`**, **`mypy`** (see `pytest.ini` / `mypy.ini` / `.flake8`).
+**CR-007 (this repo):** on touched production paths run **`black`**, **`flake8`**, **`ruff check .`** for the configured Ruff scope, **`mypy`** (see `pytest.ini` / `mypy.ini` / `.flake8` / `pyproject.toml`).
 
 ---
 
@@ -53,7 +53,7 @@ Rule IDs: `CR-*`, `LAYOUT-*`, `NAME-*`. A matching file in `.cursor/agents/*.md`
 | **CR-005** | 1 | **Python / venv:** `VENV_DIR` active before `python`, `pip`, tests, linters. On import/`pip` errors, verify interpreter (`which python`, `$VIRTUAL_ENV`), activate, retry. |
 | **CR-015** | 0 | No `pip install --break-system-packages` or PEP 668 overrides unless the user explicitly approves that exact command. |
 | **CR-006** | 1 | If `USE_CODE_MAP` = yes: after each logically finished structural change, refresh indices (project code-map → under `code_analysis/`). |
-| **CR-007** | 1 | After production code changes, run required format/lint/typecheck on touched paths (this repo: `black`, `flake8`, `mypy`). |
+| **CR-007** | 1 | After production code changes, run required format/lint/typecheck on touched paths (this repo: `black`, `flake8`, `ruff check .` for the configured Ruff scope, `mypy`). |
 | **CR-008** | 1 | Python module size: ~350 lines → prefer split; ≤ ~400 OK; ≥ ~450 → must split. |
 | **CR-009** | 1 | Docstrings / types for public API; non-obvious logic: short comments. Abstract API → explicit failure, not silent stubs. CST saves: [docs/standards/PYTHON_DOCSTRING_STANDARD.md](standards/PYTHON_DOCSTRING_STANDARD.md). |
 | **CR-010** | 1 | Chat: `CHAT_LOCALE`; artifacts: `ARTIFACT_LOCALE` unless user specifies otherwise. |

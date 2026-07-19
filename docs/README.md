@@ -49,7 +49,7 @@ git clone https://github.com/vasilyvz/code-analysis-tool.git
 cd code-analysis-tool
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
-# optional — pytest, black, flake8, mypy:
+# optional — pytest, black, flake8, ruff, mypy:
 pip install -e ".[dev]"
 ```
 
@@ -630,6 +630,7 @@ Then run `pytest`. Use `restart` instead of `start` if the server is already run
 ```bash
 black .
 flake8 .
+ruff check .  # configured Ruff scope
 mypy .
 ```
 
