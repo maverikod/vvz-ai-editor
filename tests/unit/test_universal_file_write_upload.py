@@ -9,6 +9,8 @@ Also covers TZ-AIEDITOR-COMMIT-STALE-VALIDATION-001 regression guard:
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +25,7 @@ from ai_editor.commands.universal_file_edit.write_compare import (
     CompareResult,
     WriteComparison,
 )
+from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
 from ai_editor.core.file_validation.pre_write_pipeline import PreWriteValidationOutcome
 from ai_editor.core.file_validation.results import ValidationResult
 from ai_editor.core.upstream.session_guard import GuardDecision
@@ -215,6 +218,111 @@ async def test_upload_success_writes_origin_snapshot() -> None:
         content=b"x = 2\n",
     )
     session.abs_path.write_bytes.assert_called_once_with(accepted_bytes)
+
+
+@pytest.mark.asyncio
+async def test_create_commit_validates_new_python_file_at_project_relative_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "project"
+    package = project_root / "tmp_live_bf98dd98_pkg"
+    package.mkdir(parents=True)
+    (project_root / "pyproject.toml").write_text("[tool.mypy]\n", encoding="utf-8")
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "neighbor.py").write_text("VALUE: int = 7\n", encoding="utf-8")
+    final_target = package / "changed.py"
+
+    workspace_origin = (
+        tmp_path
+        / "editor_workspaces"
+        / "sess-create"
+        / "files"
+        / "tmp_live_bf98dd98_pkg"
+        / "changed.py"
+    )
+    workspace_origin.parent.mkdir(parents=True)
+    workspace_origin.write_text('"""Initial module."""\n', encoding="utf-8")
+    workspace_edit = workspace_origin.parent / "changed.py-edit"
+    workspace_edit.mkdir()
+    core = MagicMock()
+    core.project_root = workspace_edit
+    session = EditSession(
+        session_id="sess-create",
+        project_id="proj-1",
+        file_path="tmp_live_bf98dd98_pkg/changed.py",
+        abs_path=workspace_origin,
+        draft_path=workspace_edit / "changed.py",
+        lockfile_path=workspace_edit / "changed.py.lock",
+        format_group="text",
+        handler_id=HANDLER_PYTHON,
+        tree_id=None,
+        core=core,
+        persisted_on_ca=False,
+    )
+    source = '''\
+"""Changed module."""
+
+from tmp_live_bf98dd98_pkg.neighbor import VALUE
+
+
+def read_value() -> int:
+    """Return the neighboring project value.
+
+    Returns:
+        The neighboring project value.
+    """
+    return VALUE
+'''
+    exported = source.encode("utf-8")
+    comparison = WriteComparison(
+        result=CompareResult.DIFF,
+        origin_bytes=b'"""Initial module."""\n',
+        exported_bytes=exported,
+    )
+    client = MagicMock()
+    client.get_project_root.return_value = project_root
+    client.upload_create_and_lock.return_value = exported
+    venv_bin = Path(sys.executable).parent
+    monkeypatch.setenv("PATH", f"{venv_bin}:{os.environ.get('PATH', '')}")
+
+    with (
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=client,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+        ) as mock_guard_cls,
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+            return_value=session,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+            return_value=comparison,
+        ),
+    ):
+        mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
+        cmd = UniversalFileWriteCommand()
+        result = await cmd.execute(
+            project_id="proj-1",
+            session_id="sess-create",
+            write_mode="commit",
+        )
+
+    assert isinstance(result, SuccessResult)
+    assert result.data["uploaded"] is True
+    assert session.persisted_on_ca is True
+    assert final_target.exists() is False
+    assert not any(project_root.glob(".ai_editor_validation_*"))
+    assert not any(package.glob(".ai_editor_write_*"))
+    client.upload_create_and_lock.assert_called_once_with(
+        session_id="sess-create",
+        project_id="proj-1",
+        file_path="tmp_live_bf98dd98_pkg/changed.py",
+        content=exported,
+    )
 
 
 @pytest.mark.asyncio

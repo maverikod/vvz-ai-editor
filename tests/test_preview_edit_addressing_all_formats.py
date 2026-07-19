@@ -20,16 +20,26 @@ from ai_editor.commands.universal_file_edit.close_command import (
 from ai_editor.commands.universal_file_edit.edit_command import (
     UniversalFileEditCommand,
 )
+from ai_editor.commands.universal_file_edit.search_command import (
+    UniversalFileSearchCommand,
+)
 from ai_editor.commands.universal_file_edit.write_command import (
     UniversalFileWriteCommand,
 )
 from ai_editor.commands.universal_file_edit.format_group import resolve_format_group
-from ai_editor.commands.universal_file_edit.session import create_session, release_session
+from ai_editor.commands.universal_file_edit.session import (
+    create_session,
+    release_session,
+)
 from ai_editor.commands.universal_file_edit.sidecar_cst_apply import (
     run_sidecar_cst_edit_batch,
 )
 from ai_editor.commands.universal_file_preview import UniversalFilePreviewCommand
-from ai_editor.core.cst_tree.tree_builder import get_tree, load_file_to_tree, remove_tree
+from ai_editor.core.cst_tree.tree_builder import (
+    get_tree,
+    load_file_to_tree,
+    remove_tree,
+)
 from ai_editor.core.json_tree import tree_builder as jtb
 from tests.fixtures.validation_passing_python import BAR_INSERT_LINES, MOD_WITH_FOO
 from tests.thin_editor_ca_mocks import (
@@ -145,9 +155,7 @@ async def _commit(
     return text
 
 
-async def _preview_diff(
-    workspace: Path, upstream: object, sid: str, rel: str
-) -> str:
+async def _preview_diff(workspace: Path, upstream: object, sid: str, rel: str) -> str:
     write = UniversalFileWriteCommand()
     with upstream_context(workspace=workspace, upstream=upstream):
         res = await write.execute(
@@ -450,9 +458,9 @@ async def test_py_preview_edit_addresses_try_except_statement_region(
     body = (
         '"""Try/except addressing fixture."""\n\n'
         "try:\n"
-        "    print(\"risky()\")\n"
+        '    print("risky()")\n'
         "except ValueError:\n"
-        "    print(\"handle()\")\n"
+        '    print("handle()")\n'
     )
     sid, workspace, origin, upstream = await _open_file(tmp_path, rel, body)
     blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
@@ -471,9 +479,7 @@ async def test_py_preview_edit_addresses_try_except_statement_region(
                             "type": "insert",
                             "node_ref": handle_ref,
                             "position": "before",
-                            "code_lines": [
-                                "print(\"log_value_error()\")"
-                            ],
+                            "code_lines": ['print("log_value_error()")'],
                         }
                     ],
                 }
@@ -484,6 +490,70 @@ async def test_py_preview_edit_addresses_try_except_statement_region(
     assert "except ValueError:" in text
     assert "log_value_error()" in text
     assert "handle()" in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(60)
+async def test_py_create_search_replace_preview_preserves_omitted_declaration_trivia(
+    tmp_path: Path,
+) -> None:
+    rel = "src/live_86288c9c.py"
+    body = "class Foo:  # type: ignore[misc]\n    pass  # keep body note\n"
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=b"",
+        create=True,
+        initial_content=body,
+    )
+
+    search = UniversalFileSearchCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        sr = await search.execute(
+            **search.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "search_type": "simple",
+                    "node_type": "ClassDef",
+                    "name": "Foo",
+                    "require_one": True,
+                }
+            )
+        )
+    assert isinstance(sr, SuccessResult), getattr(sr, "message", sr)
+
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        er = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "replace",
+                            "node_id": sr.data["node_ref"],
+                            "code_lines": [
+                                "class Foo:",
+                                "    def value(self) -> int:",
+                                "        return 2",
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(er, SuccessResult), getattr(er, "message", er)
+
+    diff = await _preview_diff(workspace, upstream, sid, rel)
+    assert "-class Foo:  # type: ignore[misc]" not in diff
+    assert "+class Foo:" not in diff
+    assert "+    def value(self) -> int:" in diff
+    assert "# keep body note" in diff
 
 
 @pytest.mark.asyncio

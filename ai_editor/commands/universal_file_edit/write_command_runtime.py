@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, cast
+from unittest.mock import Mock
 
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
@@ -50,6 +52,14 @@ from . import write_command_phases as phases
 logger = logging.getLogger(__name__)
 
 
+def _pathlike_value(value: Any) -> Path | None:
+    if isinstance(value, Mock):
+        return None
+    if not isinstance(value, (str, os.PathLike)):
+        return None
+    return Path(value)
+
+
 def _is_unavailable_quality_tool(result: Any) -> bool:
     return not result.errors and str(result.error_message or "").lower() in {
         "flake8 not installed",
@@ -74,6 +84,51 @@ def _validation_failure_is_non_blocking(validation: Any) -> bool:
             continue
         return False
     return True
+
+
+def _resolve_validation_project_root(
+    session: EditSession,
+    *,
+    project_id: str,
+    client: Any,
+) -> Path | None:
+    if project_id and hasattr(client, "get_project_root"):
+        try:
+            root = client.get_project_root(project_id)
+        except Exception as exc:
+            logger.debug("project root lookup failed for %s: %s", project_id, exc)
+        else:
+            root_path = _pathlike_value(root)
+            if root_path is not None:
+                resolved = root_path.resolve()
+                if resolved.is_absolute() and resolved.is_dir():
+                    return resolved
+
+    project_root = getattr(session.core, "project_root", None)
+    root_path = _pathlike_value(project_root)
+    if root_path is not None:
+        resolved = root_path.resolve()
+        if not resolved.is_dir():
+            return None
+        try:
+            session.abs_path.resolve().relative_to(resolved)
+        except ValueError:
+            return None
+        return resolved
+    return None
+
+
+def _validation_target_path(session: EditSession, project_root: Path | None) -> Path:
+    if project_root is None:
+        return session.abs_path
+
+    rel_path = Path(session.file_path.replace("\\", "/"))
+    if rel_path.is_absolute() or any(part == ".." for part in rel_path.parts):
+        return session.abs_path
+    project_target = project_root / rel_path
+    if not session.persisted_on_ca or project_target.parent.exists():
+        return project_target
+    return session.abs_path
 
 
 def _run_write_preview(
@@ -215,8 +270,12 @@ def _run_write_commit_ca(
         )
 
     source_text = comparison.exported_bytes.decode("utf-8")
-    project_root = session.core.project_root
-    if project_root is None:
+    project_root = _resolve_validation_project_root(
+        session,
+        project_id=project_id,
+        client=client,
+    )
+    if project_root is None and _pathlike_value(session.abs_path) is not None:
         from ai_editor.commands.universal_file_edit.edit_draft_path_utils import (
             project_root_near,
         )
@@ -228,7 +287,7 @@ def _run_write_commit_ca(
     validation = phases.validate_draft_in_project_context(
         session.handler_id,
         source_code=source_text,
-        target_path=session.abs_path,
+        target_path=_validation_target_path(session, project_root),
         project_root=project_root,
     )
     if validation.temp_path is not None:

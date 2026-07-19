@@ -474,6 +474,198 @@ def _mutate_tree(tree: CSTTree, operation: TreeOperation) -> CSTTree:
     )
 
 
+def _statement_line_comment(node: cst.CSTNode) -> Optional[cst.Comment]:
+    if isinstance(node, _DEF_CLASS_CST_TYPES):
+        body = node.body
+        if isinstance(body, cst.IndentedBlock):
+            return body.header.comment
+    tw = getattr(node, "trailing_whitespace", None)
+    if tw is not None:
+        return tw.comment
+    return None
+
+
+def _with_statement_line_comment(
+    node: cst.BaseStatement,
+    comment: cst.Comment,
+) -> cst.BaseStatement:
+    if isinstance(node, _DEF_CLASS_CST_TYPES):
+        body = node.body
+        if isinstance(body, cst.IndentedBlock) and body.header.comment is None:
+            header = body.header
+            whitespace = header.whitespace
+            if not whitespace.value:
+                whitespace = cst.SimpleWhitespace(" ")
+            return cast(
+                cst.BaseStatement,
+                node.with_changes(
+                    body=body.with_changes(
+                        header=header.with_changes(
+                            whitespace=whitespace,
+                            comment=comment,
+                        )
+                    )
+                ),
+            )
+        return node
+    tw = getattr(node, "trailing_whitespace", None)
+    if tw is not None and tw.comment is None:
+        whitespace = tw.whitespace
+        if not whitespace.value:
+            whitespace = cst.SimpleWhitespace(" ")
+        return cast(
+            cst.BaseStatement,
+            node.with_changes(
+                trailing_whitespace=tw.with_changes(
+                    whitespace=whitespace,
+                    comment=comment,
+                )
+            ),
+        )
+    return node
+
+
+def _snapshot_declaration_trivia(tree: CSTTree) -> Dict[str, Dict[str, Any]]:
+    snapshot: Dict[str, Dict[str, Any]] = {}
+    for node_id, metadata in tree.metadata_map.items():
+        if metadata.type not in ("FunctionDef", "AsyncFunctionDef", "ClassDef"):
+            continue
+        node = tree.node_map.get(node_id)
+        if not isinstance(node, _DEF_CLASS_CST_TYPES):
+            continue
+        row: Dict[str, Any] = {
+            "leading_lines": tuple(getattr(node, "leading_lines", ())),
+            "decorator_leading": tuple(
+                tuple(getattr(decorator, "leading_lines", ()))
+                for decorator in getattr(node, "decorators", ())
+            ),
+        }
+        body = node.body
+        if isinstance(body, cst.IndentedBlock):
+            row["body_header"] = body.header
+            row["body_items"] = tuple(
+                (
+                    tuple(getattr(statement, "leading_lines", ())),
+                    _statement_line_comment(statement),
+                )
+                for statement in body.body
+            )
+        snapshot[metadata.stable_id] = row
+    return snapshot
+
+
+def _apply_original_comment_metadata_to_snapshot(
+    snapshot: Dict[str, Dict[str, Any]],
+    *,
+    sid_index: Dict[int, str],
+    sid_extra_meta: Optional[Dict[int, Dict[str, Any]]],
+) -> None:
+    if not sid_extra_meta:
+        return
+    stable_to_sid = _stable_map_from_index(sid_index)
+    for stable_id, row in snapshot.items():
+        sid = stable_to_sid.get(stable_id)
+        if sid is None:
+            continue
+        original_comment = sid_extra_meta.get(sid, {}).get(_ORIGINAL_COMMENT_META_KEY)
+        if not isinstance(original_comment, str) or not original_comment.startswith(
+            "#"
+        ):
+            continue
+        header = row.get("body_header")
+        if isinstance(header, cst.TrailingWhitespace) and header.comment is None:
+            whitespace = header.whitespace
+            if not whitespace.value:
+                whitespace = cst.SimpleWhitespace("  ")
+            row["body_header"] = header.with_changes(
+                whitespace=whitespace,
+                comment=cst.Comment(original_comment),
+            )
+
+
+def _restore_declaration_trivia(
+    tree: CSTTree, snapshot: Dict[str, Dict[str, Any]]
+) -> None:
+    targets: Dict[int, Dict[str, Any]] = {}
+    for node_id, metadata in tree.metadata_map.items():
+        row = snapshot.get(metadata.stable_id)
+        node = tree.node_map.get(node_id)
+        if row is not None and node is not None:
+            targets[id(node)] = row
+    if not targets:
+        return
+
+    class _TriviaRestorer(cst.CSTTransformer):
+        def on_leave(
+            self, original_node: cst.CSTNode, updated_node: cst.CSTNode
+        ) -> cst.CSTNode:
+            row = targets.get(id(original_node))
+            if row is None:
+                return updated_node
+            changes: Dict[str, Any] = {}
+            if hasattr(updated_node, "leading_lines") and not getattr(
+                updated_node, "leading_lines", ()
+            ):
+                changes["leading_lines"] = row["leading_lines"]
+            if isinstance(updated_node, _DEF_CLASS_CST_TYPES):
+                decorators = list(updated_node.decorators)
+                for index, leading in enumerate(row["decorator_leading"]):
+                    if index < len(decorators) and not decorators[index].leading_lines:
+                        decorators[index] = decorators[index].with_changes(
+                            leading_lines=leading
+                        )
+                if decorators != list(updated_node.decorators):
+                    changes["decorators"] = decorators
+                body = updated_node.body
+                if isinstance(body, cst.IndentedBlock):
+                    old_header = row.get("body_header")
+                    if body.header.comment is None and old_header is not None:
+                        body = body.with_changes(header=old_header)
+                    old_items = row.get("body_items", ())
+                    body_items = list(body.body)
+                    for index, item in enumerate(body_items):
+                        if index >= len(old_items):
+                            break
+                        leading, comment = old_items[index]
+                        item_changes: Dict[str, Any] = {}
+                        if not item.leading_lines and leading:
+                            item_changes["leading_lines"] = leading
+                        updated_item = (
+                            item.with_changes(**item_changes) if item_changes else item
+                        )
+                        if (
+                            comment is not None
+                            and _statement_line_comment(updated_item) is None
+                        ):
+                            updated_item = _with_statement_line_comment(
+                                updated_item,
+                                comment,
+                            )
+                        if updated_item is not item:
+                            body_items[index] = updated_item
+                    if body_items != list(body.body):
+                        body = body.with_changes(body=body_items)
+                    if body != updated_node.body:
+                        changes["body"] = body
+            return updated_node.with_changes(**changes) if changes else updated_node
+
+    tree.module = tree.module.visit(_TriviaRestorer())
+
+
+def _operation_replaces_declaration(
+    tree: CSTTree,
+    operation: TreeOperation,
+) -> bool:
+    if operation.action is not TreeOperationType.REPLACE or not operation.node_id:
+        return False
+    meta = tree.metadata_map.get(operation.node_id)
+    return meta is not None and meta.type in (
+        "FunctionDef",
+        "AsyncFunctionDef",
+        "ClassDef",
+    )
+
+
 def _stable_map_from_index(sid_index: Dict[int, str]) -> Dict[str, int]:
     return {stable: sid for sid, stable in sid_index.items()}
 
@@ -654,12 +846,26 @@ def _apply_and_emit(
     operation: TreeOperation,
     *,
     next_free: Optional[int] = None,
+    sid_extra_meta: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> str:
+    declaration_trivia = (
+        _snapshot_declaration_trivia(tree)
+        if _operation_replaces_declaration(tree, operation)
+        else {}
+    )
+    if declaration_trivia:
+        _apply_original_comment_metadata_to_snapshot(
+            declaration_trivia,
+            sid_index=sid_index,
+            sid_extra_meta=sid_extra_meta,
+        )
     tree = _mutate_tree(tree, operation)
+    if declaration_trivia:
+        _restore_declaration_trivia(tree, declaration_trivia)
     stable_to_sid = _stable_map_from_index(sid_index)
     if next_free is not None:
         stable_to_sid = _assign_new_stable_ids(tree, stable_to_sid, next_free)
-    return _emit_marked(tree, stable_to_sid)
+    return _emit_marked(tree, stable_to_sid, sid_extra_meta=sid_extra_meta)
 
 
 def _resolve_addressable_parent_short_id(
@@ -903,11 +1109,12 @@ class PythonHandler(FormatHandler):
     def op_replace(self, marked_text: str, short_id: NodeId, new_content: str) -> str:
         self._enforce_short_id_edit_gate()
         tree, sid_index = _load_marked_tree(marked_text)
+        sid_extra_meta = _collect_sid_extra_meta(marked_text)
         node_id = _require_node_id(tree, short_id, sid_index)
         op = TreeOperation(
             action=TreeOperationType.REPLACE, node_id=node_id, code=new_content
         )
-        return _apply_and_emit(tree, sid_index, op)
+        return _apply_and_emit(tree, sid_index, op, sid_extra_meta=sid_extra_meta)
 
     def extract_move_payload(self, marked_text: str, short_id: NodeId) -> str:
         self._enforce_short_id_edit_gate()
