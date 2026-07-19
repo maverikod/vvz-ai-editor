@@ -31,12 +31,11 @@ from ai_editor.commands.universal_file_edit.session import (
 )
 from ai_editor.commands.universal_file_edit.write_compare import (
     CompareResult,
+    PreviewDiffStatus,
     compare_session_to_origin,
+    failure_preview_diff,
 )
-from ai_editor.core.file_validation.pre_write_pipeline import (
-    validate_before_promote,
-    validation_error_result,
-)
+from ai_editor.core.file_validation.pre_write_pipeline import validation_error_result
 from ai_editor.core.host_filesystem import (
     HostFileOperationError,
     guard_host_file_operation,
@@ -49,6 +48,55 @@ from ai_editor.core.file_handlers.diff_support import unified_diff_text
 from . import write_command_phases as phases
 
 logger = logging.getLogger(__name__)
+
+
+_TEMP_VALIDATION_PATH_MARKERS = (
+    ".ai_editor_validation_",
+    ".ai_editor_write_",
+    "temp copy",
+    "temporary copy",
+)
+
+
+def _is_false_temp_copy_import_diagnostic(message: str) -> bool:
+    normalized = message.lower()
+    return (
+        "import-not-found" in normalized
+        and any(marker in normalized for marker in _TEMP_VALIDATION_PATH_MARKERS)
+    )
+
+
+def _is_unavailable_quality_tool(result: Any) -> bool:
+    return not result.errors and str(result.error_message or "").lower() in {
+        "flake8 not installed",
+        "mypy not installed",
+    }
+
+
+def _validation_failure_is_non_blocking(validation: Any) -> bool:
+    failures: list[Any] = []
+    for result in validation.quality_results.values():
+        if not result.success:
+            failures.append(result)
+    for result in validation.handler_results.values():
+        if not result.success:
+            failures.append(result)
+
+    if not failures:
+        return False
+
+    for result in failures:
+        if _is_unavailable_quality_tool(result):
+            continue
+        diagnostics = [
+            str(item) for item in (result.errors or [result.error_message]) if item
+        ]
+        if diagnostics and all(
+            _is_false_temp_copy_import_diagnostic(item) for item in diagnostics
+        ):
+            continue
+        return False
+    return True
 
 
 def _run_write_preview(
@@ -98,6 +146,10 @@ def _commit_response_data(
         "uploaded": uploaded,
         "has_changes": comparison.result != CompareResult.EQUAL,
         "diff": diff,
+        "preview_diff": {
+            **comparison.preview_diff.as_dict(),
+            "applied": uploaded and comparison.result != CompareResult.EQUAL,
+        },
         "session_id": ca_session_id,
         "project_id": project_id,
         "file_path": session.file_path,
@@ -123,7 +175,10 @@ def _run_write_commit_ca(
     verify_after_upload: bool = False,
 ) -> SuccessResult | ErrorResult:
     try:
-        comparison = compare_session_to_origin(session, format_python=format_python)
+        comparison = compare_session_to_origin(
+            session,
+            format_python=format_python,
+        )
     except ValueError as exc:
         return error_result_from_make_error(make_error(WRITE_FAILED, str(exc)))
     # R3: a new file (create=true, never committed) is not yet on CA, so the
@@ -143,7 +198,14 @@ def _run_write_commit_ca(
             return ErrorResult(
                 message=str(exc),
                 code=cast(Any, "UPSTREAM_LOCK_FAILED"),
-                details={"upstream_error": str(exc)},
+                details={
+                    "upstream_error": str(exc),
+                    "preview_diff": failure_preview_diff(
+                        PreviewDiffStatus.EDIT_FAILURE,
+                        diagnostics=[str(exc)],
+                        comparison=comparison,
+                    ).as_dict(),
+                },
             )
         except Exception as exc:
             logger.error(
@@ -152,7 +214,14 @@ def _run_write_commit_ca(
             return ErrorResult(
                 message=str(exc),
                 code=cast(Any, "UPSTREAM_LOCK_FAILED"),
-                details={"upstream_error": str(exc)},
+                details={
+                    "upstream_error": str(exc),
+                    "preview_diff": failure_preview_diff(
+                        PreviewDiffStatus.EDIT_FAILURE,
+                        diagnostics=[str(exc)],
+                        comparison=comparison,
+                    ).as_dict(),
+                },
             )
         session.modified = False
         return SuccessResult(
@@ -179,7 +248,7 @@ def _run_write_commit_ca(
             project_root = project_root_near(session.abs_path)
         except ValueError:
             project_root = None
-    validation = validate_before_promote(
+    validation = phases.validate_draft_in_project_context(
         session.handler_id,
         source_code=source_text,
         target_path=session.abs_path,
@@ -187,12 +256,21 @@ def _run_write_commit_ca(
     )
     if validation.temp_path is not None:
         validation.temp_path.unlink(missing_ok=True)
-    if not validation.success:
-        return validation_error_result(
+    if not validation.success and not _validation_failure_is_non_blocking(validation):
+        result = validation_error_result(
             error_message=validation.error_message or "Validation failed",
             quality_results=validation.quality_results,
             handler_results=validation.handler_results,
         )
+        result.details = dict(result.details or {})
+        result.details["preview_diff"] = failure_preview_diff(
+            PreviewDiffStatus.VALIDATION_FAILURE,
+            diagnostics=[
+                str(validation.error_message or "Validation failed"),
+            ],
+            comparison=comparison,
+        ).as_dict()
+        return result
 
     try:
         if is_new_file:
@@ -219,14 +297,28 @@ def _run_write_commit_ca(
         return ErrorResult(
             message=str(exc),
             code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
-            details={"upstream_error": str(exc)},
+            details={
+                "upstream_error": str(exc),
+                "preview_diff": failure_preview_diff(
+                    PreviewDiffStatus.EDIT_FAILURE,
+                    diagnostics=[str(exc)],
+                    comparison=comparison,
+                ).as_dict(),
+            },
         )
     except Exception as exc:
         logger.error("universal_file_write upload failed: %s", exc, exc_info=True)
         return ErrorResult(
             message=str(exc),
             code=cast(Any, "UPSTREAM_UPLOAD_FAILED"),
-            details={"upstream_error": str(exc)},
+            details={
+                "upstream_error": str(exc),
+                "preview_diff": failure_preview_diff(
+                    PreviewDiffStatus.EDIT_FAILURE,
+                    diagnostics=[str(exc)],
+                    comparison=comparison,
+                ).as_dict(),
+            },
         )
 
     # The file now exists on CA under a session lock; subsequent commits use the
@@ -244,7 +336,14 @@ def _run_write_commit_ca(
         return ErrorResult(
             message=str(exc),
             code=cast(Any, exc.code or "HOST_FILE_OPERATION_ERROR"),
-            details=exc.details,
+            details={
+                **(exc.details or {}),
+                "preview_diff": failure_preview_diff(
+                    PreviewDiffStatus.EDIT_FAILURE,
+                    diagnostics=[str(exc)],
+                    comparison=comparison,
+                ).as_dict(),
+            },
         )
     session.modified = False
     return SuccessResult(

@@ -15,6 +15,7 @@ from ai_editor.commands.universal_file_edit.format_group import (
 from ai_editor.commands.universal_file_edit.session import EditSession
 from ai_editor.commands.universal_file_edit.write_compare import (
     CompareResult,
+    PreviewDiffStatus,
     compare_session_to_origin,
 )
 
@@ -57,6 +58,11 @@ def test_compare_text_format_equal(tmp_path: Path) -> None:
     assert comparison.result == CompareResult.EQUAL
     assert comparison.origin_bytes == b"x = 1\n"
     assert comparison.exported_bytes == b"x = 1\n"
+    assert comparison.preview_diff is not None
+    assert comparison.preview_diff.status == PreviewDiffStatus.NO_OP
+    assert comparison.preview_diff.diff == ""
+    assert comparison.preview_diff.content_changed is False
+    assert comparison.preview_diff.applied is False
 
 
 def test_compare_text_format_diff(tmp_path: Path) -> None:
@@ -75,6 +81,12 @@ def test_compare_text_format_diff(tmp_path: Path) -> None:
     assert comparison.result == CompareResult.DIFF
     assert comparison.origin_bytes == b"x = 1\n"
     assert comparison.exported_bytes == b"x = 2\n"
+    assert comparison.preview_diff is not None
+    assert comparison.preview_diff.status == PreviewDiffStatus.CHANGED
+    assert "-x = 1" in comparison.preview_diff.diff
+    assert "+x = 2" in comparison.preview_diff.diff
+    assert comparison.preview_diff.content_changed is True
+    assert comparison.preview_diff.applied is False
 
 
 def test_compare_text_format_empty_draft(tmp_path: Path) -> None:

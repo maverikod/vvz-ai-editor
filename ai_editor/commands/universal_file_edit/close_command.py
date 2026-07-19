@@ -211,10 +211,11 @@ class UniversalFileCloseCommand(BaseMCPCommand):
             )
         client = get_code_analysis_client()
 
-        # R5: handle unsaved edits before any cleanup. When the file is modified
-        # but not committed, either write it first (write_before_close=true) or
-        # refuse to close so the edits are not silently discarded.
-        if session.modified:
+        # R5: handle unsaved edits before cleanup. Non-tree-temp files either
+        # write first (write_before_close=true) or refuse to discard edits.
+        # Tree-temp sessions are preview-oriented: closing without a commit must
+        # discard the workspace draft so the external source remains unchanged.
+        if session.modified and session.format_group != FORMAT_TREE_TEMP:
             if not write_before_close:
                 return error_result_from_make_error(
                     make_error(

@@ -32,6 +32,9 @@ from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (
     apply_single_tree_temp_mutation,
     serialize_tree_temp_roots,
 )
+from ai_editor.commands.universal_file_edit.tree_temp_open_support import (
+    parse_source_bytes_to_roots,
+)
 from ai_editor.commands.universal_file_edit.insert_position import (
     coalesce_tree_temp_insert_position,
     parse_colon_position,
@@ -57,6 +60,7 @@ from ai_editor.core.yaml_tree.tree_builder import get_tree as yaml_get_tree
 
 _JSON_ID_KEY = "___id___"
 _JSON_VAL_KEY = "v"
+_TREE_TEMP_STRUCTURED_HANDLERS = frozenset({"json", "yaml", "ini", "toml"})
 
 
 def _require_integer_short_id(raw: Any, field_name: str) -> int:
@@ -149,6 +153,57 @@ def _serialize_insert_value(handler_id: str, value: Any) -> str:
         )
         return dumped
     raise ValueError(f"Unsupported handler for tree-temp: {handler_id!r}")
+
+
+def validate_tree_temp_operation(
+    mop: Dict[str, Any], handler_id: str | None = None
+) -> None:
+    """Validate the format-neutral shape of one structured edit operation.
+
+    The public contract covers structured configuration formats JSON, YAML,
+    INI, and TOML even when a concrete parser/serializer is supplied later.
+    Targets are nodes or JSON-pointer-like paths, while object keys are insert
+    metadata. Resolution against the current tree remains the apply phase's
+    responsibility.
+    """
+    if handler_id is not None and handler_id not in _TREE_TEMP_STRUCTURED_HANDLERS:
+        raise ValueError(f"Unsupported handler for tree-temp: {handler_id!r}")
+    action = str(mop.get("action") or mop.get("type") or "").strip().lower()
+    if action not in {"insert", "replace", "delete", "move"}:
+        raise ValueError(f"Unknown tree-temp action: {action!r}")
+
+    if action in {"replace", "delete", "move"}:
+        if not any(
+            mop.get(field) not in (None, "")
+            for field in (
+                "target_stable_id",
+                "target_node_id",
+                "node_id",
+                "node_ref",
+                "json_pointer",
+            )
+        ):
+            raise ValueError(f"{action} requires a structural target")
+
+    if action == "replace" and "value" not in mop and "content" not in mop:
+        raise ValueError("replace requires value")
+
+    if action == "insert":
+        if "value" not in mop:
+            raise ValueError("insert requires value")
+        key = mop.get("key")
+        if key is not None and (not isinstance(key, str) or not key):
+            raise ValueError("insert key must be a non-empty string")
+        if mop.get("before_key") is not None and mop.get("after_key") is not None:
+            raise ValueError("before_key and after_key are mutually exclusive")
+        if mop.get("before_json_pointer") is not None and mop.get(
+            "after_json_pointer"
+        ) is not None:
+            raise ValueError(
+                "before_json_pointer and after_json_pointer are mutually exclusive"
+            )
+        if mop.get("before_node_id") is not None and mop.get("after_node_id") is not None:
+            raise ValueError("before_node_id and after_node_id are mutually exclusive")
 
 
 def _resolve_optional_anchor_short_id(
@@ -413,6 +468,7 @@ def _apply_valid_tree_temp_mutations(
 ) -> SuccessResult | ErrorResult:
     try:
         for op in operations:
+            validate_tree_temp_operation(op, session.handler_id)
             for sub in _expand_list_pointer_replace(
                 session, _normalized_json_modify_operation(op)
             ):
@@ -539,6 +595,7 @@ def _run_legacy_tree_temp_apply(
     try:
         if session.handler_id == "json":
             for op in operations:
+                validate_tree_temp_operation(op, session.handler_id)
                 mop = _normalized_json_modify_operation(op)
                 json_modify_tree(tid, [mop])
                 jt = json_get_registered(tid)
@@ -555,6 +612,7 @@ def _run_legacy_tree_temp_apply(
                 )
         elif session.handler_id == "yaml":
             for op in operations:
+                validate_tree_temp_operation(op, session.handler_id)
                 mop = _normalized_json_modify_operation(op)
                 _modify_yaml_registered_one(tid, mop)
                 yt = yaml_get_tree(tid)
@@ -603,10 +661,17 @@ def apply_tree_temp_mutations(
             "INVALID_SESSION",
             None,
         )
-    if session.tree_temp_roots is None:
+    config_handler = session.handler_id in {"ini", "toml"}
+    if session.tree_temp_roots is None and not config_handler:
         return _run_legacy_tree_temp_apply(session, operations)
 
-    if session.core.tree_validity == SessionTreeValidity.VALID:
+    if session.tree_temp_roots is None:
+        session.tree_temp_roots = parse_source_bytes_to_roots(
+            session.handler_id,
+            session.draft_path.read_bytes(),
+        )
+
+    if session.core.tree_validity == SessionTreeValidity.VALID and not config_handler:
         try:
             root_dir = session.core.project_root or _project_root_near(session.draft_path)
             bm = BackupManager(root_dir=root_dir)
@@ -651,6 +716,7 @@ def apply_tree_temp_mutations(
 
     try:
         for op in operations:
+            validate_tree_temp_operation(op, session.handler_id)
             mop = _normalized_json_modify_operation(op)
             try:
                 apply_single_tree_temp_mutation(roots, session.handler_id, mop)

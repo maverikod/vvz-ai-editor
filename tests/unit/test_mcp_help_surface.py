@@ -20,6 +20,7 @@ EXPECTED: frozenset[str] = frozenset(
         "universal_file_close",
         "universal_file_preview",
         "universal_file_search",
+        "universal_file_node_at_line",
         "health",
     }
 )
@@ -79,8 +80,8 @@ def test_removed_command_not_registered(name: str) -> None:
     ), f"Forbidden command {name!r} still registered on MCP help surface"
 
 
-def test_help_surface_exactly_eight_commands() -> None:
-    """C-016: registry exposes thin workflow + search + info + health, no extras."""
+def test_help_surface_exactly_nine_commands() -> None:
+    """C-016: registry exposes thin workflow + navigation + info + health, no extras."""
     names = _registered_command_names()
     assert names == EXPECTED, (
         "Editor MCP help surface must list only universal_file_* workflow commands "

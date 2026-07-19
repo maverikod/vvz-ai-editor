@@ -27,6 +27,7 @@ from .errors import (
 )
 from .handlers.json_handler import JsonFileHandler
 from .handlers.yaml_handler import YamlFileHandler
+from .handlers.tree_temp_handler import TreeTempFileHandler
 from .models import Block, NavigationResult, Node, NodeKind
 from .selector import apply_selector
 from .session import resolve_session
@@ -109,15 +110,17 @@ def navigate(
     uuid_sidecar = looks_like_sidecar_stable_id(node_ref_raw)
     tree_temp_sidecar_preview = (
         roots_for_tree_preview is not None
-        and uuid_sidecar
-        and isinstance(handler, (JsonFileHandler, YamlFileHandler))
+        and isinstance(
+            handler, (JsonFileHandler, YamlFileHandler, TreeTempFileHandler)
+        )
+        and (uuid_sidecar or isinstance(handler, TreeTempFileHandler))
     )
     if tree_temp_sidecar_preview:
         try:
             trimmed_ref = (
                 node_ref_raw.strip()
                 if isinstance(node_ref_raw, str)
-                else str(node_ref_raw)
+                else ""
             )
             assert roots_for_tree_preview is not None
             focus_spec = resolve_tree_temp_preview_focus(

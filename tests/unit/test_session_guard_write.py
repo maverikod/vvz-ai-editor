@@ -105,7 +105,7 @@ async def test_write_attempted_when_session_not_found_terminating() -> None:
     assert isinstance(result, SuccessResult)
     assert result.data["unchanged"] is True
     mock_get.assert_called_once()
-    mock_compare.assert_called_once_with(session)
+    mock_compare.assert_called_once_with(session, format_python=False)
 
 
 @pytest.mark.asyncio
@@ -118,30 +118,32 @@ async def test_write_proceeds_on_allow_terminating_decision() -> None:
     ) as mock_guard_cls:
         mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW_TERMINATING
         with patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=MagicMock(),
+        ), patch(
             "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
             return_value=session,
-        ) as mock_get:
-            with patch(
-                "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
-                return_value=WriteComparison(
-                    result=CompareResult.EQUAL,
-                    origin_bytes=b"a",
-                    exported_bytes=b"a",
-                ),
-            ) as mock_compare:
-                result = await cmd.execute(
-                    project_id="p1",
-                    session_id="sess-1",
-                    write_mode="commit",
-                )
-                assert isinstance(result, SuccessResult)
-                assert result.data["unchanged"] is True
-                mock_guard_cls.return_value.check.assert_called_once_with(
-                    OperationKind.WRITE,
-                    "sess-1",
-                )
-                mock_get.assert_called_once()
-                mock_compare.assert_called_once_with(session)
+        ) as mock_get, patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+            return_value=WriteComparison(
+                result=CompareResult.EQUAL,
+                origin_bytes=b"a",
+                exported_bytes=b"a",
+            ),
+        ) as mock_compare:
+            result = await cmd.execute(
+                project_id="p1",
+                session_id="sess-1",
+                write_mode="commit",
+            )
+            assert isinstance(result, SuccessResult)
+            assert result.data["unchanged"] is True
+            mock_guard_cls.return_value.check.assert_called_once_with(
+                OperationKind.WRITE,
+                "sess-1",
+            )
+            mock_get.assert_called_once()
+            mock_compare.assert_called_once_with(session, format_python=False)
 
 
 def test_guard_write_not_found_is_allow_terminating() -> None:

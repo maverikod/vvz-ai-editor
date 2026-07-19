@@ -359,6 +359,7 @@ def test_resolve_config_cwd_fallback(
     monkeypatch.delenv("CASMGR_CONFIG", raising=False)
     missing = tmp_path / "nope.json"
     monkeypatch.setattr(server_manager_cli, "_SYSTEM_DEFAULT_CONFIG", missing)
+    monkeypatch.setattr(server_manager_cli, "_LEGACY_SYSTEM_DEFAULT_CONFIG", missing)
     cwd_cfg = tmp_path / "config.json"
     cwd_cfg.write_text("{}", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
@@ -376,6 +377,11 @@ def test_resolve_config_none_when_missing(
         server_manager_cli,
         "_SYSTEM_DEFAULT_CONFIG",
         tmp_path / "missing_system.json",
+    )
+    monkeypatch.setattr(
+        server_manager_cli,
+        "_LEGACY_SYSTEM_DEFAULT_CONFIG",
+        tmp_path / "missing_legacy_system.json",
     )
     monkeypatch.chdir(tmp_path)
     assert server_manager_cli._resolve_config_path(None) is None

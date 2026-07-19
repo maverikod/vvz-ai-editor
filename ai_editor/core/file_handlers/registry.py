@@ -13,9 +13,18 @@ from typing import Any, Dict, FrozenSet, List
 HANDLER_TEXT = "text"
 HANDLER_JSON = "json"
 HANDLER_YAML = "yaml"
+HANDLER_INI = "ini"
+HANDLER_TOML = "toml"
 HANDLER_PYTHON = "python"
 
-HANDLER_IDS = (HANDLER_TEXT, HANDLER_JSON, HANDLER_YAML, HANDLER_PYTHON)
+HANDLER_IDS = (
+    HANDLER_TEXT,
+    HANDLER_JSON,
+    HANDLER_YAML,
+    HANDLER_INI,
+    HANDLER_TOML,
+    HANDLER_PYTHON,
+)
 
 OPERATIONS = frozenset({"read", "save", "replace", "delete"})
 
@@ -30,6 +39,9 @@ _DEFAULT_SUFFIX_MAP: Dict[str, str] = {
     ".json": HANDLER_JSON,
     ".yaml": HANDLER_YAML,
     ".yml": HANDLER_YAML,
+    ".ini": HANDLER_INI,
+    ".cfg": HANDLER_INI,
+    ".toml": HANDLER_TOML,
     ".py": HANDLER_PYTHON,
     ".pyi": HANDLER_PYTHON,
     ".pyw": HANDLER_PYTHON,
@@ -39,6 +51,8 @@ _HANDLER_SUPPORTED_OPS: Dict[str, FrozenSet[str]] = {
     HANDLER_TEXT: OPERATIONS,
     HANDLER_JSON: OPERATIONS,
     HANDLER_YAML: OPERATIONS,
+    HANDLER_INI: OPERATIONS,
+    HANDLER_TOML: OPERATIONS,
     HANDLER_PYTHON: OPERATIONS,
 }
 
@@ -179,6 +193,20 @@ def get_handler_schema(handler_id: str, operation: str) -> Dict[str, Any]:
             "properties": {
                 **base_common["properties"],
                 "yaml_path": {"type": "string"},
+                "content": {"type": "string"},
+                "value": {},
+            },
+        }
+
+    if handler_id in (HANDLER_INI, HANDLER_TOML):
+        return {
+            **base_common,
+            "description": (
+                f"{handler_id.upper()}: structured key-based configuration edits."
+            ),
+            "properties": {
+                **base_common["properties"],
+                "json_pointer": {"type": "string"},
                 "content": {"type": "string"},
                 "value": {},
             },

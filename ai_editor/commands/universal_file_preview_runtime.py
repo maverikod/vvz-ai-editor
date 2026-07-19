@@ -38,6 +38,9 @@ from ai_editor.commands.universal_file_preview.handlers.json_handler import (
 from ai_editor.commands.universal_file_preview.handlers.yaml_handler import (
     YamlFileHandler,
 )
+from ai_editor.commands.universal_file_preview.handlers.tree_temp_handler import (
+    TreeTempFileHandler,
+)
 from ai_editor.commands.universal_file_preview.navigation import navigate
 from ai_editor.commands.universal_file_preview.preview_addressing import (
     check_preview_addressing,
@@ -102,17 +105,23 @@ def _run_preview_on_abs_path(
 
         nav_kwargs = dict(kwargs)
         nr_probe = kwargs.get("node_ref")
-        if isinstance(handler, (JsonFileHandler, YamlFileHandler)) and (
+        if isinstance(handler, (JsonFileHandler, YamlFileHandler, TreeTempFileHandler)) and (
             looks_like_sidecar_stable_id(
                 nr_probe if isinstance(nr_probe, str) else None
             )
+            or isinstance(handler, TreeTempFileHandler)
         ):
             tt_roots_payload = None
             if edit_session is not None and not edit_session.is_invalid:
                 tt_roots_payload = edit_session.tree_temp_roots
             if tt_roots_payload is None:
                 source_abs_fp = abs_file_path.resolve()
-                hid = "json" if isinstance(handler, JsonFileHandler) else "yaml"
+                if isinstance(handler, JsonFileHandler):
+                    hid = "json"
+                elif isinstance(handler, YamlFileHandler):
+                    hid = "yaml"
+                else:
+                    hid = handler.handler_id
                 try:
                     tt_roots_payload = acquire_tree_temp_for_open(
                         project_root=abs_file_path.parent.resolve(),

@@ -74,6 +74,11 @@ def _yaml_key_str(key: Any) -> str:
     return str(key)
 
 
+def _new_stable_id() -> str:
+    """Create parser-owned identity; YAML payload fields never supply IDs."""
+    return str(uuid.uuid4())
+
+
 def _tree_type_for_value(val: Any) -> str:
     if val is None:
         return "null"
@@ -107,14 +112,14 @@ def _build_scalar(val: Any) -> TreeNode:
         TreeNodeType,
         t,
     )
-    return TreeNode(stable_id=str(uuid.uuid4()), type=nt, value=pyval, children=None)
+    return TreeNode(stable_id=_new_stable_id(), type=nt, value=pyval, children=None)
 
 
 def _build_object(data: Union[CommentedMap, Dict[Any, Any]]) -> TreeNode:
     children: List[TreeNode] = []
     doc_top = _doc_pre_comment(data)
     obj = TreeNode(
-        stable_id=str(uuid.uuid4()),
+        stable_id=_new_stable_id(),
         type="object",
         value=None,
         children=children,
@@ -159,7 +164,7 @@ def _build_array_container(data: Union[CommentedSeq, List[Any]]) -> TreeNode:
     ch: List[TreeNode] = []
     doc_top = _doc_pre_comment(data)
     arr = TreeNode(
-        stable_id=str(uuid.uuid4()),
+        stable_id=_new_stable_id(),
         type="array",
         value=None,
         children=ch,

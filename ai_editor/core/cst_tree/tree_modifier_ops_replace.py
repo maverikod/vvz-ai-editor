@@ -27,6 +27,9 @@ from .tree_modifier_ops_parse import (
     parse_code_snippet_for_def_replace,
     parse_param_snippet,
 )
+from ai_editor.commands.universal_file_edit.errors import (
+    public_edit_operation_remediation,
+)
 
 
 def replace_node(
@@ -239,17 +242,21 @@ def replace_node(
             suggestion = (
                 " Hint: Replacing SimpleStatementLine with multiple statements requires "
                 "the node to be in a Module or IndentedBlock body. "
-                "Try using replace_range operation or replace the parent block instead."
+                f"{public_edit_operation_remediation()} "
+                "Alternatively, replace the parent block with universal_file_edit."
             )
         elif node_type in ("Import", "ImportFrom"):
             suggestion = (
-                " Hint: Try query_cst with replace_with for import statements, "
-                "or replace the containing SimpleStatementLine."
+                " Hint: Use "
+                f"{public_edit_operation_remediation()} to replace the containing "
+                "SimpleStatementLine."
             )
         else:
             suggestion = (
                 " Hint: Replace only works for direct body statements (e.g. in Module or "
-                "IndentedBlock). For inner nodes use replace_range or replace the parent."
+                "IndentedBlock). For inner nodes use "
+                f"{public_edit_operation_remediation()} or replace the parent with "
+                "universal_file_edit."
             )
         raise ValueError(
             f"Node {node_id} was not replaced. "
@@ -392,7 +399,7 @@ def replace_range(
             )
         hint = (
             " Hint: Both nodes must be consecutive statements in the same parent "
-            "block (Module or IndentedBlock body). Use replace for single nodes."
+            f"block (Module or IndentedBlock body). {public_edit_operation_remediation()}"
         )
         raise ValueError(
             f"Range from {start_node_id} to {end_node_id} was not replaced. "

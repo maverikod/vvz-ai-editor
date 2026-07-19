@@ -24,6 +24,7 @@ from ai_editor.commands.universal_file_edit.write_compare import (
     WriteComparison,
 )
 from ai_editor.core.file_validation.pre_write_pipeline import PreWriteValidationOutcome
+from ai_editor.core.file_validation.results import ValidationResult
 from ai_editor.core.upstream.session_guard import GuardDecision
 
 
@@ -57,6 +58,102 @@ def _validation_ok() -> PreWriteValidationOutcome:
 
 
 @pytest.mark.asyncio
+async def test_commit_ignores_only_temp_copy_import_not_found_diagnostic() -> None:
+    cmd = UniversalFileWriteCommand()
+    session = _mock_session()
+    comparison = _diff_comparison()
+    client = MagicMock()
+    client.upload_session_file_content.return_value = b"x = 2\n"
+    validation = PreWriteValidationOutcome(
+        success=False,
+        error_message="type_checker: Found 1 mypy errors",
+        quality_results={
+            "type_checker": ValidationResult(
+                success=False,
+                error_message="import-not-found in .ai_editor_validation_123/.ai_editor_write_x.py",
+                errors=[
+                    ".ai_editor_validation_123/.ai_editor_write_x.py:1: error: import-not-found"
+                ],
+            )
+        },
+    )
+
+    with patch(
+        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+        return_value=client,
+    ), patch(
+        "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+    ) as mock_guard_cls, patch(
+        "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+        return_value=session,
+    ), patch(
+        "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+        return_value=comparison,
+    ), patch(
+        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+        return_value=validation,
+    ):
+        mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
+        result = await cmd.execute(
+            project_id="proj-1", session_id="sess-1", write_mode="commit"
+        )
+
+    assert isinstance(result, SuccessResult)
+    assert result.data["uploaded"] is True
+    client.upload_session_file_content.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_commit_keeps_genuine_validation_diagnostic_as_validation_error() -> None:
+    cmd = UniversalFileWriteCommand()
+    session = _mock_session()
+    comparison = _diff_comparison()
+    client = MagicMock()
+    validation = PreWriteValidationOutcome(
+        success=False,
+        error_message="type_checker: incompatible return value",
+        quality_results={
+            "type_checker": ValidationResult(
+                success=False,
+                error_message="Found 1 mypy errors",
+                errors=["src/foo.py:4: error: Incompatible return value"],
+            )
+        },
+    )
+
+    with patch(
+        "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+        return_value=client,
+    ), patch(
+        "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+    ) as mock_guard_cls, patch(
+        "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+        return_value=session,
+    ), patch(
+        "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+        return_value=comparison,
+    ), patch(
+        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+        return_value=validation,
+    ):
+        mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
+        result = await cmd.execute(
+            project_id="proj-1", session_id="sess-1", write_mode="commit"
+        )
+
+    assert isinstance(result, ErrorResult)
+    assert result.code == "VALIDATION_ERROR"
+    assert result.details is not None
+    assert result.details["preview_diff"]["status"] == "validation_failure"
+    assert result.details["preview_diff"]["content_changed"] is True
+    assert result.details["preview_diff"]["applied"] is False
+    assert result.details["preview_diff"]["diagnostics"] == [
+        "type_checker: incompatible return value"
+    ]
+    client.upload_session_file_content.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_upload_success_writes_origin_snapshot() -> None:
     cmd = UniversalFileWriteCommand()
     session = _mock_session()
@@ -82,7 +179,7 @@ async def test_upload_success_writes_origin_snapshot() -> None:
                     return_value=comparison,
                 ):
                     with patch(
-                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
                         return_value=_validation_ok(),
                     ):
                         result = await cmd.execute(
@@ -94,6 +191,9 @@ async def test_upload_success_writes_origin_snapshot() -> None:
     assert isinstance(result, SuccessResult)
     assert result.data["unchanged"] is False
     assert result.data["uploaded"] is True
+    assert result.data["preview_diff"]["status"] == "changed"
+    assert result.data["preview_diff"]["content_changed"] is True
+    assert result.data["preview_diff"]["applied"] is True
     client.upload_session_file_content.assert_called_once_with(
         session_id="sess-1",
         project_id="proj-1",
@@ -135,7 +235,7 @@ async def test_upload_success_origin_snapshot_permission_error_is_structured() -
                     return_value=comparison,
                 ):
                     with patch(
-                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
                         return_value=_validation_ok(),
                     ):
                         result = await cmd.execute(
@@ -180,7 +280,7 @@ async def test_upload_runtime_error_preserves_origin() -> None:
                     return_value=comparison,
                 ):
                     with patch(
-                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
                         return_value=_validation_ok(),
                     ):
                         result = await cmd.execute(
@@ -192,7 +292,12 @@ async def test_upload_runtime_error_preserves_origin() -> None:
     assert isinstance(result, ErrorResult)
     assert result.code == "UPSTREAM_UPLOAD_FAILED"
     assert result.message == "upstream timeout"
-    assert result.details == {"upstream_error": "upstream timeout"}
+    assert result.details is not None
+    assert result.details["upstream_error"] == "upstream timeout"
+    assert result.details["preview_diff"]["status"] == "edit_failure"
+    assert result.details["preview_diff"]["content_changed"] is True
+    assert result.details["preview_diff"]["applied"] is False
+    assert result.details["preview_diff"]["diagnostics"] == ["upstream timeout"]
     session.abs_path.write_bytes.assert_not_called()
     client.upload_session_file_content.assert_called_once()
 
@@ -222,7 +327,7 @@ async def test_upload_generic_exception_preserves_origin() -> None:
                     return_value=comparison,
                 ):
                     with patch(
-                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
                         return_value=_validation_ok(),
                     ):
                         result = await cmd.execute(
@@ -234,7 +339,11 @@ async def test_upload_generic_exception_preserves_origin() -> None:
     assert isinstance(result, ErrorResult)
     assert result.code == "UPSTREAM_UPLOAD_FAILED"
     assert result.message == "bad payload"
-    assert result.details == {"upstream_error": "bad payload"}
+    assert result.details is not None
+    assert result.details["upstream_error"] == "bad payload"
+    assert result.details["preview_diff"]["status"] == "edit_failure"
+    assert result.details["preview_diff"]["applied"] is False
+    assert result.details["preview_diff"]["diagnostics"] == ["bad payload"]
     session.abs_path.write_bytes.assert_not_called()
     client.upload_session_file_content.assert_called_once()
 
@@ -322,12 +431,21 @@ async def test_commit_locally_rejects_incomplete_docstrings(tmp_path: Path) -> N
                     "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
-                    cmd = UniversalFileWriteCommand()
-                    result = await cmd.execute(
-                        project_id="proj-1",
-                        session_id="sess-py",
-                        write_mode="commit",
-                    )
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+                        return_value=PreWriteValidationOutcome(
+                            success=False,
+                            error_message="docstrings: missing return value",
+                        ),
+                    ) as validate_mock:
+                        cmd = UniversalFileWriteCommand()
+                        result = await cmd.execute(
+                            project_id="proj-1",
+                            session_id="sess-py",
+                            write_mode="commit",
+                        )
+
+        validate_mock.assert_called_once()
 
     assert isinstance(result, ErrorResult), f"Expected ErrorResult, got: {result}"
     assert result.code == "VALIDATION_ERROR", (
@@ -366,12 +484,18 @@ async def test_commit_succeeds_for_complete_docstrings(tmp_path: Path) -> None:
                     "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
                     return_value=comparison,
                 ):
-                    cmd = UniversalFileWriteCommand()
-                    result = await cmd.execute(
-                        project_id="proj-1",
-                        session_id="sess-py",
-                        write_mode="commit",
-                    )
+                    with patch(
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+                        return_value=_validation_ok(),
+                    ) as validate_mock:
+                        cmd = UniversalFileWriteCommand()
+                        result = await cmd.execute(
+                            project_id="proj-1",
+                            session_id="sess-py",
+                            write_mode="commit",
+                        )
+
+    validate_mock.assert_called_once()
 
     assert isinstance(result, SuccessResult), (
         f"Expected SuccessResult, got: {result!r}. "

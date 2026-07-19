@@ -35,6 +35,18 @@ logger = logging.getLogger(__name__)
 
 LINE_NOT_FOUND = "LINE_NOT_FOUND"
 
+_NON_ADDRESSABLE_NODE_TYPES = frozenset(
+    {
+        "Comment",
+        "EmptyLine",
+        "Newline",
+        "ParenthesizedWhitespace",
+        "SimpleWhitespace",
+        "TrailingWhitespace",
+    }
+)
+_BRANCH_HEADER_NODE_TYPES = frozenset({"Try", "ExceptHandler", "Else", "Finally"})
+
 
 def _span_sort_key(meta: TreeNodeMetadata) -> tuple[int, int]:
     return (meta.end_line - meta.start_line, -meta.start_line)
@@ -47,9 +59,18 @@ def _nodes_containing_line(tree_id: str, line: int) -> List[TreeNodeMetadata]:
     matches = [
         meta
         for meta in tree.metadata_map.values()
-        if meta.start_line <= line <= meta.end_line
+        if meta.type not in _NON_ADDRESSABLE_NODE_TYPES
+        and meta.start_line <= line <= meta.end_line
     ]
-    return sorted(matches, key=_span_sort_key)
+    return sorted(
+        matches,
+        key=lambda meta: (
+            0
+            if meta.start_line == line and meta.type in _BRANCH_HEADER_NODE_TYPES
+            else 1,
+            *_span_sort_key(meta),
+        ),
+    )
 
 
 def _node_payload(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -36,9 +37,8 @@ def test_repo_config_matches_bundled_template() -> None:
 
 
 def test_container_template_version_matches_package() -> None:
-    from importlib.metadata import version
-
-    pkg_ver = version("ai-editor")
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    pkg_ver = project["project"]["version"]
     data = load_bundled_template()
     assert data["server_presentation"]["version"] == pkg_ver
     metadata = data["registration"]["metadata"]

@@ -309,6 +309,8 @@ class TestReplaceFailureDiagnostics:
         assert "Parent type:" in msg or "parent type" in msg.lower()
         assert "start_line" in msg and "end_line" in msg
         assert "Hint:" in msg or "replace" in msg.lower()
+        assert "universal_file_edit" in msg
+        assert "replace_range" not in msg
 
     def test_replace_success_unchanged(self, tree_with_import):
         """Successful replace still returns same success shape (regression)."""
@@ -348,6 +350,8 @@ class TestReplaceRangeFailureDiagnostics:
         assert "Parent type:" in msg or "parent type" in msg.lower()
         assert "line" in msg.lower()
         assert "Hint:" in msg or "consecutive" in msg.lower()
+        assert "universal_file_edit" in msg
+        assert "replace_range" not in msg
 
 
 SOURCE_CLASS_BATCH_TWO_METHODS = '''

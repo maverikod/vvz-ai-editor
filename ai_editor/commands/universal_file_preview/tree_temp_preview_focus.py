@@ -117,6 +117,16 @@ def _synthetic_roots_container(roots: List[TreeNode]) -> TreeNode:
 
 
 def _root_view_focus(roots: List[TreeNode]) -> TreeTempPreviewFocus:
+    if len(roots) == 1 and roots[0].type in _CONTAINER_TYPES:
+        return TreeTempPreviewFocus(
+            container=roots[0],
+            effective_mode="root_view",
+            navigation_context={
+                "resolved_stable_id": None,
+                "effective_focus_stable_id": roots[0].stable_id,
+                "depth_hint": 0,
+            },
+        )
     wrap = _synthetic_roots_container(roots)
     return TreeTempPreviewFocus(
         container=wrap,

@@ -11,9 +11,12 @@ import asyncio
 import enum
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from ai_editor.core.exceptions import ValidationError
 
@@ -100,10 +103,123 @@ def _unwrap_command_result(response: Any) -> Any:
     return response
 
 
+def _queued_job_id(response: Any) -> Optional[str]:
+    """Return a queued job identifier from the known upstream envelope shapes."""
+    if not isinstance(response, dict):
+        return None
+    data = response.get("data")
+    candidates = (
+        response.get("job_id"),
+        response.get("jobId"),
+        data.get("job_id") if isinstance(data, dict) else None,
+        data.get("jobId") if isinstance(data, dict) else None,
+    )
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def _is_queued_response(response: Any) -> bool:
+    """Recognize queued envelopes without changing their downstream result."""
+    if not isinstance(response, dict):
+        return False
+    if str(response.get("mode") or "").strip().lower() == "queued":
+        return True
+    if response.get("queued") is True:
+        return True
+    return _queued_job_id(response) is not None
+
+
 class CaSessionStatus(str, enum.Enum):
     VALID = "valid"
     NOT_FOUND = "not_found"
     INVALID = "invalid"
+
+
+class EditOutcome(str, enum.Enum):
+    """Normalized outcome for a direct or queued upstream command."""
+
+    SUCCESS = "success"
+    NO_OP = "no_op"
+    VALIDATION_ERROR = "validation_error"
+    EDIT_ERROR = "edit_error"
+    TIMEOUT_UNKNOWN = "timeout_unknown"
+
+
+@dataclass(frozen=True)
+class UpstreamCommandResult:
+    """Identity and normalized result for one upstream command attempt."""
+
+    call_id: str
+    command: str
+    params: Dict[str, Any]
+    response: Any
+    result: Any
+    is_queued: bool = False
+    queue_job_id: Optional[str] = None
+    outcome: EditOutcome = EditOutcome.SUCCESS
+    queue_status: Optional[str] = None
+
+
+# Kept as an import-compatible name for the G-001 identity contract.
+UpstreamCallResult = UpstreamCommandResult
+
+
+_QUEUE_TERMINAL_STATUSES = frozenset(
+    {"completed", "failed", "error", "stopped", "deleted", "cancelled", "timeout"}
+)
+_QUEUE_POLL_INTERVAL_SECONDS = 0.2
+_QUEUE_POLL_TIMEOUT_SECONDS = 120.0
+
+
+def _response_data(response: Any) -> Any:
+    if isinstance(response, dict) and response.get("data") is not None:
+        return response["data"]
+    return response
+
+
+def _status_from_response(response: Any) -> Optional[str]:
+    data = _response_data(response)
+    if isinstance(data, dict):
+        status = data.get("status") or response.get("status")
+        if isinstance(status, str) and status.strip():
+            return status.strip().lower()
+    return None
+
+
+def _classify_outcome(result: Any, status: Optional[str] = None) -> EditOutcome:
+    if isinstance(result, dict):
+        kind = str(result.get("kind") or result.get("outcome") or "").strip().lower()
+        if kind in {item.value for item in EditOutcome}:
+            return EditOutcome(kind)
+        if result.get("success") is False:
+            error = result.get("error")
+            if isinstance(error, dict):
+                error = error.get("message") or error.get("detail") or error.get("code")
+            message = str(error or result.get("message") or "").lower()
+            if "validation" in message or "invalid" in message:
+                return EditOutcome.VALIDATION_ERROR
+            return EditOutcome.EDIT_ERROR
+        if result.get("success") is True or status == "completed":
+            return EditOutcome.SUCCESS
+
+    if status == "timeout":
+        return EditOutcome.TIMEOUT_UNKNOWN
+    if status in {"failed", "error", "stopped", "deleted", "cancelled"}:
+        return EditOutcome.EDIT_ERROR
+    if not isinstance(result, dict):
+        return EditOutcome.SUCCESS
+    return EditOutcome.SUCCESS
+
+
+def _terminal_result(response: Any) -> tuple[Any, Optional[str], EditOutcome]:
+    data = _response_data(response)
+    status = _status_from_response(response)
+    payload = data
+    if isinstance(data, dict) and "result" in data:
+        payload = data["result"]
+    return payload, status, _classify_outcome(payload, status)
 
 
 class CodeAnalysisClient:
@@ -179,19 +295,88 @@ class CodeAnalysisClient:
             ) from exc
         raise exc
 
-    def _call_blocking(self, command: str, params: Dict[str, Any]) -> Any:
+    def _call_blocking(self, command: str, params: Dict[str, Any]) -> UpstreamCallResult:
         """Run one CA RPC in a fresh event loop (safe from any thread)."""
+        call_id = str(uuid4())
         loop = asyncio.new_event_loop()
         rpc = JsonRpcClient(**_build_jsonrpc_kwargs(self._section))
         try:
             response = loop.run_until_complete(
                 rpc.execute_command(command=command, params=params)
             )
-            return _unwrap_command_result(response)
+            queued = _is_queued_response(response)
+            queue_job_id = _queued_job_id(response)
+            if queued and queue_job_id:
+                deadline = time.monotonic() + _QUEUE_POLL_TIMEOUT_SECONDS
+                terminal_response = response
+                terminal_status: Optional[str] = None
+                while time.monotonic() < deadline:
+                    terminal_response = loop.run_until_complete(
+                        rpc.execute_command(
+                            command="queue_get_job_status",
+                            params={"job_id": queue_job_id},
+                        )
+                    )
+                    terminal_status = _status_from_response(terminal_response)
+                    if terminal_status in _QUEUE_TERMINAL_STATUSES:
+                        break
+                    time.sleep(_QUEUE_POLL_INTERVAL_SECONDS)
+                else:
+                    terminal_status = "timeout"
+                    terminal_response = {
+                        "success": False,
+                        "status": "timeout",
+                        "error": "Queued upstream command did not reach a terminal state",
+                        "job_id": queue_job_id,
+                        "last_response": terminal_response,
+                    }
+
+                result, _, outcome = _terminal_result(terminal_response)
+                return UpstreamCommandResult(
+                    call_id=call_id,
+                    command=command,
+                    params=dict(params),
+                    response=terminal_response,
+                    result=result,
+                    is_queued=True,
+                    queue_job_id=queue_job_id,
+                    outcome=outcome,
+                    queue_status=terminal_status,
+                )
+            normalized_result = _unwrap_command_result(response)
+            return UpstreamCallResult(
+                call_id=call_id,
+                command=command,
+                params=dict(params),
+                response=response,
+                result=normalized_result,
+                is_queued=queued,
+                queue_job_id=queue_job_id,
+                outcome=_classify_outcome(normalized_result),
+            )
         except BaseException as exc:
             self._reraise_connect_error(command, exc)
         finally:
             loop.close()
+
+    def call_with_identity(
+        self, command: str, params: Optional[Dict[str, Any]] = None
+    ) -> UpstreamCallResult:
+        """Execute once and expose the attempt identity with its normalized result."""
+        payload = params or {}
+        try:
+            asyncio.get_running_loop()
+            in_async = True
+        except RuntimeError:
+            in_async = False
+        if in_async:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                outcome = pool.submit(self._call_blocking, command, payload).result()
+        else:
+            outcome = self._call_blocking(command, payload)
+        if isinstance(outcome, UpstreamCallResult):
+            return outcome
+        raise TypeError("_call_blocking must return UpstreamCallResult")
 
     def _ensure_rpc(self) -> JsonRpcClient:
         if self._rpc is None:
@@ -210,16 +395,22 @@ class CodeAnalysisClient:
         if in_async:
             with ThreadPoolExecutor(max_workers=1) as pool:
                 try:
-                    return pool.submit(self._call_blocking, command, payload).result()
+                    outcome = pool.submit(self._call_blocking, command, payload).result()
+                    return (
+                        outcome.result
+                        if isinstance(outcome, UpstreamCallResult)
+                        else outcome
+                    )
                 except BaseException as exc:
                     self._reraise_connect_error(command, exc)
 
-        rpc = self._ensure_rpc()
         try:
-            response = self._run_async(
-                rpc.execute_command(command=command, params=payload)
+            outcome = self._call_blocking(command, payload)
+            return (
+                outcome.result
+                if isinstance(outcome, UpstreamCallResult)
+                else outcome
             )
-            return _unwrap_command_result(response)
         except BaseException as exc:
             self._reraise_connect_error(command, exc)
 

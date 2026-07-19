@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from ai_editor.core.tree_temp.tree_node import TreeNode, kind_as_str
@@ -69,6 +71,33 @@ def test_yaml_mapping_order_not_alphabetical() -> None:
     root = _first_root_must_be_objects_or_array(parse_yaml_source_to_roots(source))
     assert root.children is not None
     assert [c.key for c in root.children] == ["zzz", "aaa"]
+
+
+def test_yaml_root_keys_have_parser_identity_and_key_anchors() -> None:
+    root = _first_root_must_be_objects_or_array(
+        parse_yaml_source_to_roots("first: 1\nlast: 2\n")
+    )
+    assert root.type == "object"
+    assert root.children is not None
+    assert [child.key for child in root.children] == ["first", "last"]
+    assert all(uuid.UUID(child.stable_id).version == 4 for child in root.children)
+    assert uuid.UUID(root.stable_id).version == 4
+
+
+def test_yaml_inline_id_data_does_not_control_structural_identity() -> None:
+    without_user_id = _first_root_must_be_objects_or_array(
+        parse_yaml_source_to_roots("name: value\n")
+    )
+    with_user_id = _first_root_must_be_objects_or_array(
+        parse_yaml_source_to_roots('___id___: 7\nname: value\n')
+    )
+
+    assert with_user_id.stable_id != "7"
+    assert with_user_id.stable_id != without_user_id.stable_id
+    assert with_user_id.children is not None
+    assert [child.key for child in with_user_id.children] == ["___id___", "name"]
+    name = _find_child(with_user_id, "name")
+    assert uuid.UUID(name.stable_id).version == 4
 
 
 def test_yaml_nested_mapping_value() -> None:

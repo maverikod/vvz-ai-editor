@@ -33,15 +33,15 @@ def test_preflight_rejects_unset_placeholders(
     cfg.write_text(
         json.dumps(
             {
-                "server": {"advertised_host": "${AI_EDITOR_ADVERTISED_HOST}"},
+                "server": {"advertised_host": "${AI_EDITOR_UNSET_HOST}"},
                 "registration": {
                     "register_url": (
-                        "https://${AI_EDITOR_REGISTRATION_HOST}:"
+                        "https://${AI_EDITOR_UNSET_REGISTRATION_HOST}:"
                         "${AI_EDITOR_REGISTRATION_PORT}/register"
                     )
                 },
                 "code_analysis_server": {
-                    "host": "${AI_EDITOR_CODE_ANALYSIS_HOST}",
+                    "host": "${AI_EDITOR_UNSET_CODE_ANALYSIS_HOST}",
                     "port": 15010,
                 },
             }
@@ -55,7 +55,7 @@ def test_preflight_rejects_unset_placeholders(
         check=False,
     )
     assert result.returncode == 1
-    assert "AI_EDITOR_ADVERTISED_HOST" in result.stderr
+    assert "AI_EDITOR_UNSET_HOST" in result.stderr
 
 
 def test_preflight_accepts_resolved_env(

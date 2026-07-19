@@ -15,6 +15,7 @@ from ai_editor.commands.universal_file_edit.edit_command import (
 from ai_editor.commands.universal_file_edit.sidecar_cst_apply import (
     _normalized_cst_modify_operation,
     _resolve_stable_to_span,
+    run_sidecar_cst_edit_batch,
 )
 from ai_editor.commands.universal_file_edit.format_group import resolve_format_group
 from ai_editor.commands.universal_file_edit.session import (
@@ -352,6 +353,84 @@ def _function_stable_ids_by_name(
             found[meta.name] = meta.stable_id
     assert set(found) == set(names)
     return found
+
+
+def test_sidecar_replace_preserves_declaration_trivia(tmp_path) -> None:
+    """CST declaration edits retain comments and trivia for all declarations."""
+    path = tmp_path / "trivia.py"
+    path.write_text(
+        "# class header\n"
+        "class C:  # class trailing\n"
+        "    pass  # type: ignore\n\n"
+        "# def header\n"
+        "def f():  # def trailing\n"
+        "    return 1  # pragma: no cover\n\n"
+        "# async header\n"
+        "async def af():  # async trailing\n"
+        "    return 2  # type: ignore\n\n"
+        "# neighbor header\n"
+        "def neighbor():  # neighbor trailing\n"
+        "    pass  # pragma: no cover\n",
+        encoding="utf-8",
+    )
+    tree = load_file_to_tree(str(path))
+    session = create_session(
+        path,
+        resolve_format_group(path),
+        file_path=path.name,
+        tree_id=tree.tree_id,
+        ca_session_id="test-ca-trivia",
+    )
+    try:
+        stable_ids = {
+            metadata.name: metadata.stable_id
+            for metadata in tree.metadata_map.values()
+            if metadata.type in ("ClassDef", "FunctionDef")
+            and metadata.name in ("C", "f", "af", "neighbor")
+        }
+        result = run_sidecar_cst_edit_batch(
+            session,
+            [
+                {
+                    "type": "replace",
+                    "node_id": stable_ids["C"],
+                    "code_lines": ["class C2:", "    pass"],
+                },
+                {
+                    "type": "replace",
+                    "node_id": stable_ids["f"],
+                    "code_lines": ["def f():", "    return 11"],
+                },
+                {
+                    "type": "replace",
+                    "node_id": stable_ids["af"],
+                    "code_lines": ["async def af():", "    return 22"],
+                },
+            ],
+        )
+        assert isinstance(result, SuccessResult)
+        updated = get_tree(session.tree_id)
+        assert updated is not None
+        source = updated.module.code
+        for marker in (
+            "# class header",
+            "# class trailing",
+            "# def header",
+            "# def trailing",
+            "# async header",
+            "# async trailing",
+            "# neighbor header",
+            "# neighbor trailing",
+            "# type: ignore",
+            "# pragma: no cover",
+        ):
+            assert marker in source
+        assert "class C2:" in source
+        assert "return 11" in source
+        assert "return 22" in source
+    finally:
+        release_session(session.session_id)
+        remove_tree(tree.tree_id)
 
 
 _DOG_CLASSMETHOD = """

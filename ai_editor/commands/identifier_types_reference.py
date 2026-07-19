@@ -11,7 +11,7 @@ from __future__ import annotations
 PREVIEW_NODE_REF_TABLE = (
     "| Extension / path | Preview response `node_ref` | Preview request `node_ref` | Edit target field |\n"
     "|---|---|---|---|\n"
-    '| `.py` `.pyi` `.pyw` (marked-tree, default) | **integer** MAP short_id | decimal string, e.g. `"5"`; omit for root | '
+    '| `.py` `.pyi` `.pyw` (marked-tree, default) | **integer** MAP short_id; UUID fallback when no MAP entry exists | decimal string, e.g. `"5"`; UUID fallback accepted | '
     "`node_id` / `target_node_id` / …: same int string from preview **or** search |\n"
     "| `.json` `.yaml` `.yml` (marked-tree, default) | **integer** short_id | decimal string | "
     "`node_ref` / `node_id` / `short_id` int string **or** `json_pointer` |\n"
@@ -30,7 +30,7 @@ PREVIEW_IDENTIFIER_SECTION = (
     "Notes:\n"
     "  - Marked-tree responses serialize `node_ref` as JSON **integer**; requests use **string**.\n"
     "  - `focus.attributes.internal_node_id` (Python) is CST UUID — informational; prefer `node_ref` int.\n"
-    "  - `universal_file_search` (Python sidecar only) returns the same **integer** MAP short_id in `node_ref`; `stable_id` retains the CST UUID.\n"
+    "  - `universal_file_search` and `universal_file_node_at_line` return the same **integer** MAP short_id in `node_ref` when available; `stable_id` retains the CST UUID and `node_ref` falls back to UUID when no MAP entry exists.\n"
 )
 
 EDIT_IDENTIFIER_SECTION = (

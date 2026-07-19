@@ -13,7 +13,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ai_editor.core.file_handlers.registry import RegistryError, resolve_handler
+from ai_editor.core.file_handlers.registry import (
+    HANDLER_INI,
+    HANDLER_JSON,
+    HANDLER_PYTHON,
+    HANDLER_TEXT,
+    HANDLER_TOML,
+    HANDLER_YAML,
+    RegistryError,
+    resolve_handler,
+)
 
 FORMAT_SIDECAR = "sidecar"
 FORMAT_TREE_TEMP = "tree-temp"
@@ -23,10 +32,12 @@ FORMAT_TEXT = "text"
 LOCKFILE_WRITE_PREVIEW_READY = "write_preview"
 
 _HANDLER_TO_FORMAT = {
-    "python": FORMAT_SIDECAR,
-    "json": FORMAT_TREE_TEMP,
-    "yaml": FORMAT_TREE_TEMP,
-    "text": FORMAT_TEXT,
+    HANDLER_PYTHON: FORMAT_SIDECAR,
+    HANDLER_JSON: FORMAT_TREE_TEMP,
+    HANDLER_YAML: FORMAT_TREE_TEMP,
+    HANDLER_INI: FORMAT_TREE_TEMP,
+    HANDLER_TOML: FORMAT_TREE_TEMP,
+    HANDLER_TEXT: FORMAT_TEXT,
 }
 
 _SIX_EDIT_OPERATIONS = [

@@ -15,6 +15,16 @@ from tests.thin_editor_ca_mocks import open_ca_file, upstream_context
 
 _PROJECT_UUID = "cafebabe-cafe-4caf-babe-cafebabecafe"
 
+_TRY_BRANCHES = """try:
+    risky()
+except ValueError:
+    recover()
+else:
+    succeed()
+finally:
+    cleanup()
+"""
+
 
 @pytest.mark.asyncio
 async def test_node_at_line_returns_short_id_for_function_body(tmp_path) -> None:
@@ -81,6 +91,43 @@ async def test_node_at_line_include_ancestors(tmp_path) -> None:
         (res.data["end_line"] - res.data["start_line"])
     ] + [(a["end_line"] - a["start_line"]) for a in ancestors]
     assert spans == sorted(spans)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("line", "expected_type"),
+    [(1, "Try"), (3, "ExceptHandler"), (5, "Else"), (7, "Finally")],
+)
+async def test_node_at_line_preserves_try_branch_addressability(
+    tmp_path, line: int, expected_type: str
+) -> None:
+    rel = "src/try_branches.py"
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=_TRY_BRANCHES.encode("utf-8"),
+    )
+    cmd = UniversalFileNodeAtLineCommand()
+    try:
+        with upstream_context(workspace=workspace, upstream=upstream):
+            res = await cmd.execute(
+                **cmd.validate_params(
+                    {
+                        "project_id": _PROJECT_UUID,
+                        "session_id": sid,
+                        "file_path": rel,
+                        "line": line,
+                    }
+                )
+            )
+    finally:
+        release_session(sid)
+
+    assert isinstance(res, SuccessResult), getattr(res, "message", res)
+    assert res.data["type"] == expected_type
+    assert res.data["node_ref"]
+    assert res.data["start_line"] <= line <= res.data["end_line"]
 
 
 @pytest.mark.asyncio

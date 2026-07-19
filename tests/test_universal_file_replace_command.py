@@ -64,7 +64,7 @@ def _assert_universal_replace_ok_fields(d: dict) -> None:
 
 @pytest.mark.asyncio
 class TestUniversalFileReplaceRouting:
-    async def test_toml_unsupported_before_db(self) -> None:
+    async def test_toml_structured_payload_validation_before_db(self) -> None:
         cmd = UniversalFileReplaceCommand()
         with _patch_get_code_analysis_client() as ca_patches:
             result = await cmd.execute(
@@ -77,7 +77,8 @@ class TestUniversalFileReplaceRouting:
         for ca_patch in ca_patches:
             ca_patch.assert_not_called()
         assert isinstance(result, ErrorResult)
-        assert result.code == "UNSUPPORTED_FILE_EXTENSION"
+        assert result.code == "VALIDATION_ERROR"
+        assert result.details["field"] == "yaml_path"
 
     async def test_text_missing_payload_before_db(self) -> None:
         cmd = UniversalFileReplaceCommand()

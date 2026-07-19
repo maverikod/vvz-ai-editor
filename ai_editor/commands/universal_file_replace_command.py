@@ -35,9 +35,11 @@ from ..core.file_handlers.base import (
 from ..core.file_handlers.json_handler import JsonFileHandler
 from ..core.file_handlers.python_handler import PythonFileHandler
 from ..core.file_handlers.registry import (
+    HANDLER_INI,
     HANDLER_JSON,
     HANDLER_PYTHON,
     HANDLER_TEXT,
+    HANDLER_TOML,
     HANDLER_YAML,
     RegistryError,
     resolve_handler,
@@ -355,16 +357,22 @@ def _validate_replace_payload_for_handler(
             )
         return None
 
-    if handler_id == HANDLER_YAML:
+    if handler_id in (HANDLER_YAML, HANDLER_INI, HANDLER_TOML):
         if not isinstance(yaml_path, str) or not yaml_path.strip():
             return ErrorResult(
-                message="YAML replace requires yaml_path (non-empty JSON Pointer string)",
+                message=(
+                    f"{handler_id.upper()} replace requires yaml_path "
+                    "(non-empty JSON Pointer string)"
+                ),
                 code="VALIDATION_ERROR",
                 details={"field": "yaml_path"},
             )
         if not value_provided:
             return ErrorResult(
-                message="YAML replace requires value (use null to set JSON null)",
+                message=(
+                    f"{handler_id.upper()} replace requires value "
+                    "(use null to set JSON null)"
+                ),
                 code="VALIDATION_ERROR",
                 details={"field": "value"},
             )

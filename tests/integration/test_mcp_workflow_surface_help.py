@@ -18,6 +18,7 @@ EXPECTED_WORKFLOW_COMMANDS: frozenset[str] = frozenset(
         "universal_file_close",
         "universal_file_preview",
         "universal_file_search",
+        "universal_file_node_at_line",
         "health",
     }
 )

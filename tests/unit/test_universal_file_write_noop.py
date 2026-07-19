@@ -162,7 +162,7 @@ async def test_write_commit_diff_uploads_and_syncs_origin() -> None:
                     return_value=comparison,
                 ):
                     with patch(
-                        "ai_editor.commands.universal_file_edit.write_command_runtime.validate_before_promote",
+                        "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
                         return_value=PreWriteValidationOutcome(success=True),
                     ):
                         result = await cmd.execute(
@@ -196,6 +196,7 @@ async def test_write_preview_returns_diff_without_upload() -> None:
     session.abs_path = MagicMock()
     session.abs_path.is_file.return_value = True
     session.abs_path.read_text.return_value = "x = 1\n"
+    session.abs_path.read_bytes.return_value = b"x = 1\n"
     session.abs_path.__str__ = lambda _s: "/tmp/foo.py"
     client = MagicMock()
 

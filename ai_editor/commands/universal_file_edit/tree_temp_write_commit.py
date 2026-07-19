@@ -106,7 +106,9 @@ def commit_tree_temp_to_disk(
     )
     from ai_editor.core.file_validation.pre_write_pipeline import (
         promote_temp_to_target,
-        validate_before_promote,
+    )
+    from ai_editor.commands.universal_file_edit.write_command_phases import (
+        validate_draft_in_project_context,
     )
 
     project_root = session.core.project_root
@@ -116,7 +118,7 @@ def commit_tree_temp_to_disk(
         except ValueError:
             project_root = None
 
-    outcome = validate_before_promote(
+    outcome = validate_draft_in_project_context(
         session.handler_id,
         source_code=code,
         target_path=session.abs_path,

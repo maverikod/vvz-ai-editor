@@ -18,8 +18,10 @@ import pytest
 
 from ai_editor.core.file_handlers.registry import (
     HANDLER_JSON,
+    HANDLER_INI,
     HANDLER_PYTHON,
     HANDLER_TEXT,
+    HANDLER_TOML,
     HANDLER_YAML,
     OPERATIONS,
     RegistryError,
@@ -59,6 +61,8 @@ def test_handler_suffix_groups_match_product_contract() -> None:
     )
     assert by_id[HANDLER_JSON] == frozenset({".json"})
     assert by_id[HANDLER_YAML] == frozenset({".yaml", ".yml"})
+    assert by_id[HANDLER_INI] == frozenset({".cfg", ".ini"})
+    assert by_id[HANDLER_TOML] == frozenset({".toml"})
     assert by_id[HANDLER_PYTHON] == frozenset({".py", ".pyi", ".pyw"})
 
 
@@ -71,12 +75,8 @@ def test_unknown_suffix_fails_closed() -> None:
     assert err.details["suffix"] == ".unknown"
 
 
-def test_pyproject_toml_unsupported_extension() -> None:
-    with pytest.raises(RegistryError) as exc:
-        resolve_handler("pyproject.toml", "read")
-    err = exc.value
-    assert err.code == "UNSUPPORTED_FILE_EXTENSION"
-    assert err.details["suffix"] == ".toml"
+def test_pyproject_toml_routes_to_toml_handler() -> None:
+    assert resolve_handler("pyproject.toml", "read") == HANDLER_TOML
 
 
 def test_missing_suffix_fails_before_handler_resolution() -> None:
@@ -101,6 +101,7 @@ def test_get_handler_schema_text_read() -> None:
     assert "properties" in schema
 
 
-def test_unsupported_suffix_not_listed_in_discovery() -> None:
+def test_supported_and_unknown_suffix_discovery() -> None:
     known = {r["suffix"] for r in list_handler_mappings()}
-    assert ".toml" not in known
+    assert {".cfg", ".ini", ".toml"}.issubset(known)
+    assert ".unknown" not in known

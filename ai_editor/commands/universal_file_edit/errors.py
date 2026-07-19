@@ -29,6 +29,22 @@ NOTHING_TO_REDO = "NOTHING_TO_REDO"
 MODIFIED_NOT_WRITTEN = "MODIFIED_NOT_WRITTEN"
 READ_ONLY_SESSION = "READ_ONLY_SESSION"
 
+# These are the operation names exposed by ``universal_file_edit`` metadata.
+# Keep remediation text tied to this catalog instead of leaking internal CST
+# helper names such as ``replace_range`` into the public API.
+PUBLIC_EDIT_OPERATION = "universal_file_edit"
+PUBLIC_EDIT_OPERATION_TYPES = frozenset({"replace", "insert", "delete", "move"})
+
+
+def public_edit_operation_remediation(operation_type: str = "replace") -> str:
+    """Return remediation text using a callable public edit operation."""
+    if operation_type not in PUBLIC_EDIT_OPERATION_TYPES:
+        raise ValueError(f"Unsupported public edit operation: {operation_type}")
+    return (
+        f"Use type: {operation_type} with {PUBLIC_EDIT_OPERATION}; "
+        "address the target with the current universal_file_preview data."
+    )
+
 
 def make_error(
     code: str,

@@ -19,6 +19,17 @@ async def test_info_returns_guide_payload() -> None:
     assert data["examples"]["write_commit"]["write_mode"] == "commit"
 
 
+def test_info_advertises_all_tree_temp_formats() -> None:
+    from ai_editor.commands.editor_info_content import build_editor_info_payload
+
+    info = build_editor_info_payload()
+    tree_temp = info["format_groups"]["tree-temp"]
+
+    assert {".ini", ".cfg", ".toml"}.issubset(tree_temp["extensions"])
+    assert "JSON/YAML/INI/TOML" in info["markdown"]
+    assert "structured tree handler (JSON/YAML/INI/TOML)" in tree_temp["force_hint"]
+
+
 @pytest.mark.asyncio
 async def test_info_rejects_unknown_params() -> None:
     result = await InfoCommand().execute(unexpected="x")

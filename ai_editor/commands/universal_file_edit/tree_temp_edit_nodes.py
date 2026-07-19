@@ -56,6 +56,18 @@ def serialize_tree_temp_roots(handler_id: str, roots: List[TreeNode]) -> str:
         )
 
         return cast(str, serialize_yaml_source(roots))
+    if handler_id == "ini":
+        from ai_editor.core.tree_temp.ini_source_serializer import (
+            serialize_ini_source,
+        )
+
+        return cast(str, serialize_ini_source(roots))
+    if handler_id == "toml":
+        from ai_editor.core.tree_temp.toml_source_serializer import (
+            serialize_toml_source,
+        )
+
+        return cast(str, serialize_toml_source(roots))
     raise ValueError(f"Unsupported handler for tree-temp: {handler_id!r}")
 
 
@@ -166,6 +178,8 @@ def _value_to_single_node(handler_id: str, value: Any) -> TreeNode:
     Returns:
         Single TreeNode representing the value.
     """
+    if handler_id in {"ini", "toml"}:
+        return _generic_value_to_single_node(value)
     if isinstance(value, list):
         return TreeNode(
             stable_id=str(uuid.uuid4()),
@@ -201,6 +215,38 @@ def _value_to_single_node(handler_id: str, value: Any) -> TreeNode:
         value=None,
         children=list(roots),
     )
+
+
+def _generic_value_to_single_node(value: Any) -> TreeNode:
+    """Build a format-neutral node for the round-trip config serializers."""
+    if value is None:
+        return TreeNode(stable_id=str(uuid.uuid4()), type="null", value=None)
+    if isinstance(value, bool):
+        return TreeNode(stable_id=str(uuid.uuid4()), type="boolean", value=value)
+    if isinstance(value, (int, float)):
+        return TreeNode(stable_id=str(uuid.uuid4()), type="number", value=value)
+    if isinstance(value, str):
+        return TreeNode(stable_id=str(uuid.uuid4()), type="string", value=value)
+    if isinstance(value, list):
+        return TreeNode(
+            stable_id=str(uuid.uuid4()),
+            type="array",
+            value=None,
+            children=[_generic_value_to_single_node(item) for item in value],
+        )
+    if isinstance(value, dict):
+        children: List[TreeNode] = []
+        for key, item in value.items():
+            child = _generic_value_to_single_node(item)
+            child.key = str(key)
+            children.append(child)
+        return TreeNode(
+            stable_id=str(uuid.uuid4()),
+            type="object",
+            value=None,
+            children=children,
+        )
+    raise ValueError(f"unsupported tree-temp value: {type(value).__name__}")
 
 
 def _regenerate_stable_ids(node: TreeNode) -> TreeNode:

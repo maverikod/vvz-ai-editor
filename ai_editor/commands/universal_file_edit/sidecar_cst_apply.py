@@ -11,6 +11,7 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 import logging
+import hashlib
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -54,6 +55,116 @@ from ai_editor.core.cst_tree.tree_sidecar import write_sidecar_atomic
 def _edit_source_path(session: EditSession) -> Path:
     """Workspace draft source inside the edit subdir (not project origin path)."""
     return session.core.session_source_path
+
+
+def _snapshot_declaration_trivia(tree: CSTTree) -> Dict[str, Dict[str, Any]]:
+    """Capture declaration and direct-body trivia before a CST replacement."""
+    snapshot: Dict[str, Dict[str, Any]] = {}
+    for node_id, metadata in tree.metadata_map.items():
+        if metadata.type not in ("FunctionDef", "ClassDef"):
+            continue
+        node = tree.node_map.get(node_id)
+        if node is None:
+            continue
+        body = getattr(node, "body", None)
+        row: Dict[str, Any] = {
+            "leading_lines": tuple(getattr(node, "leading_lines", ())),
+            "decorator_leading": tuple(
+                tuple(getattr(decorator, "leading_lines", ()))
+                for decorator in getattr(node, "decorators", ())
+            ),
+        }
+        if isinstance(body, cst.IndentedBlock):
+            row["body_header"] = body.header
+            row["body_trailing"] = tuple(
+                (
+                    tuple(getattr(statement, "leading_lines", ())),
+                    getattr(statement, "trailing_whitespace", None),
+                )
+                for statement in body.body
+            )
+        snapshot[metadata.stable_id] = row
+    return snapshot
+
+
+def _restore_declaration_trivia(
+    tree: CSTTree, snapshot: Dict[str, Dict[str, Any]]
+) -> None:
+    """Restore missing source trivia after replacement parsing/codegen."""
+    targets: Dict[int, Dict[str, Any]] = {}
+    for node_id, metadata in tree.metadata_map.items():
+        row = snapshot.get(metadata.stable_id)
+        node = tree.node_map.get(node_id)
+        if row is not None and node is not None:
+            targets[id(node)] = row
+    if not targets:
+        return
+
+    class _TriviaRestorer(cst.CSTTransformer):
+        def on_leave(
+            self, original_node: cst.CSTNode, updated_node: cst.CSTNode
+        ) -> cst.CSTNode:
+            row = targets.get(id(original_node))
+            if row is None:
+                return updated_node
+            changes: Dict[str, Any] = {}
+            if hasattr(updated_node, "leading_lines") and not getattr(
+                updated_node, "leading_lines", ()
+            ):
+                changes["leading_lines"] = row["leading_lines"]
+            if isinstance(updated_node, (cst.FunctionDef, cst.ClassDef)):
+                decorators = list(updated_node.decorators)
+                for index, leading in enumerate(row["decorator_leading"]):
+                    if index < len(decorators) and not decorators[index].leading_lines:
+                        decorators[index] = decorators[index].with_changes(
+                            leading_lines=leading
+                        )
+                if decorators != list(updated_node.decorators):
+                    changes["decorators"] = decorators
+                body = updated_node.body
+                if isinstance(body, cst.IndentedBlock):
+                    if body.header.comment is None and row.get("body_header") is not None:
+                        body = body.with_changes(header=row["body_header"])
+                    old_trivia = row.get("body_trailing", ())
+                    body_items = list(body.body)
+                    for index, item in enumerate(body_items):
+                        if index >= len(old_trivia):
+                            break
+                        leading, trailing = old_trivia[index]
+                        item_changes: Dict[str, Any] = {}
+                        if not item.leading_lines and leading:
+                            item_changes["leading_lines"] = leading
+                        if (
+                            getattr(item, "trailing_whitespace", None) is not None
+                            and item.trailing_whitespace.comment is None
+                            and trailing is not None
+                            and trailing.comment is not None
+                        ):
+                            item_changes["trailing_whitespace"] = trailing
+                        if item_changes:
+                            body_items[index] = item.with_changes(**item_changes)
+                    if body != updated_node.body:
+                        body = body.with_changes(body=body_items)
+                    if body != updated_node.body:
+                        changes["body"] = body
+            return updated_node.with_changes(**changes) if changes else updated_node
+
+    tree.module = tree.module.visit(_TriviaRestorer())
+    tree.module_source_sha256_hex = hashlib.sha256(
+        logical_source_from_module(tree.module).encode("utf-8")
+    ).hexdigest()
+
+
+def _operation_targets_declaration(tree: CSTTree, operation: Dict[str, Any]) -> bool:
+    """Return whether an operation directly replaces a declaration node."""
+    for field in ("node_id", "start_node_id", "end_node_id"):
+        node_id = operation.get(field)
+        if not isinstance(node_id, str):
+            continue
+        metadata = tree.metadata_map.get(node_id)
+        if metadata is not None and metadata.type in ("FunctionDef", "ClassDef"):
+            return True
+    return False
 
 
 def _refresh_in_memory_cst_without_sidecar(session: EditSession) -> None:
@@ -713,6 +824,7 @@ def run_sidecar_cst_edit_batch(
     batch_original_code = logical_source_from_module(tree.module)
     batch_original_tree_id = tree.tree_id
     batch_original_metadata = dict(tree.metadata_map)
+    declaration_trivia: Dict[str, Dict[str, Any]] = {}
 
     def _rollback_and_fail(err: ErrorResult) -> ErrorResult:
         _rollback_sidecar_session(
@@ -750,6 +862,9 @@ def run_sidecar_cst_edit_batch(
                     {"operation": op},
                 )
             )
+        preserve_declaration_trivia = _operation_targets_declaration(tree, resolved_op)
+        if preserve_declaration_trivia and not declaration_trivia:
+            declaration_trivia = _snapshot_declaration_trivia(tree)
         built, err = build_tree_operations(tree, [normalized_op])
         if err is not None:
             return _rollback_and_fail(err)
@@ -772,6 +887,8 @@ def run_sidecar_cst_edit_batch(
                 )
             )
         session.tree_id = tree.tree_id
+        if preserve_declaration_trivia:
+            _restore_declaration_trivia(tree, declaration_trivia)
         try:
             sidecar_path = write_sidecar_atomic(_edit_source_path(session), tree)
         except Exception as exc:

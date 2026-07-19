@@ -34,6 +34,8 @@ AI Editor is a **thin MCP server** between the agent and **Code Analysis Server 
 | `info` | This guide (detailed workflow) |
 | `universal_file_open` | Existing file: CA lock + download; new file: local draft |
 | `universal_file_preview` | Read-only navigation; `node_ref` from draft or one-shot CA read |
+| `universal_file_search` | Search Python sidecar nodes by name/type/text |
+| `universal_file_node_at_line` | Resolve the current Python node_ref for a source line |
 | `universal_file_edit` | Apply operations to draft |
 | `universal_file_write` | Preview diff or commit (validate → CA upload) |
 | `universal_file_close` | CA unlock + workspace cleanup (always) |
@@ -164,8 +166,8 @@ Always call, including after failed commit or cancel. Uncommitted draft is disca
 
 | format_group | Extensions | Preview `node_ref` | Edit field |
 |--------------|------------|--------------------|------------|
-| sidecar | `.py`, `.pyi`, `.pyw` | **int short_id** (marked-tree) | `node_id` + `code_lines` (int string from preview or search) |
-| tree-temp | `.json`, `.yaml`, `.yml`, … | **int short_id** (marked-tree) or JSON Pointer (legacy) | `node_ref` / `short_id` or `json_pointer` + `value` |
+| sidecar | `.py`, `.pyi`, `.pyw` | **int short_id** (marked-tree); UUID/stable UUID fallback when no MAP entry exists | `node_id` + `code_lines` (int string from preview/search, or UUID fallback) |
+| tree-temp | `.json`, `.yaml`, `.yml`, `.ini`, `.cfg`, `.toml`, … | **int short_id** (marked-tree) or JSON Pointer (legacy) | `node_ref` / `short_id` or `json_pointer` + `value` |
 | text | `.md`, `.txt`, `.rst`, `.adoc` | int short_id (`.md`) or line index (`.txt`) | `node_ref` + `content` or `start_line`/`end_line` |
 | invalid | any (parse error) | none — line pagination | line-based `content` / `start_line` |
 
@@ -184,7 +186,7 @@ For files with unknown or absent extensions, pass `format_group` in `universal_f
 
 Do not combine parent + child nodes in one batch (`NESTED_BATCH_FORBIDDEN`).
 
-### JSON/YAML example
+### JSON/YAML/INI/TOML example
 
 ```json
 {"type": "replace", "node_ref": "3", "value": 60}
@@ -297,6 +299,8 @@ def build_editor_info_payload() -> Dict[str, Any]:
             "info",
             "universal_file_preview",
             "universal_file_open",
+            "universal_file_search",
+            "universal_file_node_at_line",
             "universal_file_edit",
             "universal_file_write",
             "universal_file_close",
@@ -304,15 +308,15 @@ def build_editor_info_payload() -> Dict[str, Any]:
         "format_groups": {
             "sidecar": {
                 "extensions": [".py", ".pyi", ".pyw"],
-                "preview_node_ref": "integer MAP short_id (marked-tree; preview and search)",
-                "edit_fields": "node_id (int short_id string from preview or search), code_lines",
+                "preview_node_ref": "integer MAP short_id (marked-tree; preview/search/node_at_line); UUID/stable UUID fallback when no MAP entry exists",
+                "edit_fields": "node_id (int short_id string from preview/search/node_at_line, or UUID fallback), code_lines",
                 "force_hint": "pass format_group=sidecar for unknown-extension files to route via Python CST",
             },
             "tree-temp": {
-                "extensions": [".json", ".yaml", ".yml", ".jsonl", ".ndjson"],
+                "extensions": [".json", ".yaml", ".yml", ".jsonl", ".ndjson", ".ini", ".cfg", ".toml"],
                 "preview_node_ref": "integer short_id (marked-tree) or JSON Pointer (legacy)",
                 "edit_fields": "node_ref/short_id or json_pointer, value",
-                "force_hint": "pass format_group=tree-temp for unknown-extension files to route via JSON/YAML tree",
+                "force_hint": "pass format_group=tree-temp for unknown-extension files to route via the structured tree handler (JSON/YAML/INI/TOML)",
             },
             "text": {
                 "extensions": [".md", ".txt", ".rst", ".adoc"],

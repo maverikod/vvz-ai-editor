@@ -21,6 +21,7 @@ from .handlers.jsonl_handler import JsonLinesFileHandler
 from .handlers.markdown_handler import MarkdownFileHandler
 from .handlers.python_marked_handler import PythonMarkedTreeHandler
 from .handlers.text_handler import TextFileHandler
+from .handlers.tree_temp_handler import TreeTempFileHandler
 from .handlers.yaml_handler import YamlFileHandler
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,9 @@ class HandlerDispatcher:
             ".ndjson": JsonLinesFileHandler(),
             ".yaml": YamlFileHandler(),
             ".yml": YamlFileHandler(),
+            ".ini": TreeTempFileHandler("ini", frozenset({".ini", ".cfg"})),
+            ".cfg": TreeTempFileHandler("ini", frozenset({".ini", ".cfg"})),
+            ".toml": TreeTempFileHandler("toml", frozenset({".toml"})),
         }
 
     def dispatch(self, file_path: str) -> FileHandler | PreviewError:

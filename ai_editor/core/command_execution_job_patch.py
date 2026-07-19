@@ -90,6 +90,32 @@ def _is_already_reconciled_failed(state: Dict[str, Any]) -> bool:
     return str(payload.get("status", "")).strip().lower() == "failed"
 
 
+def _failure_kind(
+    payload: Dict[str, Any], cmd_result: Optional[Dict[str, Any]]
+) -> Optional[str]:
+    """Classify one stored terminal envelope without executing its command."""
+    if payload.get("success") is False or (
+        cmd_result is not None and cmd_result.get("success") is False
+    ):
+        return "failure"
+
+    statuses = {
+        str(block.get("status", "")).strip().lower()
+        for block in (payload, cmd_result)
+        if isinstance(block, dict)
+    }
+    if statuses & {"failed", "error", "timeout", "timed_out", "unknown"}:
+        return "terminal_failure"
+    if any(
+        isinstance(block, dict) and block.get("error")
+        for block in (payload, cmd_result)
+    ):
+        return "failure"
+    if cmd_result is None and "result" in payload and payload.get("result") is None:
+        return "unknown_result"
+    return None
+
+
 def reconcile_command_execution_job_status_after_mcp_result(job: Any) -> None:
     """
     If the stored MCP payload reports failure, set queue job status to ``failed``.
@@ -120,18 +146,14 @@ def reconcile_command_execution_job_status_after_mcp_result(job: Any) -> None:
         return
 
     cmd_result = _extract_command_result(payload)
-    failed = False
-    if payload.get("success") is False:
-        failed = True
-    elif cmd_result is not None and cmd_result.get("success") is False:
-        failed = True
-    if not failed:
+    failure_kind = _failure_kind(payload, cmd_result)
+    if failure_kind is None:
         return
 
     desc = _mcp_failure_message(payload, cmd_result)
     job_id = getattr(job, "job_id", "?")
     cmd_name = payload.get("command")
-    detail = cmd_result if isinstance(cmd_result, dict) else payload
+    detail = payload
     job_log = getattr(job, "logger", None) or logger
     job_log.error(
         "[QUEUE_JOB_FAILED] job_id=%s command=%s: %s",
@@ -141,12 +163,12 @@ def reconcile_command_execution_job_status_after_mcp_result(job: Any) -> None:
     )
     job_log.error("[QUEUE_JOB_FAILED] job_id=%s mcp_result=%s", job_id, detail)
 
-    out = {
-        "job_id": getattr(job, "job_id", "") or job_id,
-        "command": cmd_name,
-        "result": cmd_result if isinstance(cmd_result, dict) else payload,
-        "status": "failed",
-    }
+    # Keep the original envelope as evidence. Only terminal job status changes;
+    # no command lookup or replacement execution is part of reconciliation.
+    out = dict(payload)
+    out["job_id"] = getattr(job, "job_id", "") or job_id
+    out["status"] = "failed"
+    out["reconciliation"] = {"kind": failure_kind, "original_job_id": job_id}
     try:
         job.set_mcp_result(out, "failed")
     except Exception as e:

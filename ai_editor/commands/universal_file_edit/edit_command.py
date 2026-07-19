@@ -135,7 +135,9 @@ class UniversalFileEditCommand(BaseMCPCommand):
                     "description": (
                         "Batch of edit operations. Identifier fields must match preview/search: "
                         "Python node_id (int short_id string from preview or search); JSON/YAML "
-                        "node_ref/short_id or json_pointer; text node_ref or line ranges."
+                        "node_ref/short_id or json_pointer; text node_ref or line ranges. "
+                        "structured types are replace, insert, delete, move. "
+                        "text range types are replace, insert, delete, move."
                     ),
                     "items": {"type": "object"},
                 },
@@ -218,11 +220,14 @@ class UniversalFileEditCommand(BaseMCPCommand):
             validation = validate_sidecar_nested_batch(operations, session.tree_id)
             if validation is not None:
                 return error_result_from_make_error(validation)
-            result = await self._apply_sidecar(session, operations)
+            result = self._apply_sidecar(session, operations)
         elif fg == FORMAT_TREE_TEMP:
-            result = await self._apply_tree_temp(session, operations)
+            # Tree-temp mutation updates the live session facade and its git-backed
+            # history synchronously. Running it in the default executor can leave
+            # the command future waiting after the worker has completed.
+            result = self._apply_tree_temp(session, operations)
         else:
-            result = await self._apply_text(session, operations)
+            result = self._apply_text(session, operations)
 
         # R6: mark the file modified only when the edit produced a non-empty diff.
         # An edit that leaves the draft byte-identical (e.g. a no-op operation)
@@ -237,7 +242,7 @@ class UniversalFileEditCommand(BaseMCPCommand):
             return SuccessResult(data=payload)
         return result
 
-    async def _apply_sidecar(
+    def _apply_sidecar(
         self, session: EditSession, operations: List[Dict[str, Any]]
     ) -> SuccessResult | ErrorResult:
         """Apply sidecar group operations via CST ``modify_tree`` and refresh sidecar.
@@ -254,9 +259,12 @@ class UniversalFileEditCommand(BaseMCPCommand):
         Returns:
             SuccessResult with success/update flags, or ErrorResult on failure.
         """
-        return await asyncio.to_thread(run_sidecar_cst_edit_batch, session, operations)
+        # Sidecar mutation updates the live session facade and its git-backed
+        # history synchronously; dispatching it to the default executor can
+        # leave the command future waiting after the worker has returned.
+        return run_sidecar_cst_edit_batch(session, operations)
 
-    async def _apply_tree_temp(
+    def _apply_tree_temp(
         self, session: EditSession, operations: List[Dict[str, Any]]
     ) -> SuccessResult | ErrorResult:
         """Apply tree-temp group operations to the draft via JSON/YAML pipelines.
@@ -271,15 +279,14 @@ class UniversalFileEditCommand(BaseMCPCommand):
         Returns:
             SuccessResult with ``success``/``updated`` flags, or ErrorResult on failure.
         """
-        return await asyncio.to_thread(
-            tree_temp_edit_batch.apply_tree_temp_mutations,
-            session,
-            operations,
-        )
+        return tree_temp_edit_batch.apply_tree_temp_mutations(session, operations)
 
-    async def _apply_text(
+    def _apply_text(
         self, session: EditSession, operations: List[Dict[str, Any]]
     ) -> SuccessResult | ErrorResult:
         """Apply text edits to ``session.draft_path`` sorted bottom-up."""
 
-        return await asyncio.to_thread(run_text_draft_apply, session, operations)
+        # Text mutation updates the live session facade and its git-backed
+        # history synchronously; dispatching it to the default executor can
+        # leave the command future waiting after the worker has returned.
+        return run_text_draft_apply(session, operations)

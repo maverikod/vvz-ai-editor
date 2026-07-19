@@ -55,6 +55,14 @@ def parse_source_bytes_to_roots(handler_id: str, raw: bytes) -> List[TreeNode]:
         from ai_editor.core.tree_temp.yaml_source_parser import parse_yaml_source
 
         return cast(List[TreeNode], parse_yaml_source(text))
+    if handler_id == "ini":
+        from ai_editor.core.tree_temp.ini_source_parser import parse_ini_source
+
+        return cast(List[TreeNode], parse_ini_source(text))
+    if handler_id == "toml":
+        from ai_editor.core.tree_temp.toml_source_parser import parse_toml_source
+
+        return cast(List[TreeNode], parse_toml_source(text))
     raise ValueError(f"unsupported tree-temp handler_id: {handler_id!r}")
 
 

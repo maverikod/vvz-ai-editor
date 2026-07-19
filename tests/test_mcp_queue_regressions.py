@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pytest
@@ -16,6 +17,85 @@ from mcp_proxy_adapter.integrations.queuemgr_integration import (
 )
 
 import ai_editor.hooks  # noqa: F401
+
+
+def test_queued_upstream_response_preserves_job_and_final_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deferred CAS response resolves to one result with its proof intact."""
+    import ai_editor.core.upstream.code_analysis_client as client_module
+    from ai_editor.core.upstream.code_analysis_client import (
+        CodeAnalysisClient,
+        EditOutcome,
+    )
+
+    job_id = "cas-queued-job-001"
+    terminal_response = {
+        "success": True,
+        "data": {
+            "job_id": job_id,
+            "status": "completed",
+            "result": {
+                "success": True,
+                "kind": "success",
+                "edited_files": ["src/example.py"],
+                "evidence": {"response_id": "cas-final-response-001"},
+            },
+        },
+    }
+    responses = iter(
+        [
+            {
+                "success": True,
+                "mode": "queued",
+                "data": {"job_id": job_id},
+            },
+            {
+                "success": True,
+                "data": {"job_id": job_id, "status": "running"},
+            },
+            terminal_response,
+        ]
+    )
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeRpc:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def execute_command(
+            self, *, command: str, params: dict[str, Any]
+        ) -> dict[str, Any]:
+            calls.append((command, dict(params)))
+            return next(responses)
+
+    monkeypatch.setattr(client_module, "JsonRpcClient", FakeRpc)
+    monkeypatch.setattr(client_module, "_build_jsonrpc_kwargs", lambda _: {})
+    monkeypatch.setattr(client_module, "_QUEUE_POLL_INTERVAL_SECONDS", 0)
+
+    outcome = CodeAnalysisClient(config_path=Path("config.json")).call_with_identity(
+        "project_file_edit",
+        {"project_id": "project-001", "file_path": "src/example.py"},
+    )
+
+    assert calls == [
+        (
+            "project_file_edit",
+            {"project_id": "project-001", "file_path": "src/example.py"},
+        ),
+        ("queue_get_job_status", {"job_id": job_id}),
+        ("queue_get_job_status", {"job_id": job_id}),
+    ]
+    assert outcome.is_queued is True
+    assert outcome.queue_job_id == job_id
+    assert outcome.queue_status == "completed"
+    assert outcome.outcome is EditOutcome.SUCCESS
+    assert outcome.result == terminal_response["data"]["result"]
+    assert outcome.response is terminal_response
+    assert outcome.response["data"]["job_id"] == outcome.queue_job_id
+    assert outcome.response["data"]["result"]["evidence"] == {
+        "response_id": "cas-final-response-001"
+    }
 
 
 async def _run_command(command_name: str, **params: Any) -> Dict[str, Any]:

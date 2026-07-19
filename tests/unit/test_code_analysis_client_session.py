@@ -252,3 +252,66 @@ def test_run_async_from_active_event_loop(monkeypatch: pytest.MonkeyPatch) -> No
 
     asyncio.run(runner())
     assert seen == ["session_list_file_locks"]
+
+
+def test_call_sync_uses_one_identity_boundary_and_returns_normalized_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ai_editor.core.upstream.code_analysis_client import (
+        CodeAnalysisClient,
+        UpstreamCallResult,
+    )
+
+    client = CodeAnalysisClient(config_path=Path("config.json"))
+    attempts: list[str] = []
+
+    def fake_blocking(command: str, params: dict[str, Any]) -> UpstreamCallResult:
+        attempts.append(command)
+        return UpstreamCallResult(
+            call_id="attempt-1",
+            command=command,
+            params=params,
+            response={"success": True, "data": {"locks": []}},
+            result={"locks": []},
+        )
+
+    monkeypatch.setattr(client, "_call_blocking", fake_blocking)
+    assert client.call("session_list_file_locks", {"session_id": "sid-1"}) == {
+        "locks": []
+    }
+    assert attempts == ["session_list_file_locks"]
+
+
+def test_call_with_identity_exposes_one_attempt_and_normalized_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from ai_editor.core.upstream.code_analysis_client import (
+        CodeAnalysisClient,
+        UpstreamCallResult,
+    )
+
+    client = CodeAnalysisClient(config_path=Path("config.json"))
+    attempts: list[str] = []
+
+    def fake_blocking(command: str, params: dict[str, Any]) -> UpstreamCallResult:
+        attempts.append(command)
+        return UpstreamCallResult(
+            call_id="attempt-async",
+            command=command,
+            params=params,
+            response={"success": True, "data": {"locks": []}},
+            result={"locks": []},
+        )
+
+    monkeypatch.setattr(client, "_call_blocking", fake_blocking)
+
+    async def runner() -> UpstreamCallResult:
+        return client.call_with_identity("session_list_file_locks", {"session_id": "sid-1"})
+
+    outcome = asyncio.run(runner())
+    assert outcome.call_id == "attempt-async"
+    assert outcome.result == {"locks": []}
+    assert outcome.response["data"] == {"locks": []}
+    assert attempts == ["session_list_file_locks"]

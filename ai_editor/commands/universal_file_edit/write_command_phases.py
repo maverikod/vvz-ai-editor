@@ -9,8 +9,11 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
+from dataclasses import replace
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
@@ -23,8 +26,17 @@ from ai_editor.commands.universal_file_edit.format_group import (
     LOCKFILE_WRITE_PREVIEW_READY,
 )
 from ai_editor.commands.universal_file_edit.session import EditSession
-from ai_editor.commands.universal_file_edit.write_compare import export_canonical_bytes
-from ai_editor.core.file_handlers.diff_support import unified_diff_text
+from ai_editor.commands.universal_file_edit.write_compare import (
+    PreviewDiffStatus,
+    compare_session_to_origin,
+    export_canonical_bytes,
+    failure_preview_diff,
+)
+from ai_editor.core.file_validation.pre_write_pipeline import (
+    PreWriteValidationOutcome,
+    validate_before_promote,
+    write_source_to_temp,
+)
 
 
 def _origin_text(session: EditSession) -> str:
@@ -33,8 +45,8 @@ def _origin_text(session: EditSession) -> str:
     return ""
 
 
-def _preview_success(diff: str) -> SuccessResult:
-    has_changes = bool(diff.strip())
+def _preview_success(preview_diff: Any) -> SuccessResult:
+    has_changes = preview_diff.content_changed
     return SuccessResult(
         data={
             "success": True,
@@ -42,7 +54,8 @@ def _preview_success(diff: str) -> SuccessResult:
             "write_mode": "preview",
             "has_changes": has_changes,
             "unchanged": not has_changes,
-            "diff": diff,
+            "diff": preview_diff.diff,
+            "preview_diff": preview_diff.as_dict(),
         }
     )
 
@@ -88,6 +101,71 @@ def generate_code(session: EditSession) -> str:
     return export_canonical_bytes(session).decode("utf-8")
 
 
+def validate_draft_in_project_context(
+    handler_id: str,
+    *,
+    source_code: str,
+    target_path: Path,
+    project_root: Optional[Path],
+    skip_quality_tools: bool = False,
+    validate_docstrings: bool = True,
+) -> PreWriteValidationOutcome:
+    """Validate a draft from the authoritative project environment.
+
+    Edit sessions may keep their draft outside the project tree.  Running mypy
+    directly against that path changes import resolution and can report a false
+    ``import-not-found``.  A short-lived staging path under ``project_root``
+    gives the draft the same root, config, and import path as the real file
+    while leaving both the draft and the project file untouched.
+    """
+    if project_root is None:
+        return validate_before_promote(
+            handler_id,
+            source_code=source_code,
+            target_path=target_path,
+            skip_quality_tools=skip_quality_tools,
+            validate_docstrings=validate_docstrings,
+            project_root=None,
+        )
+
+    root = project_root.resolve()
+    target = target_path.resolve()
+    try:
+        relative_target = target.relative_to(root)
+    except ValueError:
+        relative_target = Path(target.name)
+
+    staging_root = Path(tempfile.mkdtemp(prefix=".ai_editor_validation_", dir=root))
+    staged_target = staging_root / relative_target
+    staged_target.parent.mkdir(parents=True, exist_ok=True)
+    staged_target.write_text(source_code, encoding="utf-8")
+    try:
+        outcome = validate_before_promote(
+            handler_id,
+            source_code=source_code,
+            target_path=staged_target,
+            skip_quality_tools=skip_quality_tools,
+            validate_docstrings=validate_docstrings,
+            project_root=root,
+        )
+        if outcome.temp_path is not None:
+            outcome.temp_path.unlink(missing_ok=True)
+        if not outcome.success:
+            return replace(outcome, temp_path=None)
+        try:
+            promotion_temp = write_source_to_temp(source_code, target)
+        except OSError as exc:
+            return replace(
+                outcome,
+                success=False,
+                temp_path=None,
+                error_message=f"Failed to write temporary file: {exc}",
+            )
+        return replace(outcome, temp_path=promotion_temp)
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
+
+
 def preview_export_vs_origin(
     session: EditSession,
     *,
@@ -95,22 +173,21 @@ def preview_export_vs_origin(
 ) -> SuccessResult | ErrorResult:
     """Unified diff: origin snapshot (last write) vs canonical session export."""
     try:
-        code = export_canonical_bytes(
-            session,
-            format_python=format_python,
-        ).decode("utf-8")
+        comparison = compare_session_to_origin(session, format_python=format_python)
     except Exception as exc:
         return error_result_from_make_error(
-            make_error(WRITE_FAILED, f"Preview generation failed: {exc}")
+            make_error(
+                WRITE_FAILED,
+                f"Preview generation failed: {exc}",
+                details={
+                    "preview_diff": failure_preview_diff(
+                        PreviewDiffStatus.EDIT_FAILURE,
+                        diagnostics=[str(exc)],
+                    ).as_dict()
+                },
+            )
         )
-    original = _origin_text(session)
-    diff = unified_diff_text(
-        original,
-        code,
-        before_label=str(session.abs_path),
-        after_label=str(session.abs_path),
-    )
-    return _preview_success(diff)
+    return _preview_success(comparison.preview_diff)
 
 
 def tree_temp_preview(

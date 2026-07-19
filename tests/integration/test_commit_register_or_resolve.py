@@ -31,6 +31,17 @@ def _commit(fake_self: Any, **kwargs: Any) -> bytes:
     return cac.CodeAnalysisClient.upload_session_file_content(fake_self, **kwargs)
 
 
+def _fake_client() -> MagicMock:
+    """Build a fake client with the production lock-aware boundary attached."""
+    fake_self = MagicMock()
+    fake_self.ensure_session_file_lock = (
+        cac.CodeAnalysisClient.ensure_session_file_lock.__get__(
+            fake_self, cac.CodeAnalysisClient
+        )
+    )
+    return fake_self
+
+
 def _save_calls(fake_self: MagicMock) -> List[Any]:
     """Update-mode ``project_file_transfer_upload_save`` invocations on self.call."""
     return [
@@ -42,7 +53,7 @@ def _save_calls(fake_self: MagicMock) -> List[Any]:
 
 def test_t1_commit_heals_unregistered_on_disk_file() -> None:
     """T1: disk-present/index-missing file is registered then uploaded (once)."""
-    fake_self = MagicMock()
+    fake_self = _fake_client()
     fake_self.call.return_value = {"content_bytes": b"ACCEPTED"}
 
     with patch(
@@ -73,7 +84,7 @@ def test_t1_commit_heals_unregistered_on_disk_file() -> None:
 
 def test_t2_genuine_missing_file_errors_terminal() -> None:
     """T2: no index rows at all -> terminal error, no silent upload."""
-    fake_self = MagicMock()
+    fake_self = _fake_client()
 
     with patch(
         f"{_MOD}.resolve_file_id_for_path", side_effect=RuntimeError(_NOT_FOUND)
@@ -98,7 +109,7 @@ def test_t2_genuine_missing_file_errors_terminal() -> None:
 
 def test_t3_already_registered_takes_pure_resolve_no_fallback() -> None:
     """T3: a resolvable file_id never triggers the register fallback."""
-    fake_self = MagicMock()
+    fake_self = _fake_client()
     fake_self.call.return_value = {"content_bytes": b"OK"}
 
     with patch(
@@ -126,7 +137,7 @@ def test_t3_already_registered_takes_pure_resolve_no_fallback() -> None:
 
 def test_unrelated_resolve_error_propagates_without_fallback() -> None:
     """A3: a non-"not found" resolve error is not swallowed by the fallback."""
-    fake_self = MagicMock()
+    fake_self = _fake_client()
 
     with patch(
         f"{_MOD}.resolve_file_id_for_path",
