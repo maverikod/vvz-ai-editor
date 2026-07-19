@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, cast
 from unittest.mock import Mock
@@ -67,20 +68,73 @@ def _is_unavailable_quality_tool(result: Any) -> bool:
     }
 
 
-def _validation_failure_is_non_blocking(validation: Any) -> bool:
-    failures: list[Any] = []
-    for result in validation.quality_results.values():
+_MYPY_IMPORT_NOT_FOUND_MODULE_RE = re.compile(r'module named "([^"]+)"')
+
+
+def _is_isolated_project_import_not_found(result: Any, session: EditSession) -> bool:
+    if result.success:
+        return False
+
+    file_parts = Path(str(session.file_path).replace("\\", "/")).parts
+    if len(file_parts) < 2:
+        return False
+    project_package = file_parts[0]
+    if not project_package or project_package in {".", ".."}:
+        return False
+
+    errors = [str(error) for error in getattr(result, "errors", []) if str(error)]
+    if not errors:
+        return False
+
+    saw_import_error = False
+    for line in errors:
+        lower_line = line.lower()
+        if (
+            "editor_workspaces" not in lower_line
+            or ".ai_editor_write_" not in lower_line
+        ):
+            return False
+        if ": note:" in lower_line:
+            if "missing-imports" in lower_line:
+                continue
+            return False
+        if "[import-not-found]" not in lower_line:
+            return False
+        if "cannot find implementation or library stub" not in lower_line:
+            return False
+        match = _MYPY_IMPORT_NOT_FOUND_MODULE_RE.search(line)
+        if match is None:
+            return False
+        module = match.group(1)
+        if module != project_package and not module.startswith(f"{project_package}."):
+            return False
+        saw_import_error = True
+    return saw_import_error
+
+
+def _validation_failure_is_non_blocking(
+    validation: Any,
+    *,
+    session: EditSession,
+) -> bool:
+    failures: list[tuple[str, Any]] = []
+    for name, result in validation.quality_results.items():
         if not result.success:
-            failures.append(result)
+            failures.append((name, result))
     for result in validation.handler_results.values():
         if not result.success:
-            failures.append(result)
+            failures.append(("handler", result))
 
     if not failures:
         return False
 
-    for result in failures:
+    for name, result in failures:
         if _is_unavailable_quality_tool(result):
+            continue
+        if name == "type_checker" and _is_isolated_project_import_not_found(
+            result,
+            session,
+        ):
             continue
         return False
     return True
@@ -98,18 +152,6 @@ def _resolve_validation_project_root(
         resolved = command_root_path.resolve()
         if resolved.is_absolute() and resolved.is_dir():
             return resolved
-
-    if project_id and hasattr(client, "get_project_root"):
-        try:
-            root = client.get_project_root(project_id)
-        except Exception as exc:
-            logger.debug("project root lookup failed for %s: %s", project_id, exc)
-        else:
-            root_path = _pathlike_value(root)
-            if root_path is not None:
-                resolved = root_path.resolve()
-                if resolved.is_absolute() and resolved.is_dir():
-                    return resolved
 
     project_root = getattr(session.core, "project_root", None)
     root_path = _pathlike_value(project_root)
@@ -301,7 +343,10 @@ def _run_write_commit_ca(
     )
     if validation.temp_path is not None:
         validation.temp_path.unlink(missing_ok=True)
-    if not validation.success and not _validation_failure_is_non_blocking(validation):
+    if not validation.success and not _validation_failure_is_non_blocking(
+        validation,
+        session=session,
+    ):
         result = validation_error_result(
             error_message=validation.error_message or "Validation failed",
             quality_results=validation.quality_results,

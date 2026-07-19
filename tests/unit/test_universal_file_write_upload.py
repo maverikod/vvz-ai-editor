@@ -172,6 +172,112 @@ async def test_commit_keeps_genuine_validation_diagnostic_as_validation_error() 
 
 
 @pytest.mark.asyncio
+async def test_create_commit_allows_workspace_temp_project_import_not_found(
+    tmp_path: Path,
+) -> None:
+    cmd = UniversalFileWriteCommand()
+    package_name = "tmp_live_bf98dd98_pkg_1056c"
+    workspace_origin = (
+        tmp_path
+        / "editor_workspaces"
+        / "sess-live"
+        / "files"
+        / "proj-1"
+        / package_name
+        / "changed.py"
+    )
+    workspace_origin.parent.mkdir(parents=True)
+    workspace_origin.write_text('"""Initial module."""\n', encoding="utf-8")
+    core = MagicMock()
+    core.project_root = workspace_origin.parent / "changed.py-edit"
+    core.project_root.mkdir()
+    session = EditSession(
+        session_id="sess-live",
+        project_id="proj-1",
+        file_path=f"{package_name}/changed.py",
+        abs_path=workspace_origin,
+        draft_path=core.project_root / "changed.py",
+        lockfile_path=core.project_root / "changed.py.lock",
+        format_group="text",
+        handler_id=HANDLER_PYTHON,
+        tree_id=None,
+        core=core,
+        persisted_on_ca=False,
+    )
+    exported = (
+        f'"""Changed module."""\n\n'
+        f"from {package_name}.neighbor import VALUE\n\n"
+        "VALUE_ALIAS = VALUE\n"
+    ).encode("utf-8")
+    comparison = WriteComparison(
+        result=CompareResult.DIFF,
+        origin_bytes=b'"""Initial module."""\n',
+        exported_bytes=exported,
+    )
+    temp_path = workspace_origin.parent / ".ai_editor_write_22bqb4n0.py"
+    validation = PreWriteValidationOutcome(
+        success=False,
+        error_message="type_checker: Found 2 mypy errors",
+        quality_results={
+            "black": ValidationResult(success=True),
+            "linter": ValidationResult(success=True),
+            "ruff_linter": ValidationResult(success=True),
+            "type_checker": ValidationResult(
+                success=False,
+                error_message="Found 2 mypy errors",
+                errors=[
+                    f"{temp_path}:3: error: Cannot find implementation or library stub "
+                    f'for module named "{package_name}.neighbor" [import-not-found]',
+                    f"{temp_path}:4: error: Cannot find implementation or library stub "
+                    f'for module named "{package_name}.tools" [import-not-found]',
+                ],
+            ),
+        },
+    )
+    client = MagicMock()
+    client.upload_create_and_lock.return_value = exported
+
+    with (
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=client,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+        ) as mock_guard_cls,
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+            return_value=session,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+            return_value=comparison,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+            return_value=validation,
+        ),
+    ):
+        mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
+        result = await cmd.execute(
+            project_id="proj-1",
+            session_id="sess-live",
+            write_mode="commit",
+        )
+
+    assert isinstance(result, SuccessResult)
+    assert result.data["uploaded"] is True
+    assert session.persisted_on_ca is True
+    client.get_project_root.assert_not_called()
+    client.upload_create_and_lock.assert_called_once_with(
+        session_id="sess-live",
+        project_id="proj-1",
+        file_path=f"{package_name}/changed.py",
+        content=exported,
+    )
+
+
+@pytest.mark.asyncio
 async def test_upload_success_writes_origin_snapshot() -> None:
     cmd = UniversalFileWriteCommand()
     session = _mock_session()
@@ -304,11 +410,6 @@ def read_value() -> int:
         patch(
             "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
         ) as mock_guard_cls,
-        patch.object(
-            UniversalFileWriteCommand,
-            "_resolve_project_root",
-            return_value=project_root,
-        ),
         patch(
             "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
             return_value=session,
@@ -333,8 +434,8 @@ def read_value() -> int:
     assert isinstance(result, SuccessResult)
     assert result.data["uploaded"] is True
     assert session.persisted_on_ca is True
-    assert observed_validation["project_root"] == project_root.resolve()
-    assert observed_validation["target_path"] == final_target
+    assert observed_validation["project_root"] is None
+    assert observed_validation["target_path"] == workspace_origin
     assert final_target.exists() is False
     assert not any(project_root.glob(".ai_editor_validation_*"))
     assert not any(package.glob(".ai_editor_write_*"))
