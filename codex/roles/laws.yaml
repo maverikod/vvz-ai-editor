@@ -1,0 +1,86 @@
+# ai-editor standing laws. Every role reads this file before acting.
+
+variables:
+  file_access: local
+  local_branch: local
+  cas_branch: cas
+  transfer_branch: main
+
+laws:
+  branch_discipline: >-
+    There are three branches: local is the local working branch, cas is the Code
+    Analysis Server working branch, and main is transfer-only. Work only on the
+    branch belonging to the active site. Never edit main directly and never merge
+    local directly with cas. Before new work, synchronize main into the active
+    working branch. Build, deploy, and run the live acceptance pipeline from the
+    active working branch. Only after deployment and live verification are green,
+    merge that working branch into local main. The agent MUST NOT push main. It
+    reports the exact ready commit and waits for the user's explicit confirmation
+    that main was pushed. After confirmation, the opposite site checks out main,
+    pulls it through its authoritative Git surface, verifies the expected commit,
+    checks out its own working branch, and merges main into it. The same sequence is
+    mirrored when work originates on cas. Leave each site on its own working branch.
+  language: >-
+    Use Russian only for user-facing communication. Use English for code, comments,
+    commits, prompts, child tasks and reports, Plan Manager records, and logs.
+  root_tool_gate: >-
+    The root orchestrator is deny-by-default. Without current explicit permission it
+    uses only agent lifecycle operations and HRS/MRS Plan Manager actions. Read-only
+    filesystem, shell, Git, MCP, web, build, test, deploy, and runtime calls still
+    require direct permission or delegation. Tool failure grants no fallback right.
+  local_mode: >-
+    In the default local profile, project reads, edits, tests, builds, and release
+    preparation use the local checkout on branch local. CAS remains authoritative
+    for its registered server-side project and remote analysis. Commit a coherent,
+    verified task result; do not push. Server-side Git operations always use CAS Git
+    commands through MCP Proxy.
+  cas_mode: >-
+    When the user explicitly selects server-side implementation, all project reads,
+    edits, verification, and Git target the registered CAS project on branch cas via
+    MCP Proxy. Local project tools must not be used as a fallback.
+  level_confinement: >-
+    An agent reasons only inside its declared level and supplied common/specific
+    context. It labels inference, asks its direct parent for information from above,
+    delegates work that belongs below, never inspects sibling-specific context, and
+    never widens scope without a new delegation envelope.
+  zero_trust: >-
+    A child report is a claim, not evidence. Verify the actual artifact, diff, command
+    result, test output, live behavior, and authoritative server state before
+    acceptance. Re-check weak branches manually even when semantic scoring is green.
+  reproduce_before_claiming: >-
+    Read live help/info, reproduce a failure cleanly, identify the cause, and prove the
+    causal link before filing a bug or changing code. A title, old workaround, single
+    transient failure, or agent statement is not proof.
+  server_error_recovery: >-
+    Invalid parameter: obtain command-specific help and retry once with the returned
+    schema. Command missing: obtain general help, select a listed command, then obtain
+    its specific help. Server unavailable: proxy health, registration, and downstream
+    health; stop and escalate exact evidence if unhealthy. Never guess legacy names.
+  editor_gate_no_bypass: >-
+    A failed editor validation gate must be diagnosed and fixed. Never bypass syntax,
+    Ruff, Flake8, mypy, import, or format validation. A false positive is a tooling bug
+    to reproduce and record, not permission to weaken the gate.
+  queue_semantics: >-
+    A long synchronous operation may validly transition to a queued job. This is not
+    an adapter leak. The shared mcp-proxy-adapter client supports synchronous emulation
+    by polling and unwrapping the terminal result (auto_poll=true) and asynchronous or
+    message-driven handling (auto_poll=false or manual_event_handling=true). Every
+    caller must select the intended mode explicitly and test its terminal-result and
+    terminal-error behavior.
+  host_execution: >-
+    Project work uses local tools or the MCP Terminal project sandbox according to the
+    active profile. Host execution on root@192.168.254.26 is only for authorized deploy,
+    real-host debugging, or service administration, never ordinary source work.
+  delivery_checks: >-
+    For ai-editor: reproduce, identify cause, prove, fix, add focused unit coverage,
+    run the unit suite and Ruff, bump all lockstep version files, run docker/build.sh,
+    deploy to root@192.168.254.26, run the single live pipeline
+    scripts/verify_editor_ca_chain.py against production, verify registration and the
+    changed behavior through MCP Proxy, and record a verified Plan Manager fix before
+    closing the bug. Then apply branch_discipline.
+  server_client_law: >-
+    A server client wraps mcp-proxy-adapter rather than reimplementing transport. It
+    exposes an explicit synchronous-emulation mode and an asynchronous/message mode.
+    In synchronous mode callers receive the terminal result or exception; in async
+    mode a queued job/message handoff is valid. Client, server, image, and package
+    versions remain aligned where the project ships those artifacts.

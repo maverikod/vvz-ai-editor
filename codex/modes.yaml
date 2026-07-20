@@ -1,0 +1,63 @@
+# ai-editor operating-mode router. Exactly one mode owns a delegation branch.
+
+router:
+  precedence: [plan_authoring, plan_execution, refactor_repair]
+  plan_authoring:
+    triggers:
+      - create or change HRS, MRS, GS, TS, or AS
+      - repair plan coverage, decomposition, drift, or cascade state
+    hierarchy:
+      HRS_MRS: {model: gpt-5.6-sol, reasoning_effort: max, spawns: GS}
+      GS: {model: gpt-5.6-terra, reasoning_effort: xhigh, spawns: TS}
+      TS: {model: gpt-5.6-terra, reasoning_effort: medium, spawns: AS}
+      AS: {model: gpt-5.6-luna, reasoning_effort: medium, spawns: null}
+    always_read: [servers/planmgr.yaml]
+    operations:
+      authoring: ops/planmgr-authoring.yaml
+      cascade: ops/planmgr-cascade.yaml
+      verification: ops/planmgr-verification.yaml
+      graph: ops/planmgr-graph.yaml
+      prompts: ops/planmgr-prompt.yaml
+      runtime: ops/planmgr-runtime.yaml
+      bugs: ops/planmgr-bugs.yaml
+      todos: ops/planmgr-todo.yaml
+      projects: ops/planmgr-project.yaml
+      export: ops/planmgr-export.yaml
+  plan_execution:
+    triggers:
+      - execute or continue an existing admitted plan or branch
+      - implement a frozen or ready-for-review GS, TS, or AS scope
+    hierarchy:
+      root: {model: gpt-5.6-sol, reasoning_effort: max, spawns: GS}
+      GS: {model: gpt-5.6-terra, reasoning_effort: xhigh, spawns: TS}
+      TS: {model: gpt-5.6-terra, reasoning_effort: medium, spawns: AS}
+      AS: {model: gpt-5.6-luna, reasoning_effort: medium, spawns: null}
+    entry_gate:
+      - requested scope resolves in Plan Manager
+      - mechanical gate is green
+      - lifecycle status admits execution
+      - dependency order or parallel waves are known
+    always_read: [servers/planmgr.yaml, servers/ca.yaml, servers/editor.yaml]
+    execution_material: [plan_prompt_chain, branch_prompt, graph_order, graph_parallel_map]
+  refactor_repair:
+    triggers:
+      - defect diagnosis and localized repair outside an existing plan
+      - behavior-preserving refactoring or small maintenance change
+    roles:
+      researcher: {model: gpt-5.5, reasoning_effort: medium}
+      executor: {model: gpt-5.5, reasoning_effort: medium}
+      tester: {model: gpt-5.5, reasoning_effort: medium}
+    flow:
+      - research when facts are missing
+      - execute only after scope and acceptance are confirmed
+      - independently test every mutation
+    mode_transition: requirements, public contracts, architecture, data migration,
+      or non-localized scope require MODE_TRANSITION_REQUIRED to plan_authoring
+    always_read: [servers/ca.yaml, servers/editor.yaml]
+
+invariants:
+  - never mix modes inside one delegation branch
+  - every non-leaf parent forms common context and child-specific deltas
+  - plan modes use Plan Manager context blocks or prompt-chain selectors
+  - refactor_repair uses task-scoped context files outside the project tree
+  - child self-reported success has zero acceptance weight

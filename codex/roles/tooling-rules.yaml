@@ -1,0 +1,55 @@
+# Confirmed operational rules for ai-editor and its authoritative services.
+
+editor_rules:
+  lifecycle: >-
+    CA session_create -> universal_file_open -> preview -> edit -> write(preview) ->
+    write(commit) -> universal_file_close -> CA session_delete. Reuse the same CA
+    session_id. Always close; do not silently discard modified drafts.
+  outcome_correlation: >-
+    universal_file_edit success is correlated with draft mutation on production
+    ai-editor 1.0.61. Preview the diff before commit as an acceptance step, not as an
+    old error-signal workaround.
+  python_addressing: >-
+    Python statements, including SimpleStatementLine nodes inside try and except
+    suites, are addressable by MAP short_id. universal_file_node_at_line can resolve
+    the current node and ancestors after the tree changes.
+  header_comments: >-
+    Python class and def trailing header comments are preserved by structured edits
+    on production 1.0.61. Keep an explicit regression assertion when changing CST
+    export or replacement logic.
+  structured_formats: >-
+    JSON, YAML, INI/CFG, and TOML use structured node_ref/json_pointer addressing.
+    YAML root-key insertion and native INI/TOML edit, commit, and readback are covered
+    by the canonical live pipeline.
+  import_validation: >-
+    Python validation resolves sibling project modules in the isolated QA copy on
+    production 1.0.61. Do not add import-path bypasses; preserve the regression test.
+  qa_gate: never bypass Ruff, Flake8, mypy, parsing, or format validation
+
+cas_rules:
+  server_id: code-analysis-server-vvz
+  project_id: 3509ae38-0f02-4f16-8e44-e6de7ca0c050
+  branch: cas
+  git: all server-side Git uses CAS Git commands through MCP Proxy
+  read_order: structural and AST analysis before cross-search when applicable
+  copy_number: verify live registration after service restart
+
+queue_rules:
+  valid_transition: a long operation may return a queued job instead of blocking
+  synchronous_emulation: adapter client polls and unwraps with auto_poll=true
+  asynchronous_messages: use auto_poll=false or manual_event_handling=true
+  acceptance: inspect terminal payload or terminal exception, not only queue status
+
+planmgr_rules:
+  - Plan Manager is authoritative for plan levels, lifecycle, cascades, prompts,
+    execution records, bugs, TODOs, links, validation, and semantic score.
+  - Read a bug or TODO body before reanchoring, linking, closing, or duplicating it.
+  - Run mechanical validation before semantic scoring; manually inspect weak branches.
+  - Binding HRS is human-owned; never invent or silently rewrite it.
+
+branch_rules:
+  - local works only on local; CAS works only on cas; main is transfer-only
+  - never merge local directly with cas
+  - deploy and verify from the active working branch before merging it into main
+  - never push main; report the ready commit and wait for user push confirmation
+  - after confirmation, pull main at the opposite site and merge main into its branch

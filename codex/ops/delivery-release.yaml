@@ -1,0 +1,34 @@
+# ai-editor delivery and production acceptance.
+
+project:
+  version_sources:
+    - pyproject.toml
+    - client/ai_editor_client/version.txt
+    - ai_editor/config_templates/ai_editor_container.json
+  build: docker/build.sh
+  deploy_host: root@192.168.254.26
+  live_pipeline: scripts/verify_editor_ca_chain.py
+  production_servers: [ai-editor-server-vvz, code-analysis-server-vvz]
+
+procedure:
+  - reproduce the defect against the relevant current surface
+  - identify and prove the root cause before mutation
+  - implement the localized repair and focused regression test
+  - run focused tests, the unit suite, and Ruff
+  - increment and align every version source
+  - run docker/build.sh from the active working branch
+  - deploy the built artifact to root@192.168.254.26
+  - run the single scripts/verify_editor_ca_chain.py pipeline against production
+  - verify registration, health, version, and changed behavior through MCP Proxy
+  - create and verify the Plan Manager fix, then close only the proven bug
+  - merge the verified working branch into local main, report the ready commit,
+    and wait for the user to push main
+  - after user confirmation, CAS pulls main, verifies the commit, merges main into
+    cas, and remains on cas
+
+invariants:
+  - exactly one real-server pipeline; extend it instead of adding another
+  - queue handoff is normal; selected client mode determines polling or messages
+  - completed queue state is not success until the inner result is checked
+  - do not deploy from or edit main before production verification
+  - the agent never pushes main
