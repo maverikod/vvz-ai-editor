@@ -7,7 +7,6 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from typing import Any, Dict, List, Optional, Type, cast
 
@@ -90,7 +89,7 @@ class UniversalFileEditCommand(BaseMCPCommand):
 
     email = "vasilyvz@gmail.com"
 
-    use_queue = False
+    use_queue = True
 
     @staticmethod
     def get_name() -> str:
@@ -110,6 +109,7 @@ class UniversalFileEditCommand(BaseMCPCommand):
         """
         return {
             "type": "object",
+            "x-use-queue": True,
             "properties": {
                 "project_id": {
                     "type": "string",

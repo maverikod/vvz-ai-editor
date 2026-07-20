@@ -98,6 +98,204 @@ def test_queued_upstream_response_preserves_job_and_final_evidence(
     }
 
 
+@pytest.mark.parametrize(
+    ("terminal_result", "expected"),
+    [
+        (
+            {"files": [{"relative_path": "src/example.py"}]},
+            {"files": [{"relative_path": "src/example.py"}]},
+        ),
+        (
+            {
+                "success": True,
+                "data": {"files": [{"relative_path": "src/example.py"}]},
+            },
+            {"files": [{"relative_path": "src/example.py"}]},
+        ),
+        (
+            {
+                "job_id": "inner-command-job",
+                "command": "list_project_files",
+                "result": {
+                    "success": True,
+                    "data": {"files": [{"relative_path": "src/example.py"}]},
+                },
+                "status": "completed",
+            },
+            {"files": [{"relative_path": "src/example.py"}]},
+        ),
+    ],
+)
+def test_call_unwraps_poll_with_queue_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_result: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    """The public sync API returns the final inner result for queued CAS calls."""
+    import ai_editor.core.upstream.code_analysis_client as client_module
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    job_id = "cas-queued-job-002"
+    responses = iter(
+        [
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "poll_with": "queue_get_job_status",
+                    "store": "queuemgr",
+                },
+            },
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "result": terminal_result,
+                },
+            },
+        ]
+    )
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeRpc:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def execute_command(
+            self, *, command: str, params: dict[str, Any]
+        ) -> dict[str, Any]:
+            calls.append((command, dict(params)))
+            return next(responses)
+
+    monkeypatch.setattr(client_module, "JsonRpcClient", FakeRpc)
+    monkeypatch.setattr(client_module, "_build_jsonrpc_kwargs", lambda _: {})
+    monkeypatch.setattr(client_module, "_QUEUE_POLL_INTERVAL_SECONDS", 0)
+
+    result = CodeAnalysisClient(config_path=Path("config.json")).call(
+        "list_project_files",
+        {"project_id": "project-001", "file_pattern": "src/example.py"},
+    )
+
+    assert result == expected
+    assert calls == [
+        (
+            "list_project_files",
+            {"project_id": "project-001", "file_pattern": "src/example.py"},
+        ),
+        ("queue_get_job_status", {"job_id": job_id}),
+    ]
+
+
+def test_call_propagates_failed_queued_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Queued terminal failures stay failures for existing sync callers."""
+    import ai_editor.core.upstream.code_analysis_client as client_module
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    job_id = "cas-queued-job-003"
+    responses = iter(
+        [
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "poll_with": "queue_get_job_status",
+                    "store": "queuemgr",
+                },
+            },
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "result": {
+                        "success": False,
+                        "error": "FILE_NOT_FOUND",
+                    },
+                },
+            },
+        ]
+    )
+
+    class FakeRpc:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def execute_command(
+            self, *, command: str, params: dict[str, Any]
+        ) -> dict[str, Any]:
+            return next(responses)
+
+    monkeypatch.setattr(client_module, "JsonRpcClient", FakeRpc)
+    monkeypatch.setattr(client_module, "_build_jsonrpc_kwargs", lambda _: {})
+    monkeypatch.setattr(client_module, "_QUEUE_POLL_INTERVAL_SECONDS", 0)
+
+    with pytest.raises(RuntimeError, match=f"FILE_NOT_FOUND.*{job_id}.*failed"):
+        CodeAnalysisClient(config_path=Path("config.json")).call(
+            "get_file_lines",
+            {"project_id": "project-001", "file_path": "missing.py"},
+        )
+
+
+def test_call_propagates_failed_nested_queued_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested command-wrapper failures still raise for public sync callers."""
+    import ai_editor.core.upstream.code_analysis_client as client_module
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    job_id = "cas-queued-job-004"
+    responses = iter(
+        [
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "poll_with": "queue_get_job_status",
+                    "store": "queuemgr",
+                },
+            },
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "result": {
+                        "job_id": "inner-command-job",
+                        "command": "list_project_files",
+                        "result": {
+                            "success": False,
+                            "error": "LIST_FILES_DENIED",
+                        },
+                        "status": "failed",
+                    },
+                },
+            },
+        ]
+    )
+
+    class FakeRpc:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def execute_command(
+            self, *, command: str, params: dict[str, Any]
+        ) -> dict[str, Any]:
+            return next(responses)
+
+    monkeypatch.setattr(client_module, "JsonRpcClient", FakeRpc)
+    monkeypatch.setattr(client_module, "_build_jsonrpc_kwargs", lambda _: {})
+    monkeypatch.setattr(client_module, "_QUEUE_POLL_INTERVAL_SECONDS", 0)
+
+    with pytest.raises(RuntimeError, match=f"LIST_FILES_DENIED.*{job_id}"):
+        CodeAnalysisClient(config_path=Path("config.json")).call(
+            "list_project_files",
+            {"project_id": "project-001"},
+        )
+
+
 async def _run_command(command_name: str, **params: Any) -> Dict[str, Any]:
     cmd_cls = registry.get_command(command_name)
     result_obj = await cmd_cls.run(**params)

@@ -120,15 +120,31 @@ def _queued_job_id(response: Any) -> Optional[str]:
     return None
 
 
+def _queued_poll_command(response: Any) -> Optional[str]:
+    if not isinstance(response, dict):
+        return None
+    data = response.get("data")
+    candidates = [
+        response.get("poll_with"),
+        data.get("poll_with") if isinstance(data, dict) else None,
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
 def _is_queued_response(response: Any) -> bool:
     """Recognize queued envelopes without changing their downstream result."""
     if not isinstance(response, dict):
         return False
+    if _queued_poll_command(response) == "queue_get_job_status":
+        return _queued_job_id(response) is not None
     if str(response.get("mode") or "").strip().lower() == "queued":
         return True
     if response.get("queued") is True:
         return True
-    return _queued_job_id(response) is not None
+    return False
 
 
 class CaSessionStatus(str, enum.Enum):
@@ -213,13 +229,59 @@ def _classify_outcome(result: Any, status: Optional[str] = None) -> EditOutcome:
     return EditOutcome.SUCCESS
 
 
+def _unwrap_queued_terminal_payload(payload: Any) -> Any:
+    """Normalize queue terminal payloads to the original command's public result."""
+    while isinstance(payload, dict):
+        if payload.get("success") is False:
+            return payload
+        if "result" in payload and any(
+            key in payload
+            for key in ("command", "job_id", "jobId", "queue_job_id", "status")
+        ):
+            payload = payload["result"]
+            continue
+        if payload.get("success") is True and "data" in payload:
+            payload = payload["data"]
+            continue
+        return payload
+    return payload
+
+
 def _terminal_result(response: Any) -> tuple[Any, Optional[str], EditOutcome]:
     data = _response_data(response)
     status = _status_from_response(response)
     payload = data
     if isinstance(data, dict) and "result" in data:
         payload = data["result"]
+    payload = _unwrap_queued_terminal_payload(payload)
     return payload, status, _classify_outcome(payload, status)
+
+
+def _queued_failure_message(outcome: UpstreamCommandResult) -> str:
+    result = outcome.result
+    response = outcome.response
+    for payload in (result, _response_data(response), response):
+        if not isinstance(payload, dict):
+            continue
+        error = payload.get("error")
+        if isinstance(error, dict):
+            error = error.get("message") or error.get("detail") or error.get("code")
+        message = error or payload.get("message") or payload.get("detail")
+        if message:
+            return str(message)
+    status = outcome.queue_status or "unknown"
+    return f"Queued upstream command ended with status {status}"
+
+
+def _raise_if_failed_queued_outcome(outcome: UpstreamCommandResult) -> None:
+    if not outcome.is_queued:
+        return
+    if outcome.outcome in {EditOutcome.SUCCESS, EditOutcome.NO_OP}:
+        return
+    message = _queued_failure_message(outcome)
+    raise RuntimeError(
+        f"{message} (job_id={outcome.queue_job_id}, status={outcome.queue_status})"
+    )
 
 
 class CodeAnalysisClient:
@@ -295,7 +357,9 @@ class CodeAnalysisClient:
             ) from exc
         raise exc
 
-    def _call_blocking(self, command: str, params: Dict[str, Any]) -> UpstreamCallResult:
+    def _call_blocking(
+        self, command: str, params: Dict[str, Any]
+    ) -> UpstreamCallResult:
         """Run one CA RPC in a fresh event loop (safe from any thread)."""
         call_id = str(uuid4())
         loop = asyncio.new_event_loop()
@@ -395,22 +459,22 @@ class CodeAnalysisClient:
         if in_async:
             with ThreadPoolExecutor(max_workers=1) as pool:
                 try:
-                    outcome = pool.submit(self._call_blocking, command, payload).result()
-                    return (
-                        outcome.result
-                        if isinstance(outcome, UpstreamCallResult)
-                        else outcome
-                    )
+                    outcome = pool.submit(
+                        self._call_blocking, command, payload
+                    ).result()
+                    if isinstance(outcome, UpstreamCallResult):
+                        _raise_if_failed_queued_outcome(outcome)
+                        return outcome.result
+                    return outcome
                 except BaseException as exc:
                     self._reraise_connect_error(command, exc)
 
         try:
             outcome = self._call_blocking(command, payload)
-            return (
-                outcome.result
-                if isinstance(outcome, UpstreamCallResult)
-                else outcome
-            )
+            if isinstance(outcome, UpstreamCallResult):
+                _raise_if_failed_queued_outcome(outcome)
+                return outcome.result
+            return outcome
         except BaseException as exc:
             self._reraise_connect_error(command, exc)
 

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from mcp_proxy_adapter.commands.command_help_info import build_command_help_payload
 from mcp_proxy_adapter.commands.result import SuccessResult
 
 from ai_editor.commands.universal_file_edit.edit_command import (
@@ -24,6 +25,20 @@ from ai_editor.commands.universal_file_edit.format_group import (
     FORMAT_TREE_TEMP,
 )
 from tests.thin_editor_ca_mocks import edit_guard_context
+
+
+def test_universal_file_edit_advertises_queue_first_execution() -> None:
+    assert UniversalFileEditCommand.use_queue is True
+
+    schema = UniversalFileEditCommand.get_schema()
+    assert schema["x-use-queue"] is True
+
+    help_payload = build_command_help_payload(
+        "universal_file_edit",
+        UniversalFileEditCommand,
+        "custom",
+    )
+    assert help_payload["schema"]["x-use-queue"] is True
 
 
 def test_metadata_matches_callable_format_boundaries() -> None:
