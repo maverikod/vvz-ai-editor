@@ -27,18 +27,18 @@ from ai_editor.commands.universal_file_edit.format_group import (
 from tests.thin_editor_ca_mocks import edit_guard_context
 
 
-def test_universal_file_edit_advertises_queue_first_execution() -> None:
-    assert UniversalFileEditCommand.use_queue is True
+def test_universal_file_edit_advertises_same_process_execution() -> None:
+    assert UniversalFileEditCommand.use_queue is False
 
     schema = UniversalFileEditCommand.get_schema()
-    assert schema["x-use-queue"] is True
+    assert schema["x-use-queue"] is False
 
     help_payload = build_command_help_payload(
         "universal_file_edit",
         UniversalFileEditCommand,
         "custom",
     )
-    assert help_payload["schema"]["x-use-queue"] is True
+    assert help_payload["schema"]["x-use-queue"] is False
 
 
 def test_metadata_matches_callable_format_boundaries() -> None:

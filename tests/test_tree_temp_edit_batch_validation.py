@@ -56,8 +56,7 @@ def test_non_structured_handlers_are_rejected(handler_id: str) -> None:
 
 @pytest.mark.parametrize("handler_id", ["ini", "toml"])
 def test_structured_handlers_reach_backend_serializer(handler_id: str) -> None:
-    """Public validation admits formats whose concrete serializer is pending."""
+    """Public validation admits config formats with concrete serializers."""
     operation = {"action": "delete", "json_pointer": "/section/name"}
     validate_tree_temp_operation(operation, handler_id)
-    with pytest.raises(ValueError, match="Unsupported handler"):
-        _serialize_insert_value(handler_id, "value")
+    assert _serialize_insert_value(handler_id, "value").strip() == "value"

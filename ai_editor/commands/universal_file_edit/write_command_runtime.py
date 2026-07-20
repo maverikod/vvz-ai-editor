@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import ast
 from pathlib import Path
 from typing import Any, Dict, cast
 from unittest.mock import Mock
@@ -32,6 +33,7 @@ from ai_editor.commands.universal_file_edit.session import (
     EditSession,
     resolve_session_for_command,
 )
+from ai_editor.core.file_handlers.registry import HANDLER_PYTHON
 from ai_editor.commands.universal_file_edit.write_compare import (
     CompareResult,
     PreviewDiffStatus,
@@ -64,6 +66,7 @@ def _pathlike_value(value: Any) -> Path | None:
 def _is_unavailable_quality_tool(result: Any) -> bool:
     return not result.errors and str(result.error_message or "").lower() in {
         "flake8 not installed",
+        "ruff not installed",
         "mypy not installed",
     }
 
@@ -178,6 +181,65 @@ def _validation_target_path(session: EditSession, project_root: Path | None) -> 
     if not session.persisted_on_ca or project_target.parent.exists():
         return project_target
     return session.abs_path
+
+
+def _simple_sibling_import_paths(source_text: str, file_path: str) -> list[str]:
+    """Return same-directory module paths imported by a Python draft."""
+    try:
+        module = ast.parse(source_text)
+    except SyntaxError:
+        return []
+    rel_target = Path(file_path.replace("\\", "/"))
+    parent = rel_target.parent
+    paths: list[str] = []
+    for node in ast.walk(module):
+        names: list[str] = []
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names if "." not in alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            if "." not in node.module:
+                names.append(node.module)
+        for name in names:
+            root = name.split(".", 1)[0].strip()
+            if not root or root in {"__future__"}:
+                continue
+            candidate = (parent / f"{root}.py").as_posix()
+            if candidate != rel_target.as_posix() and candidate not in paths:
+                paths.append(candidate)
+    return paths
+
+
+def _stage_validation_sibling_imports(
+    *,
+    session: EditSession,
+    source_text: str,
+    target_path: Path,
+    project_root: Path | None,
+    project_id: str,
+    client: Any,
+) -> list[Path]:
+    if session.handler_id != HANDLER_PYTHON:
+        return []
+    if project_root is not None:
+        try:
+            target_path.resolve().relative_to(project_root.resolve())
+            return []
+        except ValueError:
+            pass
+    staged: list[Path] = []
+    for rel in _simple_sibling_import_paths(source_text, session.file_path):
+        candidate = target_path.parent / Path(rel).name
+        if candidate.exists():
+            continue
+        try:
+            content = client.download_without_lock(project_id=project_id, file_path=rel)
+        except Exception:
+            continue
+        if not isinstance(content, (bytes, bytearray)):
+            continue
+        candidate.write_bytes(content)
+        staged.append(candidate)
+    return staged
 
 
 def _run_write_preview(
@@ -335,12 +397,25 @@ def _run_write_commit_ca(
             project_root = project_root_near(session.abs_path)
         except ValueError:
             project_root = None
-    validation = phases.validate_draft_in_project_context(
-        session.handler_id,
-        source_code=source_text,
-        target_path=_validation_target_path(session, project_root),
+    validation_target = _validation_target_path(session, project_root)
+    staged_imports = _stage_validation_sibling_imports(
+        session=session,
+        source_text=source_text,
+        target_path=validation_target,
         project_root=project_root,
+        project_id=project_id,
+        client=client,
     )
+    try:
+        validation = phases.validate_draft_in_project_context(
+            session.handler_id,
+            source_code=source_text,
+            target_path=validation_target,
+            project_root=project_root,
+        )
+    finally:
+        for staged in staged_imports:
+            staged.unlink(missing_ok=True)
     if validation.temp_path is not None:
         validation.temp_path.unlink(missing_ok=True)
     if not validation.success and not _validation_failure_is_non_blocking(

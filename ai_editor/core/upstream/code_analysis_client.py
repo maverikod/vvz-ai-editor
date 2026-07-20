@@ -33,6 +33,8 @@ from .code_analysis_file_transfer import (
     resolve_file_id_for_path,
     upload_bytes_transfer_id,
     upload_create_save,
+    upload_create_save_via_text_stage_move,
+    is_ca_save_unsupported_extension_error,
 )
 
 try:
@@ -143,6 +145,16 @@ def _is_queued_response(response: Any) -> bool:
     if str(response.get("mode") or "").strip().lower() == "queued":
         return True
     if response.get("queued") is True:
+        return True
+    data = response.get("data")
+    statuses = [
+        response.get("status"),
+        data.get("status") if isinstance(data, dict) else None,
+    ]
+    if _queued_job_id(response) is not None and any(
+        str(status or "").strip().lower() in {"queued", "pending", "running"}
+        for status in statuses
+    ):
         return True
     return False
 
@@ -707,21 +719,36 @@ class CodeAnalysisClient:
         open/close lifecycle symmetric with session_close_file on close.
         """
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
-        saved = upload_create_save(
-            self,
-            session_id=sid,
-            project_id=pid,
-            file_path=rel,
-            content=content,
-            lock_mode="full",
-        )
-        file_id = str(saved.get("file_id") or "").strip() or resolve_file_id_for_path(
-            self, pid, rel
-        )
-        self.call(
-            "session_open_file",
-            {"session_id": sid, "project_id": pid, "file_id": file_id},
-        )
+        try:
+            saved = upload_create_save(
+                self,
+                session_id=sid,
+                project_id=pid,
+                file_path=rel,
+                content=content,
+                lock_mode="full",
+            )
+        except RuntimeError as exc:
+            if not is_ca_save_unsupported_extension_error(exc):
+                raise
+            saved = upload_create_save_via_text_stage_move(
+                self,
+                session_id=sid,
+                project_id=pid,
+                file_path=rel,
+                content=content,
+            )
+        file_id = str(saved.get("file_id") or "").strip()
+        if not file_id:
+            try:
+                file_id = resolve_file_id_for_path(self, pid, rel)
+            except RuntimeError:
+                file_id = ""
+        if file_id:
+            self.call(
+                "session_open_file",
+                {"session_id": sid, "project_id": pid, "file_id": file_id},
+            )
         return _accepted_upload_bytes(saved, content)
 
 

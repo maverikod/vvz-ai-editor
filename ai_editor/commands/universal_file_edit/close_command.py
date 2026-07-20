@@ -39,6 +39,10 @@ from ai_editor.commands.universal_file_edit.close_command_metadata import (
 from ai_editor.commands.universal_file_edit.write_command_runtime import (
     run_write_execute,
 )
+from ai_editor.commands.universal_file_edit.write_compare import (
+    CompareResult,
+    compare_session_to_origin,
+)
 from ai_editor.core.edit_session.workspace_layout import remove_file_subtree
 from ai_editor.core.editor_workspace_paths import (
     file_workspace_layout,
@@ -216,7 +220,13 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         # Tree-temp sessions are preview-oriented: closing without a commit must
         # discard the workspace draft so the external source remains unchanged.
         if session.modified and session.format_group != FORMAT_TREE_TEMP:
-            if not write_before_close:
+            try:
+                comparison = compare_session_to_origin(session)
+            except ValueError:
+                comparison = None
+            if comparison is not None and comparison.result == CompareResult.EQUAL:
+                session.modified = False
+            elif not write_before_close:
                 return error_result_from_make_error(
                     make_error(
                         MODIFIED_NOT_WRITTEN,
@@ -231,19 +241,19 @@ class UniversalFileCloseCommand(BaseMCPCommand):
                         },
                     )
                 )
-            write_result = await run_write_execute(
-                project_id=pid,
-                session_id=ca_session_id,
-                write_mode="commit",
-                write_mode_explicit=True,
-                file_path=session.file_path,
-                client=client,
-            )
-            if isinstance(write_result, ErrorResult):
-                # Do not close on write failure: the caller keeps the session to
-                # retry or to discard explicitly.
-                return write_result
-
+            else:
+                write_result = await run_write_execute(
+                    project_id=pid,
+                    session_id=ca_session_id,
+                    write_mode="commit",
+                    write_mode_explicit=True,
+                    file_path=session.file_path,
+                    client=client,
+                )
+                if isinstance(write_result, ErrorResult):
+                    # Do not close on write failure: the caller keeps the session to
+                    # retry or to discard explicitly.
+                    return write_result
         is_last_file = len(list_bundle_file_paths(ca_session_id)) == 1
         # R4: release the CA lock only when the file exists on CA. A new file that
         # was opened locally (R1) and never committed holds no CA lock, so there

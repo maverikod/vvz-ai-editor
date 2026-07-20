@@ -413,6 +413,59 @@ async def test_write_before_close_false_modified_errors_without_closing(
 
 
 @pytest.mark.asyncio
+async def test_reverted_modified_draft_closes_as_noop_without_upload(
+    tmp_path: Path,
+) -> None:
+    """A draft edited back to canonical origin closes without write/validation."""
+    workspace = _make_workspace(tmp_path)
+    sid, project_id, file_path = "ca-reverted-noop", "p1", "reverted_noop.txt"
+    upstream = _mock_upstream(origin_bytes=b"origin\n")
+
+    with _patch_context(workspace=workspace, upstream=upstream):
+        await UniversalFileOpenCommand().execute(
+            session_id=sid,
+            project_id=project_id,
+            file_path=file_path,
+        )
+        await UniversalFileEditCommand().execute(
+            session_id=sid,
+            project_id=project_id,
+            file_path=file_path,
+            operations=[
+                {"type": "replace", "start_line": 1, "end_line": 1, "content": "edit\n"}
+            ],
+        )
+        await UniversalFileEditCommand().execute(
+            session_id=sid,
+            project_id=project_id,
+            file_path=file_path,
+            operations=[
+                {
+                    "type": "replace",
+                    "start_line": 1,
+                    "end_line": 1,
+                    "content": "origin\n",
+                }
+            ],
+        )
+        session = get_session(sid, file_path)
+        assert session.modified is True
+
+        layout = file_workspace_layout(workspace, sid, project_id, file_path)
+        close_res = await UniversalFileCloseCommand().execute(
+            session_id=sid,
+            project_id=project_id,
+            file_path=file_path,
+            write_before_close=False,
+        )
+
+        assert isinstance(close_res, SuccessResult)
+        assert upstream.upload_session_file_content.call_count == 0
+        upstream.unlock_session_file.assert_called_once()
+        assert not layout.file_subtree_dir.exists()
+
+
+@pytest.mark.asyncio
 async def test_write_before_close_false_unmodified_closes(tmp_path: Path) -> None:
     """An unmodified file closes normally regardless of write_before_close."""
     workspace = _make_workspace(tmp_path)

@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 
 from ai_editor.core.file_handlers.registry import (
+    HANDLER_INI,
     HANDLER_JSON,
     HANDLER_PYTHON,
     HANDLER_TEXT,
+    HANDLER_TOML,
 )
 from ai_editor.core.file_validation.pre_write_pipeline import (
     validate_before_promote,
@@ -46,6 +48,7 @@ def test_validate_before_promote_python_success(tmp_path: Path) -> None:
         HANDLER_PYTHON,
         source_code=_VALID_PY,
         target_path=target,
+        skip_quality_tools=True,
     )
     assert outcome.success is True
     assert outcome.temp_path is not None
@@ -60,6 +63,7 @@ def test_validate_before_promote_python_docstring_failure(tmp_path: Path) -> Non
         HANDLER_PYTHON,
         source_code=bad_py,
         target_path=target,
+        skip_quality_tools=True,
     )
     assert outcome.success is False
     assert outcome.temp_path is None
@@ -90,6 +94,56 @@ def test_validate_before_promote_json_failure(tmp_path: Path) -> None:
     )
     assert outcome.success is False
     assert outcome.temp_path is None
+
+
+@pytest.mark.parametrize(
+    ("handler_id", "filename", "source_code"),
+    [
+        (HANDLER_INI, "settings.ini", "first = 1\n[server]\nhost: localhost\n"),
+        (HANDLER_TOML, "settings.toml", 'first = 1\n[server]\nhost = "localhost"\n'),
+    ],
+)
+def test_validate_before_promote_structured_config_success(
+    tmp_path: Path,
+    handler_id: str,
+    filename: str,
+    source_code: str,
+) -> None:
+    target = tmp_path / filename
+    outcome = validate_before_promote(
+        handler_id,
+        source_code=source_code,
+        target_path=target,
+        skip_quality_tools=True,
+    )
+    assert outcome.success is True
+    if outcome.temp_path is not None:
+        outcome.temp_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(
+    ("handler_id", "filename", "source_code"),
+    [
+        (HANDLER_INI, "settings.ini", "first = 1\nnot a key\n"),
+        (HANDLER_TOML, "settings.toml", 'first = "unterminated\n'),
+    ],
+)
+def test_validate_before_promote_structured_config_failure(
+    tmp_path: Path,
+    handler_id: str,
+    filename: str,
+    source_code: str,
+) -> None:
+    target = tmp_path / filename
+    outcome = validate_before_promote(
+        handler_id,
+        source_code=source_code,
+        target_path=target,
+        skip_quality_tools=True,
+    )
+    assert outcome.success is False
+    assert outcome.temp_path is None
+    assert outcome.handler_results
 
 
 def test_validation_error_result_returns_all_errors() -> None:

@@ -89,7 +89,7 @@ class UniversalFileEditCommand(BaseMCPCommand):
 
     email = "vasilyvz@gmail.com"
 
-    use_queue = True
+    use_queue = False
 
     @staticmethod
     def get_name() -> str:
@@ -109,7 +109,7 @@ class UniversalFileEditCommand(BaseMCPCommand):
         """
         return {
             "type": "object",
-            "x-use-queue": True,
+            "x-use-queue": False,
             "properties": {
                 "project_id": {
                     "type": "string",

@@ -239,6 +239,68 @@ def test_call_propagates_failed_queued_job(
         )
 
 
+def test_call_polls_data_status_queued_envelope_without_poll_with(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CAS job envelopes with data.status=queued must not leak as domain data."""
+    import ai_editor.core.upstream.code_analysis_client as client_module
+    from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
+
+    job_id = "cas-queued-job-003b"
+    responses = iter(
+        [
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "status": "queued",
+                    "command": "list_project_files",
+                },
+            },
+            {
+                "success": True,
+                "data": {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "result": {
+                        "success": True,
+                        "data": {"files": [{"relative_path": "src/example.py"}]},
+                    },
+                },
+            },
+        ]
+    )
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeRpc:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def execute_command(
+            self, *, command: str, params: dict[str, Any]
+        ) -> dict[str, Any]:
+            calls.append((command, dict(params)))
+            return next(responses)
+
+    monkeypatch.setattr(client_module, "JsonRpcClient", FakeRpc)
+    monkeypatch.setattr(client_module, "_build_jsonrpc_kwargs", lambda _: {})
+    monkeypatch.setattr(client_module, "_QUEUE_POLL_INTERVAL_SECONDS", 0)
+
+    result = CodeAnalysisClient(config_path=Path("config.json")).call(
+        "list_project_files",
+        {"project_id": "project-001", "file_pattern": "src/example.py"},
+    )
+
+    assert result == {"files": [{"relative_path": "src/example.py"}]}
+    assert calls == [
+        (
+            "list_project_files",
+            {"project_id": "project-001", "file_pattern": "src/example.py"},
+        ),
+        ("queue_get_job_status", {"job_id": job_id}),
+    ]
+
+
 def test_call_propagates_failed_nested_queued_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

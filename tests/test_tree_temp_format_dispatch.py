@@ -127,3 +127,65 @@ async def test_create_then_preview_supports_tree_temp_config_suffixes(
         assert (result.data or {}).get("total_blocks", 0) > 0
     finally:
         release_session(sid, rel)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("suffix", "source", "expected"),
+    [
+        (".ini", "first = 1\nthird = 3\n", "middle = 2"),
+        (".toml", "first = 1\nthird = 3\n", "middle = 2"),
+    ],
+)
+async def test_config_tree_temp_insert_commits_through_validation(
+    tmp_path: Path,
+    suffix: str,
+    source: str,
+    expected: str,
+) -> None:
+    from ai_editor.commands.universal_file_edit.edit_command import (
+        UniversalFileEditCommand,
+    )
+    from tests.thin_editor_ca_mocks import commit_write
+
+    project_id = "d15ea5ed-2222-4222-8222-222222222222"
+    rel = f"tmp/settings{suffix}"
+    sid, workspace, origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=project_id,
+        file_path=rel,
+        content=source.encode("utf-8"),
+    )
+    try:
+        edit = UniversalFileEditCommand()
+        with upstream_context(workspace=workspace, upstream=upstream):
+            result = await edit.execute(
+                **edit.validate_params(
+                    {
+                        "project_id": project_id,
+                        "session_id": sid,
+                        "file_path": rel,
+                        "operations": [
+                            {
+                                "type": "insert",
+                                "parent_json_pointer": "",
+                                "key": "middle",
+                                "value": "2" if suffix == ".ini" else 2,
+                                "after_key": "first",
+                            }
+                        ],
+                    }
+                )
+            )
+        assert isinstance(result, SuccessResult), result
+        commit = await commit_write(
+            workspace=workspace,
+            upstream=upstream,
+            project_id=project_id,
+            session_id=sid,
+            file_path=rel,
+        )
+        assert commit.data["uploaded"] is True
+        assert expected in origin.read_text(encoding="utf-8")
+    finally:
+        release_session(sid, rel)

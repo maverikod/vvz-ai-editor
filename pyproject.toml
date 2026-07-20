@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-editor"
-version = "1.0.58"
+version = "1.0.61"
 description = "AI Editor MCP server: universal file preview, open, edit, write, and close"
 readme = { file = "docs/README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -68,6 +68,8 @@ include = [
     "ai_editor/core/cst_module/**/*.py",
     "tests/unit/test_quality_tools_mypy_config.py",
     "tests/test_type_checker_mypy_semantics.py",
+    "scripts/verify_editor_ca_chain.py",
+    "tests/test_verify_editor_ca_chain.py",
 ]
 extend-exclude = [
     ".git",

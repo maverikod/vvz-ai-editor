@@ -15,6 +15,7 @@ DOCKERHUB_REPO="$(dockerhub_repo_default)"
 DOCKER_BUILD_NETWORK="${DOCKER_BUILD_NETWORK:-host}"
 SKIP_PUSH=0
 SKIP_DEB=0
+SKIP_LIVE_PIPELINE="${AI_EDITOR_SKIP_LIVE_PIPELINE:-0}"
 DEV_RUN=0
 TAG=""
 
@@ -28,6 +29,8 @@ VERSION defaults to pyproject.toml version. Image tags: REPO:VERSION and REPO:la
 Options:
   --skip-push     Build image only; do not push to Docker Hub
   --skip-deb      Do not build the Debian package
+  --skip-live-pipeline
+                  Skip real-server editor->CA pipeline gate
   --dev-run       After build, run local dev container via docker/run.sh
   -h, --help      Show this help
 
@@ -37,6 +40,11 @@ Environment:
   AI_EDITOR_DOCKERHUB_TOKEN      Docker Hub access token (or password)
   DOCKER_BUILD_NETWORK           docker build network (default: host)
   AI_EDITOR_DOCKER_NO_CACHE=1    Pass --no-cache to docker build
+  AI_EDITOR_SKIP_LIVE_PIPELINE=1 Skip real-server editor->CA pipeline gate
+  AI_EDITOR_CA_HOST/PORT         Override Code Analysis server for live pipeline
+  AI_EDITOR_HOST/PORT            Override AI Editor server for live pipeline
+  AI_EDITOR_WATCH_DIR_ID         Override CA watch dir; unset auto-discovers
+  AI_EDITOR_MTLS_DIR             Override mTLS certificate directory
 EOF
 }
 
@@ -44,6 +52,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --skip-push) SKIP_PUSH=1; shift ;;
     --skip-deb) SKIP_DEB=1; shift ;;
+    --skip-live-pipeline) SKIP_LIVE_PIPELINE=1; shift ;;
     --dev-run) DEV_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "[ERROR] Unknown option: $1" >&2; usage >&2; exit 1 ;;
@@ -98,6 +107,19 @@ else
 fi
 
 echo "[SUCCESS] Image built: $VERSION_TAG and $LATEST_TAG"
+
+if [ "$SKIP_LIVE_PIPELINE" = "1" ]; then
+  echo "[INFO] Skipping real-server editor->CA pipeline gate"
+else
+  if [ -x "$PROJECT_ROOT/.venv/bin/python" ]; then
+    PYTHON_BIN="$PROJECT_ROOT/.venv/bin/python"
+  else
+    PYTHON_BIN="python3"
+  fi
+  echo "[INFO] Running real-server editor->CA pipeline gate"
+  "$PYTHON_BIN" "$PROJECT_ROOT/scripts/verify_editor_ca_chain.py"
+  echo "[SUCCESS] Real-server editor->CA pipeline gate passed"
+fi
 
 if [ "$SKIP_PUSH" -eq 0 ]; then
   if [ -n "${AI_EDITOR_DOCKERHUB_USERNAME:-}" ] && [ -n "${AI_EDITOR_DOCKERHUB_TOKEN:-}" ]; then

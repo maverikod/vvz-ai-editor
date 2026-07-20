@@ -18,9 +18,11 @@ from ai_editor.core.cst_module.docstring_validator import validate_module_docstr
 from ai_editor.core.cst_module.utils import compile_module
 from ai_editor.core.file_validation.results import ValidationResult
 from ai_editor.core.file_handlers.registry import (
+    HANDLER_INI,
     HANDLER_JSON,
     HANDLER_PYTHON,
     HANDLER_TEXT,
+    HANDLER_TOML,
     HANDLER_YAML,
 )
 
@@ -92,6 +94,44 @@ def _validate_yaml_handler(source_code: str) -> Dict[str, ValidationResult]:
         }
 
 
+def _validate_ini_handler(source_code: str) -> Dict[str, ValidationResult]:
+    try:
+        from ai_editor.core.tree_temp.ini_source_parser import parse_ini_source
+
+        parse_ini_source(source_code)
+        return {
+            "ini_parse": ValidationResult(success=True, error_message=None, errors=[]),
+        }
+    except (TypeError, ValueError) as exc:
+        msg = f"Invalid INI: {exc}"
+        return {
+            "ini_parse": ValidationResult(
+                success=False,
+                error_message=msg,
+                errors=[msg],
+            ),
+        }
+
+
+def _validate_toml_handler(source_code: str) -> Dict[str, ValidationResult]:
+    try:
+        from ai_editor.core.tree_temp.toml_source_parser import parse_toml_source
+
+        parse_toml_source(source_code)
+        return {
+            "toml_parse": ValidationResult(success=True, error_message=None, errors=[]),
+        }
+    except (TypeError, ValueError) as exc:
+        msg = f"Invalid TOML: {exc}"
+        return {
+            "toml_parse": ValidationResult(
+                success=False,
+                error_message=msg,
+                errors=[msg],
+            ),
+        }
+
+
 def _validate_text_handler(_source_code: str) -> Dict[str, ValidationResult]:
     return {
         "text": ValidationResult(success=True, error_message=None, errors=[]),
@@ -102,6 +142,8 @@ _HANDLER_RUNNERS = {
     HANDLER_PYTHON: _validate_python_handler,
     HANDLER_JSON: _validate_json_handler,
     HANDLER_YAML: _validate_yaml_handler,
+    HANDLER_INI: _validate_ini_handler,
+    HANDLER_TOML: _validate_toml_handler,
     HANDLER_TEXT: _validate_text_handler,
 }
 

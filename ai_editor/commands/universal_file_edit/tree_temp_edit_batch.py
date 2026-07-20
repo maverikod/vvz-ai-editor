@@ -153,6 +153,12 @@ def _serialize_insert_value(handler_id: str, value: Any) -> str:
             ),
         )
         return dumped
+    if handler_id in {"ini", "toml"}:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
     raise ValueError(f"Unsupported handler for tree-temp: {handler_id!r}")
 
 

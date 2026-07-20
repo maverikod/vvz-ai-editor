@@ -8,6 +8,7 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 import logging
+from uuid import uuid4
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
     from ai_editor.core.upstream.code_analysis_client import CodeAnalysisClient
 
 logger = logging.getLogger(__name__)
+
+_CA_SAVE_UNSUPPORTED_SUFFIXES = {".ini", ".cfg", ".toml"}
 
 
 def normalize_rel_path(file_path: str) -> str:
@@ -37,6 +40,25 @@ def _row_relative_path(item: Dict[str, Any]) -> str:
 
 def _file_id_from_row(item: Dict[str, Any]) -> str:
     return str(item.get("file_id") or item.get("id") or "").strip()
+
+
+def _transfer_id_from_payload(payload: Any) -> str:
+    """Extract transfer_id from object, dict, or wrapped domain payloads."""
+    value = getattr(payload, "transfer_id", None)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("transfer_id", "transferId"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    for key in ("data", "result"):
+        nested = payload.get(key)
+        transfer_id = _transfer_id_from_payload(nested)
+        if transfer_id:
+            return transfer_id
+    return ""
 
 
 def _project_name(client: "CodeAnalysisClient", project_id: str) -> str:
@@ -386,7 +408,7 @@ def upload_bytes_transfer_id(
                 path, filename=name, compression="identity"
             )
         )
-        transfer_id = str(getattr(receipt, "transfer_id", "") or "").strip()
+        transfer_id = _transfer_id_from_payload(receipt)
         if not transfer_id:
             raise RuntimeError("upload buffer returned no transfer_id")
         return transfer_id
@@ -475,3 +497,70 @@ def upload_create_save(
     if not isinstance(saved, dict):
         raise RuntimeError("project_file_transfer_upload_save returned invalid payload")
     return saved
+
+
+def is_ca_save_unsupported_extension_error(exc: BaseException) -> bool:
+    """Return true for CA universal-save suffix gaps after editor validation."""
+    message = str(exc)
+    return (
+        "UNSUPPORTED_FILE_EXTENSION" in message
+        or "No handler for suffix" in message
+    )
+
+
+def upload_create_save_via_text_stage_move(
+    client: "CodeAnalysisClient",
+    *,
+    session_id: str,
+    project_id: str,
+    file_path: str,
+    content: bytes,
+) -> Dict[str, Any]:
+    """Persist an editor-validated config file when CA save lacks its suffix.
+
+    Code Analysis transfer-save delegates new-file creation to its own
+    universal_file_save registry. AI Editor has structured INI/TOML handlers
+    before upload, but older CA deployments do not. Store the exact validated
+    bytes through CA's text save path, then move the file to the requested
+    project-relative path using CA filesystem lifecycle commands.
+    """
+    sid = str(session_id or "").strip()
+    pid = str(project_id or "").strip()
+    rel = normalize_rel_path(file_path)
+    suffix = Path(rel).suffix.lower()
+    if suffix not in _CA_SAVE_UNSUPPORTED_SUFFIXES:
+        raise RuntimeError(f"unsupported staged upload suffix: {suffix or '<none>'}")
+    parent = Path(rel).parent
+    stage_name = f"__ai_editor_upload_{uuid4().hex}.txt"
+    stage_rel = normalize_rel_path(str(parent / stage_name))
+    saved = upload_create_save(
+        client,
+        session_id=sid,
+        project_id=pid,
+        file_path=stage_rel,
+        content=content,
+        lock_mode=None,
+    )
+    try:
+        moved = client.call(
+            "fs_move",
+            {
+                "project_id": pid,
+                "source_path": stage_rel,
+                "dest_path": rel,
+                "overwrite": False,
+                "backup": True,
+            },
+        )
+    except Exception:
+        try:
+            client.call(
+                "fs_remove",
+                {"project_id": pid, "file_path": stage_rel, "backup": False},
+            )
+        except Exception as cleanup_exc:  # pragma: no cover - diagnostic only
+            logger.debug("failed to remove staged upload %s: %s", stage_rel, cleanup_exc)
+        raise
+    if isinstance(moved, dict):
+        return {**saved, **moved, "file_path": rel, "resolved_file_path": rel}
+    return {**saved, "file_path": rel, "resolved_file_path": rel}

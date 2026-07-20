@@ -177,13 +177,7 @@ async def _preview_diff(workspace: Path, upstream: object, sid: str, rel: str) -
 
 
 @pytest.fixture(autouse=True)
-def _reset_json_trees(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The command API remains exercised; avoid the repository's stalled default
-    # asyncio executor in this focused thin-editor evidence module.
-    monkeypatch.setattr(
-        "ai_editor.commands.universal_file_edit.edit_command.asyncio.to_thread",
-        _run_inline,
-    )
+def _reset_json_trees() -> None:
     clear_ca_session(DEFAULT_CA_SESSION_ID)
     jtb._trees.clear()
     yield
@@ -366,6 +360,55 @@ async def test_py_insert_by_preview_short_id_target_node_id(tmp_path: Path) -> N
     assert isinstance(res, SuccessResult), getattr(res, "message", res)
     text = await _commit(workspace, upstream, sid, origin, rel)
     assert text.index("def bar") < text.index("def foo")
+
+
+@pytest.mark.asyncio
+async def test_py_insert_into_class_preserves_header_comment(tmp_path: Path) -> None:
+    rel = "src/header_comment.py"
+    body = (
+        '"""Class insert comment fixture."""\n\n'
+        "class Foo:  # type: ignore[misc]\n"
+        '    """Fixture class."""\n\n'
+        "    def existing(self) -> int:\n"
+        '        """Return one."""\n'
+        "        return 1\n"
+    )
+    sid, workspace, origin, upstream = await _open_file(tmp_path, rel, body)
+    blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
+    class_sid = _block_short_id(_find_block_by_type(blocks, "class"))
+
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "insert",
+                            "parent_node_id": class_sid,
+                            "position": "last",
+                            "code_lines": [
+                                "",
+                                "def added(self) -> int:",
+                                '    """Return two."""',
+                                "    return 2",
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(res, SuccessResult), getattr(res, "message", res)
+    text = await _commit(workspace, upstream, sid, origin, rel)
+    class_header = next(
+        line for line in text.splitlines() if line.startswith("class Foo")
+    )
+    assert "# type: ignore[misc]" in class_header
+    assert text.index("    def added") > text.index("class Foo")
+    assert "\ndef added" not in text
 
 
 def test_py_sidecar_edit_preserves_declaration_trivia(tmp_path: Path) -> None:

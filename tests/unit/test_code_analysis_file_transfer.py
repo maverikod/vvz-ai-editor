@@ -14,6 +14,7 @@ from ai_editor.core.upstream.code_analysis_file_transfer import (
     list_project_file_rows_for_path,
     read_project_file_bytes_via_lines,
     resolve_file_id_for_path,
+    upload_bytes_transfer_id,
 )
 from ai_editor.core.host_filesystem import HostFileOperationError
 
@@ -118,6 +119,26 @@ def test_ensure_file_id_registers_unindexed_disk_file() -> None:
 
     fid = ensure_file_id_for_path(client, "proj-1", "notes.txt", session_id="sess-1")
     assert fid == "new-file-id"
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        {"transfer_id": "tr-dict"},
+        {"data": {"transfer_id": "tr-dict"}},
+        {"result": {"transfer_id": "tr-dict"}},
+    ],
+)
+def test_upload_bytes_transfer_id_accepts_dict_receipts(
+    receipt: dict[str, Any],
+) -> None:
+    client = MagicMock()
+    client.run_in_isolated_loop.return_value = receipt
+
+    assert (
+        upload_bytes_transfer_id(client, b"content", filename="payload.txt")
+        == "tr-dict"
+    )
 
 
 def test_ensure_file_id_registers_disk_present_index_missing_file(

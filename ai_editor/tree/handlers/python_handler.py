@@ -1091,9 +1091,16 @@ class PythonHandler(FormatHandler):
             raise ValueError("next_free must be >= 1")
         _check_position(position)
         tree, sid_index = _load_marked_tree(marked_text)
+        sid_extra_meta = _collect_sid_extra_meta(marked_text)
         anchor_id = _require_node_id(tree, anchor_short_id, sid_index)
         op = _insert_operation(tree, anchor_id, position, new_content)
-        return _apply_and_emit(tree, sid_index, op, next_free=next_free)
+        return _apply_and_emit(
+            tree,
+            sid_index,
+            op,
+            next_free=next_free,
+            sid_extra_meta=sid_extra_meta,
+        )
 
     def op_delete(self, marked_text: str, short_id: NodeId) -> str:
         self._enforce_short_id_edit_gate()
