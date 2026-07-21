@@ -321,3 +321,66 @@ async def test_insert_array_element_via_rfc6901_append_sentinel(
                 {"project_id": _PROJECT_UUID, "session_id": sid}
             )
         )
+
+
+_45B27A37_JSON_BODY = b'{\n  "compact": [1,2,3],\n  "meta": {\n    "tag": "old"\n  }\n}\n'
+
+
+@pytest.mark.asyncio
+async def test_45b27a37_json_create_zero_edit_commit_is_byte_identical(
+    tmp_path: Path,
+) -> None:
+    """Bug 45b27a37 (JSON sibling): create=True + zero edits must commit
+    ``initial_content`` verbatim; no reindent, no compact-array expansion.
+    """
+    rel = "45b27a37_create.json"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    from tests.thin_editor_ca_mocks import (
+        ensure_projectid_marker,
+        layout_origin,
+        session_dir_for,
+    )
+    from ai_editor.commands.universal_file_edit.open_command import (
+        UniversalFileOpenCommand,
+    )
+
+    upstream = mock_upstream()
+    sid = DEFAULT_CA_SESSION_ID
+    reset_ca_session(sid, rel)
+    with upstream_context(workspace=workspace, upstream=upstream):
+        cmd = UniversalFileOpenCommand()
+        res = await cmd.execute(
+            **cmd.validate_params(
+                {
+                    "session_id": sid,
+                    "project_id": _PROJECT_UUID,
+                    "file_path": rel,
+                    "create": True,
+                    "initial_content": _45B27A37_JSON_BODY.decode("utf-8"),
+                }
+            )
+        )
+        assert isinstance(res, SuccessResult), res
+    ensure_projectid_marker(session_dir_for(workspace, sid, _PROJECT_UUID, rel), _PROJECT_UUID)
+    origin = layout_origin(workspace, sid, _PROJECT_UUID, rel)
+
+    commit_res = await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_PROJECT_UUID,
+        session_id=sid,
+        file_path=rel,
+    )
+    assert commit_res.data["uploaded"] is True
+    committed = origin.read_bytes()
+    assert committed == _45B27A37_JSON_BODY, (
+        f"zero-edit create commit must be byte-identical to initial_content; "
+        f"got:\n{committed.decode('utf-8', 'replace')!r}"
+    )
+    with upstream_context(workspace=workspace, upstream=upstream):
+        await UniversalFileCloseCommand().execute(
+            **UniversalFileCloseCommand().validate_params(
+                {"project_id": _PROJECT_UUID, "session_id": sid, "file_path": rel}
+            )
+        )

@@ -107,7 +107,14 @@ def _build_scalar(val: Any) -> TreeNode:
     elif t == "number":
         pyval = val
     else:
-        pyval = str(val)
+        # Keep the original str value as-is (rather than coercing via str()):
+        # ruamel yields ScalarString subclasses (SingleQuotedScalarString,
+        # DoubleQuotedScalarString, ...) for typ='rt' loads with
+        # preserve_quotes=True. Preserving the subclass here (TreeNode.value
+        # is Any and str subclasses still satisfy the "string" type contract)
+        # lets the serializer round-trip the original quote style for
+        # unmutated subtrees without any TreeNode schema change.
+        pyval = val
     nt: TreeNodeType = cast(
         TreeNodeType,
         t,
@@ -154,6 +161,18 @@ def _build_object(data: Union[CommentedMap, Dict[Any, Any]]) -> TreeNode:
             child.comment_inline = inl
         children.append(child)
     if pending:
+        # NOTE (45b27a37 audit): a comment still pending after the last key
+        # is really a footer/trailing comment of this mapping, not a
+        # "before" comment of the last key -- attaching it to
+        # last.comment_before (as done here) moves it from after the last
+        # value to before the last key on round-trip. A correct fix needs a
+        # dedicated container "footer comment" slot: TreeNode.comment_inline
+        # already has an established, relied-upon meaning for a *nested*
+        # container (EOL comment on the enclosing key/list-item line, applied
+        # by the parent's _apply_comments before recursing) and ruamel's
+        # yaml_end_comment_extend/ca.end is not consumed by this ruamel
+        # version's emitter, so neither can safely carry a footer comment
+        # without a TreeNode schema change. Deferred; see 45b27a37 report.
         if children:
             last = children[-1]
             last.comment_before = _merge_before(last.comment_before, pending)
@@ -194,6 +213,11 @@ def _build_array_container(data: Union[CommentedSeq, List[Any]]) -> TreeNode:
             child.comment_inline = inl
         ch.append(child)
     if pending and ch:
+        # See the NOTE in _build_object: this mis-attaches a trailing/footer
+        # comment as the last element's comment_before. Deferred for the same
+        # reason (no schema slot for a container footer comment that would
+        # not collide with comment_inline's existing nested-container
+        # meaning).
         last = ch[-1]
         last.comment_before = _merge_before(last.comment_before, pending)
     return arr

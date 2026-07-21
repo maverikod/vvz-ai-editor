@@ -79,6 +79,15 @@ def test_yaml_roundtrip_multiline_above_root() -> None:
     assert "banner" in root.comment_before
 
 
+def test_yaml_roundtrip_preserves_scalar_quote_style() -> None:
+    """45b27a37 fidelity: double/single/plain scalar quote style survives a
+    parse -> emit round trip untouched (no edit occurred)."""
+    source = 'dq: "abc-123"\nsq: \'single-quoted\'\nplain: value2\n'
+    roots = parse_yaml_source_to_roots(source)
+    out = emit_yaml_source_from_roots(roots)
+    assert out == source
+
+
 def test_yaml_double_roundtrip_equals_single() -> None:
     source = "a: 1\nb: 2\n"
     once = parse_yaml_source_to_roots(source)

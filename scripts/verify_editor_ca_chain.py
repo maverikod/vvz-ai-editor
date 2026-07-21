@@ -410,6 +410,104 @@ async def _scenario_yaml_root_insert(
     return details
 
 
+_45B27A37_YAML_FIXTURE = (
+    "# banner line 1\n"
+    "# banner line 2\n"
+    'name: "abc-123"  # inline comment\n'
+    "single: 'single-quoted'\n"
+    "flow: { a: 1, b: 2 }\n"
+    "second: value2  # second inline\n"
+)
+
+
+async def _scenario_45b27a37_yaml_create_noop_commit_fidelity(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 45b27a37: open(create=True) + commit with NO edit call must round-trip
+    ``initial_content`` verbatim -- no stripped comments, no quote normalization,
+    no flow-to-block expansion.
+    """
+    del args
+    scenario_slug = "45b27a37_yaml_create_noop"
+    file_path = "verify/45b27a37_create.yaml"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _45B27A37_YAML_FIXTURE,
+        },
+    )
+    try:
+        # No universal_file_edit call: this is the exact zero-edit scenario
+        # that 45b27a37 reported as silently normalized on commit.
+        # EDITOR-BOUNDARY GUARANTEE (the 45b27a37 fix): a zero-edit tree-temp
+        # session must export the pristine origin bytes, i.e. write(preview)
+        # reports unchanged with an empty diff. This is red on <=1.0.63
+        # (the legacy revalidation pass normalized the draft at open).
+        wprev = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "preview",
+            },
+        )
+        preview_diff = wprev.get("preview_diff") or {}
+        diff_text = (
+            preview_diff.get("diff") if isinstance(preview_diff, dict) else None
+        ) or wprev.get("diff") or ""
+        if wprev.get("unchanged") is not True or diff_text.strip():
+            raise PipelineFailure(
+                "zero-edit preview shows editor-side normalization (45b27a37)",
+                {"unchanged": wprev.get("unchanged"), "diff": diff_text},
+            )
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+            },
+        )
+        if not commit.get("uploaded"):
+            raise PipelineFailure("zero-edit create commit did not upload", commit)
+        content = await _read_file_text(ca, project_id, file_path, end_line=6)
+        # FULL byte-fidelity readback assert is intentionally NOT enforced yet:
+        # CAS bug a3d06ff7 (project_file_transfer_upload_save re-serializes
+        # uploaded YAML server-side) normalizes the stored file even though the
+        # editor uploads pristine bytes. Restore the strict line-list
+        # comparison against _45B27A37_YAML_FIXTURE once a3d06ff7 is fixed.
+        # Until then assert semantic survival of the document's data.
+        for needle in ("name:", "abc-123", "second:", "value2"):
+            if needle not in content:
+                raise PipelineFailure(
+                    "zero-edit create commit lost document data in CA readback",
+                    {"missing": needle, "content": content},
+                )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "editor_boundary_unchanged": wprev.get("unchanged"),
+            "commit_uploaded": commit.get("uploaded"),
+            "readback_excerpt": content[:1000],
+            "cas_fidelity_blocked_by": "a3d06ff7",
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
 def _find_preview_node_ref(value: Any, needles: tuple[str, ...]) -> str | None:
     if isinstance(value, dict):
         serialized = json.dumps(value, ensure_ascii=False)
@@ -1114,6 +1212,10 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     ] = [
         ("296e02c9_edit_preview_commit_readback", _scenario_edit_preview_text),
         ("690f768c_yaml_root_key_parent_empty_and_slash", _scenario_yaml_root_insert),
+        (
+            "45b27a37_yaml_create_noop_commit_fidelity",
+            _scenario_45b27a37_yaml_create_noop_commit_fidelity,
+        ),
         (
             "86288c9c_python_header_comment_preservation",
             _scenario_python_header_comment,

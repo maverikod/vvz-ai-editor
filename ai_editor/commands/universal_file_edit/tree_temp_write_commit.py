@@ -29,11 +29,25 @@ from ai_editor.tree.sibling_convention import sibling_tree_path
 
 
 def serialize_tree_temp_session_source(session: "EditSession") -> str:
-    """Return canonical serialized source text for a tree-temp session (handlers json/yaml)."""
+    """Return canonical serialized source text for a tree-temp session (handlers json/yaml).
+
+    Fixes 45b27a37: when no real tree-temp edit operation has mutated the
+    session (``session.tree_temp_mutated`` is False — the common zero-edit
+    open-then-commit round trip, including ``create=True``), export the
+    pristine Origin Snapshot bytes verbatim instead of round-tripping through
+    any internal tree/serializer representation. Internal representations
+    (the marked-tree revalidation pass, the ruamel-based tree-temp roots
+    serializer, or the legacy registered-tree dump below) each normalize the
+    source to a degree — stripped comments, normalized quote style, expanded
+    flow containers, or reindented JSON — which must never be observable
+    unless a genuine edit occurred.
+    """
     if session.format_group != FORMAT_TREE_TEMP:
         raise ValueError(
             "serialize_tree_temp_session_source requires tree-temp format_group",
         )
+    if not session.tree_temp_mutated:
+        return session.abs_path.read_text(encoding="utf-8")
     if session.core.tree_validity == SessionTreeValidity.VALID:
         return session.core.session_source_path.read_text(encoding="utf-8")
     if session.tree_temp_roots is not None:

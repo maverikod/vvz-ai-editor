@@ -680,7 +680,10 @@ def apply_tree_temp_mutations(
         )
     config_handler = session.handler_id in {"ini", "toml"}
     if session.tree_temp_roots is None and not config_handler:
-        return _run_legacy_tree_temp_apply(session, operations)
+        result = _run_legacy_tree_temp_apply(session, operations)
+        if isinstance(result, SuccessResult):
+            session.tree_temp_mutated = True
+        return result
 
     if session.tree_temp_roots is None:
         session.tree_temp_roots = parse_source_bytes_to_roots(
@@ -705,7 +708,10 @@ def apply_tree_temp_mutations(
                 WRITE_FAILED,
                 {"path": str(session.draft_path)},
             )
-        return _apply_valid_tree_temp_mutations(session, operations)
+        result = _apply_valid_tree_temp_mutations(session, operations)
+        if isinstance(result, SuccessResult):
+            session.tree_temp_mutated = True
+        return result
 
     roots_snap = deepcopy(session.tree_temp_roots)
 
@@ -750,6 +756,7 @@ def apply_tree_temp_mutations(
             session,
             serialize_tree_temp_roots(session.handler_id, roots),
         )
+        session.tree_temp_mutated = True
         return SuccessResult(data={"success": True, "updated": True})
     except ValueError as exc:
         rollback()

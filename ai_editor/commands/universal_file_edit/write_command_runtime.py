@@ -368,6 +368,7 @@ def _run_write_commit_ca(
                 },
             )
         session.modified = False
+        session.tree_temp_mutated = False
         return SuccessResult(
             data=_commit_response_data(
                 session=session,
@@ -511,6 +512,7 @@ def _run_write_commit_ca(
             },
         )
     session.modified = False
+    session.tree_temp_mutated = False
     return SuccessResult(
         data=_commit_response_data(
             session=session,

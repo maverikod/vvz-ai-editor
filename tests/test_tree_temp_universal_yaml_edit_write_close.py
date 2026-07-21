@@ -513,6 +513,112 @@ async def test_yaml_top_level_one_element_list_roundtrips_as_sequence(
         )
 
 
+_45B27A37_BODY = b"""# banner line 1
+# banner line 2
+name: "abc-123"  # inline comment
+single: 'single-quoted'
+flow: { a: 1, b: 2 }
+second: value2  # second inline
+"""
+
+
+@pytest.mark.asyncio
+async def test_45b27a37_yaml_create_zero_edit_commit_is_byte_identical(
+    tmp_path: Path,
+) -> None:
+    """Bug 45b27a37: create=True + zero edits must commit initial_content verbatim.
+
+    No comment stripping, no quote normalization, no flow-to-block expansion:
+    the committed bytes must equal ``initial_content`` exactly.
+    """
+    rel = "45b27a37_create.yml"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    from tests.thin_editor_ca_mocks import (
+        ensure_projectid_marker,
+        layout_origin,
+        mock_upstream,
+        session_dir_for,
+    )
+    from ai_editor.commands.universal_file_edit.open_command import (
+        UniversalFileOpenCommand,
+    )
+
+    upstream = mock_upstream()
+    sid = DEFAULT_CA_SESSION_ID
+    reset_ca_session(sid, rel)
+    with upstream_context(workspace=workspace, upstream=upstream):
+        cmd = UniversalFileOpenCommand()
+        res = await cmd.execute(
+            **cmd.validate_params(
+                {
+                    "session_id": sid,
+                    "project_id": _YAML_PROJECT_UUID,
+                    "file_path": rel,
+                    "create": True,
+                    "initial_content": _45B27A37_BODY.decode("utf-8"),
+                }
+            )
+        )
+        assert isinstance(res, SuccessResult), res
+    ensure_projectid_marker(session_dir_for(workspace, sid, _YAML_PROJECT_UUID, rel), _YAML_PROJECT_UUID)
+    origin = layout_origin(workspace, sid, _YAML_PROJECT_UUID, rel)
+
+    commit_res = await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_YAML_PROJECT_UUID,
+        session_id=sid,
+        file_path=rel,
+    )
+    assert commit_res.data["uploaded"] is True
+    committed = origin.read_bytes()
+    assert committed == _45B27A37_BODY, (
+        f"zero-edit create commit must be byte-identical to initial_content; "
+        f"got:\n{committed.decode('utf-8', 'replace')!r}"
+    )
+    with upstream_context(workspace=workspace, upstream=upstream):
+        await UniversalFileCloseCommand().execute(
+            **UniversalFileCloseCommand().validate_params(
+                {"project_id": _YAML_PROJECT_UUID, "session_id": sid, "file_path": rel}
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_45b27a37_yaml_existing_file_zero_edit_commit_is_noop(
+    tmp_path: Path,
+) -> None:
+    """Bug 45b27a37 sibling case: opening an EXISTING file with zero edits and
+    committing must not rewrite it at all (no upload, byte-identical origin).
+    """
+    rel = "records/45b27a37_existing.yml"
+    sid, workspace, origin, upstream = await _prep(tmp_path, rel, _45B27A37_BODY)
+    pre_bytes = origin.read_bytes()
+    assert pre_bytes == _45B27A37_BODY
+
+    commit_res = await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_YAML_PROJECT_UUID,
+        session_id=sid,
+        file_path=rel,
+    )
+    assert commit_res.data["uploaded"] is False
+    assert commit_res.data["unchanged"] is True
+    committed = origin.read_bytes()
+    assert committed == _45B27A37_BODY, (
+        f"zero-edit no-op commit on an existing file must not rewrite it; "
+        f"got:\n{committed.decode('utf-8', 'replace')!r}"
+    )
+    with upstream_context(workspace=workspace, upstream=upstream):
+        await UniversalFileCloseCommand().execute(
+            **UniversalFileCloseCommand().validate_params(
+                {"project_id": _YAML_PROJECT_UUID, "session_id": sid, "file_path": rel}
+            )
+        )
+
+
 @pytest.mark.asyncio
 async def test_yaml_empty_list_and_dict_roundtrip(tmp_path: Path) -> None:
     """Criterion G: empty list and empty dict preserve container types."""

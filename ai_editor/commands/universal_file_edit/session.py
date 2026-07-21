@@ -56,6 +56,15 @@ class EditSession:
     # successful commit. Set by universal_file_edit, cleared by a successful
     # universal_file_write commit, consulted by universal_file_close (R5/R6).
     modified: bool = False
+    # True once a real tree-temp edit operation has mutated ``tree_temp_roots``
+    # (or the marked-tree fallback) since open or the last successful commit.
+    # False for a freshly opened/committed tree-temp session even though the
+    # in-session draft may have been internally re-serialized for preview or
+    # revalidation purposes (bug 45b27a37). Canonical export consults this
+    # flag to export the pristine Origin Snapshot bytes verbatim when no edit
+    # ever touched the session, instead of round-tripping through any
+    # serializer.
+    tree_temp_mutated: bool = False
     tree_temp_roots: Optional[List[TreeNode]] = None
     sidecar_write_intent: Optional[str] = None
     fallback_reason: Optional[str] = None
