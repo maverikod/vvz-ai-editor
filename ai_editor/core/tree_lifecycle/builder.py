@@ -45,13 +45,6 @@ def _discovered_nodes_from_tree_nodes(nodes: List[TreeNode]) -> List[DiscoveredN
     return out
 
 
-def _first_root_stable_id(nodes: List[TreeNode]) -> str | None:
-    """Return str(first.short_id) or None when empty."""
-    if not nodes:
-        return None
-    return str(nodes[0].short_id)
-
-
 def _load_prior_map(sidecar_path: Path) -> MapSection | None:
     """If sidecar exists and parses, return MAP; else None."""
     if not sidecar_path.is_file():
@@ -103,8 +96,23 @@ class TreeBuilder:
         reg = registry if registry is not None else HandlerRegistry.default_registry()
         handler: FormatHandler = reg.resolve(source_abs)
         marked_text = handler.mark(content)
-        nodes = handler.parse_content(source_abs, content)
-        discovered = _discovered_nodes_from_tree_nodes(nodes)
+        from ai_editor.tree.handlers.python_handler import PythonHandler
+
+        if isinstance(handler, PythonHandler):
+            # Python MAP discovery must walk the same post-order marked TREE that
+            # `mark()` just produced, not the position-ordered `parse_content`
+            # sequence: the two use unsynchronized short_id numbering, which
+            # desyncs MAP entries from the TREE they are supposed to describe
+            # (bug bdce5d39). Mirrors edit_session_mutations.build_session_tree
+            # and edit_operations_adapter._discovered_nodes_after_mutation.
+            discovered = list(
+                handler.discover_marked_nodes(
+                    marked_text, content, Path(file_path)
+                )
+            )
+        else:
+            nodes = handler.parse_content(source_abs, content)
+            discovered = _discovered_nodes_from_tree_nodes(nodes)
         if not discovered:
             raise ValueError("TreeBuilder.build requires at least one addressable node")
         sidecar_path = handler.sidecar_path(source_abs)
@@ -127,11 +135,14 @@ class TreeBuilder:
         tmp = sidecar_path.with_suffix(sidecar_path.suffix + ".tmp")
         tmp.write_text(file_text, encoding="utf-8")
         os.replace(tmp, sidecar_path)
+        root_stable_id = (
+            str(sections.map.entries[0].short_id) if sections.map.entries else None
+        )
         return TreeRepresentationRef(
             file_path=file_path,
             sidecar_path=sidecar_path,
             content_checksum=content_checksum,
-            root_stable_id=_first_root_stable_id(nodes),
+            root_stable_id=root_stable_id,
         )
 
 

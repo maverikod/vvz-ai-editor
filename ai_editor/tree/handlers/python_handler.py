@@ -302,11 +302,30 @@ def _attach_metadata_marker(
 def _attach_trailing_marker(
     node: _CSTNodeT, sid: int, extra_meta: Optional[Dict[str, Any]] = None
 ) -> _CSTNodeT:
+    """Attach the ``___id___`` marker to a trailing-whitespace-bearing node.
+
+    Always attaches, mirroring the unconditional ``_comment_trailing`` call on
+    the class/def path of :func:`_attach_metadata_marker`. A node that already
+    carries a real inline comment must still receive its marker: skipping it
+    (the previous behavior when ``extra_meta`` was ``None``) silently consumed
+    the allocated ``sid`` without using it, leaving the statement unaddressable
+    in preview (bug bdce5d39). ``_comment_trailing`` stashes any pre-existing
+    real comment text and its preceding whitespace into ``extra_meta`` so
+    ``_clear_trailing_marker``/unmark can restore it verbatim.
+
+    Args:
+        node: CST node to mark (SimpleStatementLine/Expr/Assign/AnnAssign/etc.).
+        sid: Integer short_id to embed in the marker comment.
+        extra_meta: Carried-forward marker metadata from a prior mark pass, or
+            ``None`` on the initial mark.
+
+    Returns:
+        *node* unchanged when it has no ``trailing_whitespace`` field, else a
+        copy with the marker comment attached.
+    """
     if not hasattr(node, "trailing_whitespace"):
         return node
     tw = node.trailing_whitespace
-    if tw.comment is not None and extra_meta is None:
-        return node
     return cast(
         _CSTNodeT,
         node.with_changes(trailing_whitespace=_comment_trailing(tw, sid, extra_meta)),

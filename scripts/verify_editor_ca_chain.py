@@ -551,6 +551,39 @@ async def _scenario_python_header_comment(
         await _close_suppress(ed, project_id, session_id, file_path)
 
 
+def _find_class_block_node_ref(preview: dict[str, Any], needle: str) -> str | None:
+    """Return the node_ref of the preview BLOCK typed 'class' containing *needle*.
+
+    ``_find_preview_node_ref`` walks the whole payload and can match the focus
+    node, whose text spans the entire file — resolving 'class Foo' to the first
+    statement's ref (observed live: the module docstring, bug bdce5d39 evidence
+    2/3 turned out to be exactly this scenario-side mis-resolution). Restricting
+    the search to typed blocks pins the ref to the class itself.
+
+    Args:
+        preview: universal_file_preview payload.
+        needle: Substring that must appear in the class block's text.
+
+    Returns:
+        The class block's node reference, or None when absent.
+    """
+    blocks = preview.get("blocks")
+    if not isinstance(blocks, list):
+        return None
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        summary = block.get("summary") or {}
+        block_type = str(summary.get("type") or block.get("type") or "").lower()
+        text = block.get("text")
+        if block_type == "class" and isinstance(text, str) and needle in text:
+            for key in ("node_ref", "short_id", "stable_id"):
+                found = block.get(key)
+                if isinstance(found, (str, int)) and str(found):
+                    return str(found)
+    return None
+
+
 def _find_smallest_preview_node_ref(value: Any, needle: str) -> str | None:
     """Return the node_ref of the SMALLEST preview node whose text has *needle*.
 
@@ -596,14 +629,13 @@ async def _scenario_sibling_insert_delete_trivia(
 ) -> dict[str, Any]:
     """Live regression for bug ed579e33 (residual of 86288c9c).
 
-    Inserting a module-level statement as an ADJACENT SIBLING of a class, and
-    then deleting that sibling, must both leave the inline-comment trivia of the
-    untouched class/def headers byte-identical (two spaces before ``#``). The
-    sibling is inserted with ``position="after"`` so the module docstring stays
-    the first statement and the commit gate stays green; the whole-tree re-mark
-    exercised by the trivia regression is identical for before/after inserts
-    (the before-variant is covered at unit level; its live use currently trips
-    a separate placement defect — sibling lands above the module docstring).
+    Also live-verifies bug bdce5d39: the inserted sibling CARRIES a real
+    trailing comment (previously unaddressable in preview), is inserted with
+    ``position="before"`` relative to the class, must land BETWEEN the module
+    docstring and the class (not above the docstring), must be addressable in
+    re-preview, and deleting it by its own node_ref must remove exactly that
+    statement. Inserting/deleting the sibling must leave the inline-comment
+    trivia of the untouched class/def headers byte-identical (bug ed579e33).
 
     Args:
         ca: JSON-RPC client for the Code Analysis server.
@@ -671,7 +703,7 @@ async def _scenario_sibling_insert_delete_trivia(
                 "file_path": file_path,
             },
         )
-        class_ref = _find_preview_node_ref(preview, ("class Foo",))
+        class_ref = _find_class_block_node_ref(preview, "class Foo")
         if not class_ref:
             raise PipelineFailure("preview did not expose class Foo node_ref", preview)
         insert_edit = await _edit(
@@ -684,8 +716,8 @@ async def _scenario_sibling_insert_delete_trivia(
                     {
                         "type": "insert",
                         "target_node_id": class_ref,
-                        "position": "after",
-                        "code_lines": ['"ed579e33 sibling fixture marker"'],
+                        "position": "before",
+                        "code_lines": ["X = 1  # doc: ed579e33 sibling fixture"],
                     }
                 ],
             },
@@ -707,9 +739,40 @@ async def _scenario_sibling_insert_delete_trivia(
             )
         after_insert = await _read_file_text(ca, project_id, file_path, end_line=12)
         insert_class_header, insert_bar_header = _header_lines(after_insert)
-        if "sibling fixture marker" not in after_insert:
+        insert_lines = after_insert.splitlines()
+        sibling_idx = next(
+            (i for i, line in enumerate(insert_lines) if line.startswith("X = 1")),
+            None,
+        )
+        docstring_idx = next(
+            (
+                i
+                for i, line in enumerate(insert_lines)
+                if "Live verifier fixture" in line
+            ),
+            None,
+        )
+        class_idx = next(
+            (i for i, line in enumerate(insert_lines) if line.startswith("class Foo")),
+            None,
+        )
+        if sibling_idx is None:
             raise PipelineFailure(
                 "inserted sibling statement missing from CA readback", after_insert
+            )
+        if docstring_idx is None or class_idx is None:
+            raise PipelineFailure(
+                "fixture landmarks missing from CA readback", after_insert
+            )
+        if not docstring_idx < sibling_idx < class_idx:
+            raise PipelineFailure(
+                "sibling insert misplaced relative to docstring/class (bdce5d39)",
+                {
+                    "docstring_idx": docstring_idx,
+                    "sibling_idx": sibling_idx,
+                    "class_idx": class_idx,
+                    "content": after_insert,
+                },
             )
         if insert_class_header != class_header_expected:
             raise PipelineFailure(
@@ -730,9 +793,7 @@ async def _scenario_sibling_insert_delete_trivia(
                 "file_path": file_path,
             },
         )
-        sibling_ref = _find_smallest_preview_node_ref(
-            re_preview, "sibling fixture marker"
-        )
+        sibling_ref = _find_smallest_preview_node_ref(re_preview, "X = 1")
         if not sibling_ref:
             raise PipelineFailure(
                 "re-preview did not expose inserted sibling node_ref", re_preview
@@ -772,7 +833,7 @@ async def _scenario_sibling_insert_delete_trivia(
             raise PipelineFailure(
                 "module docstring lost after sibling delete", after_delete
             )
-        if "sibling fixture marker" in after_delete:
+        if "X = 1" in after_delete:
             raise PipelineFailure(
                 "deleted sibling statement still present in CA readback", after_delete
             )

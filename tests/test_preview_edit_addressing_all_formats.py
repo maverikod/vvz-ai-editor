@@ -979,3 +979,191 @@ async def test_tree_temp_preview_node_ref_edits_create_draft_and_write_preview(
         assert diff_marker in diff
     finally:
         release_session(sid, rel)
+
+
+_BDCE5D39_BODY = (
+    '"""Module docstring for bdce5d39 fixture."""\n\n'
+    "Y = 0  # doc: anchor variable\n\n"
+    "class Foo:  # type: ignore[misc]\n"
+    '    """Foo docstring."""\n\n'
+    "    def bar(self) -> None:  # note\n"
+    '        """Bar docstring."""\n'
+    "        pass\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_py_module_level_statement_with_real_trailing_comment_is_addressable(
+    tmp_path: Path,
+) -> None:
+    """Regression bdce5d39: a module-level SimpleStatementLine carrying a real
+    trailing comment (not a marker) must still expose a node_ref in preview.
+    Before the fix, ``_attach_trailing_marker`` silently skipped marking any
+    such statement on the initial ``mark()`` pass whenever it already carried
+    a real inline comment - the allocated short_id was consumed but never
+    attached, so the statement was invisible in preview.
+    """
+    rel = "src/bdce5d39_statement.py"
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=b"",
+        create=True,
+        initial_content=_BDCE5D39_BODY,
+    )
+    try:
+        blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
+        y_block = _find_block_containing_text(blocks, "Y = 0")
+        y_ref = _block_short_id(y_block)
+        assert y_ref, "Y = 0 statement must expose a node_ref"
+    finally:
+        release_session(sid, rel)
+
+
+@pytest.mark.asyncio
+async def test_py_insert_and_delete_sibling_around_commented_module_statement(
+    tmp_path: Path,
+) -> None:
+    """Regression bdce5d39: once the commented module statement is addressable,
+    a sibling insert targeting the class (position=before) must land between
+    the module docstring and the class - not one slot early - and deleting
+    that inserted node afterward must remove only the inserted statement,
+    leaving the docstring, ``Y = 0``, and both class/def header comments
+    byte-identical.
+    """
+    rel = "src/bdce5d39_sibling.py"
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=b"",
+        create=True,
+        initial_content=_BDCE5D39_BODY,
+    )
+    try:
+        blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
+        class_sid = _block_short_id(_find_block_by_type(blocks, "class"))
+
+        edit = UniversalFileEditCommand()
+        with upstream_context(workspace=workspace, upstream=upstream):
+            insert_res = await edit.execute(
+                **edit.validate_params(
+                    {
+                        "project_id": _PROJECT_UUID,
+                        "session_id": sid,
+                        "file_path": rel,
+                        "operations": [
+                            {
+                                "type": "insert",
+                                "target_node_id": class_sid,
+                                "position": "before",
+                                "code_lines": ["X = 1  # doc: sibling"],
+                            }
+                        ],
+                    }
+                )
+            )
+        assert isinstance(insert_res, SuccessResult), getattr(
+            insert_res, "message", insert_res
+        )
+
+        draft = get_session(sid, rel).core.session_source_path.read_text(
+            encoding="utf-8"
+        )
+        assert draft.index('"""Module docstring') < draft.index("X = 1")
+        assert draft.index("X = 1") < draft.index("class Foo")
+        assert "Y = 0  # doc: anchor variable" in draft
+
+        blocks_after_insert = await _preview_blocks(
+            workspace, upstream, rel, session_id=sid
+        )
+        inserted_block = _find_block_containing_text(blocks_after_insert, "X = 1")
+        inserted_sid = _block_short_id(inserted_block)
+
+        with upstream_context(workspace=workspace, upstream=upstream):
+            delete_res = await edit.execute(
+                **edit.validate_params(
+                    {
+                        "project_id": _PROJECT_UUID,
+                        "session_id": sid,
+                        "file_path": rel,
+                        "operations": [
+                            {"type": "delete", "node_id": inserted_sid},
+                        ],
+                    }
+                )
+            )
+        assert isinstance(delete_res, SuccessResult), getattr(
+            delete_res, "message", delete_res
+        )
+
+        draft_after_delete = get_session(
+            sid, rel
+        ).core.session_source_path.read_text(encoding="utf-8")
+        assert "X = 1" not in draft_after_delete
+        assert '"""Module docstring for bdce5d39 fixture."""' in draft_after_delete
+        assert "Y = 0  # doc: anchor variable" in draft_after_delete
+        lines = draft_after_delete.splitlines()
+        class_header = next(line for line in lines if line.startswith("class Foo"))
+        bar_header = next(
+            line for line in lines if line.strip().startswith("def bar")
+        )
+        assert class_header == "class Foo:  # type: ignore[misc]", repr(class_header)
+        assert bar_header == "    def bar(self) -> None:  # note", repr(bar_header)
+    finally:
+        release_session(sid, rel)
+
+
+@pytest.mark.asyncio
+async def test_py_commented_module_statement_survives_unrelated_edit_preview_diff(
+    tmp_path: Path,
+) -> None:
+    """Regression bdce5d39: the addressable ``Y = 0`` statement's comment text
+    and its two-space PEP 8 spacing before ``#`` must round-trip untouched
+    (as unified-diff CONTEXT, not a spurious change) through open -> preview
+    (mark) -> an unrelated sibling insert -> write(preview) (unmark/export).
+    """
+    rel = "src/bdce5d39_roundtrip.py"
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=b"",
+        create=True,
+        initial_content=_BDCE5D39_BODY,
+    )
+    try:
+        blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
+        class_sid = _block_short_id(_find_block_by_type(blocks, "class"))
+
+        edit = UniversalFileEditCommand()
+        with upstream_context(workspace=workspace, upstream=upstream):
+            insert_res = await edit.execute(
+                **edit.validate_params(
+                    {
+                        "project_id": _PROJECT_UUID,
+                        "session_id": sid,
+                        "file_path": rel,
+                        "operations": [
+                            {
+                                "type": "insert",
+                                "target_node_id": class_sid,
+                                "position": "before",
+                                "code_lines": ["X = 1  # doc: sibling"],
+                            }
+                        ],
+                    }
+                )
+            )
+        assert isinstance(insert_res, SuccessResult), getattr(
+            insert_res, "message", insert_res
+        )
+
+        diff = await _preview_diff(workspace, upstream, sid, rel)
+        assert "+X = 1  # doc: sibling" in diff
+        assert " Y = 0  # doc: anchor variable" in diff
+        assert "-Y = 0" not in diff
+        assert "+Y = 0" not in diff
+    finally:
+        release_session(sid, rel)
