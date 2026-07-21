@@ -1,0 +1,98 @@
+# ai-editor — standing LAWS (universal). Referenced from common.yaml spawn protocol;
+# read by EVERY role once per session before acting.
+# `variables` are pre-set per session by the user/orchestrator; defaults apply otherwise.
+
+variables:
+  file_access: mcp      # mcp (default) | local | local_ide. Governs mcp_only/local_mode/local_ide_mode and the profile-dependent parts of branch_discipline.
+  escalation: strict    # strict (default) | off. User pre-sets 'off' -> law escalation_first_error is relaxed.
+
+laws:
+  branch_discipline: >-
+    Three branches are mandatory: local is the local working branch, cas is the CAS
+    working branch, and main is transfer-only. A site works only on its own branch;
+    main is never edited directly and local is never merged directly with cas. Before
+    new work, synchronize main into the active branch. Build, deploy, and run live
+    acceptance from the active working branch. Only after production verification is
+    green, merge that branch into local main. The model MUST NOT push main: report the
+    exact ready commit and wait for explicit user confirmation that it was pushed.
+    Then the opposite site checks out main, pulls it through its authoritative Git
+    surface, verifies the expected commit, returns to its working branch, and merges
+    main into it. Mirror the same sequence when work originates on cas.
+  language: >-
+    RUS is used ONLY for communicating with the user (user-facing messages, questions,
+    reports addressed to the user). ENG for everything else: code, comments, commit
+    messages, prompt/contract files, inter-agent tasks and reports, bug/todo records,
+    logs. A subagent never writes Russian into artifacts; the orchestrator translates
+    when reporting to the user.
+  mcp_only: >-
+    [unless variables.file_access=local] ALL project file ops (read AND write) via MCP proxy
+    (code-analysis-server-vvz / ai-editor-server-vvz / mcp-terminal-vvz). Never local bash/Read/Write/Edit
+    on project files, including quick checks (wc/grep). Sole local-read exception:
+    roles/*. Paste this constraint into every subagent prompt.
+  local_mode: >-
+    [active when variables.file_access=local] Role split: editor = LOCAL tools (Write/Edit),
+    terminal = LOCAL bash, CA = REMOTE REPO with analysis tools - git operations that touch
+    the server-side project go through CA git_* commands (pull/push to sync the remote repo),
+    and code analysis/search still uses CA tools. Commit a coherent verified task;
+    never push main.
+  local_ide_mode: >-
+    [active when variables.file_access=local_ide] Files live locally and are edited by
+    the HUMAN via the IDE; agents NEVER edit project files - they deliver proposed
+    patches/diffs in their reports for the human to apply. Search and analysis still
+    run on CA; sync local<->server via git (push from local, CA git_pull_safe on the
+    server). Branch rules follow the 'local' clause of branch_discipline.
+  escalation_first_error: >-
+    [trigger: any infra/transport error; unless variables.escalation=off] STOP on the FIRST
+    infra error (unavailable/timeout/502/WAF 403/session lost): no retries, no server or
+    session switching, no workarounds. Report {exact_call, verbatim_error, concrete_question}
+    up the chain agent -> orchestrator -> user. A plain validation error fixable via
+    help(cmdname) may be self-corrected once.
+  reproduce_before_claiming: >-
+    Never declare tooling broken or file a bug off a single failure - the environment flaps.
+    Read help/info, reproduce fresh; only a clean repeatable failure is a bug. Surface
+    blockers explicitly; never silently work around them.
+  verify_claims_independent_model: >-
+    A blocking subagent claim (API missing / server down / no singleton) is not truth.
+    Verify read-only with an INDEPENDENT different model before escalating or redirecting
+    work. Unconfirmed -> claimant's glitch, proceed WITHOUT escalation. Confirmed -> act on
+    the real defect; distinguish plan defect vs code defect. (Applies to spawn-capable
+    roles: orchestrator, context_former, executor. Non-spawning roles report claims as
+    claims, with evidence.)
+  editor_gate_no_bypass: >-
+    HARD RULE - no variable disables it. If the editor rejects a write due to QA errors
+    (mypy/flake8/validation): STOP, analyze causes, FIX the errors, then continue. NEVER
+    bypass (skip_quality_tools / validate_syntax_only / weakening gate config). The
+    zero-tolerance gate is deliberate design against models multiplying garbage; tooling
+    false positives are tooling bugs - fix the tool, still no bypass.
+  queue_semantics: >-
+    A long operation may validly transition to a queued job. The adapter client
+    supports synchronous poll-and-unwrap mode (auto_poll=true) and asynchronous or
+    message-driven mode (auto_poll=false or manual_event_handling=true). The caller
+    selects the intended mode explicitly; queue handoff itself is not a defect.
+  ssh_repair: >-
+    Server-side repair/deploy to root@192.168.254.26 is decided by the ORCHESTRATOR
+    ONLY, who holds the user's standing grant and exercises it with the conscience's
+    approval. No other role ever uses ssh or asks for it: on a server-side problem,
+    escalate to the orchestrator. CARVE-OUT (record the date your project's user granted
+    this): GIT operations on the server are NEVER done over the console/ssh without the
+    user's explicit permission - server-side git goes exclusively through CA git_* commands.
+  delivery_checks: >-
+    DELIVERY DEFINITION - "work delivered to the user" means, in order: (1) version
+    bump +1 (root pyproject = source of truth); (2) ./build.sh at the project root
+    (local unit tests; docker image build+tag+push when the project ships one; .deb
+    build); (3) client published to PyPI at the same version; (4) deploy to the
+    single testing/production server (method not established earlier -> ASK THE
+    USER first); (5) the ONE real-server test pipeline green against the deployed
+    instance; (6) branch_discipline post-deploy propagation. FULL PROCEDURE,
+    INVARIANTS, AND GOTCHAS: ops/delivery-release.yaml - read it BEFORE the first
+    release action (tooling.yaml trigger). A task that modified a server is complete
+    only after all steps pass. (Owner: the delivering role - orchestrator/executor
+    level; coders/testers gate their own steps, not delivery.)
+  server_client_law: >-
+    A server client wraps mcp-proxy-adapter instead of reimplementing transport. It
+    exposes explicit synchronous-emulation and asynchronous/message modes. Sync
+    callers receive terminal results or exceptions; async callers may receive a valid
+    queued handoff.
+    The client is published to PyPI (credentials via ~/.pypirc), and the versions of
+    client, server, and docker image (when one exists) are ALWAYS identical.
+    Release mechanics: ops/delivery-release.yaml.

@@ -1,0 +1,48 @@
+# Confirmed editor-toolchain rules. Re-verify live server versions before use.
+
+editor_rules:
+  lifecycle: >-
+    CA session_create -> universal_file_open -> preview -> edit -> write(preview) ->
+    write(commit) -> universal_file_close -> CA session_delete. Reuse the same CA
+    session_id and always close every opened file.
+  outcome_correlation: >-
+    Verify that universal_file_edit success correlates with draft mutation on the
+    installed version. Preview the exact diff before commit.
+  python_addressing: >-
+    Python statements, including SimpleStatementLine nodes inside try and except
+    suites, are addressable by MAP short_id. universal_file_node_at_line resolves
+    the current node and ancestors after structural changes.
+  header_comments: keep a live regression assertion that class and def trailing
+    header comments survive structured edits
+  structured_formats: >-
+    JSON, YAML, INI/CFG, and TOML use structured node_ref/json_pointer addressing.
+    Keep live coverage for YAML root insertion and INI/TOML commit/readback.
+  import_validation: >-
+    Verify sibling project imports in the isolated QA copy. Never add import-path
+    bypasses to hide a validation defect.
+  qa_gate: never bypass parsing, Ruff, Flake8, mypy, import, or format validation
+
+cas_rules:
+  copy_number: verify live registration after a service restart
+  git: all server-side Git uses CAS Git commands through MCP Proxy
+  read_order: structural and AST analysis before cross-search when applicable
+
+queue_rules:
+  valid_transition: a long operation may return a queued job instead of blocking
+  synchronous_emulation: adapter client polls and unwraps with auto_poll=true
+  asynchronous_messages: use auto_poll=false or manual_event_handling=true
+  acceptance: inspect terminal payload or exception, not only queue status
+
+planmgr_rules:
+  - Plan Manager is authoritative for plan levels, lifecycle, cascades, prompts,
+    runtime records, bugs, TODOs, links, validation, and semantic score.
+  - Read a bug or TODO body before reanchoring, linking, closing, or duplicating it.
+  - Run mechanical validation before semantic scoring; manually inspect weak branches.
+  - Binding HRS is human-owned; never invent or silently rewrite it.
+
+branch_rules:
+  - local works only on local; CAS works only on cas; main is transfer-only
+  - never merge local directly with cas
+  - deploy and verify from the active working branch before merging it into main
+  - never push main; report the ready commit and wait for user push confirmation
+  - after confirmation, pull main at the opposite site and merge main into its branch

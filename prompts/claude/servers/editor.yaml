@@ -1,0 +1,29 @@
+# ai-editor-server thin map. Live help and info are authoritative.
+
+server:
+  uuid: '37830763-f58c-4046-95b5-8daf3ea3f2e0'   # STABLE identity (changes very rarely). Resolve id+copy_number from list_servers by matching THIS uuid.
+  id: 'ai-editor-server-vvz'   # current registry NAME — can change on re-registration; do not hardcode-trust
+  copy_number: 1   # current copy (flips on restart) — live at 2026-07-21
+
+essence: >-
+  The editor uses a CA session_id for lock, download, draft, validation, and upload.
+  Canonical CA bytes remain unchanged until commit.
+
+hard_rules:
+  - session_id comes from CA session_create; the editor never mints it
+  - always universal_file_close; delete the CA session after all files close
+  - multi-file bundles require file_path on edit, write, and close
+  - never bypass the validation gate
+  - JSON, YAML, INI/CFG, and TOML have native structured edit support
+  - resolve current Python nodes with universal_file_node_at_line after tree changes
+
+blocks:
+  lifecycle:
+    ops_file: ops/editor-edit-lifecycle.yaml
+    trigger: opening, editing, previewing, writing, or closing a project file
+  new_file:
+    ops_file: ops/editor-new-file.yaml
+    trigger: creating a new file with create=true
+  formats_addressing:
+    ops_file: ops/editor-formats-addressing.yaml
+    trigger: selecting node, pointer, or line addressing for an edit
