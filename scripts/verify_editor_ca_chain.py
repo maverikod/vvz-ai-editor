@@ -551,6 +551,258 @@ async def _scenario_python_header_comment(
         await _close_suppress(ed, project_id, session_id, file_path)
 
 
+def _find_smallest_preview_node_ref(value: Any, needle: str) -> str | None:
+    """Return the node_ref of the SMALLEST preview node whose text has *needle*.
+
+    ``_find_preview_node_ref`` returns the first structural match, which for a
+    module-level needle can resolve to an enclosing block instead of the exact
+    statement; deleting by such a ref removes the wrong node (observed live:
+    the module docstring). Choosing the candidate with the shortest ``text``
+    pins the ref to the single statement that carries the needle.
+
+    Args:
+        value: Preview payload subtree (dict/list/scalar).
+        needle: Substring that must appear in the node's own ``text``.
+
+    Returns:
+        The best node reference, or None when no node text contains needle.
+    """
+    best: tuple[int, str] | None = None
+
+    def _walk(node: Any) -> None:
+        nonlocal best
+        if isinstance(node, dict):
+            node_text = node.get("text")
+            if isinstance(node_text, str) and needle in node_text:
+                for key in ("node_ref", "short_id", "stable_id"):
+                    found = node.get(key)
+                    if isinstance(found, (str, int)) and str(found):
+                        candidate = (len(node_text), str(found))
+                        if best is None or candidate[0] < best[0]:
+                            best = candidate
+                        break
+            for nested in node.values():
+                _walk(nested)
+        elif isinstance(node, list):
+            for nested in node:
+                _walk(nested)
+
+    _walk(value)
+    return best[1] if best else None
+
+
+async def _scenario_sibling_insert_delete_trivia(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Live regression for bug ed579e33 (residual of 86288c9c).
+
+    Inserting a module-level statement as an ADJACENT SIBLING of a class, and
+    then deleting that sibling, must both leave the inline-comment trivia of the
+    untouched class/def headers byte-identical (two spaces before ``#``). The
+    sibling is inserted with ``position="after"`` so the module docstring stays
+    the first statement and the commit gate stays green; the whole-tree re-mark
+    exercised by the trivia regression is identical for before/after inserts
+    (the before-variant is covered at unit level; its live use currently trips
+    a separate placement defect — sibling lands above the module docstring).
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments (hosts, ports, mtls paths).
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with per-phase header lines and commit flags.
+    """
+    project = await _create_project(ca, watch_dir_id, "ed579e33")
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, "ed579e33")
+    file_path = "verify/sibling_trivia.py"
+    class_header_expected = "class Foo:  # type: ignore[misc]"
+    bar_header_expected = "    def bar(self) -> None:  # note"
+    initial_content = (
+        '"""Live verifier fixture for sibling insert/delete trivia (ed579e33)."""\n'
+        "\n"
+        "class Foo:  # type: ignore[misc]\n"
+        '    """Fixture class with a required docstring."""\n'
+        "\n"
+        "    def bar(self) -> None:  # note\n"
+        '        """Do nothing.\n'
+        "\n"
+        "        Returns:\n"
+        "            None.\n"
+        '        """\n'
+        "        return None\n"
+    )
+
+    def _header_lines(content: str) -> tuple[str, str]:
+        class_line = next(
+            (line for line in content.splitlines() if line.startswith("class Foo")),
+            "",
+        )
+        bar_line = next(
+            (
+                line
+                for line in content.splitlines()
+                if line.strip().startswith("def bar")
+            ),
+            "",
+        )
+        return class_line, bar_line
+
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": initial_content,
+        },
+    )
+    try:
+        preview = await _call(
+            ed,
+            "universal_file_preview",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+            },
+        )
+        class_ref = _find_preview_node_ref(preview, ("class Foo",))
+        if not class_ref:
+            raise PipelineFailure("preview did not expose class Foo node_ref", preview)
+        insert_edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "insert",
+                        "target_node_id": class_ref,
+                        "position": "after",
+                        "code_lines": ['"ed579e33 sibling fixture marker"'],
+                    }
+                ],
+            },
+        )
+        insert_commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+                "format_python": True,
+            },
+        )
+        if not insert_commit.get("uploaded"):
+            raise PipelineFailure(
+                "sibling insert commit did not upload changes", insert_commit
+            )
+        after_insert = await _read_file_text(ca, project_id, file_path, end_line=12)
+        insert_class_header, insert_bar_header = _header_lines(after_insert)
+        if "sibling fixture marker" not in after_insert:
+            raise PipelineFailure(
+                "inserted sibling statement missing from CA readback", after_insert
+            )
+        if insert_class_header != class_header_expected:
+            raise PipelineFailure(
+                "class header trivia corrupted by sibling insert (repro A)",
+                {"class_header": insert_class_header, "content": after_insert},
+            )
+        if insert_bar_header != bar_header_expected:
+            raise PipelineFailure(
+                "method header trivia corrupted by sibling insert (repro A)",
+                {"bar_header": insert_bar_header, "content": after_insert},
+            )
+        re_preview = await _call(
+            ed,
+            "universal_file_preview",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+            },
+        )
+        sibling_ref = _find_smallest_preview_node_ref(
+            re_preview, "sibling fixture marker"
+        )
+        if not sibling_ref:
+            raise PipelineFailure(
+                "re-preview did not expose inserted sibling node_ref", re_preview
+            )
+        delete_edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "delete",
+                        "node_id": sibling_ref,
+                    }
+                ],
+            },
+        )
+        delete_commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+                "format_python": True,
+            },
+        )
+        if not delete_commit.get("uploaded"):
+            raise PipelineFailure(
+                "sibling delete commit did not upload changes", delete_commit
+            )
+        after_delete = await _read_file_text(ca, project_id, file_path, end_line=12)
+        delete_class_header, delete_bar_header = _header_lines(after_delete)
+        if "Live verifier fixture" not in after_delete:
+            raise PipelineFailure(
+                "module docstring lost after sibling delete", after_delete
+            )
+        if "sibling fixture marker" in after_delete:
+            raise PipelineFailure(
+                "deleted sibling statement still present in CA readback", after_delete
+            )
+        if delete_class_header != class_header_expected:
+            raise PipelineFailure(
+                "class header trivia stripped by sibling delete (repro B)",
+                {"class_header": delete_class_header, "content": after_delete},
+            )
+        if delete_bar_header != bar_header_expected:
+            raise PipelineFailure(
+                "method header trivia stripped by sibling delete (repro B)",
+                {"bar_header": delete_bar_header, "content": after_delete},
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "insert_edit": _jsonable(insert_edit),
+            "delete_edit": _jsonable(delete_edit),
+            "insert_commit_uploaded": insert_commit.get("uploaded"),
+            "delete_commit_uploaded": delete_commit.get("uploaded"),
+            "class_header_after_insert": insert_class_header,
+            "class_header_after_delete": delete_class_header,
+            "bar_header_after_insert": insert_bar_header,
+            "bar_header_after_delete": delete_bar_header,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
 async def _scenario_sibling_import(
     ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
 ) -> dict[str, Any]:
@@ -804,6 +1056,10 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         (
             "86288c9c_python_header_comment_preservation",
             _scenario_python_header_comment,
+        ),
+        (
+            "ed579e33_sibling_insert_delete_header_trivia",
+            _scenario_sibling_insert_delete_trivia,
         ),
         ("bf98dd98_sibling_import_no_false_import_not_found", _scenario_sibling_import),
         ("ini_toml_structured_edit_commit_readback", _scenario_ini_toml),

@@ -156,15 +156,33 @@ def _restore_declaration_trivia(
 
 
 def _operation_targets_declaration(tree: CSTTree, operation: Dict[str, Any]) -> bool:
-    """Return whether an operation directly replaces a declaration node."""
-    for field in ("node_id", "start_node_id", "end_node_id"):
-        node_id = operation.get(field)
-        if not isinstance(node_id, str):
-            continue
-        metadata = tree.metadata_map.get(node_id)
-        if metadata is not None and metadata.type in ("FunctionDef", "ClassDef"):
-            return True
-    return False
+    """Return whether *operation* should arm the declaration-trivia snapshot/restore.
+
+    Historically gated to an operation that directly REPLACEs a declaration node
+    (``node_id``/``start_node_id``/``end_node_id`` pointing at a FunctionDef or
+    ClassDef). Widened (bug ed579e33) to any structural mutation — inserting or
+    deleting an unrelated SIBLING can still cause libcst to rebuild neighboring
+    FunctionDef/ClassDef node objects and drop their leading blank lines, decorator
+    spacing, or header trivia, even though no declaration was the edit target.
+    ``_snapshot_declaration_trivia`` already captures every declaration in the tree
+    regardless of the operation's target, so the only thing this gate controls is
+    whether the (cheap, and a no-op when nothing changed) snapshot/restore pair
+    runs at all.
+
+    Args:
+        tree: In-memory CST tree the operation is about to mutate.
+        operation: Resolved edit operation dict (``action``/``type`` plus node refs).
+
+    Returns:
+        True when the tree has at least one FunctionDef/ClassDef and the operation
+        is a structural mutation (insert/delete/replace).
+    """
+    if _normalize_action(operation) not in ("insert", "delete", "replace"):
+        return False
+    return any(
+        metadata.type in ("FunctionDef", "ClassDef")
+        for metadata in tree.metadata_map.values()
+    )
 
 
 def _refresh_in_memory_cst_without_sidecar(session: EditSession) -> None:

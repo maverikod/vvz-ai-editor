@@ -43,6 +43,7 @@ from ai_editor.tree.tree_node import TreeNode
 _METADATA_ID_KEY = "___id___"
 _META_KEY = "___meta___"
 _ORIGINAL_COMMENT_META_KEY = "original_comment"
+_ORIGINAL_COMMENT_WS_META_KEY = "original_comment_ws"
 _TRAILING_ID_COMMENT_RE = re.compile(r"\s+# ___id___:\d+(?: ___meta___:\{[^}]*\})?\s*$")
 _ID_COMMENT_VALUE_RE = re.compile(r"# ___id___:(\d+)")
 _META_IN_COMMENT_RE = re.compile(r"___meta___:(\{[^}]*\})")
@@ -197,14 +198,41 @@ def _comment_trailing(
     sid: int,
     extra_meta: Optional[Dict[str, Any]] = None,
 ) -> cst.TrailingWhitespace:
+    """Attach the ``___id___`` marker comment, preserving whitespace-before-comment.
+
+    The marker replaces any real inline comment, stashing its text (and the exact
+    whitespace run that preceded it, e.g. two spaces for PEP 8 ``  # ...``) inside
+    ``extra_meta``. On every subsequent re-mark pass — after a structural mutation
+    elsewhere in the tree strips the header down to bare whitespace — the stored
+    whitespace is replayed instead of collapsing to a hardcoded single space, which
+    previously caused flake8 E261 on untouched sibling declarations (bug ed579e33).
+
+    Args:
+        existing: Current trailing-whitespace/comment node (may already be a marker,
+            already stripped to no comment, or carrying the real original comment).
+        sid: Integer short_id to embed in the marker comment.
+        extra_meta: Carried-forward marker metadata (``original_comment`` /
+            ``original_comment_ws`` and any caller-supplied extras); merged with
+            whatever this call newly captures from *existing*.
+
+    Returns:
+        A new ``TrailingWhitespace`` carrying the marker comment.
+    """
     ws = existing.whitespace
-    if not ws.value:
-        ws = cst.SimpleWhitespace(" ")
     meta = dict(extra_meta or {})
     if existing.comment is not None and not _ID_COMMENT_VALUE_RE.search(
         existing.comment.value
     ):
         meta.setdefault(_ORIGINAL_COMMENT_META_KEY, existing.comment.value)
+        if ws.value:
+            meta.setdefault(_ORIGINAL_COMMENT_WS_META_KEY, ws.value)
+    if not ws.value:
+        stored_ws = meta.get(_ORIGINAL_COMMENT_WS_META_KEY)
+        ws = (
+            cst.SimpleWhitespace(stored_ws)
+            if isinstance(stored_ws, str) and stored_ws
+            else cst.SimpleWhitespace(" ")
+        )
     return cst.TrailingWhitespace(
         whitespace=ws,
         comment=cst.Comment(_format_marker_comment(sid, meta or None)),
@@ -567,7 +595,8 @@ def _apply_original_comment_metadata_to_snapshot(
         sid = stable_to_sid.get(stable_id)
         if sid is None:
             continue
-        original_comment = sid_extra_meta.get(sid, {}).get(_ORIGINAL_COMMENT_META_KEY)
+        sid_meta = sid_extra_meta.get(sid, {})
+        original_comment = sid_meta.get(_ORIGINAL_COMMENT_META_KEY)
         if not isinstance(original_comment, str) or not original_comment.startswith(
             "#"
         ):
@@ -576,7 +605,10 @@ def _apply_original_comment_metadata_to_snapshot(
         if isinstance(header, cst.TrailingWhitespace) and header.comment is None:
             whitespace = header.whitespace
             if not whitespace.value:
-                whitespace = cst.SimpleWhitespace("  ")
+                stored_ws = sid_meta.get(_ORIGINAL_COMMENT_WS_META_KEY)
+                whitespace = cst.SimpleWhitespace(
+                    stored_ws if isinstance(stored_ws, str) and stored_ws else "  "
+                )
             row["body_header"] = header.with_changes(
                 whitespace=whitespace,
                 comment=cst.Comment(original_comment),
@@ -656,13 +688,34 @@ def _operation_replaces_declaration(
     tree: CSTTree,
     operation: TreeOperation,
 ) -> bool:
-    if operation.action is not TreeOperationType.REPLACE or not operation.node_id:
+    """Return whether *operation* should arm the declaration-trivia snapshot/restore.
+
+    Historically gated to REPLACE-of-a-declaration only. Widened (bug ed579e33) to
+    any structural mutation — INSERT or DELETE of an unrelated SIBLING can still
+    cause libcst to rebuild neighboring FunctionDef/ClassDef node objects and drop
+    their leading blank lines, decorator spacing, or header trivia, even though the
+    declaration itself was never the edit target. ``_snapshot_declaration_trivia``
+    already captures every declaration in the tree regardless of the operation's
+    target, so the only thing this gate controls is whether the (cheap, and a
+    no-op when nothing changed) snapshot/restore pair runs at all.
+
+    Args:
+        tree: In-memory CST tree the operation is about to mutate.
+        operation: The structural TreeOperation about to run.
+
+    Returns:
+        True when the tree has at least one FunctionDef/AsyncFunctionDef/ClassDef
+        and the operation is a structural mutation (insert/delete/replace).
+    """
+    if operation.action not in (
+        TreeOperationType.INSERT,
+        TreeOperationType.DELETE,
+        TreeOperationType.REPLACE,
+    ):
         return False
-    meta = tree.metadata_map.get(operation.node_id)
-    return meta is not None and meta.type in (
-        "FunctionDef",
-        "AsyncFunctionDef",
-        "ClassDef",
+    return any(
+        meta.type in ("FunctionDef", "AsyncFunctionDef", "ClassDef")
+        for meta in tree.metadata_map.values()
     )
 
 
@@ -1105,13 +1158,19 @@ class PythonHandler(FormatHandler):
     def op_delete(self, marked_text: str, short_id: NodeId) -> str:
         self._enforce_short_id_edit_gate()
         tree, sid_index = _load_marked_tree(marked_text)
+        # Collect original-comment/whitespace metadata BEFORE mutation and carry it
+        # through _apply_and_emit, exactly like op_insert/op_replace — without this,
+        # the whole-tree re-mark below re-attaches marker comments with no memory of
+        # any declaration's real inline comment, so unrelated class/def headers lose
+        # their trailing comment entirely on delete (bug ed579e33, repro B).
+        sid_extra_meta = _collect_sid_extra_meta(marked_text)
         node_id = _require_node_id(tree, short_id, sid_index)
         stable = sid_index.get(int(short_id))
         op = TreeOperation(action=TreeOperationType.DELETE, node_id=node_id)
-        tree = _mutate_tree(tree, op)
         if stable:
             sid_index = {k: v for k, v in sid_index.items() if v != stable}
-        return _emit_marked(tree, _stable_map_from_index(sid_index))
+        sid_extra_meta.pop(int(short_id), None)
+        return _apply_and_emit(tree, sid_index, op, sid_extra_meta=sid_extra_meta)
 
     def op_replace(self, marked_text: str, short_id: NodeId, new_content: str) -> str:
         self._enforce_short_id_edit_gate()

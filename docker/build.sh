@@ -16,6 +16,7 @@ DOCKER_BUILD_NETWORK="${DOCKER_BUILD_NETWORK:-host}"
 SKIP_PUSH=0
 SKIP_DEB=0
 SKIP_LIVE_PIPELINE="${AI_EDITOR_SKIP_LIVE_PIPELINE:-0}"
+SKIP_TESTS="${AI_EDITOR_SKIP_TESTS:-0}"
 DEV_RUN=0
 TAG=""
 
@@ -31,6 +32,7 @@ Options:
   --skip-deb      Do not build the Debian package
   --skip-live-pipeline
                   Skip real-server editor->CA pipeline gate
+  --skip-tests    Skip the local unit-test gate (emergency use only)
   --dev-run       After build, run local dev container via docker/run.sh
   -h, --help      Show this help
 
@@ -41,6 +43,7 @@ Environment:
   DOCKER_BUILD_NETWORK           docker build network (default: host)
   AI_EDITOR_DOCKER_NO_CACHE=1    Pass --no-cache to docker build
   AI_EDITOR_SKIP_LIVE_PIPELINE=1 Skip real-server editor->CA pipeline gate
+  AI_EDITOR_SKIP_TESTS=1         Skip the local unit-test gate (emergency use only)
   AI_EDITOR_CA_HOST/PORT         Override Code Analysis server for live pipeline
   AI_EDITOR_HOST/PORT            Override AI Editor server for live pipeline
   AI_EDITOR_WATCH_DIR_ID         Override CA watch dir; unset auto-discovers
@@ -53,6 +56,7 @@ while [ $# -gt 0 ]; do
     --skip-push) SKIP_PUSH=1; shift ;;
     --skip-deb) SKIP_DEB=1; shift ;;
     --skip-live-pipeline) SKIP_LIVE_PIPELINE=1; shift ;;
+    --skip-tests) SKIP_TESTS=1; shift ;;
     --dev-run) DEV_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "[ERROR] Unknown option: $1" >&2; usage >&2; exit 1 ;;
@@ -75,6 +79,22 @@ fi
 
 VERSION_TAG="${DOCKERHUB_REPO}:${TAG}"
 LATEST_TAG="${DOCKERHUB_REPO}:latest"
+
+# Unit-test gate: the image is built only from a tree whose full local test
+# suite passes (delivery law: build MUST run the unit tests). set -e aborts the
+# build on any non-zero pytest exit.
+if [ "$SKIP_TESTS" = "1" ]; then
+  echo "[WARN] Unit-test gate SKIPPED (AI_EDITOR_SKIP_TESTS/--skip-tests)"
+else
+  PYTEST_BIN="$PROJECT_ROOT/.venv/bin/pytest"
+  if [ ! -x "$PYTEST_BIN" ]; then
+    echo "[ERROR] $PYTEST_BIN not found; create the venv or pass --skip-tests" >&2
+    exit 1
+  fi
+  echo "[INFO] Running unit-test gate (full suite must pass)"
+  "$PYTEST_BIN" -q --timeout=550
+  echo "[SUCCESS] Unit-test gate passed"
+fi
 
 if [ ! -f "docker/Dockerfile" ]; then
   echo "[ERROR] Dockerfile not found in docker/"

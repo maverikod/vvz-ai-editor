@@ -330,3 +330,72 @@ async def test_python_class_replace_code_lines_preserves_header_trailing_comment
     diff = str(write_res.data.get("diff") or "")
     assert "class Foo:  # type: ignore[misc]" in diff
     assert "-class Foo:  # type: ignore[misc]" not in diff
+
+
+@pytest.mark.asyncio
+async def test_python_insert_sibling_before_class_keeps_header_comments_in_write_diff(
+    tmp_path: Path,
+) -> None:
+    """Regression ed579e33 (repro A, MAP/python_handler surface): inserting a
+    preceding module-level sibling of a class must not disturb the two-space
+    inline-comment trivia on that class header or on a nested method header — the
+    write(preview) diff must show both headers unchanged (no ``-``/``+`` lines).
+    """
+    rel = "wf_test/ed579e33_sibling_insert.py"
+    source = (
+        "class Foo:  # type: ignore[misc]\n"
+        "    def bar(self) -> None:  # note\n"
+        "        pass\n"
+    )
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=source.encode(),
+    )
+    foo_ref = _class_stable_id(sid, rel, "Foo")
+
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "insert",
+                            "target_node_id": foo_ref,
+                            "position": "before",
+                            "code_lines": ["X = 1"],
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(res, SuccessResult), getattr(res, "message", res)
+
+    draft = get_session(sid, rel).core.session_source_path.read_text(encoding="utf-8")
+    assert "class Foo:  # type: ignore[misc]\n" in draft
+    assert "    def bar(self) -> None:  # note\n" in draft
+    assert "X = 1" in draft
+
+    write = UniversalFileWriteCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        write_res = await write.execute(
+            **write.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "write_mode": "preview",
+                }
+            )
+        )
+    assert isinstance(write_res, SuccessResult), getattr(
+        write_res, "message", write_res
+    )
+    diff = str(write_res.data.get("diff") or "")
+    assert "-class Foo:  # type: ignore[misc]" not in diff
+    assert "-    def bar(self) -> None:  # note" not in diff

@@ -29,6 +29,7 @@ from ai_editor.commands.universal_file_edit.write_command import (
 from ai_editor.commands.universal_file_edit.format_group import resolve_format_group
 from ai_editor.commands.universal_file_edit.session import (
     create_session,
+    get_session,
     release_session,
 )
 from ai_editor.commands.universal_file_edit.sidecar_cst_apply import (
@@ -366,11 +367,14 @@ async def test_py_insert_by_preview_short_id_target_node_id(tmp_path: Path) -> N
 async def test_py_insert_into_class_preserves_header_comment(tmp_path: Path) -> None:
     rel = "src/header_comment.py"
     body = (
-        '"""Class insert comment fixture."""\n\n'
+        '"""Class insert comment fixture."""\n\n\n'
         "class Foo:  # type: ignore[misc]\n"
         '    """Fixture class."""\n\n'
         "    def existing(self) -> int:\n"
-        '        """Return one."""\n'
+        '        """Return one.\n\n'
+        "        Returns:\n"
+        "            The integer 1.\n"
+        '        """\n'
         "        return 1\n"
     )
     sid, workspace, origin, upstream = await _open_file(tmp_path, rel, body)
@@ -393,7 +397,11 @@ async def test_py_insert_into_class_preserves_header_comment(tmp_path: Path) -> 
                             "code_lines": [
                                 "",
                                 "def added(self) -> int:",
-                                '    """Return two."""',
+                                '    """Return two.',
+                                "",
+                                "    Returns:",
+                                "        The integer 2.",
+                                '    """',
                                 "    return 2",
                             ],
                         }
@@ -409,6 +417,131 @@ async def test_py_insert_into_class_preserves_header_comment(tmp_path: Path) -> 
     assert "# type: ignore[misc]" in class_header
     assert text.index("    def added") > text.index("class Foo")
     assert "\ndef added" not in text
+
+
+@pytest.mark.asyncio
+async def test_py_insert_sibling_before_class_preserves_untouched_header_comments(
+    tmp_path: Path,
+) -> None:
+    """Regression ed579e33 (repro A): inserting a preceding MODULE-LEVEL sibling of a
+    class must not disturb inline-comment trivia on that class header or on any
+    nested method header — both untouched declarations keep their original
+    two-space-before-``#`` spacing through the marker round-trip.
+    """
+    rel = "src/ed579e33_sibling_insert.py"
+    body = (
+        '"""Sibling insert header comment fixture."""\n\n'
+        "class Foo:  # type: ignore[misc]\n"
+        "    def bar(self) -> None:  # note\n"
+        "        pass\n"
+    )
+    sid, workspace, origin, upstream = await _open_file(tmp_path, rel, body)
+    blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
+    class_sid = _block_short_id(_find_block_by_type(blocks, "class"))
+
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "insert",
+                            "target_node_id": class_sid,
+                            "position": "before",
+                            "code_lines": ["X = 1"],
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(res, SuccessResult), getattr(res, "message", res)
+
+    draft = get_session(sid, rel).core.session_source_path.read_text(encoding="utf-8")
+    lines = draft.splitlines()
+    class_header = next(line for line in lines if line.startswith("class Foo"))
+    bar_header = next(line for line in lines if line.strip().startswith("def bar"))
+    assert "X = 1" in draft
+    assert class_header == "class Foo:  # type: ignore[misc]", repr(class_header)
+    assert bar_header == "    def bar(self) -> None:  # note", repr(bar_header)
+    release_session(sid, rel)
+
+
+@pytest.mark.asyncio
+async def test_py_delete_inserted_sibling_keeps_untouched_header_comments(
+    tmp_path: Path,
+) -> None:
+    """Regression ed579e33 (repro B): deleting a previously-inserted sibling must not
+    strip inline-comment trivia from unrelated class/def headers elsewhere in the
+    file (the whole-tree re-mark on delete must carry original comment metadata
+    through, exactly like insert/replace already do).
+    """
+    rel = "src/ed579e33_sibling_delete.py"
+    body = (
+        '"""Sibling delete header comment fixture."""\n\n'
+        "class Foo:  # type: ignore[misc]\n"
+        "    def bar(self) -> None:  # note\n"
+        "        pass\n"
+    )
+    sid, workspace, origin, upstream = await _open_file(tmp_path, rel, body)
+    blocks = await _preview_blocks(workspace, upstream, rel, session_id=sid)
+    class_sid = _block_short_id(_find_block_by_type(blocks, "class"))
+
+    edit = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        insert_res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "insert",
+                            "target_node_id": class_sid,
+                            "position": "before",
+                            "code_lines": ["X = 1"],
+                        }
+                    ],
+                }
+            )
+        )
+    assert isinstance(insert_res, SuccessResult), getattr(
+        insert_res, "message", insert_res
+    )
+
+    blocks_after_insert = await _preview_blocks(workspace, upstream, rel, session_id=sid)
+    inserted_block = _find_block_containing_text(blocks_after_insert, "X = 1")
+    inserted_sid = _block_short_id(inserted_block)
+
+    with upstream_context(workspace=workspace, upstream=upstream):
+        delete_res = await edit.execute(
+            **edit.validate_params(
+                {
+                    "project_id": _PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {"type": "delete", "node_id": inserted_sid},
+                    ],
+                }
+            )
+        )
+    assert isinstance(delete_res, SuccessResult), getattr(
+        delete_res, "message", delete_res
+    )
+
+    draft = get_session(sid, rel).core.session_source_path.read_text(encoding="utf-8")
+    lines = draft.splitlines()
+    assert "X = 1" not in draft
+    class_header = next(line for line in lines if line.startswith("class Foo"))
+    bar_header = next(line for line in lines if line.strip().startswith("def bar"))
+    assert class_header == "class Foo:  # type: ignore[misc]", repr(class_header)
+    assert bar_header == "    def bar(self) -> None:  # note", repr(bar_header)
+    release_session(sid, rel)
 
 
 def test_py_sidecar_edit_preserves_declaration_trivia(tmp_path: Path) -> None:
