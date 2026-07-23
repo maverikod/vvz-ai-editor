@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-editor"
-version = "1.0.64"
+version = "1.0.65"
 description = "AI Editor MCP server: universal file preview, open, edit, write, and close"
 readme = { file = "docs/README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -14,6 +14,7 @@ authors = [
 dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "types-PyYAML>=6.0",
     "ruamel.yaml>=0.18",
     "click>=8.0",
     "mcp>=1.0.0",
