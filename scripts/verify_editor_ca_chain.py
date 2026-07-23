@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 import traceback
 import uuid
 from collections.abc import Awaitable, Callable
@@ -51,7 +52,9 @@ def _jsonable(value: Any) -> Any:
         return repr(value)
 
 
-def _client(host: str, port: int, mtls_dir: Path) -> JsonRpcClient:
+def _client(
+    host: str, port: int, mtls_dir: Path, timeout: float = 120.0
+) -> JsonRpcClient:
     cert = mtls_dir / "client" / "ai-editor.crt"
     key = mtls_dir / "client" / "ai-editor.key"
     ca = mtls_dir / "ca" / "ca.crt"
@@ -63,7 +66,7 @@ def _client(host: str, port: int, mtls_dir: Path) -> JsonRpcClient:
         key=str(key),
         ca=str(ca),
         check_hostname=False,
-        timeout=120.0,
+        timeout=timeout,
     )
 
 
@@ -108,12 +111,16 @@ def _find_command_schema(help_payload: dict[str, Any]) -> dict[str, Any]:
     candidates = [
         help_payload.get("schema"),
         help_payload.get("parameters"),
-        (help_payload.get("data") or {}).get("schema")
-        if isinstance(help_payload.get("data"), dict)
-        else None,
-        (help_payload.get("data") or {}).get("parameters")
-        if isinstance(help_payload.get("data"), dict)
-        else None,
+        (
+            (help_payload.get("data") or {}).get("schema")
+            if isinstance(help_payload.get("data"), dict)
+            else None
+        ),
+        (
+            (help_payload.get("data") or {}).get("parameters")
+            if isinstance(help_payload.get("data"), dict)
+            else None
+        ),
     ]
     for candidate in candidates:
         if isinstance(candidate, dict):
@@ -301,7 +308,7 @@ async def _open_edit_write_read(
                 "session_id": session_id,
                 "file_path": file_path,
                 "operations": operations,
-            }
+            },
         )
         write_common: dict[str, Any] = {
             "project_id": project_id,
@@ -463,8 +470,10 @@ async def _scenario_45b27a37_yaml_create_noop_commit_fidelity(
         )
         preview_diff = wprev.get("preview_diff") or {}
         diff_text = (
-            preview_diff.get("diff") if isinstance(preview_diff, dict) else None
-        ) or wprev.get("diff") or ""
+            (preview_diff.get("diff") if isinstance(preview_diff, dict) else None)
+            or wprev.get("diff")
+            or ""
+        )
         if wprev.get("unchanged") is not True or diff_text.strip():
             raise PipelineFailure(
                 "zero-edit preview shows editor-side normalization (45b27a37)",
@@ -978,9 +987,7 @@ async def _scenario_sibling_import(
             "file_path": module_path,
             "create": True,
             "initial_content": (
-                '"""Live verifier sibling module fixture."""\n'
-                "\n"
-                "VALUE = 42\n"
+                '"""Live verifier sibling module fixture."""\n' "\n" "VALUE = 42\n"
             ),
         },
     )
@@ -1147,6 +1154,309 @@ async def _scenario_ini_toml(
     return {"ini": ini, "toml": toml}
 
 
+def _extract_error_message(evidence: Any) -> str:
+    """Extract the upstream error message from a JSON-RPC evidence payload.
+
+    Unlike ``_find_nested_str`` (which is designed to skip blank strings while
+    hunting for IDs), this preserves emptiness on purpose: bug 84d93cca was
+    exactly an upstream error whose ``message`` field existed but was blank,
+    and the live regression must be able to tell that apart from a populated
+    message.
+
+    Args:
+        evidence: Raw JSON-RPC response dict captured on a caught PipelineFailure
+            or client exception (may be None or a non-dict payload).
+
+    Returns:
+        The most specific ``message`` string found in ``error``/``data.error``,
+        or "" when no such field exists.
+    """
+    if not isinstance(evidence, dict):
+        return ""
+    data = evidence.get("data")
+    if isinstance(data, dict):
+        inner = data.get("error")
+        if isinstance(inner, dict) and "message" in inner:
+            return str(inner.get("message") or "")
+        if isinstance(inner, str):
+            return inner
+    top = evidence.get("error")
+    if isinstance(top, dict) and "message" in top:
+        return str(top.get("message") or "")
+    if isinstance(top, str):
+        return top
+    return ""
+
+
+async def _scenario_open_queue_autopoll(
+    ca: JsonRpcClient,
+    ed: JsonRpcClient,
+    args: argparse.Namespace,
+    watch_dir_id: str,
+) -> dict[str, Any]:
+    """Live regression for bug 84d93cca (OPEN_ERROR / queued-job auto_poll survival).
+
+    On the current degraded casmgr, CA list_project_files sync-scan for a
+    project at this project's on-disk scale (ai-editor itself -- a throwaway
+    fixture project is too small to reproduce the symptom) can exceed the
+    adapter's 90s sync cap, forcing a queued-job handoff on
+    universal_file_open. The 1.0.65 client MUST survive this via unified
+    auto_poll (or its legacy-polling fallback) instead of surfacing the
+    historical empty-message OPEN_ERROR.
+
+    Wall time is measured and RECORDED, not hidden: on this known-degraded
+    server ~2 minutes is an acceptable, logged duration, not a failure.
+    A failed open is likewise acceptable evidence as long as its error
+    message is non-empty; only an EMPTY error message reproduces bug
+    84d93cca and fails this scenario.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server (used for CA
+            session_create/session_delete only).
+        ed: Unused default-timeout AI Editor client; this scenario builds its
+            own patient (>=360s) client because the degraded sync path can
+            take longer than the pipeline's default 120s.
+        args: Parsed pipeline arguments (hosts, ports, mtls paths).
+        watch_dir_id: unused; kept for the uniform scenario_fns signature.
+
+    Returns:
+        Evidence payload with wall-clock timing and the open/close outcome.
+    """
+    del ed
+    del watch_dir_id
+    project_id = "3509ae38-0f02-4f16-8e44-e6de7ca0c050"  # ai-editor itself
+    # Stable repo file; moved from prompts/claude/roles/laws.yaml to
+    # docs/agent-ref/roles/laws.yaml by commit 950f1d9 (same content, new path).
+    file_path = "docs/agent-ref/roles/laws.yaml"
+    session_id = await _create_session(ca, "84d93cca_open_queue_autopoll")
+    ed_patient = _client(
+        args.editor_host, args.editor_port, args.mtls_dir, timeout=360.0
+    )
+
+    start = time.monotonic()
+    open_response: dict[str, Any] | None = None
+    error_message: str | None = None
+    try:
+        raw = await ed_patient.execute_command_unified(
+            "universal_file_open",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+            },
+            auto_poll=True,
+            timeout=360.0,
+        )
+        open_response = _unwrap(raw)
+    except PipelineFailure as exc:
+        error_message = _extract_error_message(exc.evidence) or str(exc)
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 - transport/timeout evidence, not control flow
+        error_message = str(exc) or repr(exc)
+    wall_seconds = time.monotonic() - start
+
+    if error_message is not None and not error_message.strip():
+        raise PipelineFailure(
+            "universal_file_open failed with an EMPTY error message "
+            "(historical OPEN_ERROR regression, bug 84d93cca)",
+            {
+                "open_wall_seconds": wall_seconds,
+                "project_id": project_id,
+                "file_path": file_path,
+            },
+        )
+
+    close_result: dict[str, Any] | None = None
+    if error_message is None:
+        close_result = await _close_suppress(
+            ed_patient, project_id, session_id, file_path
+        )
+
+    session_delete_error: str | None = None
+    try:
+        await _call(ca, "session_delete", {"session_id": session_id})
+    except Exception as exc:  # noqa: BLE001 - best-effort cleanup, not an assertion
+        session_delete_error = repr(exc)
+
+    return {
+        "project_id": project_id,
+        "file_path": file_path,
+        "session_id": session_id,
+        "open_wall_seconds": round(wall_seconds, 3),
+        "open_error": error_message,
+        "open_response_keys": (
+            sorted(open_response.keys()) if isinstance(open_response, dict) else None
+        ),
+        "close": _jsonable(close_result),
+        "session_delete_error": session_delete_error,
+    }
+
+
+_B215FBD3_YAML_FIXTURE = (
+    "# Fresh fixture for ai-editor tree-temp YAML round-trip re-verification (2026-07-23)\n"
+    'name: "abc-123"  # inline comment on name\n'
+    "flow_map: { a: 1, b: 2 }\n"
+    "flow_list: [10, 20, 30]\n"
+    "target: original\n"
+)
+
+
+async def _scenario_styled_yaml_minimal_diff(
+    ca: JsonRpcClient,
+    ed: JsonRpcClient,
+    args: argparse.Namespace,
+    watch_dir_id: str,
+) -> dict[str, Any]:
+    """Live regression for bug b215fbd3 (tree-temp YAML full-file rewrite fidelity).
+
+    A single scalar mutation on a styled YAML fixture (banner comment, inline
+    comment, double-quoted string, flow-style mapping, flow-style list) must
+    commit with a MINIMAL diff: only the mutated ``target`` line changes,
+    tolerating ONLY the documented interior flow-map padding normalization
+    (``{ a: 1, b: 2 }`` -> ``{a: 1, b: 2}``).
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments (hosts, ports, mtls paths); unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the committed content and the per-line diff check.
+    """
+    del args
+    scenario_slug = "b215fbd3_styled_yaml"
+    file_path = "verify/styled_yaml_minimal_diff.yaml"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _B215FBD3_YAML_FIXTURE,
+        },
+    )
+    try:
+        edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {"type": "replace", "json_pointer": "/target", "value": "changed"}
+                ],
+            },
+        )
+        preview_write = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "preview",
+            },
+        )
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+                "verify_after_upload": True,
+            },
+        )
+        if not commit.get("uploaded"):
+            raise PipelineFailure("styled YAML commit did not upload changes", commit)
+        ca_verify = commit.get("ca_verify") or {}
+        if ca_verify and ca_verify.get("ok") is False:
+            raise PipelineFailure("styled YAML commit ca_verify failed", commit)
+
+        content = await _read_file_text(ca, project_id, file_path, end_line=10)
+
+        required_substrings = (
+            "# Fresh fixture for ai-editor tree-temp YAML round-trip re-verification (2026-07-23)",
+            "# inline comment on name",
+            'name: "abc-123"',
+            "flow_list: [10, 20, 30]",
+            "target: changed",
+        )
+        missing = [needle for needle in required_substrings if needle not in content]
+        if missing:
+            raise PipelineFailure(
+                "styled YAML round-trip lost required fixture content",
+                {"missing": missing, "content": content},
+            )
+        if (
+            "flow_map: { a: 1, b: 2 }" not in content
+            and "flow_map: {a: 1, b: 2}" not in content
+        ):
+            raise PipelineFailure(
+                "styled YAML round-trip broke flow-style flow_map", {"content": content}
+            )
+        if "target: original" in content:
+            raise PipelineFailure(
+                "styled YAML round-trip did not apply the target mutation",
+                {"content": content},
+            )
+
+        expected_lines = _B215FBD3_YAML_FIXTURE.splitlines()
+        actual_lines = content.splitlines()
+        if len(actual_lines) != len(expected_lines):
+            raise PipelineFailure(
+                "styled YAML round-trip changed the line count",
+                {"expected_lines": expected_lines, "actual_lines": actual_lines},
+            )
+        unexpected_diffs = []
+        for index, (expected_line, actual_line) in enumerate(
+            zip(expected_lines, actual_lines)
+        ):
+            if expected_line == actual_line:
+                continue
+            if expected_line == "target: original" and actual_line == "target: changed":
+                continue
+            if (
+                expected_line == "flow_map: { a: 1, b: 2 }"
+                and actual_line == "flow_map: {a: 1, b: 2}"
+            ):
+                continue
+            unexpected_diffs.append(
+                {"line": index + 1, "expected": expected_line, "actual": actual_line}
+            )
+        if unexpected_diffs:
+            raise PipelineFailure(
+                "styled YAML round-trip changed a line beyond the mutated scalar "
+                "and the documented flow-map padding normalization",
+                {"unexpected_diffs": unexpected_diffs, "content": content},
+            )
+
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "edit": _jsonable(edit),
+            "preview_has_changes": preview_write.get("has_changes"),
+            "commit_uploaded": commit.get("uploaded"),
+            "ca_verify": commit.get("ca_verify"),
+            "readback_content": content,
+            "cleanup": (
+                "temp fixture file left under its throwaway per-scenario CA "
+                "project (pipeline convention: no dedicated per-file delete)"
+            ),
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
 async def _run_scenario(
     name: str,
     fn: Callable[
@@ -1226,6 +1536,14 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         ),
         ("bf98dd98_sibling_import_no_false_import_not_found", _scenario_sibling_import),
         ("ini_toml_structured_edit_commit_readback", _scenario_ini_toml),
+        (
+            "open_queue_autopoll_84d93cca",
+            _scenario_open_queue_autopoll,
+        ),
+        (
+            "styled_yaml_minimal_diff_b215fbd3",
+            _scenario_styled_yaml_minimal_diff,
+        ),
     ]
     for name, fn in scenario_fns:
         scenarios.append(await _run_scenario(name, fn, ca, ed, args, watch_dir_id))
@@ -1251,7 +1569,22 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 "CAS/QueueManager/mcp_proxy_adapter configuration to fake a "
                 "queued upstream sync-cap response. Full same-process edit "
                 "and editor-to-CA commit flows are covered live."
-            )
+            ),
+            "84d93cca": (
+                "open_queue_autopoll reuses the live ai-editor project (not a "
+                "throwaway fixture) to reproduce the CAS list_project_files "
+                "sync-cap queued handoff at this project's on-disk scale. On the "
+                "current degraded casmgr the observed open wall time is ~2 "
+                "minutes; this is a KNOWN-DEGRADED, currently-acceptable "
+                "duration, logged via open_wall_seconds in the scenario evidence "
+                "rather than asserted against a tight bound."
+            ),
+            "b215fbd3": (
+                "styled_yaml_minimal_diff tolerates ONLY the documented flow-map "
+                "interior padding normalization ('{ a: 1, b: 2 }' -> "
+                "'{a: 1, b: 2}'); any other line change beyond the mutated "
+                "scalar fails the scenario."
+            ),
         },
     }
 
