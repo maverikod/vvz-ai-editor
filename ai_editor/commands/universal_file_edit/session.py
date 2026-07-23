@@ -400,6 +400,22 @@ def apply_source_mutation(session: EditSession, new_source_text: str) -> None:
     session.dirty = True
 
 
+def apply_tree_temp_source_mutation(session: EditSession, new_source_text: str) -> None:
+    """Write a tree-temp session draft verbatim (bug b215fbd3).
+
+    Bypasses the core session's generic marked-tree valid/invalid mutation
+    machinery, which re-derives the on-disk text from a ``handler.mark``/
+    ``unmark`` round trip and silently normalizes YAML/JSON comments, quote
+    style, and flow-vs-block style on every write. Tree-temp (json/yaml/ini/
+    toml) sessions own their own style-preserving mutation and serialization
+    via ``tree_temp_roots`` + ``serialize_tree_temp_roots``; the source text
+    passed here is already canonical and must be persisted exactly as given.
+    """
+    session.core.write_source_verbatim(new_source_text)
+    session.draft_path = session.core.session_source_path
+    session.dirty = True
+
+
 def apply_cst_sidecar_mutation(
     session: EditSession,
     new_source_text: str,

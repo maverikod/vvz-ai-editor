@@ -29,7 +29,7 @@ from ai_editor.commands.universal_file_edit.open_command_draft import (
     resolve_and_create_draft,
 )
 from ai_editor.commands.universal_file_edit.session import (
-    apply_source_mutation,
+    apply_tree_temp_source_mutation,
     build_multi_file_bundle_payload,
     bundle_file_count,
     create_session,
@@ -306,7 +306,7 @@ def _build_open_result(
                 draft_text = serialize_tree_temp_roots(
                     session.handler_id, session.tree_temp_roots
                 )
-                apply_source_mutation(session, draft_text)
+                apply_tree_temp_source_mutation(session, draft_text)
                 # A new tree-temp file's draft is serialized from initial_content
                 # at open; that is setup, not a user edit, so keep modified clear.
                 session.modified = False

@@ -19,6 +19,7 @@ from ai_editor.commands.universal_file_edit.errors import (
     error_result_from_make_error,
     make_error,
 )
+from ai_editor.commands.universal_file_edit.format_group import FORMAT_TREE_TEMP
 from ai_editor.commands.universal_file_edit.invalid_write_support import (
     mode_notice_text,
 )
@@ -135,6 +136,23 @@ def _run_preview_on_abs_path(
                 nav_kwargs["tree_temp_roots"] = tt_roots_payload
 
         defaults = get_preview_config_defaults()
+        full_text_max_lines = int(
+            kwargs.get("full_text_max_lines")
+            or defaults["preview_full_text_max_lines_default"]
+        )
+        # bug b215fbd3: a node_ref query bound to an ACTIVE tree-temp (json/
+        # yaml) edit session needs addressable child blocks for the next
+        # edit operation, not a compact annotated-text blob — the full-text
+        # collapse below is a nice-to-have for one-shot/standalone preview
+        # only. Caller-supplied full_text_max_lines still wins.
+        if (
+            "full_text_max_lines" not in kwargs
+            and edit_session is not None
+            and not edit_session.is_invalid
+            and getattr(edit_session, "format_group", None) == FORMAT_TREE_TEMP
+            and isinstance(handler, (JsonFileHandler, YamlFileHandler))
+        ):
+            full_text_max_lines = 0
         budget = PreviewBudget(
             preview_lines=int(
                 kwargs.get("preview_lines") or defaults["preview_lines_default"]
@@ -143,10 +161,7 @@ def _run_preview_on_abs_path(
                 kwargs.get("value_preview_len")
                 or defaults["preview_value_preview_len_default"]
             ),
-            full_text_max_lines=int(
-                kwargs.get("full_text_max_lines")
-                or defaults["preview_full_text_max_lines_default"]
-            ),
+            full_text_max_lines=full_text_max_lines,
             max_chars=int(
                 kwargs.get("max_chars") or defaults["preview_max_chars_default"]
             ),
