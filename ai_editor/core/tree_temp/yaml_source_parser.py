@@ -22,7 +22,11 @@ def _token_text(tok: Any) -> str:
     return str(getattr(tok, "value", tok))
 
 
-def _join_comment_tokens(tokens: Optional[List[Any]]) -> Optional[str]:
+def _join_comment_tokens(tokens: Optional[Any]) -> Optional[str]:
+    if tokens is None:
+        return None
+    if not isinstance(tokens, list):
+        tokens = [tokens]
     if not tokens:
         return None
     parts: List[str] = []
@@ -40,7 +44,7 @@ def _doc_pre_comment(data: Any) -> Optional[str]:
     if not ca or not ca.comment or len(ca.comment) < 2:
         return None
     pre = ca.comment[1]
-    return _join_comment_tokens(pre if isinstance(pre, list) else None)
+    return _join_comment_tokens(pre)
 
 
 def _split_inline_and_spill(raw: str) -> tuple[Optional[str], Optional[str]]:
