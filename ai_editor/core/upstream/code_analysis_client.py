@@ -15,7 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NoReturn, Optional
 from uuid import uuid4
 
 from ai_editor.core.exceptions import ValidationError
@@ -35,6 +35,8 @@ from .code_analysis_file_transfer import (
     upload_create_save,
     upload_create_save_via_text_stage_move,
     is_ca_save_unsupported_extension_error,
+    invalidate_cached_file_id,
+    is_file_id_not_found_error,
 )
 
 try:
@@ -97,7 +99,11 @@ def _unwrap_command_result(response: Any) -> Any:
     if not isinstance(response, dict):
         return response
     if response.get("success") is False:
-        err = response.get("error") or response.get("message") or "upstream command failed"  # fmt: skip
+        err = (
+            response.get("error")
+            or response.get("message")
+            or "upstream command failed"
+        )
         raise RuntimeError(str(err))
     data = response.get("data")
     if data is not None:
@@ -296,6 +302,32 @@ def _raise_if_failed_queued_outcome(outcome: UpstreamCommandResult) -> None:
     )
 
 
+def describe_exception(exc: BaseException, context: str = "") -> str:
+    """Build a never-empty human-readable description of an exception.
+
+    ``str(exc)`` is empty for several stdlib/httpx exception types (for
+    example ``httpx.ReadTimeout()``), which previously surfaced as an
+    OPEN_ERROR (or UPSTREAM_LOCK_FAILED / UPSTREAM_UPLOAD_FAILED) with an
+    empty ``message``. This helper always returns a non-empty string: the
+    exception's class name, plus ``str(exc)`` when it is non-empty, else the
+    caller-supplied ``context``, else a fixed fallback phrase.
+
+    Args:
+        exc: The exception instance to describe.
+        context: Optional short description of the operation being
+            attempted when ``exc`` was raised (for example a command
+            name). Used only when ``str(exc)`` is empty.
+
+    Returns:
+        A non-empty string of the form ``"<ExcClassName>: <detail>"``.
+    """
+    cls_name = type(exc).__name__
+    detail = str(exc).strip()
+    if not detail:
+        detail = context.strip() if context.strip() else "no additional details"
+    return f"{cls_name}: {detail}"
+
+
 class CodeAnalysisClient:
     """Synchronous JSON-RPC client for code-analysis-server."""
 
@@ -359,26 +391,107 @@ class CodeAnalysisClient:
             f"{kwargs.get('host', '127.0.0.1')}:{kwargs.get('port', 15010)}"
         )
 
-    def _reraise_connect_error(self, command: str, exc: BaseException) -> None:
+    def _reraise_connect_error(self, command: str, exc: BaseException) -> NoReturn:
         if httpx is not None and isinstance(
             exc, (httpx.ConnectTimeout, httpx.ConnectError)
         ):
             raise RuntimeError(
                 "Code Analysis Server unreachable at "
-                f"{self._upstream_target_label()} while calling {command!r}: {exc}"
+                f"{self._upstream_target_label()} while calling {command!r}: "
+                f"{describe_exception(exc, context=command)}"
             ) from exc
         raise exc
+
+    def _execute_unified_or_legacy(
+        self,
+        rpc: JsonRpcClient,
+        loop: asyncio.AbstractEventLoop,
+        command: str,
+        params: Dict[str, Any],
+        call_timeout: float,
+    ) -> Any:
+        """Return the upstream response, preferring the adapter-native unified path.
+
+        Tries ``execute_command_unified(auto_poll=True)`` first (adapter-driven
+        WebSocket CommandSession + wait_for_terminal + unwrap -- the safe path
+        per adapter docs). Falls back to the legacy bare ``execute_command``
+        call when the unified path itself raises (missing API, or a transport
+        failure such as WebSocket being unavailable in the deployed mTLS
+        topology); the hand-rolled queue detection/polling in the caller then
+        handles the raw legacy response unchanged.
+
+        Args:
+            rpc: The JsonRpcClient instance for this call.
+            loop: The event loop driving both the unified and legacy attempts.
+            command: Upstream command name.
+            params: Upstream command parameters.
+            call_timeout: Timeout in seconds passed to the unified path.
+
+        Returns:
+            The raw upstream response object, from whichever path served it.
+        """
+        try:
+            response = loop.run_until_complete(
+                rpc.execute_command_unified(
+                    command=command,
+                    params=params,
+                    auto_poll=True,
+                    timeout=call_timeout,
+                )
+            )
+            logger.debug(
+                "CA call %r served via execute_command_unified(auto_poll=True)",
+                command,
+            )
+            return response
+        except AttributeError:
+            # Adapter build without execute_command_unified: legacy path.
+            response = loop.run_until_complete(
+                rpc.execute_command(command=command, params=params)
+            )
+            logger.debug(
+                "CA call %r served via legacy execute_command (no unified API)",
+                command,
+            )
+            return response
+        except Exception as unified_exc:
+            logger.warning(
+                "execute_command_unified failed for %r (%s); falling back to "
+                "legacy execute_command + hand-rolled queue polling",
+                command,
+                describe_exception(unified_exc),
+            )
+            response = loop.run_until_complete(
+                rpc.execute_command(command=command, params=params)
+            )
+            logger.debug(
+                "CA call %r served via legacy execute_command (fallback)",
+                command,
+            )
+            return response
 
     def _call_blocking(
         self, command: str, params: Dict[str, Any]
     ) -> UpstreamCallResult:
-        """Run one CA RPC in a fresh event loop (safe from any thread)."""
+        """Run one CA RPC in a fresh event loop (safe from any thread).
+
+        Prefers the adapter-native synchronous-emulation path
+        (``execute_command_unified`` with ``auto_poll=True``) via
+        ``_execute_unified_or_legacy``, falling back to the legacy bare
+        ``execute_command`` call (with the hand-rolled queue detection/polling
+        below kept intact) when the unified path itself raises -- for example
+        when WebSocket transport is unavailable in the deployed mTLS topology --
+        so a transport failure of the preferred path never loses queue-handoff
+        correctness.
+        """
         call_id = str(uuid4())
         loop = asyncio.new_event_loop()
-        rpc = JsonRpcClient(**_build_jsonrpc_kwargs(self._section))
+        jsonrpc_kwargs = _build_jsonrpc_kwargs(self._section)
+        rpc = JsonRpcClient(**jsonrpc_kwargs)
+        call_timeout = float(jsonrpc_kwargs.get("timeout") or 300.0)
         try:
-            response = loop.run_until_complete(
-                rpc.execute_command(command=command, params=params)
+            response = self._execute_unified_or_legacy(
+                rpc, loop, command, params, call_timeout
             )
             queued = _is_queued_response(response)
             queue_job_id = _queued_job_id(response)
@@ -402,7 +515,9 @@ class CodeAnalysisClient:
                     terminal_response = {
                         "success": False,
                         "status": "timeout",
-                        "error": "Queued upstream command did not reach a terminal state",
+                        "error": (
+                            "Queued upstream command did not reach a terminal state"
+                        ),
                         "job_id": queue_job_id,
                         "last_response": terminal_response,
                     }
@@ -628,7 +743,10 @@ class CodeAnalysisClient:
 
         Existing files are normally locked during universal_file_open, but commit
         re-affirms the lock immediately before upload so a lost/stale lock fails
-        as a write error instead of writing unlocked.
+        as a write error instead of writing unlocked. A cached file_id that has
+        gone stale (the target path was moved or deleted elsewhere) is detected
+        from the shape of the session_open_file failure, invalidated, and
+        re-resolved exactly once before giving up.
         """
         sid, pid, rel = _normalized_session_path(session_id, project_id, file_path)
         if not sid or not pid or not rel:
@@ -639,10 +757,20 @@ class CodeAnalysisClient:
             if "file not found in project index" not in str(exc):
                 raise
             file_id = ensure_file_id_for_path(self, pid, rel, session_id=sid)
-        self.call(
-            "session_open_file",
-            {"session_id": sid, "project_id": pid, "file_id": file_id},
-        )
+        try:
+            self.call(
+                "session_open_file",
+                {"session_id": sid, "project_id": pid, "file_id": file_id},
+            )
+        except RuntimeError as exc:
+            if not is_file_id_not_found_error(exc):
+                raise
+            invalidate_cached_file_id(pid, rel)
+            file_id = ensure_file_id_for_path(self, pid, rel, session_id=sid)
+            self.call(
+                "session_open_file",
+                {"session_id": sid, "project_id": pid, "file_id": file_id},
+            )
         return file_id
 
     def unlock_session_file(
@@ -705,7 +833,9 @@ class CodeAnalysisClient:
 
     def download_without_lock(self, *, project_id: str, file_path: str) -> bytes:
         """Edit Stage one-shot preview: download without session_open_file (C-011)."""
-        return download_bytes_without_lock(self, project_id=project_id, file_path=file_path)  # fmt: skip
+        return download_bytes_without_lock(
+            self, project_id=project_id, file_path=file_path
+        )
 
     def upload_create_and_lock(
         self, *, session_id: str, project_id: str, file_path: str, content: bytes

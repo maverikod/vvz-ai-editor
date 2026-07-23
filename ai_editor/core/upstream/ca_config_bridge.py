@@ -43,7 +43,7 @@ def build_jsonrpc_kwargs_from_ca_section(section: Mapping[str, Any]) -> Dict[str
     settings = ca_section_to_adapter_settings(section)
     return adapter_settings_to_jsonrpc_kwargs(
         settings,
-        timeout=float(section.get("timeout") or 60.0),
+        timeout=float(section.get("timeout") or 300.0),
         check_hostname=bool(section.get("check_hostname", False)),
     )
 

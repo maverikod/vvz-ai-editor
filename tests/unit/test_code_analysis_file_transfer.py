@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from unittest.mock import MagicMock
 
 import pytest
 
 from ai_editor.core.upstream.code_analysis_file_transfer import (
+    _FILE_ID_CACHE,
     candidate_rel_paths_for_project,
     ensure_file_id_for_path,
     list_project_file_rows_for_path,
@@ -17,6 +18,20 @@ from ai_editor.core.upstream.code_analysis_file_transfer import (
     upload_bytes_transfer_id,
 )
 from ai_editor.core.host_filesystem import HostFileOperationError
+
+
+@pytest.fixture(autouse=True)
+def _clear_file_id_cache() -> Iterator[None]:
+    """Reset the process-wide file_id cache before and after every test.
+
+    Cross-test isolation: several tests below reuse the same
+    (project_id, rel_path) pair (proj-1 / gateway.py), so a cache hit from
+    an earlier test would silently short-circuit a later test's expected
+    upstream calls.
+    """
+    _FILE_ID_CACHE.clear()
+    yield
+    _FILE_ID_CACHE.clear()
 
 
 def _client_with_calls(mapping: dict[str, Any]) -> MagicMock:

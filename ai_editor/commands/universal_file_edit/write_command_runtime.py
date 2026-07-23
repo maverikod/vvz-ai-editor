@@ -51,6 +51,7 @@ from ai_editor.commands.universal_file_edit.write_command_extras import (
 from ai_editor.core.file_handlers.diff_support import unified_diff_text
 
 from . import write_command_phases as phases
+from ai_editor.core.upstream.code_analysis_client import describe_exception
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +325,12 @@ def _run_write_commit_ca(
             format_python=format_python,
         )
     except ValueError as exc:
-        return error_result_from_make_error(make_error(WRITE_FAILED, str(exc)))
+        return error_result_from_make_error(
+            make_error(
+                WRITE_FAILED,
+                describe_exception(exc, context="compare_session_to_origin"),
+            )
+        )
     # R3: a new file (create=true, never committed) is not yet on CA, so the
     # local origin snapshot is not a CA baseline. It must always be persisted on
     # commit even when no edit changed it since open. An already-persisted file
@@ -340,7 +346,7 @@ def _run_write_commit_ca(
         except RuntimeError as exc:
             logger.error("universal_file_write lock check failed: %s", exc)
             return ErrorResult(
-                message=str(exc),
+                message=describe_exception(exc, context="ensure_session_file_lock"),
                 code=cast(Any, "UPSTREAM_LOCK_FAILED"),
                 details={
                     "upstream_error": str(exc),
@@ -356,7 +362,7 @@ def _run_write_commit_ca(
                 "universal_file_write lock check failed: %s", exc, exc_info=True
             )
             return ErrorResult(
-                message=str(exc),
+                message=describe_exception(exc, context="ensure_session_file_lock"),
                 code=cast(Any, "UPSTREAM_LOCK_FAILED"),
                 details={
                     "upstream_error": str(exc),
@@ -500,7 +506,7 @@ def _run_write_commit_ca(
         )
     except HostFileOperationError as exc:
         return ErrorResult(
-            message=str(exc),
+            message=describe_exception(exc, context="write_origin_snapshot"),
             code=cast(Any, exc.code or "HOST_FILE_OPERATION_ERROR"),
             details={
                 **(exc.details or {}),
