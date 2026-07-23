@@ -23,8 +23,8 @@ project is authoritative. In local mode the local checkout is the working source
 CAS is the remote analysis repository. Never mix profiles or use one as a silent
 fallback for the other.
 
-**Role contracts** live in `prompts/claude/roles/` (the multi-agent architecture root is
-`prompts/claude/`: `roles/` · `servers/` · `ops/` · `modes.yaml`):
+**Role contracts** live in `docs/agent-ref/roles/` (the multi-agent architecture root is
+`docs/agent-ref/`: `roles/` · `servers/` · `ops/` · `modes.yaml`):
 `common.yaml` (universal laws, everyone) + `laws.yaml` (standing laws, everyone) +
 `tooling.yaml` (tool mechanics, tool-using roles only) +
 one per role: `orchestrator.yaml`, `researcher.yaml`, `context_former.yaml`, `conscience.yaml`, `coder.yaml`, `tester.yaml`, `executor.yaml`.
@@ -34,8 +34,8 @@ coder = implementation; tester = testing; executor = runtime execution of frozen
 (plan-manager runtime records + coder/tester pair orchestration; never plan truth, never direct file edits).
 
 **Spawn protocol (mandatory).** Every subagent task you (or context_former) create MUST begin with:
-> First read `prompts/claude/roles/common.yaml` AND `prompts/claude/roles/laws.yaml`
-> and every file listed in `prompts/claude/roles/<role>.yaml` `reads_first` (via Read or CA preview) —
+> First read `docs/agent-ref/roles/common.yaml` AND `docs/agent-ref/roles/laws.yaml`
+> and every file listed in `docs/agent-ref/roles/<role>.yaml` `reads_first` (via Read or CA preview) —
 > do NOT spawn a subagent to read. Then: `<task>`.
 
 Pick the subagent model **by task complexity**: mechanical single-shot work = haiku;
@@ -43,6 +43,6 @@ standard multi-step work (researcher / context_former / tester / executor and mo
 verdicts, audits, hardest analysis (conscience, independent verification) = **opus**.
 Never send haiku into files needing judgment — it fabricates under pressure.
 
-@prompts/claude/roles/common.yaml
-@prompts/claude/roles/laws.yaml
-@prompts/claude/roles/orchestrator.yaml
+@docs/agent-ref/roles/common.yaml
+@docs/agent-ref/roles/laws.yaml
+@docs/agent-ref/roles/orchestrator.yaml

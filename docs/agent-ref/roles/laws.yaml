@@ -29,7 +29,7 @@ laws:
     [unless variables.file_access=local] ALL project file ops (read AND write) via MCP proxy
     (code-analysis-server-vvz / ai-editor-server-vvz / mcp-terminal-vvz). Never local bash/Read/Write/Edit
     on project files, including quick checks (wc/grep). Sole local-read exception:
-    roles/*. Paste this constraint into every subagent prompt.
+    docs/agent-ref/roles/*. Paste this constraint into every subagent prompt.
   local_mode: >-
     [active when variables.file_access=local] Role split: editor = LOCAL tools (Write/Edit),
     terminal = LOCAL bash, CA = REMOTE REPO with analysis tools - git operations that touch
@@ -52,6 +52,23 @@ laws:
     Never declare tooling broken or file a bug off a single failure - the environment flaps.
     Read help/info, reproduce fresh; only a clean repeatable failure is a bug. Surface
     blockers explicitly; never silently work around them.
+  proxy_defect_bug_registration: >-
+    Every discovered code defect, inaccuracy, or mismatch between observed behavior
+    and description, help, or info in the MCP proxy itself or in any server accessed
+    through it MUST be registered immediately as a BUG in Plan Manager and attached to
+    the corresponding project before continuing. The BUG description must include the
+    evidence, expected behavior, actual behavior, reproduction steps when available,
+    and the confirmed project anchoring. Treat documentation or contract mismatches as
+    BUGs, not TODOs.
+  disk_scale_output_pagination_todo: >-
+    When a command produces output so long that it must be persisted and read from
+    disk, register a separate TODO in Plan Manager for the corresponding server
+    project before continuing. The TODO must name the exact command and require an
+    adequate pagination contract with bounded defaults and maximum limits,
+    deterministic ordering, compatibility behavior for existing callers, and live MCP
+    Proxy verification. The TODO must record the observed output-size or
+    spill-to-disk symptom or evidence and confirm the corresponding project anchoring
+    before continuing.
   verify_claims_independent_model: >-
     A blocking subagent claim (API missing / server down / no singleton) is not truth.
     Verify read-only with an INDEPENDENT different model before escalating or redirecting
@@ -74,9 +91,9 @@ laws:
     Server-side repair/deploy to root@192.168.254.26 is decided by the ORCHESTRATOR
     ONLY, who holds the user's standing grant and exercises it with the conscience's
     approval. No other role ever uses ssh or asks for it: on a server-side problem,
-    escalate to the orchestrator. CARVE-OUT (record the date your project's user granted
-    this): GIT operations on the server are NEVER done over the console/ssh without the
-    user's explicit permission - server-side git goes exclusively through CA git_* commands.
+    escalate to the orchestrator. CARVE-OUT (TODO(user): record grant date): GIT
+    operations on the server are NEVER done over the console/ssh without the user's
+    explicit permission - server-side git goes exclusively through CA git_* commands.
   delivery_checks: >-
     DELIVERY DEFINITION - "work delivered to the user" means, in order: (1) version
     bump +1 (root pyproject = source of truth); (2) ./build.sh at the project root
@@ -108,6 +125,22 @@ laws:
     pipeline and SAME deploy target as delivery_checks / ops/delivery-release.yaml
     `procedure` - run them together, never stand up a second pipeline or a second
     deploy path (see that file's "exactly one real-server pipeline" invariant).
+  single_real_server_pipeline: >-
+    [once per session; applies when the current project is a server] Verify the
+    project HAS a full-testing pipeline that runs against the REAL deployed
+    server (scripts/verify_editor_ca_chain.py) and that it exists in EXACTLY ONE
+    instance. The pipeline MUST exercise ALL API methods of the server EXCEPT the
+    platform's own built-in adapter methods. A missing pipeline is a gap to close
+    immediately; a duplicate is a defect to merge into the single pipeline. New
+    checks always extend the existing pipeline - never create a second one.
+  template_prompt_reconciliation: >-
+    [once per session] Reconcile the project's prompt bundle with its source
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.tar.gz). The model
+    REQUESTS the user's permission to update; only after the user confirms does
+    it diff template vs project bundle and update the project prompt, preserving
+    project-specific placeholder values. Template improvements flow back to the
+    template only on the user's explicit order.
   server_client_law: >-
     A server client wraps mcp-proxy-adapter instead of reimplementing transport. It
     exposes explicit synchronous-emulation and asynchronous/message modes. Sync
