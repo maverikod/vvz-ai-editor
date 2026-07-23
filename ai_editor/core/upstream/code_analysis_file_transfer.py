@@ -8,6 +8,7 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 import logging
+import threading
 from uuid import uuid4
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -40,6 +41,62 @@ def _row_relative_path(item: Dict[str, Any]) -> str:
 
 def _file_id_from_row(item: Dict[str, Any]) -> str:
     return str(item.get("file_id") or item.get("id") or "").strip()
+
+
+def _cached_file_id(project_id: str, rel_path: str) -> Optional[str]:
+    """Return a cached files-table UUID for (project_id, rel_path), if any."""
+    with _FILE_ID_CACHE_LOCK:
+        return _FILE_ID_CACHE.get((project_id, rel_path))
+
+
+def _set_cached_file_id(project_id: str, rel_path: str, file_id: str) -> None:
+    """Record a resolved files-table UUID for (project_id, rel_path)."""
+    if not file_id:
+        return
+    with _FILE_ID_CACHE_LOCK:
+        _FILE_ID_CACHE[(project_id, rel_path)] = file_id
+
+
+def invalidate_cached_file_id(project_id: str, file_path: str) -> None:
+    """Drop a cached file_id so the next lookup re-resolves it from CA.
+
+    Call after any operation that may change or remove the files-table row a
+    cached UUID pointed at (move, delete, or rename of ``file_path``), or
+    after a downstream call fails with a file-id-not-found-shaped error so
+    the caller can re-resolve once.
+
+    Args:
+        project_id: Project UUID the cached entry is scoped to.
+        file_path: Project-relative path (normalized before lookup) whose
+            cached file_id should be dropped.
+    """
+    rel = normalize_rel_path(file_path)
+    with _FILE_ID_CACHE_LOCK:
+        _FILE_ID_CACHE.pop((str(project_id or "").strip(), rel), None)
+
+
+def is_file_id_not_found_error(exc: BaseException) -> bool:
+    """Recognize the shape of a 'this file_id is no longer valid' upstream error.
+
+    Args:
+        exc: The exception raised by a downstream CA call.
+
+    Returns:
+        True when the exception text matches a known file-id-not-found shape.
+    """
+    text = str(exc).lower()
+    markers = (
+        "file not found in project index",
+        "file_id not found",
+        "unknown file_id",
+        "file not found",
+        "no such file_id",
+    )
+    return any(marker in text for marker in markers)
+
+
+_FILE_ID_CACHE: Dict[Any, str] = {}
+_FILE_ID_CACHE_LOCK = threading.Lock()
 
 
 def _transfer_id_from_payload(payload: Any) -> str:
@@ -91,7 +148,7 @@ def candidate_rel_paths_for_project(
     project_name = _project_name(client, project_id)
     prefix = f"{project_name}/" if project_name else ""
     if prefix and rel.startswith(prefix):
-        stripped = rel[len(prefix) :]
+        stripped = rel[len(prefix):]
         if stripped:
             candidates.append(stripped)
     seen = set()
@@ -220,7 +277,11 @@ def resolve_file_id_for_path(
     project_id: str,
     file_path: str,
 ) -> str:
-    """Resolve relative path to files-table UUID via list_project_files (C-023)."""
+    """Resolve relative path to files-table UUID via list_project_files (C-023).
+
+    Checks the process-wide file_id cache first; a hit skips the
+    ``list_project_files`` round-trip entirely.
+    """
     from ai_editor.core.exceptions import ValidationError
 
     pid = str(project_id or "").strip()
@@ -231,9 +292,13 @@ def resolve_file_id_for_path(
             field="file_path",
             details={"project_id": project_id, "file_path": file_path},
         )
+    cached = _cached_file_id(pid, rel)
+    if cached:
+        return cached
     for item in list_project_file_rows_for_path(client, pid, rel):
         fid = _file_id_from_row(item)
         if fid:
+            _set_cached_file_id(pid, rel, fid)
             return fid
     raise RuntimeError(f"file not found in project index: {rel!r}")
 
@@ -245,7 +310,11 @@ def ensure_file_id_for_path(
     *,
     session_id: str,
 ) -> str:
-    """Resolve ``files.id``, registering disk-only paths on CA when needed."""
+    """Resolve ``files.id``, registering disk-only paths on CA when needed.
+
+    Checks the process-wide file_id cache first; a hit skips both the
+    ``list_project_files`` lookup and any disk-registration round-trip.
+    """
     from ai_editor.core.exceptions import ValidationError
 
     pid = str(project_id or "").strip()
@@ -257,6 +326,9 @@ def ensure_file_id_for_path(
             field="session_id",
             details={"project_id": project_id, "file_path": file_path},
         )
+    cached = _cached_file_id(pid, rel)
+    if cached:
+        return cached
     rows = list_project_file_rows_for_path(client, pid, rel)
     if not rows:
         disk_registration = _read_project_file_bytes_from_disk(
@@ -276,15 +348,18 @@ def ensure_file_id_for_path(
         )
         fid = str(saved.get("file_id") or "").strip()
         if fid:
+            _set_cached_file_id(pid, canonical_rel, fid)
             return fid
         for item in list_project_file_rows_for_path(client, pid, canonical_rel):
             fid = _file_id_from_row(item)
             if fid:
+                _set_cached_file_id(pid, canonical_rel, fid)
                 return fid
         raise RuntimeError(f"file not found in project index: {rel!r}")
     for item in rows:
         fid = _file_id_from_row(item)
         if fid:
+            _set_cached_file_id(pid, rel, fid)
             return fid
     canonical_rel = _row_relative_path(rows[0]) or rel
     content = read_project_file_bytes_via_lines(client, pid, canonical_rel)
@@ -297,10 +372,12 @@ def ensure_file_id_for_path(
     )
     fid = str(saved.get("file_id") or "").strip()
     if fid:
+        _set_cached_file_id(pid, canonical_rel, fid)
         return fid
     for item in list_project_file_rows_for_path(client, pid, canonical_rel):
         fid = _file_id_from_row(item)
         if fid:
+            _set_cached_file_id(pid, canonical_rel, fid)
             return fid
     raise RuntimeError(f"file not found in project index: {rel!r}")
 
@@ -559,7 +636,9 @@ def upload_create_save_via_text_stage_move(
                 {"project_id": pid, "file_path": stage_rel, "backup": False},
             )
         except Exception as cleanup_exc:  # pragma: no cover - diagnostic only
-            logger.debug("failed to remove staged upload %s: %s", stage_rel, cleanup_exc)
+            logger.debug(
+                "failed to remove staged upload %s: %s", stage_rel, cleanup_exc
+            )
         raise
     if isinstance(moved, dict):
         return {**saved, **moved, "file_path": rel, "resolved_file_path": rel}

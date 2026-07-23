@@ -1,5 +1,6 @@
 """
-Round-trip YAML SourceParser: text to TreeNode forest with comment fields (C-005, C-004).
+Round-trip YAML SourceParser: text to TreeNode forest with comment fields
+(C-005, C-004).
 
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
@@ -21,7 +22,11 @@ def _token_text(tok: Any) -> str:
     return str(getattr(tok, "value", tok))
 
 
-def _join_comment_tokens(tokens: Optional[List[Any]]) -> Optional[str]:
+def _join_comment_tokens(tokens: Optional[Any]) -> Optional[str]:
+    if tokens is None:
+        return None
+    if not isinstance(tokens, list):
+        tokens = [tokens]
     if not tokens:
         return None
     parts: List[str] = []
@@ -39,11 +44,14 @@ def _doc_pre_comment(data: Any) -> Optional[str]:
     if not ca or not ca.comment or len(ca.comment) < 2:
         return None
     pre = ca.comment[1]
-    return _join_comment_tokens(pre if isinstance(pre, list) else None)
+    return _join_comment_tokens(pre)
 
 
 def _split_inline_and_spill(raw: str) -> tuple[Optional[str], Optional[str]]:
-    """Split ruamel EOL / item slot text into inline for this node and spill for the next."""
+    """Split ruamel EOL / item slot text into inline text for this node.
+
+    Returns (inline, spill) where spill carries over to the next node.
+    """
     t = raw.rstrip("\n")
     if not t:
         return None, None
@@ -125,12 +133,18 @@ def _build_scalar(val: Any) -> TreeNode:
 def _build_object(data: Union[CommentedMap, Dict[Any, Any]]) -> TreeNode:
     children: List[TreeNode] = []
     doc_top = _doc_pre_comment(data)
+    flow: Optional[bool] = None
+    if isinstance(data, CommentedMap):
+        fa = getattr(data, "fa", None)
+        if fa is not None:
+            flow = fa.flow_style()
     obj = TreeNode(
         stable_id=_new_stable_id(),
         type="object",
         value=None,
         children=children,
         comment_before=doc_top,
+        flow_style=flow,
     )
     pending: Optional[str] = None
     for key in data:
@@ -182,12 +196,18 @@ def _build_object(data: Union[CommentedMap, Dict[Any, Any]]) -> TreeNode:
 def _build_array_container(data: Union[CommentedSeq, List[Any]]) -> TreeNode:
     ch: List[TreeNode] = []
     doc_top = _doc_pre_comment(data)
+    flow: Optional[bool] = None
+    if isinstance(data, CommentedSeq):
+        fa = getattr(data, "fa", None)
+        if fa is not None:
+            flow = fa.flow_style()
     arr = TreeNode(
         stable_id=_new_stable_id(),
         type="array",
         value=None,
         children=ch,
         comment_before=doc_top,
+        flow_style=flow,
     )
     pending: Optional[str] = None
     for i in range(len(data)):
@@ -286,8 +306,8 @@ def parse_yaml_source(source_text: str) -> List[TreeNode]:
     """Parse YAML (round-trip) into root-level TreeNode list (C-005).
 
     Raises:
-        ValueError: message starts \"Invalid YAML:\" on ruamel scanner/parser errors or unsupported
-        document shape when a document is empty of nodes after parse.
+        ValueError: message starts "Invalid YAML:" on ruamel scanner/parser
+            errors, or when the document is empty of nodes after parsing.
     """
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True

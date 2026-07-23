@@ -1,4 +1,5 @@
-"""Apply universal_file_edit operations to TreeNode-backed tree-temp sessions (G-003 / G-004).
+"""Apply universal_file_edit operations to TreeNode-backed tree-temp sessions
+(G-003 / G-004).
 
 Author: Vasiliy Zdanovskiy
 Email: vasilyvz@gmail.com
@@ -25,8 +26,8 @@ from ai_editor.commands.universal_file_edit.errors import (
 from ai_editor.commands.universal_file_edit.format_group import FORMAT_TREE_TEMP
 from ai_editor.commands.universal_file_edit.session import (
     EditSession,
-    apply_source_mutation,
     apply_tree_operation,
+    apply_tree_temp_source_mutation,
 )
 from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (
     apply_single_tree_temp_mutation,
@@ -39,7 +40,6 @@ from ai_editor.commands.universal_file_edit.insert_position import (
     coalesce_tree_temp_insert_position,
     parse_colon_position,
 )
-from ai_editor.core.edit_session import SessionTreeValidity
 from ai_editor.core.backup_manager import BackupManager
 from ai_editor.core.edit_session.edit_operations_adapter import (
     _coalesce_node_ref_keys,
@@ -143,15 +143,23 @@ def _serialize_insert_value(handler_id: str, value: Any) -> str:
     if handler_id == "json":
         return json.dumps(value, ensure_ascii=False)
     if handler_id == "yaml":
-        dumped: str = cast(
-            str,
-            yaml.safe_dump(
-                value,
-                default_flow_style=False,
-                allow_unicode=True,
-                sort_keys=False,
-            ),
-        )
+        from io import StringIO
+
+        from ruamel.yaml import YAML
+
+        rt_yaml = YAML(typ="rt")
+        rt_yaml.preserve_quotes = True
+        rt_yaml.default_flow_style = False
+        buf = StringIO()
+        rt_yaml.dump(value, buf)
+        dumped_lines = buf.getvalue().split("\n")
+        while dumped_lines and dumped_lines[-1] == "":
+            dumped_lines.pop()
+        if dumped_lines and dumped_lines[-1].strip() == "...":
+            dumped_lines.pop()
+        dumped = "\n".join(dumped_lines)
+        if not dumped.endswith("\n"):
+            dumped += "\n"
         return dumped
     if handler_id in {"ini", "toml"}:
         if value is None:
@@ -453,13 +461,17 @@ def _apply_source_pointer_set(session: EditSession, pointer: str, value: Any) ->
         data = json.loads(text)
         set_value_at(data, pointer, value)
         new_text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    apply_source_mutation(session, new_text)
+    apply_tree_temp_source_mutation(session, new_text)
 
 
 def _expand_list_pointer_replace(
     session: EditSession, mop: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
-    """Route replace-at-list-pointer through unmarked source when marked target is a bare list."""
+    """Route replace-at-list-pointer through unmarked source.
+
+    Applies only when the marked target resolved from a json_pointer is a
+    bare list node.
+    """
     action = str(mop.get("action") or mop.get("type") or "").lower()
     if action != "replace" or "json_pointer" not in mop:
         return [mop]
@@ -639,13 +651,23 @@ def _run_legacy_tree_temp_apply(
                         PARSE_ERROR,
                         None,
                     )
+                # 1.0.65 (bug b215fbd3): re-derive comment-preserving TreeNode
+                # roots from the current draft bytes and apply the same
+                # normalized mutation there instead of a bare
+                # yaml.safe_dump(yt.root_data, ...) full-file re-dump, which
+                # drops every comment and normalizes quote/flow style on every
+                # unrelated node. This branch is legacy (registered yaml_tree
+                # pipeline) but stays reachable whenever
+                # session.tree_temp_roots is None with a registered tree_id
+                # present (e.g. after invalid-file-recovery); keep the
+                # registered-tree mutation above for tid bookkeeping, but
+                # write the draft via the modern round-trip serializer.
+                current_roots = parse_source_bytes_to_roots(
+                    "yaml", session.draft_path.read_bytes()
+                )
+                apply_single_tree_temp_mutation(current_roots, "yaml", mop)
                 session.draft_path.write_text(
-                    yaml.safe_dump(
-                        yt.root_data,
-                        default_flow_style=False,
-                        allow_unicode=True,
-                        sort_keys=False,
-                    ),
+                    serialize_tree_temp_roots("yaml", current_roots),
                     encoding="utf-8",
                 )
         else:
@@ -691,28 +713,21 @@ def apply_tree_temp_mutations(
             session.draft_path.read_bytes(),
         )
 
-    if session.core.tree_validity == SessionTreeValidity.VALID and not config_handler:
-        try:
-            root_dir = session.core.project_root or _project_root_near(
-                session.draft_path
-            )
-            bm = BackupManager(root_dir=root_dir)
-            if session.draft_path.exists():
-                bm.create_backup(
-                    session.draft_path,
-                    command="universal_file_edit",
-                )
-        except Exception as exc:
-            return error_result_for_edit(
-                f"Backup before edit failed: {exc}",
-                WRITE_FAILED,
-                {"path": str(session.draft_path)},
-            )
-        result = _apply_valid_tree_temp_mutations(session, operations)
-        if isinstance(result, SuccessResult):
-            session.tree_temp_mutated = True
-        return result
-
+    # 1.0.66 (bug b215fbd3 live path): tree-temp sessions ALWAYS have
+    # ``session.tree_temp_roots`` populated by this point (set at open by
+    # ``acquire_tree_temp_for_open``, or lazily above), which is the sole
+    # comment/quote/flow-style preserving mutation+serialization surface for
+    # YAML/JSON. ``session.core.tree_validity`` tracks an unrelated,
+    # format-agnostic marked-tree revalidation (``try_revalidate``) that
+    # generic session machinery flips to VALID as a side effect of the very
+    # first source write after open (create=True's initial-content seed, or
+    # any subsequent successful mutation) -- it does not signal that the
+    # legacy marked-tree edit path (``_apply_valid_tree_temp_mutations`` ->
+    # denude/restore via ``handler.mark``/``unmark``) is the right one to
+    # take. Routing through it here silently normalized comments, quote
+    # style, and flow-vs-block style on every tree-temp YAML edit. Always
+    # use the TreeNode roots-based mutation below instead; it is already the
+    # unconditional path for the ini/toml config handlers.
     roots_snap = deepcopy(session.tree_temp_roots)
 
     try:
@@ -734,7 +749,7 @@ def apply_tree_temp_mutations(
 
     def rollback() -> None:
         session.tree_temp_roots = deepcopy(roots_snap)
-        apply_source_mutation(
+        apply_tree_temp_source_mutation(
             session,
             serialize_tree_temp_roots(session.handler_id, session.tree_temp_roots),
         )
@@ -752,7 +767,7 @@ def apply_tree_temp_mutations(
                     "INVALID_OPERATION",
                     {"operations": operations},
                 )
-        apply_source_mutation(
+        apply_tree_temp_source_mutation(
             session,
             serialize_tree_temp_roots(session.handler_id, roots),
         )

@@ -397,6 +397,12 @@ def _resolve_insert_parent(
         # Strip the trailing "/-" so we resolve the array itself.
         if ptr.endswith("/-"):
             ptr = ptr[:-2] or ""
+        # Bare "/" is accepted as a convenience alias for the document root
+        # (matching the legacy marked-tree resolver this path replaces for
+        # bug b215fbd3): a lone slash is otherwise indistinguishable from
+        # "root has a single '' key", which no caller intends here.
+        if ptr == "/":
+            ptr = ""
         return _resolve_pointer_node(roots, ptr)
     p_raw = mop.get("parent_node_id")
     if isinstance(p_raw, str) and p_raw.strip():
@@ -443,6 +449,112 @@ def _coalesce_insert_pointer_sibling_ids(
         mop["after_node_id"] = node.stable_id
 
 
+def _find_parent_node(roots: List[TreeNode], stable_id: str) -> Optional[TreeNode]:
+    """Return the parent TreeNode of ``stable_id``, or None when it is a root."""
+
+    def walk(node: TreeNode) -> Optional[TreeNode]:
+        if not node.children:
+            return None
+        for child in node.children:
+            if child.stable_id == stable_id:
+                return node
+            found = walk(child)
+            if found is not None:
+                return found
+        return None
+
+    for r in roots:
+        if r.stable_id == stable_id:
+            return None
+        found = walk(r)
+        if found is not None:
+            return found
+    return None
+
+
+def _legacy_short_id_index(roots: List[TreeNode]) -> Dict[int, TreeNode]:
+    """Recompute the legacy preview short_id numbering over ``roots``.
+
+    ``universal_file_preview`` falls back, for a tree-temp session with no
+    marked-tree MAP file, to an ephemeral generic re-parse of the draft that
+    numbers every node in preorder (root-first depth-first) starting at 1.
+    Reproducing that SAME numbering directly against the persistent
+    ``tree_temp_roots`` forest (bug b215fbd3) lets ``target_node_id`` /
+    ``node_ref`` values copied from a preview response resolve back to the
+    node the user actually pointed at, without reviving the retired
+    marked-tree MAP file.
+    """
+    out: Dict[int, TreeNode] = {}
+    counter = 0
+
+    def visit(node: TreeNode) -> None:
+        nonlocal counter
+        counter += 1
+        out[counter] = node
+        if node.children:
+            for ch in node.children:
+                visit(ch)
+
+    for r in roots:
+        visit(r)
+    return out
+
+
+def _coalesce_legacy_insert_anchor(
+    roots: List[TreeNode],
+    mop: Dict[str, Any],
+    idx_map: Dict[str, Tuple[List[TreeNode], int]],
+) -> None:
+    """Translate ``target_node_id``/``node_id`` + plain ``position`` into a
+    parent + sibling-anchor insert (bug b215fbd3 preview short_id/node_ref
+    addressing: a preview ``node_ref`` names the sibling to insert next to,
+    not a parent). Formerly resolved via the marked-tree short_id system;
+    this resolves directly against the tree-temp ``roots`` instead (stable_id
+    UUID, or a legacy preview short_id integer via ``_legacy_short_id_index``).
+    A no-op when a parent or sibling anchor is already given explicitly.
+    """
+    if mop.get("parent_json_pointer") or mop.get("parent_node_id"):
+        return
+    if (
+        mop.get("before_node_id")
+        or mop.get("after_node_id")
+        or mop.get("before_key")
+        or mop.get("after_key")
+    ):
+        return
+    position = mop.get("position")
+    if not isinstance(position, str):
+        return
+    side = position.strip().lower()
+    if side not in ("before", "after"):
+        return
+    anchor_raw = mop.get("target_node_id") or mop.get("node_id")
+    if not isinstance(anchor_raw, str) or not anchor_raw.strip():
+        return
+    sid = anchor_raw.strip()
+    if sid.isdigit():
+        legacy_node = _legacy_short_id_index(roots).get(int(sid))
+        if legacy_node is None:
+            raise ValueError(f"stable_id not found: {sid}")
+        sid = legacy_node.stable_id
+    loc = idx_map.get(sid)
+    if loc is None:
+        raise ValueError(f"stable_id not found: {sid}")
+    holder, idx = loc
+    anchor_node = holder[idx]
+    parent = _find_parent_node(roots, sid)
+    if parent is None:
+        raise ValueError("insert requires parent_json_pointer or parent_node_id")
+    mop["parent_node_id"] = parent.stable_id
+    if parent.type == "object":
+        if not isinstance(anchor_node.key, str):
+            raise ValueError(f"sibling anchor has no key: {sid}")
+        mop["before_key" if side == "before" else "after_key"] = anchor_node.key
+    else:
+        mop["before_node_id" if side == "before" else "after_node_id"] = sid
+    mop.pop("position", None)
+
+
 def _apply_insert(
     roots: List[TreeNode],
     handler_id: str,
@@ -463,6 +575,11 @@ def _apply_insert(
     - ``before_key`` / ``after_key``: sibling-relative by key name.
     - ``position: 'last'`` or no positioning fields: append to end.
 
+    ``target_node_id`` / ``node_id`` (preview node_ref addressing) combined
+    with plain ``position: 'before'/'after'`` names a SIBLING to insert next
+    to; ``_coalesce_legacy_insert_anchor`` resolves the parent and anchor
+    from that sibling before parent resolution below (bug b215fbd3).
+
     RFC 6901 ``/-`` suffix in ``parent_json_pointer`` is resolved by
     ``_resolve_insert_parent``; this function always appends in that case
     (no ``index`` is set by the caller).
@@ -476,6 +593,7 @@ def _apply_insert(
     if "value" not in mop:
         raise ValueError("insert requires value")
     coalesce_tree_temp_insert_position(mop)
+    _coalesce_legacy_insert_anchor(roots, mop, idx_map)
     parent = _resolve_insert_parent(roots, mop, idx_map)
     new_node = _value_to_single_node(handler_id, mop["value"])
     fresh = _regenerate_stable_ids(new_node)

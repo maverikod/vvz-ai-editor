@@ -13,7 +13,6 @@ from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
 from ai_editor.commands.universal_file_edit.errors import (
     FILE_ALREADY_OPEN,
-    PARSE_ERROR,
     SESSION_NOT_FOUND,
     error_result_from_make_error,
     make_error,
@@ -30,7 +29,7 @@ from ai_editor.commands.universal_file_edit.open_command_draft import (
     resolve_and_create_draft,
 )
 from ai_editor.commands.universal_file_edit.session import (
-    apply_source_mutation,
+    apply_tree_temp_source_mutation,
     build_multi_file_bundle_payload,
     bundle_file_count,
     create_session,
@@ -53,6 +52,7 @@ from ai_editor.core.edit_session.workspace_layout import (
 from ai_editor.core.host_filesystem import host_file_operation
 from ai_editor.core.upstream.code_analysis_client import (
     CaSessionStatus,
+    describe_exception,
     get_code_analysis_client,
 )
 
@@ -172,7 +172,10 @@ def run_open_execute(
             except RuntimeError:
                 recovered = None
         if recovered is None:
-            return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
+            return ErrorResult(
+                message=describe_exception(exc, context="universal_file_open"),
+                code=cast(Any, "OPEN_ERROR"),
+            )
         raw_bytes = recovered
         read_only = True
         read_only_reason = (
@@ -303,7 +306,7 @@ def _build_open_result(
                 draft_text = serialize_tree_temp_roots(
                     session.handler_id, session.tree_temp_roots
                 )
-                apply_source_mutation(session, draft_text)
+                apply_tree_temp_source_mutation(session, draft_text)
                 # A new tree-temp file's draft is serialized from initial_content
                 # at open; that is setup, not a user edit, so keep modified clear.
                 session.modified = False

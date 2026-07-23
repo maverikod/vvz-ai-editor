@@ -398,6 +398,33 @@ class EditSession:
         self._post_mutation_degraded()
         _mut.try_revalidate(self)
 
+    def write_source_verbatim(self, new_source_text: str) -> None:
+        """Persist ``new_source_text`` to ``session_source_path`` exactly as given.
+
+        Bypasses the generic marked-tree valid/invalid mutation AND
+        auto-revalidation machinery entirely: no ``handler.mark``/``unmark``
+        round trip, no MAP/session-tree rebuild, no ``try_revalidate`` call.
+        ``apply_plaintext_mutation`` and ``apply_valid_tree_mutation`` both
+        eventually re-derive the on-disk text from a marked-tree round trip
+        (``export_source_via_unmark``); for source whose style-preserving
+        mutation and serialization already live entirely outside the
+        marked-tree system (tree-temp json/yaml/ini/toml sessions -- bug
+        b215fbd3) that round trip silently normalizes comments, quote style,
+        and flow-vs-block style on every single edit, including the very
+        first draft write at open. Sessions that use this method must not
+        depend on ``session_tree_path``/MAP node addressing; tree_validity
+        stays permanently INVALID so a later mutation is never diverted
+        into the marked-tree path.
+        """
+        if not self.is_open:
+            raise RuntimeError("EditSession is not open")
+        self.session_source_path.write_text(new_source_text, encoding="utf-8")
+        self.source_checksum = compute_content_checksum(new_source_text)
+        self.tree_checksum = None
+        self.tree_validity = SessionTreeValidity.INVALID
+        self.session_repo.commit_degraded(message="session: tree-temp mutation")
+        self._record_history_commit(self.session_repo.log()[0].hash)
+
     def apply_cst_sidecar_mutation(
         self,
         new_source_text: str,

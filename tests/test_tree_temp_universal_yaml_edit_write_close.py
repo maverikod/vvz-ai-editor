@@ -619,6 +619,120 @@ async def test_45b27a37_yaml_existing_file_zero_edit_commit_is_noop(
         )
 
 
+_B215FBD3_BODY = (
+    "# banner comment\n"
+    'name: "abc-123"  # inline comment\n'
+    "flow_map: { a: 1, b: 2 }\n"
+    "flow_list: [1, 2, 3]\n"
+    "target: old\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_b215fbd3_yaml_create_then_edit_commit_preserves_style(
+    tmp_path: Path,
+) -> None:
+    """Bug b215fbd3 (live path): create=True + one tree-temp mutation + commit
+    must preserve style on every UNTOUCHED node — banner comment, inline
+    comment, quoted scalar, flow-map style (padding-only tolerance), and
+    flow-list style — while applying the mutated node's new value.
+
+    Reproduces the live universal_file_open(create=true) -> edit_batch ->
+    write(commit) pipeline through the real session/command machinery
+    (not the bare parse/mutate/serialize helpers), so it also exercises
+    whichever branch of ``serialize_tree_temp_session_source`` actually
+    fires for a mutated create=True tree-temp session.
+    """
+    rel = "b215fbd3_create_edit.yml"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    from tests.thin_editor_ca_mocks import (
+        ensure_projectid_marker,
+        layout_origin,
+        mock_upstream,
+        session_dir_for,
+    )
+    from ai_editor.commands.universal_file_edit.open_command import (
+        UniversalFileOpenCommand,
+    )
+
+    upstream = mock_upstream()
+    sid = DEFAULT_CA_SESSION_ID
+    reset_ca_session(sid, rel)
+    with upstream_context(workspace=workspace, upstream=upstream):
+        open_res = await UniversalFileOpenCommand().execute(
+            **UniversalFileOpenCommand().validate_params(
+                {
+                    "session_id": sid,
+                    "project_id": _YAML_PROJECT_UUID,
+                    "file_path": rel,
+                    "create": True,
+                    "initial_content": _B215FBD3_BODY,
+                }
+            )
+        )
+        assert isinstance(open_res, SuccessResult), open_res
+    ensure_projectid_marker(
+        session_dir_for(workspace, sid, _YAML_PROJECT_UUID, rel), _YAML_PROJECT_UUID
+    )
+    origin = layout_origin(workspace, sid, _YAML_PROJECT_UUID, rel)
+
+    ed = UniversalFileEditCommand()
+    with upstream_context(workspace=workspace, upstream=upstream):
+        edit_res = await ed.execute(
+            **ed.validate_params(
+                {
+                    "project_id": _YAML_PROJECT_UUID,
+                    "session_id": sid,
+                    "file_path": rel,
+                    "operations": [
+                        {
+                            "type": "replace",
+                            "json_pointer": "/target",
+                            "value": "new",
+                        }
+                    ],
+                }
+            )
+        )
+        assert isinstance(edit_res, SuccessResult), edit_res
+
+    commit_res = await commit_write(
+        workspace=workspace,
+        upstream=upstream,
+        project_id=_YAML_PROJECT_UUID,
+        session_id=sid,
+        file_path=rel,
+    )
+    assert commit_res.data["uploaded"] is True
+    committed = origin.read_text(encoding="utf-8")
+
+    data = yaml.safe_load(committed)
+    assert data["target"] == "new"
+
+    assert "# banner comment" in committed, committed
+    assert 'name: "abc-123"' in committed, committed
+    assert "# inline comment" in committed, committed
+    flow_map_line = next(
+        (line for line in committed.splitlines() if line.startswith("flow_map:")),
+        "",
+    )
+    assert flow_map_line.strip().startswith("flow_map: {"), committed
+    assert flow_map_line.rstrip().endswith("}"), committed
+    flow_list_line = next(
+        (line for line in committed.splitlines() if line.startswith("flow_list:")),
+        "",
+    )
+    assert flow_list_line.strip() == "flow_list: [1, 2, 3]", committed
+
+    with upstream_context(workspace=workspace, upstream=upstream):
+        await UniversalFileCloseCommand().execute(
+            **UniversalFileCloseCommand().validate_params(
+                {"project_id": _YAML_PROJECT_UUID, "session_id": sid, "file_path": rel}
+            )
+        )
+
+
 @pytest.mark.asyncio
 async def test_yaml_empty_list_and_dict_roundtrip(tmp_path: Path) -> None:
     """Criterion G: empty list and empty dict preserve container types."""

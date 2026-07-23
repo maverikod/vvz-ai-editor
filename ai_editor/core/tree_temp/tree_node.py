@@ -1,4 +1,5 @@
-"""TreeNode entity for tree-temp Sidecar (JSON/YAML); implements persistence-facing shape for C-001.
+"""TreeNode entity for tree-temp Sidecar (JSON/YAML); implements persistence-facing
+shape for C-001.
 
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
@@ -43,10 +44,15 @@ class TreeNode:
     children: Optional[List["TreeNode"]] = None
     comment_before: Optional[str] = None
     comment_inline: Optional[str] = None
+    flow_style: Optional[bool] = None
 
 
 def validate_node_constraints(node: TreeNode) -> None:
-    """Validate TreeNode fields against C-001 type discriminator rules; raise ValueError on violation."""
+    """Validate TreeNode fields against C-001 type discriminator rules.
+
+    Raises:
+        ValueError: If any field violates the type discriminator invariants.
+    """
     if node.type not in TREE_NODE_TYPES:
         raise ValueError(f"invalid TreeNode.type: {node.type!r}")
     if (
@@ -91,10 +97,15 @@ def validate_node_constraints(node: TreeNode) -> None:
         raise ValueError("comment_inline must be str or None")
     if node.key is not None and not isinstance(node.key, str):
         raise ValueError("key must be str or None")
+    if node.flow_style is not None:
+        if not isinstance(node.flow_style, bool):
+            raise ValueError("flow_style must be bool or None")
+        if node.type not in ("object", "array"):
+            raise ValueError("flow_style is only valid on object/array nodes")
 
 
 def tree_node_to_json_dict(node: TreeNode) -> Dict[str, Any]:
-    """Serialize TreeNode to a JSON-object-compatible dict for Sidecar root arrays (recursive)."""
+    """Serialize TreeNode to a JSON dict for Sidecar root arrays (recursive)."""
     validate_node_constraints(node)
     out: Dict[str, Any] = {"stable_id": node.stable_id, "type": node.type}
     if node.key is not None:
@@ -103,6 +114,8 @@ def tree_node_to_json_dict(node: TreeNode) -> Dict[str, Any]:
         out["comment_before"] = node.comment_before
     if node.comment_inline is not None:
         out["comment_inline"] = node.comment_inline
+    if node.flow_style is not None:
+        out["flow_style"] = node.flow_style
     if node.type in ("object", "array"):
         out["children"] = [
             tree_node_to_json_dict(ch) for ch in cast(List[TreeNode], node.children)
@@ -113,7 +126,7 @@ def tree_node_to_json_dict(node: TreeNode) -> Dict[str, Any]:
 
 
 def tree_node_from_json_dict(data: Dict[str, Any]) -> TreeNode:
-    """Deserialize dict from Sidecar JSON into TreeNode; strict keys for node objects."""
+    """Deserialize a Sidecar JSON dict into TreeNode; strict keys required."""
     if not isinstance(data, dict):
         raise TypeError("TreeNode JSON must be an object")
     allowed = {
@@ -124,6 +137,7 @@ def tree_node_from_json_dict(data: Dict[str, Any]) -> TreeNode:
         "children",
         "comment_before",
         "comment_inline",
+        "flow_style",
     }
     extras = set(data.keys()) - allowed
     if extras:
@@ -150,6 +164,14 @@ def tree_node_from_json_dict(data: Dict[str, Any]) -> TreeNode:
         else _optional_str("comment_inline", data["comment_inline"])
     )
 
+    fs: Optional[bool] = None
+
+    if "flow_style" in data:
+        fs_raw = data["flow_style"]
+        if fs_raw is not None and not isinstance(fs_raw, bool):
+            raise ValueError("flow_style must be bool or null when present")
+        fs = fs_raw
+
     if nodetype in ("object", "array"):
         if "value" in data and data["value"] is not None:
             raise ValueError("container node must not carry non-null value")
@@ -165,6 +187,7 @@ def tree_node_from_json_dict(data: Dict[str, Any]) -> TreeNode:
             children=children,
             comment_before=cb,
             comment_inline=ci,
+            flow_style=fs,
         )
 
     if "children" in data and data["children"] is not None:
@@ -174,6 +197,7 @@ def tree_node_from_json_dict(data: Dict[str, Any]) -> TreeNode:
         raise ValueError("scalar node requires value key")
 
     val = data["value"]
+
     value: Any
     if nodetype == "string":
         if not isinstance(val, str):
@@ -202,6 +226,7 @@ def tree_node_from_json_dict(data: Dict[str, Any]) -> TreeNode:
         children=None,
         comment_before=cb,
         comment_inline=ci,
+        flow_style=fs,
     )
 
 
