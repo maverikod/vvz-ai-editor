@@ -1,4 +1,5 @@
-"""Apply universal_file_edit operations to TreeNode-backed tree-temp sessions (G-003 / G-004).
+"""Apply universal_file_edit operations to TreeNode-backed tree-temp sessions
+(G-003 / G-004).
 
 Author: Vasiliy Zdanovskiy
 Email: vasilyvz@gmail.com
@@ -143,15 +144,23 @@ def _serialize_insert_value(handler_id: str, value: Any) -> str:
     if handler_id == "json":
         return json.dumps(value, ensure_ascii=False)
     if handler_id == "yaml":
-        dumped: str = cast(
-            str,
-            yaml.safe_dump(
-                value,
-                default_flow_style=False,
-                allow_unicode=True,
-                sort_keys=False,
-            ),
-        )
+        from io import StringIO
+
+        from ruamel.yaml import YAML
+
+        rt_yaml = YAML(typ="rt")
+        rt_yaml.preserve_quotes = True
+        rt_yaml.default_flow_style = False
+        buf = StringIO()
+        rt_yaml.dump(value, buf)
+        dumped_lines = buf.getvalue().split("\n")
+        while dumped_lines and dumped_lines[-1] == "":
+            dumped_lines.pop()
+        if dumped_lines and dumped_lines[-1].strip() == "...":
+            dumped_lines.pop()
+        dumped = "\n".join(dumped_lines)
+        if not dumped.endswith("\n"):
+            dumped += "\n"
         return dumped
     if handler_id in {"ini", "toml"}:
         if value is None:
@@ -459,7 +468,11 @@ def _apply_source_pointer_set(session: EditSession, pointer: str, value: Any) ->
 def _expand_list_pointer_replace(
     session: EditSession, mop: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
-    """Route replace-at-list-pointer through unmarked source when marked target is a bare list."""
+    """Route replace-at-list-pointer through unmarked source.
+
+    Applies only when the marked target resolved from a json_pointer is a
+    bare list node.
+    """
     action = str(mop.get("action") or mop.get("type") or "").lower()
     if action != "replace" or "json_pointer" not in mop:
         return [mop]
@@ -639,13 +652,23 @@ def _run_legacy_tree_temp_apply(
                         PARSE_ERROR,
                         None,
                     )
+                # 1.0.65 (bug b215fbd3): re-derive comment-preserving TreeNode
+                # roots from the current draft bytes and apply the same
+                # normalized mutation there instead of a bare
+                # yaml.safe_dump(yt.root_data, ...) full-file re-dump, which
+                # drops every comment and normalizes quote/flow style on every
+                # unrelated node. This branch is legacy (registered yaml_tree
+                # pipeline) but stays reachable whenever
+                # session.tree_temp_roots is None with a registered tree_id
+                # present (e.g. after invalid-file-recovery); keep the
+                # registered-tree mutation above for tid bookkeeping, but
+                # write the draft via the modern round-trip serializer.
+                current_roots = parse_source_bytes_to_roots(
+                    "yaml", session.draft_path.read_bytes()
+                )
+                apply_single_tree_temp_mutation(current_roots, "yaml", mop)
                 session.draft_path.write_text(
-                    yaml.safe_dump(
-                        yt.root_data,
-                        default_flow_style=False,
-                        allow_unicode=True,
-                        sort_keys=False,
-                    ),
+                    serialize_tree_temp_roots("yaml", current_roots),
                     encoding="utf-8",
                 )
         else:

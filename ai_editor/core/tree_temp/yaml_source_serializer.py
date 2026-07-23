@@ -40,7 +40,10 @@ def _validate_subtree(node: TreeNode, member_of_object: bool) -> None:
 
 
 def _ruamel_body(stored: str) -> str:
-    """Strip leading ``#`` from each stored comment line for ruamel helpers that re-add hashes."""
+    """Strip a leading ``#`` from each stored comment line.
+
+    Ruamel's own comment-emission helpers re-add the hash prefix.
+    """
     lines: List[str] = []
     for ln in stored.splitlines():
         t = ln.strip()
@@ -86,11 +89,21 @@ def _tree_to_commented(node: TreeNode) -> Any:
             if ch.key is None:
                 raise ValueError(f"{_ERR} object member must have non-empty key")
             cm[ch.key] = _tree_to_commented(ch)
+        if node.flow_style is not None:
+            if node.flow_style:
+                cm.fa.set_flow_style()
+            else:
+                cm.fa.set_block_style()
         return cm
     if node.type == "array":
         seq: CommentedSeq = CommentedSeq()
         for ch in node.children or []:
             seq.append(_tree_to_commented(ch))
+        if node.flow_style is not None:
+            if node.flow_style:
+                seq.fa.set_flow_style()
+            else:
+                seq.fa.set_block_style()
         return seq
     return _scalar_pyval(node)
 
@@ -191,19 +204,22 @@ def serialize_yaml_source(root_nodes: List[TreeNode]) -> str:
     """Serialize root TreeNode list to UTF-8 YAML text with comments (C-006).
 
     Root shape (aligned with source_spec and T-002 parser):
-    - Zero roots: emit YAML flow empty sequence exactly `[]` followed by newline (parses as empty root array).
+    - Zero roots: emit YAML flow empty sequence exactly `[]` followed by
+      newline (parses as empty root array).
     - One root, type object: YAML mapping as document root.
     - One root, scalar: that scalar as document root (plain YAML scalar).
-    - More than one root: YAML block or flow sequence at document root listing each TreeNode subtree in order
-      (same “expanded root array” convention as JSON parser when the source was a sequence at top level).
+    - More than one root: YAML block or flow sequence at document root
+      listing each TreeNode subtree in order (same "expanded root array"
+      convention as JSON parser when the source was a sequence at top level).
     - Single root with type array: invalid — raise ValueError like JSON serializer.
 
-    Use YAML(typ='rt'); preserve_quotes=True; default_flow_style=False; write to StringIO;
-    return .getvalue() with trailing newline.
+    Use YAML(typ='rt'); preserve_quotes=True; default_flow_style=False;
+    write to StringIO; return .getvalue() with trailing newline.
 
     Raises:
-        ValueError: prefix \"Invalid tree for YAML serialization:\" for field/type inconsistencies (same
-        object/array/scalar key/value invariants as T-003 serializer text).
+        ValueError: prefix "Invalid tree for YAML serialization:" for
+            field/type inconsistencies (same object/array/scalar key/value
+            invariants as T-003 serializer text).
     """
     if any(n.type == "array" for n in root_nodes):
         raise ValueError(f"{_ERR} unexpected root array wrapper")
