@@ -826,7 +826,6 @@ async def _scenario_sibling_insert_delete_trivia(
         "        Returns:\n"
         "            None.\n"
         '        """\n'
-        "        return None\n"
     )
 
     def _header_lines(content: str) -> tuple[str, str]:
