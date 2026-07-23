@@ -1381,7 +1381,10 @@ async def _scenario_styled_yaml_minimal_diff(
         if ca_verify and ca_verify.get("ok") is False:
             raise PipelineFailure("styled YAML commit ca_verify failed", commit)
 
-        content = await _read_file_text(ca, project_id, file_path, end_line=10)
+        # No hardcoded end_line: a lossy rewrite can shrink the file below any
+        # fixed bound and a fixed range would then raise INVALID_RANGE instead
+        # of letting the assertions below report the actual content diff.
+        content = await _read_file_text(ca, project_id, file_path)
 
         required_substrings = (
             "# Fresh fixture for ai-editor tree-temp YAML round-trip re-verification (2026-07-23)",
