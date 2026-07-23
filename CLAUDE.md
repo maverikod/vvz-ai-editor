@@ -2,6 +2,7 @@
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
 -->
+<!-- prompts-template: claude-prompts-v1 rev 1.1.0 (2026-07-23) -->
 
 # ai-editor — operating contract
 
