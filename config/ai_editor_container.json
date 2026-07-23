@@ -2,7 +2,7 @@
   "enable_qa_mcp_hooks": false,
   "server_presentation": {
     "title": "AI Editor Server",
-    "version": "1.0.64",
+    "version": "1.0.65",
     "description": "AI Editor server: universal file preview, open, edit, write, and close"
   },
   "server": {
@@ -47,7 +47,7 @@
       "server_id": "ai-editor-server${AI_EDITOR_SERVER_ID_SUFFIX}",
       "server_name": "AI Editor Server",
       "description": "AI Editor server for project files: preview, open, edit, write, and close across Python, JSON, YAML, Markdown, and text. Python commit validation includes Black, Flake8, Ruff, Mypy, and docstring policy.",
-      "version": "1.0.64"
+      "version": "1.0.65"
     },
     "instance_uuid": "77b1ec82-48d6-4c4b-a17d-4f8a8c53b557",
     "auto_on_startup": true,

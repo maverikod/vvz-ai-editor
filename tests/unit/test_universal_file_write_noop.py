@@ -122,7 +122,7 @@ async def test_write_commit_equal_fails_when_lock_check_fails() -> None:
 
     assert isinstance(result, ErrorResult)
     assert result.code == "UPSTREAM_LOCK_FAILED"
-    assert result.message == "LOCK_DENIED"
+    assert result.message == "RuntimeError: LOCK_DENIED"
     client.ensure_session_file_lock.assert_called_once_with(
         session_id="sess-1",
         project_id="proj-1",
