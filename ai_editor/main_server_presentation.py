@@ -2,8 +2,10 @@
 Resolve OpenAPI / MCP server title, description, and version from config.
 
 Adapter contract (mcp-proxy-adapter >= 8.10.13):
-- ``AppFactory.create_app(title=..., description=..., version=...)`` → OpenAPI + ``help`` ``tool_info`` (help tier).
-- Proxy ``list_servers`` description: ``registration.metadata.description`` (list tier, brief).
+- ``AppFactory.create_app(title=..., description=..., version=...)`` → OpenAPI +
+  ``help`` ``tool_info`` (help tier).
+- Proxy ``list_servers`` description:
+  ``registration.metadata.description`` (list tier, brief).
 
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
@@ -48,7 +50,12 @@ def resolve_server_presentation(app_config: Dict[str, Any]) -> ServerPresentatio
     Config keys under ``server_presentation``:
     - ``description`` — help tier (OpenAPI / server help); enough to start working.
     - ``list_description`` — brief card for ``list_servers`` (optional).
-    - ``title``, ``version``
+    - ``title``
+
+    ``version`` is NEVER read from config — it always comes from the installed
+    ``ai-editor`` package (see ``_package_version``), matching what ``health``
+    reports, so ``help``/``tool_info``/registration can never drift stale
+    against a config file that was not refreshed on deploy (bug 8fefd757).
     """
     pres = app_config.get("server_presentation")
     if not isinstance(pres, dict):
@@ -79,12 +86,7 @@ def resolve_server_presentation(app_config: Dict[str, Any]) -> ServerPresentatio
         or reg_meta.get("list_description")
         or SERVER_LIST_DESCRIPTION
     )
-    version = (
-        pres.get("version")
-        or reg_meta.get("version")
-        or reg.get("version")
-        or _package_version()
-    )
+    version = _package_version()
     return ServerPresentation(
         title=str(title),
         help_description=str(help_description),
@@ -105,7 +107,8 @@ def sync_registration_presentation(app_config: Dict[str, Any]) -> None:
     """
     Copy presentation into ``registration.metadata`` for proxy registration.
 
-    ``metadata.description`` uses the **list** tier (brief). Help tier is for OpenAPI only.
+    ``metadata.description`` uses the **list** tier (brief). Help tier is for
+    OpenAPI only.
     """
     pres = resolve_server_presentation(app_config)
     reg = app_config.setdefault("registration", {})
