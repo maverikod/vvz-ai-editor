@@ -238,22 +238,77 @@ async def _close_suppress(
         return {"close_error": repr(exc)}
 
 
+_READ_FILE_TEXT_DEFAULT_END_LINE = 1000
+
+
+def _get_file_lines_invalid_range_total_lines(evidence: Any) -> int | None:
+    """Extract ``total_lines`` from a ``get_file_lines`` INVALID_RANGE error.
+
+    CA's ``get_file_lines`` rejects an ``end_line`` beyond the file's actual
+    length with an ``INVALID_RANGE`` error whose ``error.data`` carries the
+    file's real ``total_lines`` -- the value to retry with.
+
+    Args:
+        evidence: The ``PipelineFailure.evidence`` payload from a failed
+            ``get_file_lines`` call (the unwrapped JSON-RPC result dict).
+
+    Returns:
+        The file's total line count, or None when the evidence is not an
+        INVALID_RANGE error carrying that field.
+    """
+    if not isinstance(evidence, dict):
+        return None
+    error = evidence.get("error")
+    if not isinstance(error, dict) or error.get("code") != "INVALID_RANGE":
+        return None
+    data = error.get("data")
+    if isinstance(data, dict):
+        total_lines = data.get("total_lines")
+        if isinstance(total_lines, int) and total_lines >= 0:
+            return total_lines
+    return None
+
+
+async def _get_file_lines(
+    ca: JsonRpcClient, project_id: str, file_path: str, end_line: int
+) -> dict[str, Any]:
+    return await _call(
+        ca,
+        "get_file_lines",
+        {
+            "project_id": project_id,
+            "file_path": file_path,
+            "start_line": 1,
+            "end_line": end_line,
+            "allow_healthy_line_ops": True,
+        },
+    )
+
+
 async def _read_file_text(
     ca: JsonRpcClient, project_id: str, file_path: str, *, end_line: int | None = None
 ) -> str:
-    params: dict[str, Any] = {
-        "project_id": project_id,
-        "file_path": file_path,
-        "start_line": 1,
-        "allow_healthy_line_ops": True,
-    }
-    if end_line is not None:
-        params["end_line"] = end_line
-    lines_payload = await _call(
-        ca,
-        "get_file_lines",
-        params,
+    """Read a project file's full text back through CA's ``get_file_lines``.
+
+    ``get_file_lines`` REQUIRES ``end_line`` (a missing/None ``end_line`` is a
+    hard JSON-RPC error, code -32603, "required parameter 'end_line' is
+    missing") -- there is no "read whole file" mode. The caller may not know
+    the file's exact line count in advance (e.g. after a lossy rewrite
+    shrinks the file), so this always sends a concrete, generous end_line
+    first and, if CA rejects it as INVALID_RANGE, retries once with the
+    file's real ``total_lines`` taken from the error payload. The scenario
+    must never crash on line-count surprises.
+    """
+    first_end_line = (
+        end_line if end_line is not None else _READ_FILE_TEXT_DEFAULT_END_LINE
     )
+    try:
+        lines_payload = await _get_file_lines(ca, project_id, file_path, first_end_line)
+    except PipelineFailure as exc:
+        total_lines = _get_file_lines_invalid_range_total_lines(exc.evidence)
+        if total_lines is None or total_lines == first_end_line:
+            raise
+        lines_payload = await _get_file_lines(ca, project_id, file_path, total_lines)
     raw_lines = lines_payload.get("lines")
     if isinstance(raw_lines, list):
         lines: list[str] = []
