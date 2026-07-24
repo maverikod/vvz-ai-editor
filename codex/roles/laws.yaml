@@ -1,11 +1,12 @@
 # ai-editor standing laws. Every role reads this file before acting.
-# prompts-template: codex-prompts-v1 rev 1.4.0 (2026-07-24)
+# prompts-template: codex-prompts-v1 rev 1.5.0 (2026-07-24)
 
 variables:
-  file_access: local
+  file_access: local      # local (default) | cas | local_ide. Governs local_mode/cas_mode/local_ide_mode and the profile-dependent parts of branch_discipline.
   local_branch: local
   cas_branch: cas
   transfer_branch: main
+  escalation: strict      # strict (default) | off. User pre-sets 'off' -> law server_error_recovery is relaxed.
 
 laws:
   branch_discipline: >-
@@ -48,6 +49,13 @@ laws:
     When the user explicitly selects server-side implementation, all project reads,
     edits, verification, and Git target the registered CAS project on branch cas via
     MCP Proxy. Local project tools must not be used as a fallback.
+  local_ide_mode: >-
+    [active when variables.file_access=local_ide] Files live locally and are edited by
+    the HUMAN through the IDE; the agent NEVER edits project files directly - it
+    delivers proposed patches/diffs in its reports for the human to apply. Search and
+    analysis still run through CAS via MCP Proxy; sync local<->server state with Git
+    (push from local, CAS git_pull_safe on the server). Branch rules follow the
+    'local' clause of branch_discipline.
   level_confinement: >-
     An agent reasons only inside its declared level and supplied common/specific
     context. It labels inference, asks its direct parent for information from above,
@@ -79,10 +87,16 @@ laws:
     spill-to-disk symptom or evidence and confirm the corresponding project anchoring
     before continuing.
   server_error_recovery: >-
-    Invalid parameter: obtain command-specific help and retry once with the returned
-    schema. Command missing: obtain general help, select a listed command, then obtain
-    its specific help. Server unavailable: proxy health, registration, and downstream
-    health; stop and escalate exact evidence if unhealthy. Never guess legacy names.
+    [unless variables.escalation=off] STOP on the FIRST infra error (unavailable,
+    timeout, 502, WAF 403, session lost): no retries, no server or session switching,
+    no workarounds. Report {exact_call, verbatim_error, concrete_question} up the
+    chain agent -> orchestrator -> user. escalation=off relaxes this STOP-first
+    requirement. Taxonomy: Invalid parameter -> obtain command-specific help and retry
+    once with the returned schema (self-correctable even under strict escalation).
+    Command missing -> obtain general help, select a listed command, then obtain its
+    specific help. Server unavailable -> check proxy health, registration, and
+    downstream health; stop and escalate exact evidence if unhealthy. Never guess
+    legacy names.
   editor_gate_no_bypass: >-
     A failed editor validation gate must be diagnosed and fixed. Never bypass syntax,
     Ruff, Flake8, mypy, import, or format validation. A false positive is a tooling bug
@@ -105,14 +119,16 @@ laws:
     built artifact is ready, e.g. via ops/delivery-release.yaml `build_execution` — it is
     not license to run the build script remotely. The DECISION to perform authorized
     deploy or real-host administration remains ORCHESTRATOR-ONLY, exercised with
-    conscience approval; its MECHANICS may be delegated to the deliverer role
-    executing the mandated procedure (roles/deliverer.yaml). No other role ever
-    performs host execution or asks for it.
+    conscience approval (record the date your project's user granted this); its
+    MECHANICS may be delegated to the deliverer role executing the mandated
+    procedure (roles/deliverer.yaml). No other role ever performs host execution or
+    asks for it.
   delivery_checks: >-
     For ai-editor: run the unit suite and Ruff, bump all lockstep version files, run
     docker/build.sh (LOCAL host, local checkout, local shell — see
     ops/delivery-release.yaml `build_execution`; never via MCP Proxy or MCP
-    Terminal), deploy to root@192.168.254.26, run the single live pipeline
+    Terminal), publish the client to PyPI at the same version, deploy to
+    root@192.168.254.26, run the single live pipeline
     scripts/verify_editor_ca_chain.py against production, and verify registration
     and the changed behavior through MCP Proxy. Then apply branch_discipline.
     Reproducing a defect, proving root cause, writing the fix, and recording the
@@ -163,8 +179,8 @@ laws:
     checks always extend the existing pipeline - never create a second one.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
-    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.4.0.tar.gz;
-    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.4.0.tar.gz). The model
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.5.0.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.5.0.tar.gz). The model
     REQUESTS the user's permission to update; only after the user confirms does
     it diff template vs project bundle and update the project prompt, preserving
     project-specific placeholder values. Template improvements flow back to the
