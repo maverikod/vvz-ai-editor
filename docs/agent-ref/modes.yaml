@@ -103,3 +103,5 @@ modes:
         read: [ops/ca-git.yaml]
       - when: first sandbox or host terminal command
         read: [ops/terminal-sandbox.yaml]
+      - when: a bug is confirmed (found/reported/reproduced) during this mode — bugfix alias
+        read: [roles/laws.yaml]   # `bugfix_acceptance_cycle` law: reproduce -> pipeline red -> root cause -> fix -> deploy -> pipeline green, looped; single authoritative definition, do not restate here
