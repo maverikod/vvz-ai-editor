@@ -1,5 +1,5 @@
 # ai-editor standing laws. Every role reads this file before acting.
-# prompts-template: codex-prompts-v1 rev 1.3.0 (2026-07-24)
+# prompts-template: codex-prompts-v1 rev 1.4.0 (2026-07-24)
 
 variables:
   file_access: local
@@ -61,6 +61,23 @@ laws:
     Read live help/info, reproduce a failure cleanly, identify the cause, and prove the
     causal link before filing a bug or changing code. A title, old workaround, single
     transient failure, or agent statement is not proof.
+  proxy_defect_bug_registration: >-
+    Every discovered code defect, inaccuracy, or mismatch between observed behavior
+    and description, help, or info in the MCP proxy itself or in any server accessed
+    through it MUST be registered immediately as a BUG in Plan Manager and attached to
+    the corresponding project before continuing. The BUG description must include the
+    evidence, expected behavior, actual behavior, reproduction steps when available,
+    and the confirmed project anchoring. Treat documentation or contract mismatches as
+    BUGs, not TODOs.
+  disk_scale_output_pagination_todo: >-
+    When a command produces output so long that it must be persisted and read from
+    disk, register a separate TODO in Plan Manager for the corresponding server
+    project before continuing. The TODO must name the exact command and require an
+    adequate pagination contract with bounded defaults and maximum limits,
+    deterministic ordering, compatibility behavior for existing callers, and live MCP
+    Proxy verification. The TODO must record the observed output-size or
+    spill-to-disk symptom or evidence and confirm the corresponding project anchoring
+    before continuing.
   server_error_recovery: >-
     Invalid parameter: obtain command-specific help and retry once with the returned
     schema. Command missing: obtain general help, select a listed command, then obtain
@@ -92,20 +109,63 @@ laws:
     executing the mandated procedure (roles/deliverer.yaml). No other role ever
     performs host execution or asks for it.
   delivery_checks: >-
-    For ai-editor: reproduce, identify cause, prove, fix, add focused unit coverage,
-    run the unit suite and Ruff, bump all lockstep version files, run docker/build.sh
-    (LOCAL host, local checkout, local shell — see ops/delivery-release.yaml
-    `build_execution`; never via MCP Proxy or MCP Terminal), deploy to
-    root@192.168.254.26, run the single live pipeline
-    scripts/verify_editor_ca_chain.py against production, verify registration and the
-    changed behavior through MCP Proxy, and record a verified Plan Manager fix before
-    closing the bug. Then apply branch_discipline. OWNER: the delivery DECISION is
-    orchestrator-level; its MECHANICS are delegated to the deliverer role
-    (roles/deliverer.yaml) executing that decision; coder/tester gate their own
-    steps, not delivery.
+    For ai-editor: run the unit suite and Ruff, bump all lockstep version files, run
+    docker/build.sh (LOCAL host, local checkout, local shell — see
+    ops/delivery-release.yaml `build_execution`; never via MCP Proxy or MCP
+    Terminal), deploy to root@192.168.254.26, run the single live pipeline
+    scripts/verify_editor_ca_chain.py against production, and verify registration
+    and the changed behavior through MCP Proxy. Then apply branch_discipline.
+    Reproducing a defect, proving root cause, writing the fix, and recording the
+    verified Plan Manager fix before closing a bug are NOT delivery steps — that
+    cycle belongs exclusively to bugfix_acceptance_cycle, the single authoritative
+    definition; this law owns delivery packaging/shipping only, never diagnosis.
+    OWNER: the delivery DECISION is orchestrator-level; its MECHANICS are delegated
+    to the deliverer role (roles/deliverer.yaml) executing that decision;
+    coder/tester gate their own steps, not delivery.
   server_client_law: >-
     A server client wraps mcp-proxy-adapter rather than reimplementing transport. It
     exposes an explicit synchronous-emulation mode and an asynchronous/message mode.
     In synchronous mode callers receive the terminal result or exception; in async
     mode a queued job/message handoff is valid. Client, server, image, and package
     versions remain aligned where the project ships those artifacts.
+  bugfix_acceptance_cycle: >-
+    [TRIGGER: any bug fix AND any acceptance of new code - fires immediately and
+    independently of any scheduled delivery] The mandatory cycle is, in order: (1)
+    REPRODUCE the defect (live, through the project's real access surface when the
+    project is a server); (2) when the project is a server, EXTEND
+    scripts/verify_editor_ca_chain.py with a covering check for this defect and
+    CONFIRM the defect WITH the pipeline - RED - before any further step (a
+    non-server project confirms the reproduction directly and skips to step 3); (3)
+    FIND THE CAUSE in code; (4) PROVE cause->symptom with concrete evidence; (5) FIX
+    with focused regression tests; (6) BUMP the version (pyproject.toml, in lockstep
+    with client/ai_editor_client/version.txt and ai_editor/config_templates/
+    ai_editor_container.json - see ops/delivery-release.yaml `version_sources`) -
+    always before any deploy; (7) DEPLOY to root@192.168.254.26 - only when the
+    current project is a server; everything on root@192.168.254.26 is a test target
+    EXCEPT the doc-store project's database (which is NEVER touched); (8) RE-RUN
+    scripts/verify_editor_ca_chain.py and require it GREEN (coverage requirement:
+    single_real_server_pipeline). LOOP, do not stop short: reproduction fails at (1)
+    -> OK, done; still red after (8) -> return to (3). ECONOMY PRINCIPLE: a test
+    deploy is CHEAPER than extended model reasoning - when judging "is it fixed",
+    prefer deploy-and-check over further analysis. After the cause of an error is
+    found, checks proving its elimination MUST be added to the pipeline (named
+    after the bug) - this is step (2)/(8) above, not a separate action. Work is not
+    accepted until every applicable step has passed. Single authoritative
+    definition of this cycle - do not restate it elsewhere; ops files, modes.yaml,
+    and AGENTS.md cross-reference this law by name instead.
+  single_real_server_pipeline: >-
+    [once per session; applies when the current project is a server] Verify the
+    project HAS a full-testing pipeline that runs against the REAL deployed
+    server (scripts/verify_editor_ca_chain.py) and that it exists in EXACTLY ONE
+    instance. The pipeline MUST exercise ALL API methods of the server EXCEPT the
+    platform's own built-in adapter methods. A missing pipeline is a gap to close
+    immediately; a duplicate is a defect to merge into the single pipeline. New
+    checks always extend the existing pipeline - never create a second one.
+  template_prompt_reconciliation: >-
+    [once per session] Reconcile the project's prompt bundle with its source
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.4.0.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.4.0.tar.gz). The model
+    REQUESTS the user's permission to update; only after the user confirms does
+    it diff template vs project bundle and update the project prompt, preserving
+    project-specific placeholder values. Template improvements flow back to the
+    template only on the user's explicit order.

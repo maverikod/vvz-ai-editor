@@ -1,5 +1,5 @@
 # ai-editor — standing LAWS (universal). Referenced from common.yaml spawn protocol;
-# prompts-template: claude-prompts-v1 rev 1.3.0 (2026-07-24)
+# prompts-template: claude-prompts-v1 rev 1.4.0 (2026-07-24)
 # read by EVERY role once per session before acting.
 # `variables` are pre-set per session by the user/orchestrator; defaults apply otherwise.
 
@@ -110,7 +110,9 @@ laws:
   delivery_checks: >-
     DELIVERY DEFINITION - "work delivered to the user" means, in order: (1) version
     bump +1 (root pyproject = source of truth); (2) run the build script named in
-    ops/delivery-release.yaml `build` (docker/build.sh); (3) client published to PyPI
+    ops/delivery-release.yaml `build` (docker/build.sh - NOT a fixed "./build.sh at
+    the project root" path; local unit tests; docker image build+tag+push when the
+    project ships one; .deb build); (3) client published to PyPI
     at the same version; (4) deploy to the single testing/production server (method
     not established earlier -> ASK THE USER first); (5) the ONE real-server test
     pipeline green against the deployed instance; (6) branch_discipline post-deploy
@@ -126,22 +128,30 @@ laws:
   bugfix_acceptance_cycle: >-
     [TRIGGER: any bug fix AND any acceptance of new code - fires immediately and
     independently of any scheduled delivery] The mandatory cycle is, in order: (1)
-    REPRODUCE the defect (live, through the project's real access surface); (2)
-    EXTEND scripts/verify_editor_ca_chain.py (the ONE real-server pipeline, per
-    ops/delivery-release.yaml `live_pipeline`) with a covering check and CONFIRM the
-    defect WITH the pipeline - RED - before any further step; (3) FIND THE CAUSE in
-    code; (4) PROVE cause->symptom with concrete evidence; (5) FIX with focused
-    regression tests; (6) BUMP the version (pyproject.toml, in lockstep with
-    client/ai_editor_client/version.txt and ai_editor/config_templates/
+    REPRODUCE the defect (live, through the project's real access surface when the
+    project is a server); (2) when the project is a server, EXTEND
+    scripts/verify_editor_ca_chain.py with a covering check for this defect and
+    CONFIRM the defect WITH the pipeline - RED - before any further step (a
+    non-server project confirms the reproduction directly and skips to step 3); (3)
+    FIND THE CAUSE in code; (4) PROVE cause->symptom with concrete evidence; (5) FIX
+    with focused regression tests; (6) BUMP the version (pyproject.toml, in lockstep
+    with client/ai_editor_client/version.txt and ai_editor/config_templates/
     ai_editor_container.json - see ops/delivery-release.yaml `version_sources`) -
-    always before any deploy; (7) DEPLOY to root@192.168.254.26 via docker/build.sh
-    - everything on that host is a test target EXCEPT the doc-store project's
-    database, which is NEVER touched; (8) RE-RUN the live pipeline and require it
-    GREEN. LOOP, do not stop short: reproduction fails at (1) -> done, no fix
-    needed; still red after (8) -> return to (3). Steps (2)/(7)/(8) are the SAME
-    pipeline and SAME deploy target as delivery_checks / ops/delivery-release.yaml
-    `procedure` - run them together, never stand up a second pipeline or a second
-    deploy path (see that file's "exactly one real-server pipeline" invariant).
+    always before any deploy; (7) DEPLOY to root@192.168.254.26 - only when the
+    current project is a server (build SCRIPT execution is LOCAL per local_mode's
+    HARD RULE / ops/delivery-release.yaml `build_execution` - only the deploy HOST
+    itself is remote); everything on root@192.168.254.26 is a test target EXCEPT the
+    doc-store project's database (which is NEVER touched); (8) RE-RUN
+    scripts/verify_editor_ca_chain.py and require it GREEN (coverage requirement:
+    single_real_server_pipeline). LOOP, do not stop short: reproduction fails at (1)
+    -> OK, done; still red after (8) -> return to (3). ECONOMY PRINCIPLE: a test
+    deploy is CHEAPER than extended model reasoning - when judging "is it fixed",
+    prefer deploy-and-check over further analysis. After the cause of an error is
+    found, checks proving its elimination MUST be added to the pipeline (named
+    after the bug) - this is step (2)/(8) above, not a separate action. Work is not
+    accepted until every applicable step has passed. Single authoritative
+    definition of this cycle - do not restate it elsewhere; ops files and modes.yaml
+    cross-reference this law by name instead.
   single_real_server_pipeline: >-
     [once per session; applies when the current project is a server] Verify the
     project HAS a full-testing pipeline that runs against the REAL deployed
@@ -152,8 +162,8 @@ laws:
     checks always extend the existing pipeline - never create a second one.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
-    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.1.0.tar.gz;
-    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.1.0.tar.gz). The model
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.4.0.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.4.0.tar.gz). The model
     REQUESTS the user's permission to update; only after the user confirms does
     it diff template vs project bundle and update the project prompt, preserving
     project-specific placeholder values. Template improvements flow back to the
