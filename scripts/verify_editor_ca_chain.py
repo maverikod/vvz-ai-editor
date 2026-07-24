@@ -603,9 +603,74 @@ def _find_preview_node_ref(value: Any, needles: tuple[str, ...]) -> str | None:
     return None
 
 
+async def _scenario_info_guide_smoke(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Smoke-test the editor's static ``info`` guide (own-command coverage).
+
+    ``info`` takes no project/session context, so this scenario does not
+    touch CA at all -- it only asserts the live guide text still documents
+    the lifecycle, the format-group concept, and the error catalog. Kept
+    resilient to wording tweaks: presence of a few stable keywords, not
+    full-text equality.
+
+    Args:
+        ca: Unused; ``info`` has no CA-side dependency.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: Unused; kept for the uniform scenario_fns signature.
+
+    Returns:
+        Evidence payload with the guide length and which anchors matched.
+    """
+    del ca, args, watch_dir_id
+    response = await _call(ed, "info", {})
+    guide_text = response.get("markdown")
+    if not isinstance(guide_text, str) or not guide_text.strip():
+        guide_text = json.dumps(response, ensure_ascii=False)
+    lowered = guide_text.lower()
+
+    lifecycle_words = ("open", "preview", "edit", "write", "close")
+    missing_lifecycle = [word for word in lifecycle_words if word not in lowered]
+    if missing_lifecycle:
+        raise PipelineFailure(
+            "info guide missing lifecycle keyword(s)",
+            {"missing": missing_lifecycle, "guide_excerpt": guide_text[:2000]},
+        )
+    if "format group" not in lowered:
+        raise PipelineFailure(
+            "info guide missing format-group marker",
+            {"guide_excerpt": guide_text[:2000]},
+        )
+    if "error" not in lowered or "validation_error" not in lowered:
+        raise PipelineFailure(
+            "info guide missing error-catalog marker",
+            {"guide_excerpt": guide_text[:2000]},
+        )
+    return {
+        "guide_length": len(guide_text),
+        "lifecycle_words_present": list(lifecycle_words),
+        "format_group_marker_present": True,
+        "error_catalog_marker_present": True,
+        "registered_commands": response.get("registered_commands"),
+    }
+
+
 async def _scenario_python_header_comment(
     ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
 ) -> dict[str, Any]:
+    """Live regression for bug 86288c9c (Python class header trailing comment).
+
+    Also live-verifies ``universal_file_search`` and
+    ``universal_file_node_at_line`` (own-command coverage, 2026-07-24):
+    piggybacked on the same open session -- no new fixtures. A simple
+    ``ClassDef``/``name=Foo`` search must resolve the SAME node_ref that
+    preview's class block located. A node-at-line lookup on the class header
+    line resolves the MOST SPECIFIC node there (the ``Foo`` Name token, not
+    the class itself); with ``include_ancestors=true`` the class node_ref
+    must appear among its ancestors, proving both commands are anchored to
+    the same session tree position as preview.
+    """
     project = await _create_project(ca, watch_dir_id, "86288c9c")
     project_id = project["project_id"]
     session_id = await _create_session(ca, "86288c9c")
@@ -645,9 +710,99 @@ async def _scenario_python_header_comment(
                 "file_path": file_path,
             },
         )
-        class_ref = _find_preview_node_ref(preview, ("class Foo",))
+        # _find_preview_node_ref walks the WHOLE payload and can match a node
+        # whose "text" merely CONTAINS "class Foo" as a rendered substring
+        # (e.g. the module's first-statement "focus" node, whose text is the
+        # full-file rendering) instead of the actual ClassDef -- the same
+        # failure mode documented on _find_class_block_node_ref below
+        # (bdce5d39 evidence). Use the block-restricted lookup instead so
+        # class_ref is the class block's own node_ref, matching what
+        # universal_file_search/universal_file_node_at_line resolve.
+        class_ref = _find_class_block_node_ref(preview, "class Foo")
         if not class_ref:
             raise PipelineFailure("preview did not expose class Foo node_ref", preview)
+
+        search_result = await _call(
+            ed,
+            "universal_file_search",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "search_type": "simple",
+                "node_type": "ClassDef",
+                "name": "Foo",
+                "require_one": True,
+            },
+        )
+        search_node_ref_raw = search_result.get("node_ref")
+        search_node_ref = (
+            str(search_node_ref_raw) if search_node_ref_raw is not None else None
+        )
+        if search_node_ref != class_ref:
+            raise PipelineFailure(
+                "universal_file_search did not resolve the preview-located "
+                "class Foo node_ref",
+                {
+                    "search_node_ref": search_node_ref,
+                    "class_ref": class_ref,
+                    "search_result": search_result,
+                },
+            )
+
+        # Line 3 of initial_content is the "class Foo:  # type: ignore[misc]"
+        # header. node_at_line resolves the MOST SPECIFIC node on that line,
+        # which is the "Foo" Name token nested inside the ClassDef -- NOT the
+        # ClassDef itself (confirmed live: node_ref_kind="uuid", type="Name").
+        # include_ancestors=true additionally returns covering nodes smallest
+        # span first; the ClassDef -- the SAME node preview/search located --
+        # must be among them, proving node_at_line is anchored to the same
+        # tree position rather than requiring the top-level ref to equal the
+        # (necessarily larger-span) class ref directly.
+        class_header_line = 3
+        node_at_line_result = await _call(
+            ed,
+            "universal_file_node_at_line",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "line": class_header_line,
+                "include_ancestors": True,
+            },
+        )
+        node_at_line_ref_raw = node_at_line_result.get("node_ref")
+        node_at_line_ref = (
+            str(node_at_line_ref_raw) if node_at_line_ref_raw is not None else None
+        )
+        ancestors = node_at_line_result.get("ancestors")
+        class_ancestor_ref = None
+        if isinstance(ancestors, list):
+            for ancestor in ancestors:
+                if not isinstance(ancestor, dict):
+                    continue
+                ancestor_ref_raw = ancestor.get("node_ref")
+                ancestor_ref = (
+                    str(ancestor_ref_raw) if ancestor_ref_raw is not None else None
+                )
+                if (
+                    ancestor_ref == class_ref
+                    and str(ancestor.get("type") or "") == "ClassDef"
+                ):
+                    class_ancestor_ref = ancestor_ref
+                    break
+        if class_ancestor_ref != class_ref:
+            raise PipelineFailure(
+                "universal_file_node_at_line ancestors did not include the "
+                "preview-located class Foo node_ref",
+                {
+                    "node_at_line_ref": node_at_line_ref,
+                    "class_ref": class_ref,
+                    "line": class_header_line,
+                    "node_at_line_result": node_at_line_result,
+                },
+            )
+
         edit = await _edit(
             ed,
             {
@@ -705,6 +860,11 @@ async def _scenario_python_header_comment(
             "session_id": session_id,
             "file_path": file_path,
             "class_node_ref": class_ref,
+            "search_node_ref": search_node_ref,
+            "search_total_matches": search_result.get("total_matches"),
+            "node_at_line_ref": node_at_line_ref,
+            "node_at_line_type": node_at_line_result.get("type"),
+            "node_at_line_class_ancestor_ref": class_ancestor_ref,
             "edit": _jsonable(edit),
             "commit_uploaded": commit.get("uploaded"),
             "class_header": class_header,
@@ -1577,6 +1737,7 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             ],
         ]
     ] = [
+        ("info_guide_smoke", _scenario_info_guide_smoke),
         ("296e02c9_edit_preview_commit_readback", _scenario_edit_preview_text),
         ("690f768c_yaml_root_key_parent_empty_and_slash", _scenario_yaml_root_insert),
         (
@@ -1641,6 +1802,19 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 "interior padding normalization ('{ a: 1, b: 2 }' -> "
                 "'{a: 1, b: 2}'); any other line change beyond the mutated "
                 "scalar fails the scenario."
+            ),
+            "own_command_coverage": (
+                "full own-command coverage: info/search/node_at_line added "
+                "2026-07-24. info_guide_smoke exercises 'info' standalone "
+                "(no CA context). 86288c9c_python_header_comment_preservation "
+                "piggybacks universal_file_search (simple ClassDef/name query, "
+                "must match the class node_ref located via preview's block "
+                "list) and universal_file_node_at_line (class header line, "
+                "include_ancestors=true) on its existing open session; "
+                "node_at_line resolves the line's MOST SPECIFIC node (a "
+                "nested Name token), so the check asserts the class node_ref "
+                "appears among its ancestors rather than as the top-level "
+                "result."
             ),
         },
     }
