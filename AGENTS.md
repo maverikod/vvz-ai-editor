@@ -1,5 +1,7 @@
 # ai-editor - Codex operating contract
 
+**Prompts template:** `codex-prompts-v1` rev **1.3.0** (2026-07-24)
+
 You are the persistent root ORCHESTRATOR. Only the root communicates with the
 user. Route every request to one operating mode before delegation:
 `plan_authoring`, `plan_execution`, or `refactor_repair`.
@@ -35,6 +37,14 @@ writing, tests, builds, and release preparation happen in the local checkout.
 CAS remains the remote analysis repository. A user instruction explicitly
 authorizing CAS-side implementation may switch the working site to `cas` for that
 task only.
+
+**HARD RULE, default local profile:** ALL scripts — build/test/deploy runners
+alike (e.g. `docker/build.sh`) — and every file edit run with LOCAL tools on the
+local checkout. MCP Proxy in this profile is used ONLY for CA search/analysis and
+CAS-authoritative git sync — never to execute a build/test/deploy script, never to
+edit a file, and never via the MCP Terminal sandbox/host-exec path (that path is
+reserved for a genuine CAS capability gap or an authorized real-host incident, per
+`codex/roles/laws.yaml` `local_mode` / `host_execution`).
 
 ## Root tool gate
 
@@ -77,6 +87,7 @@ Use the exact model and reasoning tier when model selection is available:
 - TS owner: `gpt-5.6-terra`, `medium`.
 - AS author/executor: `gpt-5.6-luna`, `medium`.
 - Refactor/repair researcher, executor, and tester: `gpt-5.5`, `medium`.
+- Delivery mechanics (deliverer, `codex/roles/deliverer.yaml`): `gpt-5.5`, `medium`.
 - Independent architectural conscience: `gpt-5.6-sol`, `max`.
 
 Do not silently substitute another tier. Return
@@ -115,7 +126,9 @@ queued handoff as a leak; verify the caller selected and tested the intended mod
 ## Project completion bar
 
 For every defect: reproduce, find the cause, prove it, fix it, add focused tests,
-run unit tests and Ruff, bump the version, run `docker/build.sh`, deploy, run the
+run unit tests and Ruff, bump the version, run `docker/build.sh` LOCALLY from the
+local checkout (see `codex/ops/delivery-release.yaml` `build_execution` — never via
+MCP Proxy or MCP Terminal), deploy, run the
 single canonical real-server pipeline `scripts/verify_editor_ca_chain.py`, verify
 registration and behavior through MCP Proxy, then record and verify the Plan
 Manager fix before closing the bug.

@@ -1,6 +1,13 @@
 # Tool routing for tool-using roles. Live server help remains authoritative.
 
 meta:
+  # HARD RULE (laws.yaml local_mode, default profile): the ca/editor/terminal proxy
+  # routing below covers the CAS-authoritative path and CA search/analysis. In the
+  # default local profile, project file edits and ALL build/test/deploy script
+  # execution use LOCAL tools directly on the local checkout and are NOT routed
+  # through proxy_call — the proxy is for CA search/analysis and CAS git sync only.
+  # The `terminal` trigger rows below (CAS capability gap / authorized real-host
+  # incident) are narrow exceptions, not the default path for routine local builds.
   proxy_call: mcp__codex_apps__mcp_proxy_call_server
   proxy_server_ids:
     ca: code-analysis-server-vvz
@@ -45,7 +52,7 @@ triggers:
   - when: authorized real-host incident or deployment
     read: [terminal, ops/terminal-host-exec.yaml]
   - when: release, deploy, or production acceptance
-    read: [delivery]
+    read: [delivery]   # delivery.build_execution + laws.yaml local_mode: build/test/deploy scripts run LOCAL, never via proxy_call
 
 server_error_recovery:
   invalid_parameter:

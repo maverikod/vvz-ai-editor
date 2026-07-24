@@ -6,6 +6,11 @@ project:
     - client/ai_editor_client/version.txt
     - ai_editor/config_templates/ai_editor_container.json
   build: docker/build.sh
+  build_execution: >-
+    LOCAL host, run by the agent in the delivery chain, from the LOCAL checkout on the
+    active working branch at the release commit, via local shell — never via MCP Proxy,
+    never via the MCP Terminal sandbox/host-exec. Script path: docker/build.sh, relative
+    to the local checkout root. Only the subsequent deploy step touches deploy_host.
   deploy_host: root@192.168.254.26
   live_pipeline: scripts/verify_editor_ca_chain.py
   production_servers: [ai-editor-server-vvz, code-analysis-server-vvz]
@@ -16,7 +21,7 @@ procedure:
   - implement the localized repair and focused regression test
   - run focused tests, the unit suite, and Ruff
   - increment and align every version source
-  - run docker/build.sh from the active working branch
+  - run docker/build.sh LOCALLY from the active working branch (see `build_execution`)
   - deploy the built artifact to root@192.168.254.26
   - run the single scripts/verify_editor_ca_chain.py pipeline against production
   - verify registration, health, version, and changed behavior through MCP Proxy
@@ -32,3 +37,5 @@ invariants:
   - completed queue state is not success until the inner result is checked
   - do not deploy from or edit main before production verification
   - the agent never pushes main
+  - build script execution locus is LOCAL (see `build_execution`); only the deploy
+    target and production verification touch deploy_host

@@ -1,4 +1,5 @@
 # ai-editor standing laws. Every role reads this file before acting.
+# prompts-template: codex-prompts-v1 rev 1.3.0 (2026-07-24)
 
 variables:
   file_access: local
@@ -33,7 +34,16 @@ laws:
     preparation use the local checkout on branch local. CAS remains authoritative
     for its registered server-side project and remote analysis. Commit a coherent,
     verified task result; do not push. Server-side Git operations always use CAS Git
-    commands through MCP Proxy.
+    commands through MCP Proxy. HARD RULE (no exceptions): in this default local
+    profile, EVERY script — build, test, and deploy runners alike, e.g. the command
+    named in ops/delivery-release.yaml `build` — and every file edit run with LOCAL
+    tools on the local checkout. MCP Proxy in this profile is used ONLY for CA
+    search/analysis and CAS-authoritative git sync (never to execute a build/test/deploy
+    script, never to edit a file, never via MCP Terminal sandbox or host-exec). Do not
+    read host_execution's "MCP Terminal project sandbox according to the active
+    profile" clause as authorizing routine local-mode script execution through the
+    proxy — the sandbox/host-exec path is reserved for a genuine CAS capability gap or
+    an authorized real-host incident, not for ordinary build/test/deploy.
   cas_mode: >-
     When the user explicitly selects server-side implementation, all project reads,
     edits, verification, and Git target the registered CAS project on branch cas via
@@ -70,14 +80,29 @@ laws:
   host_execution: >-
     Project work uses local tools or the MCP Terminal project sandbox according to the
     active profile. Host execution on root@192.168.254.26 is only for authorized deploy,
-    real-host debugging, or service administration, never ordinary source work.
+    real-host debugging, or service administration, never ordinary source work. CLARIFY
+    (see local_mode HARD RULE): in the default local profile, "project work" including
+    ALL build/test/deploy SCRIPT execution is local-tools work — the MCP Terminal
+    sandbox/host-exec branch of this law does not apply to it. "Authorized deploy" here
+    means administering the deploy_host itself (root@192.168.254.26) after a LOCALLY
+    built artifact is ready, e.g. via ops/delivery-release.yaml `build_execution` — it is
+    not license to run the build script remotely. The DECISION to perform authorized
+    deploy or real-host administration remains ORCHESTRATOR-ONLY, exercised with
+    conscience approval; its MECHANICS may be delegated to the deliverer role
+    executing the mandated procedure (roles/deliverer.yaml). No other role ever
+    performs host execution or asks for it.
   delivery_checks: >-
     For ai-editor: reproduce, identify cause, prove, fix, add focused unit coverage,
-    run the unit suite and Ruff, bump all lockstep version files, run docker/build.sh,
-    deploy to root@192.168.254.26, run the single live pipeline
+    run the unit suite and Ruff, bump all lockstep version files, run docker/build.sh
+    (LOCAL host, local checkout, local shell — see ops/delivery-release.yaml
+    `build_execution`; never via MCP Proxy or MCP Terminal), deploy to
+    root@192.168.254.26, run the single live pipeline
     scripts/verify_editor_ca_chain.py against production, verify registration and the
     changed behavior through MCP Proxy, and record a verified Plan Manager fix before
-    closing the bug. Then apply branch_discipline.
+    closing the bug. Then apply branch_discipline. OWNER: the delivery DECISION is
+    orchestrator-level; its MECHANICS are delegated to the deliverer role
+    (roles/deliverer.yaml) executing that decision; coder/tester gate their own
+    steps, not delivery.
   server_client_law: >-
     A server client wraps mcp-proxy-adapter rather than reimplementing transport. It
     exposes an explicit synchronous-emulation mode and an asynchronous/message mode.
