@@ -122,6 +122,29 @@ def _emit_container_end_inline(c: Union[CommentedMap, CommentedSeq], text: str) 
     c.yaml_end_comment_extend([CommentToken(arg, CommentMark(0))])
 
 
+def _apply_seq_item_comments(
+    seq: CommentedSeq,
+    idx: int,
+    *,
+    comment_before: Optional[str],
+    comment_inline: Optional[str],
+) -> None:
+    """Apply comments to one sequence slot without tripping ruamel token bugs.
+
+    ruamel 0.19.x crashes on some comment-bearing list items when
+    ``yaml_set_comment_before_after_key()`` runs first and
+    ``yaml_add_eol_comment()`` follows on the same index. Applying the inline
+    comment first keeps the token shape iterable for the later before-comment
+    extension.
+    """
+    if comment_inline:
+        seq.yaml_add_eol_comment(_eol_comment_arg(comment_inline), key=idx)
+    if comment_before:
+        seq.yaml_set_comment_before_after_key(
+            idx, before=_ruamel_body(comment_before)
+        )
+
+
 def _apply_comments(
     node: TreeNode,
     c: Any,
@@ -131,12 +154,12 @@ def _apply_comments(
     if node.type in ("object", "array"):
         if seq_item is not None:
             seq, idx = seq_item
-            if node.comment_before:
-                seq.yaml_set_comment_before_after_key(
-                    idx, before=_ruamel_body(node.comment_before)
-                )
-            if node.comment_inline:
-                seq.yaml_add_eol_comment(_eol_comment_arg(node.comment_inline), key=idx)
+            _apply_seq_item_comments(
+                seq,
+                idx,
+                comment_before=node.comment_before,
+                comment_inline=node.comment_inline,
+            )
         else:
             if node.comment_before:
                 cast(Union[CommentedMap, CommentedSeq], c).yaml_set_start_comment(
@@ -171,12 +194,12 @@ def _apply_comments(
         seqn = cast(CommentedSeq, c)
         for i, ch in enumerate(node.children or []):
             sub = seqn[i]
-            if ch.comment_before:
-                seqn.yaml_set_comment_before_after_key(
-                    i, before=_ruamel_body(ch.comment_before)
-                )
-            if ch.comment_inline:
-                seqn.yaml_add_eol_comment(_eol_comment_arg(ch.comment_inline), key=i)
+            _apply_seq_item_comments(
+                seqn,
+                i,
+                comment_before=ch.comment_before,
+                comment_inline=ch.comment_inline,
+            )
             _apply_comments(ch, sub)
 
 

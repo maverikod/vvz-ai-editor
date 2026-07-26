@@ -24,8 +24,6 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
-import pytest
-
 from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (
     apply_single_tree_temp_mutation,
 )
@@ -97,30 +95,14 @@ def test_yaml_parse_does_not_crash_on_bare_comment_token_shape() -> None:
     assert roots
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Separate, pre-existing SERIALIZER defect, NOT bfe745b7: the "
-        "parser's already-documented footer-comment misattachment (see the "
-        "'45b27a37 audit' note in _build_array_container /"
-        " yaml_source_parser.py) merges the trailing document comment onto "
-        "the LAST array item's comment_before; when that same item also "
-        "carries its own comment_inline (as here: '8443  # https'), "
-        "yaml_source_serializer._apply_comments calls ruamel's "
-        "yaml_set_comment_before_after_key then yaml_add_eol_comment on the "
-        "same sequence index, and ruamel's own yaml_key_comment_extend then "
-        "raises \"'CommentToken' object is not iterable\". Fixing this "
-        "properly needs a TreeNode schema change (a dedicated footer-comment "
-        "slot, as already noted in yaml_source_parser.py) and is out of "
-        "scope for bug bfe745b7's surgical parser-only fix."
-    ),
-)
 def test_yaml_round_trip_of_bare_comment_token_shape_does_not_crash() -> None:
     """Zero-mutation round-trip of this shape must not lose or crash on comments.
 
-    Currently still crashes downstream in the serializer (see the xfail
-    reason above); tracked separately from the parser-side crash fixed under
-    bug bfe745b7 so this residual defect is visible rather than hidden.
+    The parser still mis-attaches the trailing document comment onto the last
+    array item as ``comment_before`` (documented separately in the parser),
+    but the serializer must no longer crash when that same list item also
+    carries an inline comment. This regression guards the ruamel token-order
+    workaround in ``yaml_source_serializer._apply_seq_item_comments``.
     """
     roots = parse_yaml_source_to_roots(_DEFECT_2_SOURCE)
     mutated = emit_yaml_source_from_roots(roots)
