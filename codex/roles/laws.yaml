@@ -176,7 +176,24 @@ laws:
     instance. The pipeline MUST exercise ALL API methods of the server EXCEPT the
     platform's own built-in adapter methods. A missing pipeline is a gap to close
     immediately; a duplicate is a defect to merge into the single pipeline. New
-    checks always extend the existing pipeline - never create a second one.
+    checks always extend the existing pipeline - never create a second one. The
+    invocation form of that single pipeline is fixed by `pipeline_cli_contract`.
+  pipeline_cli_contract: >-
+    [TRIGGER: any verification, deploy, or server start] The project MUST ship a
+    pipeline package that becomes a plain CLI application after `pip install -e .`.
+    The command is named `pipeline` in every project without exception, so one
+    invocation works across the whole fleet. `pipeline` with no arguments runs the
+    ENTIRE suite: every test and every check. `pipeline <check-name>` runs ONLY that
+    check, and `pipeline --list` enumerates the available check names. This one
+    command is the single verification entrypoint in every context: local
+    verification before delivery, the mandatory run against the real deployed server
+    after any deploy, and the smoke run after a normal server start. Never hand-roll
+    a second runner, a parallel script, or an ad-hoc command list for any of those
+    contexts; a missing check is added to this pipeline as a new named check. Where
+    this bundle still names `scripts/verify_editor_ca_chain.py`, that script is the
+    legacy form of the same single pipeline and must be migrated behind the
+    `pipeline` CLI rather than duplicated. A project without this CLI has a gap that
+    must be closed before the work is accepted.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
     template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.2.tar.gz;

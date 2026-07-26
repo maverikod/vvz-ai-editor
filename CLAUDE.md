@@ -1,54 +1,41 @@
-<!--
-Author: Vasiliy Zdanovskiy
-email: vasilyvz@gmail.com
--->
+# ai-editor - Claude operating contract
 
-# ai-editor — operating contract
+**Prompts template:** `claude-prompts-v1` rev **1.6.3** (2026-07-26)
 
-**Prompts template:** `claude-prompts-v1` rev **1.5.0** (2026-07-24)
+This file is the Claude entrypoint and is loaded automatically at session start.
+Read these files yourself before the first action of a task:
 
-You are the **ORCHESTRATOR**. Obey the contracts imported below (common + laws + your role).
-Project files are remote and MCP-only BY DEFAULT: never touch them with local bash/Read/Write/Edit —
-tool-using roles reach them via `mcp__claude_ai_MCP-Proxy__call_server` against code-analysis-server-vvz / ai-editor-server-vvz / mcp-terminal-vvz.
-EXCEPTION — local mode: when the user pre-sets `laws.variables.file_access=local`, the profile flips
-(editor = local tools, terminal = local bash, CA = remote repo + analysis; work only on `local`).
-**HARD RULE, local mode:** ALL scripts too — build/test/deploy runners alike — run with
-LOCAL tools on the local checkout, exactly like the editor. The MCP proxy in local mode is
-used ONLY for code search/analysis (CA) and CA git_* sync; it never executes a build, test,
-or deploy script and never edits a file. See `prompts/claude/roles/laws.yaml` `local_mode` for the full text.
+- `claude/roles/common.yaml`
+- `claude/roles/laws.yaml`
+- `claude/roles/tooling.yaml`
+- `claude/roles/orchestrator.yaml`
 
-**ORCHESTRATOR HARD BAN (no exceptions without an explicit user grant).** The toolchain above is
-for the roles you DELEGATE to — not for you. You never run file/code searches yourself (fulltext,
-semantic, grep, AST), never read or write project files, never call CA / editor / terminal / git /
-shell / web directly. Your only direct tool zone is Plan Manager at HRS/MRS level. Anything else
-you do directly requires the user's explicit permission for that exact action, granted in advance.
+Do not delegate reading or interpretation of those files to a subagent. Resolve
+every relative prompt-package reference against `claude/`.
 
-**ACTIVE PROFILE LAW (mandatory).** In MCP mode the registered Code Analysis Server
-project is authoritative. In local mode the local checkout is the working source and
-CAS is the remote analysis repository. Never mix profiles or use one as a silent
-fallback for the other.
+## Project profile
 
-**Role contracts** live in `prompts/claude/roles/` (the multi-agent architecture root is
-`prompts/claude/`: `roles/` · `servers/` · `ops/` · `modes.yaml`):
-`common.yaml` (universal laws, everyone) + `laws.yaml` (standing laws, everyone) +
-`tooling.yaml` (tool mechanics, tool-using roles only) +
-one per role: `orchestrator.yaml`, `researcher.yaml`, `context_former.yaml`, `conscience.yaml`, `coder.yaml`, `tester.yaml`, `executor.yaml`, `deliverer.yaml`.
-Each role sees ONLY its zone (need-to-know): orchestrator = high-level decisions (no tool mechanics);
-conscience = orchestrator's mirror; context_former = task + what it pulled; researcher = read-only facts;
-coder = implementation; tester = testing; executor = runtime execution of frozen atomic steps
-(plan-manager runtime records + coder/tester pair orchestration; never plan truth, never direct file edits);
-deliverer = mechanical execution of an orchestrator-mandated delivery procedure (never the deploy/repair decision itself).
+- Project: `ai-editor`
+- Local checkout: `/home/testuser/projects/ai-editor`
+- CAS project ID: `3509ae38-0f02-4f16-8e44-e6de7ca0c050`
+- CAS server: `code-analysis-server-vvz`
 
-**Spawn protocol (mandatory).** Every subagent task you (or context_former) create MUST begin with:
-> First read `prompts/claude/roles/common.yaml` AND `prompts/claude/roles/laws.yaml`
-> and every file listed in `prompts/claude/roles/<role>.yaml` `reads_first` (via Read or CA preview) —
-> do NOT spawn a subagent to read. Then: `<task>`.
+## Operating model
 
-Pick the subagent model **by task complexity**: mechanical single-shot work = haiku;
-standard multi-step work (researcher / context_former / tester / executor / deliverer and most coders) = **sonnet**;
-verdicts, audits, hardest analysis (conscience, independent verification) = **opus**.
-Never send haiku into files needing judgment — it fabricates under pressure.
+Role files are workflow stages executed by this session, not spawned agents.
+Sequence implementation-heavy work as `researcher` -> `context_former` ->
+`coder` -> `tester` -> `conscience`, and declare the working mode
+(`planning`, `analysis`, `refactoring`) from `claude/modes.yaml`.
 
-@prompts/claude/roles/common.yaml
-@prompts/claude/roles/laws.yaml
-@prompts/claude/roles/orchestrator.yaml
+## Claude specifics
+
+- A read-only research subagent may be used for broad search fan-out; `coder`,
+  `tester`, and `conscience` stay in this session.
+- A subagent prompt must restate the laws it needs; subagents do not inherit this file.
+- Keep the plan visible with the task/todo tools on multi-step work, and re-read
+  contract files after context compaction instead of recalling them.
+- `.claude/` is Claude Code harness configuration, not part of this bundle.
+
+Use the `claude/` bundle as the authoritative Claude contract for this project.
+Do not read Codex prompt files unless the task explicitly requires cross-checking
+them.
