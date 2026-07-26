@@ -21,6 +21,20 @@ from ai_editor.core.exceptions import ValidationError
 from ai_editor.core.storage_paths import load_raw_config
 
 
+def _default_ca_section() -> Dict[str, Any]:
+    """Fallback direct-transport settings for unit tests without a real config."""
+    return {
+        "host": "127.0.0.1",
+        "port": 15010,
+        "protocol": "https",
+        "timeout": 300.0,
+        "check_hostname": False,
+        "ssl": {},
+        "server_id": "code-analysis-server",
+        "command_transport": "direct",
+    }
+
+
 def ca_section_to_server_config(section: Mapping[str, Any]) -> Dict[str, Any]:
     """Wrap flat ``code_analysis_server`` block as CA server config dict."""
     ssl = section.get("ssl")
@@ -82,6 +96,8 @@ def load_resolved_ca_section(config_path: Optional[Path] = None) -> Dict[str, An
             path = None
     if path is None:
         path = (Path.cwd() / "config.json").resolve()
+    elif not path.is_file():
+        return _default_ca_section()
 
     load_dotenv_near_config(path)
     raw = load_raw_config(path)
