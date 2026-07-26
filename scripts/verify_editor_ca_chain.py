@@ -18,13 +18,16 @@ import traceback
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from mcp_proxy_adapter.client.jsonrpc_client.client import JsonRpcClient  # noqa: E402
+if TYPE_CHECKING:
+    from mcp_proxy_adapter.client.jsonrpc_client.client import JsonRpcClient
+else:  # pragma: no cover - runtime import stays inside _client()
+    JsonRpcClient = Any
 
 DEFAULT_CA_HOST = "192.168.254.26"
 DEFAULT_CA_PORT = 15010
@@ -63,6 +66,8 @@ def _jsonable(value: Any) -> Any:
 def _client(
     host: str, port: int, mtls_dir: Path, timeout: float = 120.0
 ) -> JsonRpcClient:
+    from mcp_proxy_adapter.client.jsonrpc_client.client import JsonRpcClient
+
     cert = mtls_dir / "client" / "ai-editor.crt"
     key = mtls_dir / "client" / "ai-editor.key"
     ca = mtls_dir / "ca" / "ca.crt"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 from typing import Any
 
 import pytest
@@ -35,8 +36,7 @@ def test_resolve_requested_checks_rejects_unknown_name() -> None:
     }
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_honors_single_selected_check(
+def test_run_pipeline_honors_single_selected_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``pipeline <check-name>`` must run only that named check."""
@@ -71,7 +71,7 @@ async def test_run_pipeline_honors_single_selected_check(
         list=False,
     )
 
-    result = await pipeline.run_pipeline(args)
+    result = asyncio.run(pipeline.run_pipeline(args))
 
     assert seen == ["open_queue_autopoll_84d93cca"]
     assert result["requested_checks"] == ["open_queue_autopoll_84d93cca"]
@@ -83,8 +83,7 @@ async def test_run_pipeline_honors_single_selected_check(
     }
 
 
-@pytest.mark.asyncio
-async def test_read_file_text_sends_default_end_line_when_not_requested(
+def test_read_file_text_sends_default_end_line_when_not_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``get_file_lines`` REQUIRES ``end_line``, so a default readback must always
@@ -103,10 +102,12 @@ async def test_read_file_text_sends_default_end_line_when_not_requested(
 
     monkeypatch.setattr(pipeline, "_call", fake_call)
 
-    text = await pipeline._read_file_text(
-        object(),
-        "project-1",
-        "verify/small.txt",
+    text = asyncio.run(
+        pipeline._read_file_text(
+            object(),
+            "project-1",
+            "verify/small.txt",
+        )
     )
 
     assert text == "one\ntwo"
@@ -120,8 +121,7 @@ async def test_read_file_text_sends_default_end_line_when_not_requested(
     }
 
 
-@pytest.mark.asyncio
-async def test_read_file_text_retries_on_invalid_range_with_total_lines(
+def test_read_file_text_retries_on_invalid_range_with_total_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A first-call INVALID_RANGE (end_line beyond the real file length) must
@@ -144,10 +144,12 @@ async def test_read_file_text_retries_on_invalid_range_with_total_lines(
 
     monkeypatch.setattr(pipeline, "_call", fake_call)
 
-    text = await pipeline._read_file_text(
-        object(),
-        "project-1",
-        "verify/small.txt",
+    text = asyncio.run(
+        pipeline._read_file_text(
+            object(),
+            "project-1",
+            "verify/small.txt",
+        )
     )
 
     assert text == "one\ntwo"
@@ -157,8 +159,7 @@ async def test_read_file_text_retries_on_invalid_range_with_total_lines(
     ]
 
 
-@pytest.mark.asyncio
-async def test_read_file_text_uses_explicit_short_end_line(
+def test_read_file_text_uses_explicit_short_end_line(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Scenarios with known fixture length may request an in-bounds end_line."""
@@ -174,11 +175,13 @@ async def test_read_file_text_uses_explicit_short_end_line(
 
     monkeypatch.setattr(pipeline, "_call", fake_call)
 
-    text = await pipeline._read_file_text(
-        object(),
-        "project-1",
-        "verify/small.txt",
-        end_line=1,
+    text = asyncio.run(
+        pipeline._read_file_text(
+            object(),
+            "project-1",
+            "verify/small.txt",
+            end_line=1,
+        )
     )
 
     assert text == "only"
