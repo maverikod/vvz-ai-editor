@@ -181,6 +181,11 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         _ = kwargs
         ca_session_id = str(session_id or "").strip()
         pid = str(project_id or "").strip()
+        if not ca_session_id:
+            return ErrorResult(
+                message="session_id is required for universal_file_close",
+                code=cast(Any, "SESSION_REJECTED"),
+            )
         guard = SessionGuard(get_code_analysis_client())
         try:
             decision = guard.check(OperationKind.CLOSE, ca_session_id)

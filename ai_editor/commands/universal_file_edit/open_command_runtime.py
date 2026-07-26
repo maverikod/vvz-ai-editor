@@ -109,7 +109,7 @@ def run_open_execute(
     initial_content = str(kwargs.get("initial_content", "") or "")
     format_group_hint = str(kwargs.get("format_group", "") or "").strip() or None
 
-    client = get_code_analysis_client()
+    client: Any | None = None
     read_only = False
     read_only_reason: Optional[str] = None
 
@@ -118,6 +118,7 @@ def run_open_execute(
     else:
         existing_sid = None
     if existing_sid is not None:
+        client = get_code_analysis_client()
         ca_status = client.validate_ca_session(existing_sid)
         purged = purge_stale_open_index_entry(
             project_id,
@@ -147,12 +148,11 @@ def run_open_execute(
             create=True,
             persisted_on_ca=False,
             format_group_hint=format_group_hint,
-            project_root=_resolve_session_project_root(
-                client=client,
-                project_id=project_id,
-                fallback_root=resolve_workspace_root(),
-            ),
+            project_root=resolve_workspace_root(),
         )
+
+    if client is None:
+        client = get_code_analysis_client()
 
     try:
         raw_bytes = client.lock_file_and_download(ca_session_id, project_id, file_path)
