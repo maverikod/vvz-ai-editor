@@ -40,7 +40,9 @@ rm -rf "$PKG_WORK"
 mkdir -p "$PKG_WORK/DEBIAN" "$OUTPUT_DIR"
 cp -a "$DEBIAN_SRC/DEBIAN/"* "$PKG_WORK/DEBIAN/"
 cp -a "$DEBIAN_SRC/etc" "$PKG_WORK/"
-cp -a "$DEBIAN_SRC/lib" "$PKG_WORK/"
+if [ -d "$DEBIAN_SRC/lib" ]; then
+  cp -a "$DEBIAN_SRC/lib" "$PKG_WORK/"
+fi
 
 mkdir -p "$PKG_WORK/usr/lib/ai-editor" "$PKG_WORK/usr/bin" "$PKG_WORK/usr/share/ai-editor" \
   "$PKG_WORK/usr/share/doc/ai-editor-docker" "$PKG_WORK/etc/ai-editor/mtls_certificates"
