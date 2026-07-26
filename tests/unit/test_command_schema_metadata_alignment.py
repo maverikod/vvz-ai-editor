@@ -135,3 +135,12 @@ def test_metadata_documents_identifier_types() -> None:
 
     # Stale docs claimed preview always returns UUID for Python
     assert "stable uuid" not in preview["detailed_description"].lower().split("legacy")[0]
+
+
+def test_universal_file_open_schema_advertises_format_group_override() -> None:
+    schema = UniversalFileOpenCommand.get_schema()
+    prop = schema["properties"]["format_group"]
+
+    assert prop["type"] == "string"
+    assert prop["enum"] == ["sidecar", "tree-temp", "text"]
+    assert "unknown or absent extensions" in prop["description"].lower()

@@ -73,6 +73,15 @@ class UniversalFileOpenCommand(BaseMCPCommand):
                     "type": "string",
                     "description": "Initial file content used only when create=True.",
                 },
+                "format_group": {
+                    "type": "string",
+                    "enum": ["sidecar", "tree-temp", "text"],
+                    "description": (
+                        "Explicit format group override for files with unknown or "
+                        "absent extensions. Ignored when the extension is already "
+                        "recognized by the handler registry."
+                    ),
+                },
             },
             "required": ["project_id", "file_path", "session_id"],
             "additionalProperties": False,
