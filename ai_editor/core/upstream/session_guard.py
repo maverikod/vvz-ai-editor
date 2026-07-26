@@ -45,13 +45,20 @@ class SessionGuard:
         if kind in (OperationKind.WRITE, OperationKind.CLOSE):
             status = self._client.validate_ca_session(ca_session_id)
             if status == CaSessionStatus.NOT_FOUND:
+                from ai_editor.core.exceptions import ValidationError
                 from ai_editor.core.editor_workspace_paths import resolve_workspace_root
                 from ai_editor.core.workspace_session_cleanup import (
                     cleanup_zombie_ca_session,
                 )
 
-                root = workspace_root or resolve_workspace_root()
-                cleanup_zombie_ca_session(ca_session_id, workspace_root=root)
+                root = workspace_root
+                if root is None:
+                    try:
+                        root = resolve_workspace_root()
+                    except ValidationError:
+                        root = None
+                if root is not None:
+                    cleanup_zombie_ca_session(ca_session_id, workspace_root=root)
             return GuardDecision.ALLOW_TERMINATING
 
         status = self._client.validate_ca_session(ca_session_id)
