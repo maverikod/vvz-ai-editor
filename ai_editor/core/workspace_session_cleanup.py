@@ -18,16 +18,12 @@ logger = logging.getLogger(__name__)
 def _purge_bundle(ca_session_id: str) -> None:
     """Drop all command-layer facades for a CA session id."""
     from ai_editor.commands.universal_file_edit.session import (
-        get_session,
+        list_bundle_file_paths,
         release_session,
     )
 
-    while True:
-        try:
-            session = get_session(ca_session_id)
-        except ValueError:
-            break
-        release_session(ca_session_id, session.file_path)
+    for file_path in list_bundle_file_paths(ca_session_id):
+        release_session(ca_session_id, file_path)
 
 
 def cleanup_zombie_ca_session(
