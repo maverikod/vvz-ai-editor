@@ -1,5 +1,5 @@
 # ai-editor standing laws. Every role reads this file before acting.
-# prompts-template: codex-prompts-v1 rev 1.5.0 (2026-07-24)
+# prompts-template: codex-prompts-v1 rev 1.6.2 (2026-07-24)
 
 variables:
   file_access: local      # local (default) | cas | local_ide. Governs local_mode/cas_mode/local_ide_mode and the profile-dependent parts of branch_discipline.
@@ -159,9 +159,9 @@ laws:
     always before any deploy; (7) DEPLOY to root@192.168.254.26 - only when the
     current project is a server; everything on root@192.168.254.26 is a test target
     EXCEPT the doc-store project's database (which is NEVER touched); (8) RE-RUN
-    scripts/verify_editor_ca_chain.py and require it GREEN (coverage requirement:
-    single_real_server_pipeline). LOOP, do not stop short: reproduction fails at (1)
-    -> OK, done; still red after (8) -> return to (3). ECONOMY PRINCIPLE: a test
+    scripts/verify_editor_ca_chain.py and require it GREEN, THEN SMOKE-TEST the
+    original defect path on the deployed live server. LOOP, do not stop short:
+    reproduction fails at (1) -> OK, done; still red after (8) -> return to (3). ECONOMY PRINCIPLE: a test
     deploy is CHEAPER than extended model reasoning - when judging "is it fixed",
     prefer deploy-and-check over further analysis. After the cause of an error is
     found, checks proving its elimination MUST be added to the pipeline (named
@@ -179,8 +179,8 @@ laws:
     checks always extend the existing pipeline - never create a second one.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
-    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.5.0.tar.gz;
-    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.5.0.tar.gz). The model
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.2.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.2.tar.gz). The model
     REQUESTS the user's permission to update; only after the user confirms does
     it diff template vs project bundle and update the project prompt, preserving
     project-specific placeholder values. Template improvements flow back to the
