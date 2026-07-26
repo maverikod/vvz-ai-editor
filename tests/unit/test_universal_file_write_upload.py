@@ -235,6 +235,7 @@ async def test_create_commit_allows_workspace_temp_project_import_not_found(
         },
     )
     client = MagicMock()
+    client.get_project_root.return_value = project_root
     client.upload_create_and_lock.return_value = exported
 
     with (
@@ -268,7 +269,7 @@ async def test_create_commit_allows_workspace_temp_project_import_not_found(
     assert isinstance(result, SuccessResult)
     assert result.data["uploaded"] is True
     assert session.persisted_on_ca is True
-    client.get_project_root.assert_not_called()
+    client.get_project_root.assert_called_once_with("proj-1")
     client.upload_create_and_lock.assert_called_once_with(
         session_id="sess-live",
         project_id="proj-1",
@@ -387,6 +388,7 @@ def read_value() -> int:
         exported_bytes=exported,
     )
     client = MagicMock()
+    client.get_project_root.return_value = project_root
     client.upload_create_and_lock.return_value = exported
     observed_validation: dict[str, Path] = {}
     real_validate = write_command_phases.validate_draft_in_project_context
@@ -434,12 +436,12 @@ def read_value() -> int:
     assert isinstance(result, SuccessResult)
     assert result.data["uploaded"] is True
     assert session.persisted_on_ca is True
-    assert observed_validation["project_root"] is None
-    assert observed_validation["target_path"] == workspace_origin
+    assert observed_validation["project_root"] == project_root.resolve()
+    assert observed_validation["target_path"] == final_target
     assert final_target.exists() is False
     assert not any(project_root.glob(".ai_editor_validation_*"))
     assert not any(package.glob(".ai_editor_write_*"))
-    client.get_project_root.assert_not_called()
+    client.get_project_root.assert_called_once_with("proj-1")
     client.upload_create_and_lock.assert_called_once_with(
         session_id="sess-create",
         project_id="proj-1",

@@ -157,6 +157,16 @@ def _resolve_validation_project_root(
         if resolved.is_absolute() and resolved.is_dir():
             return resolved
 
+    if str(project_id or "").strip():
+        try:
+            client_root = _pathlike_value(client.get_project_root(project_id))
+        except Exception:
+            client_root = None
+        if client_root is not None:
+            resolved = client_root.resolve()
+            if resolved.is_absolute() and resolved.is_dir():
+                return resolved
+
     project_root = getattr(session.core, "project_root", None)
     root_path = _pathlike_value(project_root)
     if root_path is not None:
