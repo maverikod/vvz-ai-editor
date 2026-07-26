@@ -18,6 +18,7 @@ from ai_editor.commands.universal_file_edit.close_command import (
 )
 from ai_editor.commands.universal_file_edit.edit_command import UniversalFileEditCommand
 from ai_editor.commands.universal_file_edit.open_command import UniversalFileOpenCommand
+from ai_editor.commands.universal_file_edit.session import get_session, release_session
 from ai_editor.commands.universal_file_edit.write_command import (
     UniversalFileWriteCommand,
 )
@@ -63,6 +64,39 @@ def _patch_context(*, workspace: Path, upstream: MagicMock):
                 patch(target, return_value=upstream),
             )
         yield
+
+
+@pytest.mark.asyncio
+async def test_open_python_session_uses_real_project_root_not_edit_subdir(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    project_root = tmp_path / "project"
+    sid = "ca-python-open"
+    project_id = "p-python"
+    file_path = "tests/sample_open.py"
+    origin_bytes = b"VALUE = 1\n"
+
+    workspace.mkdir(parents=True, exist_ok=True)
+    project_root.mkdir(parents=True, exist_ok=True)
+    upstream = _mock_upstream(origin_bytes=origin_bytes)
+    upstream.get_project_root.return_value = project_root
+
+    try:
+        with _patch_context(workspace=workspace, upstream=upstream):
+            open_cmd = UniversalFileOpenCommand()
+            open_res = await open_cmd.execute(
+                session_id=sid,
+                project_id=project_id,
+                file_path=file_path,
+            )
+            assert isinstance(open_res, SuccessResult)
+
+            session = get_session(sid, file_path=file_path)
+            assert session.core.project_root == project_root.resolve()
+            assert session.core.project_root != session.core.session_dir.resolve()
+    finally:
+        release_session(sid, file_path)
 
 
 @pytest.mark.asyncio

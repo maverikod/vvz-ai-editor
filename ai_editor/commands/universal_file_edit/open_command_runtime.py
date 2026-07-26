@@ -147,6 +147,11 @@ def run_open_execute(
             create=True,
             persisted_on_ca=False,
             format_group_hint=format_group_hint,
+            project_root=_resolve_session_project_root(
+                client=client,
+                project_id=project_id,
+                fallback_root=resolve_workspace_root(),
+            ),
         )
 
     try:
@@ -194,7 +199,35 @@ def run_open_execute(
         format_group_hint=format_group_hint,
         read_only=read_only,
         read_only_reason=read_only_reason,
+        project_root=_resolve_session_project_root(
+            client=client,
+            project_id=project_id,
+            fallback_root=resolve_workspace_root(),
+        ),
     )
+
+
+def _resolve_session_project_root(
+    *,
+    client: Any,
+    project_id: str,
+    fallback_root: Any,
+) -> Any:
+    """Prefer the real project root over workspace paths for session context."""
+    pid = str(project_id or "").strip()
+    if pid:
+        try:
+            root = client.get_project_root(pid)
+        except Exception:
+            root = None
+        if root is not None:
+            try:
+                resolved = root.resolve()
+            except Exception:
+                resolved = None
+            if resolved is not None and resolved.is_dir():
+                return resolved
+    return fallback_root
 
 
 def _build_open_result(
@@ -206,6 +239,7 @@ def _build_open_result(
     create: bool,
     persisted_on_ca: bool,
     format_group_hint: Optional[str],
+    project_root: Any,
     read_only: bool = False,
     read_only_reason: Optional[str] = None,
 ) -> Union[SuccessResult, ErrorResult]:
@@ -292,7 +326,7 @@ def _build_open_result(
                 project_id=project_id,
                 ca_session_id=ca_session_id,
                 persisted_on_ca=persisted_on_ca,
-                project_root=paths.edit_subdir,
+                project_root=project_root,
                 workspace_session_root=layout.session_dir,
                 workspace_file_subtree_root=layout.file_subtree_dir,
                 workspace_origin_path=paths.origin_path,
@@ -318,7 +352,7 @@ def _build_open_result(
                 project_id=project_id,
                 ca_session_id=ca_session_id,
                 persisted_on_ca=persisted_on_ca,
-                project_root=paths.edit_subdir,
+                project_root=project_root,
                 tree_id=tree_id,
                 workspace_session_root=layout.session_dir,
                 workspace_file_subtree_root=layout.file_subtree_dir,
