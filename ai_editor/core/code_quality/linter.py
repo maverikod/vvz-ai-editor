@@ -5,11 +5,28 @@ Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
 """
 
+import os
+import shutil
+import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_cli_tool(name: str) -> Optional[str]:
+    """Prefer the current interpreter's scripts dir, then fall back to PATH."""
+    exe_path = Path(sys.executable)
+    candidates = [exe_path.parent / name, exe_path.resolve().parent / name]
+    if os.name == "nt":
+        candidates.extend(
+            [exe_path.parent / f"{name}.exe", exe_path.resolve().parent / f"{name}.exe"]
+        )
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return shutil.which(name)
 
 
 def lint_with_flake8(
@@ -43,11 +60,13 @@ def _lint_with_subprocess(
     file_path: Path, ignore: Optional[List[str]] = None
 ) -> Tuple[bool, Optional[str], List[str]]:
     """Run flake8 in a subprocess with timeout and sanitized environment."""
-    import os
     import subprocess
 
     try:
-        cmd = ["flake8", "--max-line-length=88", str(file_path)]
+        flake8_bin = _resolve_cli_tool("flake8")
+        if not flake8_bin:
+            raise FileNotFoundError("flake8")
+        cmd = [flake8_bin, "--max-line-length=88", str(file_path)]
         if ignore:
             cmd.extend(["--ignore", ",".join(ignore)])
 
@@ -100,11 +119,13 @@ def _lint_with_ruff_subprocess(
     file_path: Path, ignore: Optional[List[str]] = None
 ) -> Tuple[bool, Optional[str], List[str]]:
     """Run ruff in a subprocess with timeout and sanitized environment."""
-    import os
     import subprocess
 
     try:
-        cmd = ["ruff", "check", "--output-format", "concise", str(file_path)]
+        ruff_bin = _resolve_cli_tool("ruff")
+        if not ruff_bin:
+            raise FileNotFoundError("ruff")
+        cmd = [ruff_bin, "check", "--output-format", "concise", str(file_path)]
         if ignore:
             cmd.extend(["--ignore", ",".join(ignore)])
 

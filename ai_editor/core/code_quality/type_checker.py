@@ -11,7 +11,9 @@ email: vasilyvz@gmail.com
 import logging
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -26,6 +28,20 @@ _MYPY_LINE_RE_NOCOL = re.compile(r"^(.+):(\d+):\s*(error|note):")
 _MYPY_EXCLUDE_VENV_CONFIG = b"""[mypy]
 exclude = (\\.venv|venv|\\.mypy_cache)/
 """
+
+
+def _resolve_cli_tool(name: str) -> Optional[str]:
+    """Prefer the current interpreter's scripts dir, then fall back to PATH."""
+    exe_path = Path(sys.executable)
+    candidates = [exe_path.parent / name, exe_path.resolve().parent / name]
+    if os.name == "nt":
+        candidates.extend(
+            [exe_path.parent / f"{name}.exe", exe_path.resolve().parent / f"{name}.exe"]
+        )
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return shutil.which(name)
 
 
 def _build_single_file_config(config_file: Path) -> Optional[Path]:
@@ -228,13 +244,17 @@ def _type_check_with_subprocess(
         tmp_config: Optional[Path] = None
         project_root_resolved = project_root.resolve() if project_root else None
 
+        mypy_bin = _resolve_cli_tool("mypy")
+        if not mypy_bin:
+            raise FileNotFoundError("mypy")
+
         if config_file:
             # Preserve config support, but always keep single-file target scope.
             config_for_single_file = _build_single_file_config(config_file)
             effective_config = config_for_single_file or config_file
             if config_for_single_file is not None:
                 tmp_config = config_for_single_file
-            cmd = ["mypy", str(target_file), "--config-file", str(effective_config)]
+            cmd = [mypy_bin, str(target_file), "--config-file", str(effective_config)]
             cwd = str(config_file.parent.resolve())
         else:
             # No config: use minimal config that excludes .venv/venv so mypy
@@ -247,7 +267,7 @@ def _type_check_with_subprocess(
             ) as f:
                 f.write(_MYPY_EXCLUDE_VENV_CONFIG)
                 tmp_config = Path(f.name)
-            cmd = ["mypy", str(target_file), "--config-file", str(tmp_config)]
+            cmd = [mypy_bin, str(target_file), "--config-file", str(tmp_config)]
             if project_root_resolved is not None:
                 cwd = str(project_root_resolved)
 
@@ -356,7 +376,10 @@ def type_check_project_with_mypy(
             f.write(_MYPY_EXCLUDE_VENV_CONFIG)
             config_path = f.name
     try:
-        cmd = ["mypy", str(project_path), "--config-file", config_path]
+        mypy_bin = _resolve_cli_tool("mypy")
+        if not mypy_bin:
+            raise FileNotFoundError("mypy")
+        cmd = [mypy_bin, str(project_path), "--config-file", config_path]
         env = os.environ.copy()
         env.pop("PYTHONPATH", None)
         result = subprocess.run(
