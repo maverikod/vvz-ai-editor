@@ -173,3 +173,19 @@ def test_validate_before_promote_text_skips_quality(tmp_path: Path) -> None:
     assert outcome.success is True
     if outcome.temp_path is not None:
         outcome.temp_path.unlink(missing_ok=True)
+
+
+def test_validate_before_promote_creates_missing_parent_directories(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "verify" / "nested" / "notes.txt"
+    outcome = validate_before_promote(
+        HANDLER_TEXT,
+        source_code="plain text\n",
+        target_path=target,
+    )
+
+    assert outcome.success is True
+    assert target.parent.is_dir()
+    if outcome.temp_path is not None:
+        outcome.temp_path.unlink(missing_ok=True)

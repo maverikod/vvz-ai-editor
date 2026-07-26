@@ -40,6 +40,7 @@ class PreWriteValidationOutcome:
 
 def write_source_to_temp(source_code: str, target_path: Path) -> Path:
     """Write canonical source beside the target path; return temp path."""
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_path_str = tempfile.mkstemp(
         suffix=target_path.suffix or ".tmp",
         prefix=".ai_editor_write_",
