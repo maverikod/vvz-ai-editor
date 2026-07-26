@@ -2,11 +2,85 @@
 
 from __future__ import annotations
 
+import argparse
 from typing import Any
 
 import pytest
 
 from scripts import verify_editor_ca_chain as pipeline
+
+
+def test_available_checks_exposes_metadata_and_known_scenarios() -> None:
+    """The unified ``pipeline`` CLI must expose stable check names."""
+    checks = pipeline.available_checks()
+
+    assert checks[0] == pipeline.METADATA_CHECK_NAME
+    assert "open_queue_autopoll_84d93cca" in checks
+    assert "styled_yaml_minimal_diff_b215fbd3" in checks
+
+
+def test_resolve_requested_checks_rejects_unknown_name() -> None:
+    """Unknown ``pipeline <check-name>`` arguments must fail loudly."""
+
+    class Args:
+        checks = ["does_not_exist"]
+
+    with pytest.raises(pipeline.PipelineFailure) as exc_info:
+        pipeline._resolve_requested_checks(Args())
+
+    assert "Unknown pipeline checks requested" in str(exc_info.value)
+    assert exc_info.value.evidence == {
+        "unknown": ["does_not_exist"],
+        "available": pipeline.available_checks(),
+    }
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_honors_single_selected_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``pipeline <check-name>`` must run only that named check."""
+    seen: list[str] = []
+
+    async def fake_run_scenario(
+        name: str,
+        _fn: object,
+        _ca: object,
+        _ed: object,
+        _args: object,
+        _watch_dir_id: str,
+    ) -> dict[str, Any]:
+        seen.append(name)
+        return {"name": name, "status": "passed", "details": {}}
+
+    async def fake_discover_watch_dir_id(_ca: object) -> dict[str, str]:
+        return {"watch_dir_id": "watch-1", "source": "fake"}
+
+    monkeypatch.setattr(pipeline, "_client", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(pipeline, "_discover_watch_dir_id", fake_discover_watch_dir_id)
+    monkeypatch.setattr(pipeline, "_run_scenario", fake_run_scenario)
+
+    args = argparse.Namespace(
+        checks=["open_queue_autopoll_84d93cca"],
+        watch_dir_id="",
+        ca_host="ca-host",
+        ca_port=15010,
+        editor_host="editor-host",
+        editor_port=15000,
+        mtls_dir=pipeline.REPO_ROOT,
+        list=False,
+    )
+
+    result = await pipeline.run_pipeline(args)
+
+    assert seen == ["open_queue_autopoll_84d93cca"]
+    assert result["requested_checks"] == ["open_queue_autopoll_84d93cca"]
+    assert result["summary"] == {"passed": 1, "failed": 0, "total": 1}
+    assert result["watch_dir"] == {
+        "id": "watch-1",
+        "source": "fake",
+        "required": True,
+    }
 
 
 @pytest.mark.asyncio

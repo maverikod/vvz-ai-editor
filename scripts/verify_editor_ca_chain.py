@@ -31,6 +31,8 @@ DEFAULT_CA_PORT = 15010
 DEFAULT_EDITOR_HOST = "192.168.254.26"
 DEFAULT_EDITOR_PORT = 15000
 
+METADATA_CHECK_NAME = "universal_file_edit_metadata"
+
 
 class PipelineFailure(RuntimeError):
     """Failure with structured live-server evidence."""
@@ -38,6 +40,12 @@ class PipelineFailure(RuntimeError):
     def __init__(self, message: str, evidence: Any = None) -> None:
         super().__init__(message)
         self.evidence = evidence
+
+
+ScenarioFn = Callable[
+    [JsonRpcClient, JsonRpcClient, argparse.Namespace, str],
+    Awaitable[dict[str, Any]],
+]
 
 
 def _env(name: str, default: str) -> str:
@@ -1676,10 +1684,7 @@ async def _scenario_styled_yaml_minimal_diff(
 
 async def _run_scenario(
     name: str,
-    fn: Callable[
-        [JsonRpcClient, JsonRpcClient, argparse.Namespace, str],
-        Awaitable[dict[str, Any]],
-    ],
+    fn: ScenarioFn,
     ca: JsonRpcClient,
     ed: JsonRpcClient,
     args: argparse.Namespace,
@@ -1704,39 +1709,8 @@ async def _run_scenario(
         }
 
 
-async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
-    ca = _client(args.ca_host, args.ca_port, args.mtls_dir)
-    ed = _client(args.editor_host, args.editor_port, args.mtls_dir)
-
-    watch_dir_source = "override"
-    watch_dir_id = args.watch_dir_id
-    if not watch_dir_id:
-        discovered = await _discover_watch_dir_id(ca)
-        watch_dir_id = discovered["watch_dir_id"]
-        watch_dir_source = discovered["source"]
-
-    scenarios: list[dict[str, Any]] = []
-    metadata = await _run_scenario(
-        "universal_file_edit_metadata",
-        lambda _ca, _ed, _args, _watch_dir_id: (
-            _assert_universal_file_edit_same_process_metadata(_ed)
-        ),
-        ca,
-        ed,
-        args,
-        watch_dir_id,
-    )
-    scenarios.append(metadata)
-
-    scenario_fns: list[
-        tuple[
-            str,
-            Callable[
-                [JsonRpcClient, JsonRpcClient, argparse.Namespace, str],
-                Awaitable[dict[str, Any]],
-            ],
-        ]
-    ] = [
+def _scenario_registry() -> list[tuple[str, ScenarioFn]]:
+    return [
         ("info_guide_smoke", _scenario_info_guide_smoke),
         ("296e02c9_edit_preview_commit_readback", _scenario_edit_preview_text),
         ("690f768c_yaml_root_key_parent_empty_and_slash", _scenario_yaml_root_insert),
@@ -1763,8 +1737,58 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             _scenario_styled_yaml_minimal_diff,
         ),
     ]
-    for name, fn in scenario_fns:
-        scenarios.append(await _run_scenario(name, fn, ca, ed, args, watch_dir_id))
+
+
+def available_checks() -> list[str]:
+    return [METADATA_CHECK_NAME, *[name for name, _fn in _scenario_registry()]]
+
+
+def _resolve_requested_checks(args: argparse.Namespace) -> list[str]:
+    requested = [str(name).strip() for name in getattr(args, "checks", []) if str(name).strip()]
+    if not requested:
+        return available_checks()
+    known = set(available_checks())
+    unknown = [name for name in requested if name not in known]
+    if unknown:
+        raise PipelineFailure(
+            "Unknown pipeline checks requested",
+            {"unknown": unknown, "available": available_checks()},
+        )
+    return requested
+
+
+async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
+    ca = _client(args.ca_host, args.ca_port, args.mtls_dir)
+    ed = _client(args.editor_host, args.editor_port, args.mtls_dir)
+    requested_checks = _resolve_requested_checks(args)
+
+    watch_dir_source = "override"
+    watch_dir_id = args.watch_dir_id
+    requires_watch_dir = any(name != METADATA_CHECK_NAME for name in requested_checks)
+    if requires_watch_dir and not watch_dir_id:
+        discovered = await _discover_watch_dir_id(ca)
+        watch_dir_id = discovered["watch_dir_id"]
+        watch_dir_source = discovered["source"]
+
+    scenarios: list[dict[str, Any]] = []
+    if METADATA_CHECK_NAME in requested_checks:
+        metadata = await _run_scenario(
+            METADATA_CHECK_NAME,
+            lambda _ca, _ed, _args, _watch_dir_id: (
+                _assert_universal_file_edit_same_process_metadata(_ed)
+            ),
+            ca,
+            ed,
+            args,
+            watch_dir_id,
+        )
+        scenarios.append(metadata)
+
+    scenario_map = dict(_scenario_registry())
+    for name in requested_checks:
+        if name == METADATA_CHECK_NAME:
+            continue
+        scenarios.append(await _run_scenario(name, scenario_map[name], ca, ed, args, watch_dir_id))
 
     failed = [scenario for scenario in scenarios if scenario["status"] != "passed"]
     return {
@@ -1774,7 +1798,12 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "ca": {"host": args.ca_host, "port": args.ca_port},
             "editor": {"host": args.editor_host, "port": args.editor_port},
         },
-        "watch_dir": {"id": watch_dir_id, "source": watch_dir_source},
+        "watch_dir": {
+            "id": watch_dir_id,
+            "source": watch_dir_source,
+            "required": requires_watch_dir,
+        },
+        "requested_checks": requested_checks,
         "summary": {
             "passed": len(scenarios) - len(failed),
             "failed": len(failed),
@@ -1825,6 +1854,19 @@ def _parse_args() -> argparse.Namespace:
         description="Run real-server AI Editor -> CA acceptance pipeline"
     )
     parser.add_argument(
+        "checks",
+        nargs="*",
+        help=(
+            "Optional pipeline check names. With no positional checks, runs the full "
+            "suite. Use --list to enumerate names."
+        ),
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List available pipeline check names and exit.",
+    )
+    parser.add_argument(
         "--watch-dir-id",
         default=_env("AI_EDITOR_WATCH_DIR_ID", ""),
         help=(
@@ -1861,6 +1903,9 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    if args.list:
+        print("\n".join(available_checks()))
+        return 0
     try:
         result = asyncio.run(run_pipeline(args))
     except PipelineFailure as exc:

@@ -59,7 +59,7 @@ include = ["ai_editor*", "aiedmgr_entry*"]
 
 # Portable shell launcher (#!/usr/bin/env bash); not pip console_scripts with host shebang.
 [tool.setuptools]
-script-files = ["scripts/aiedmgr", "scripts/aiedcfg"]
+script-files = ["scripts/aiedmgr", "scripts/aiedcfg", "scripts/pipeline"]
 
 [tool.ruff]
 line-length = 88
