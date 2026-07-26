@@ -19,6 +19,12 @@ SKIP_LIVE_PIPELINE="${AI_EDITOR_SKIP_LIVE_PIPELINE:-0}"
 SKIP_TESTS="${AI_EDITOR_SKIP_TESTS:-0}"
 DEV_RUN=0
 TAG=""
+PIPELINE_CA_HOST="${AI_EDITOR_CA_HOST:-}"
+PIPELINE_CA_PORT="${AI_EDITOR_CA_PORT:-}"
+PIPELINE_EDITOR_HOST="${AI_EDITOR_HOST:-}"
+PIPELINE_EDITOR_PORT="${AI_EDITOR_PORT:-}"
+PIPELINE_WATCH_DIR_ID="${AI_EDITOR_WATCH_DIR_ID:-}"
+PIPELINE_MTLS_DIR="${AI_EDITOR_MTLS_DIR:-}"
 
 usage() {
   cat <<'EOF'
@@ -33,6 +39,15 @@ Options:
   --skip-live-pipeline
                   Skip real-server editor->CA pipeline gate
   --skip-tests    Skip the local unit-test gate (emergency use only)
+  --ca-host HOST  Override Code Analysis server host for live pipeline
+  --ca-port PORT  Override Code Analysis server port for live pipeline
+  --editor-host HOST
+                  Override AI Editor server host for live pipeline
+  --editor-port PORT
+                  Override AI Editor server port for live pipeline
+  --watch-dir-id ID
+                  Override CA watch dir for live pipeline
+  --mtls-dir DIR  Override mTLS certificate directory for live pipeline
   --dev-run       After build, run local dev container via docker/run.sh
   -h, --help      Show this help
 
@@ -51,12 +66,109 @@ Environment:
 EOF
 }
 
+require_option_value() {
+  local opt="$1"
+  local value="${2:-}"
+  if [ -z "$value" ]; then
+    echo "[ERROR] $opt requires a value" >&2
+    usage >&2
+    exit 1
+  fi
+}
+
+validate_port() {
+  local label="$1"
+  local value="$2"
+  if [ -z "$value" ]; then
+    return 0
+  fi
+  if ! [[ "$value" =~ ^[0-9]+$ ]] || [ "$value" -lt 1 ] || [ "$value" -gt 65535 ]; then
+    echo "[ERROR] $label must be an integer in range 1..65535 (got: $value)" >&2
+    exit 1
+  fi
+}
+
+validate_pipeline_inputs() {
+  validate_port "CA port" "$PIPELINE_CA_PORT"
+  validate_port "Editor port" "$PIPELINE_EDITOR_PORT"
+
+  if [ "$SKIP_LIVE_PIPELINE" = "1" ]; then
+    return 0
+  fi
+
+  local mtls_dir=""
+  if [ -n "$PIPELINE_MTLS_DIR" ]; then
+    mtls_dir="$PIPELINE_MTLS_DIR"
+  else
+    mtls_dir="$PROJECT_ROOT/mtls_certificates/mtls_certificates"
+  fi
+
+  echo "[INFO] Live pipeline preflight"
+  echo "[INFO]   ca host:      ${PIPELINE_CA_HOST:-192.168.254.26}"
+  echo "[INFO]   ca port:      ${PIPELINE_CA_PORT:-15010}"
+  echo "[INFO]   editor host:  ${PIPELINE_EDITOR_HOST:-192.168.254.26}"
+  echo "[INFO]   editor port:  ${PIPELINE_EDITOR_PORT:-15000}"
+  echo "[INFO]   watch dir id: ${PIPELINE_WATCH_DIR_ID:-<auto-discover>}"
+  echo "[INFO]   mtls dir:     ${mtls_dir}"
+
+  if [ ! -d "$mtls_dir" ]; then
+    echo "[WARN] Live pipeline mTLS directory does not exist: $mtls_dir"
+    echo "[WARN] verify_editor_ca_chain.py will continue without client certificate material"
+    return 0
+  fi
+
+  local missing=0
+  local mtls_path=""
+  for mtls_path in \
+    "$mtls_dir/client/ai-editor.crt" \
+    "$mtls_dir/client/ai-editor.key" \
+    "$mtls_dir/ca/ca.crt"; do
+    if [ ! -f "$mtls_path" ]; then
+      echo "[WARN] Live pipeline mTLS file missing: $mtls_path"
+      missing=1
+    fi
+  done
+  if [ "$missing" = "1" ]; then
+    echo "[WARN] verify_editor_ca_chain.py will continue without client certificate material"
+  fi
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-push) SKIP_PUSH=1; shift ;;
     --skip-deb) SKIP_DEB=1; shift ;;
     --skip-live-pipeline) SKIP_LIVE_PIPELINE=1; shift ;;
     --skip-tests) SKIP_TESTS=1; shift ;;
+    --ca-host)
+      require_option_value "$1" "${2:-}"
+      PIPELINE_CA_HOST="$2"
+      shift 2
+      ;;
+    --ca-port)
+      require_option_value "$1" "${2:-}"
+      PIPELINE_CA_PORT="$2"
+      shift 2
+      ;;
+    --editor-host)
+      require_option_value "$1" "${2:-}"
+      PIPELINE_EDITOR_HOST="$2"
+      shift 2
+      ;;
+    --editor-port)
+      require_option_value "$1" "${2:-}"
+      PIPELINE_EDITOR_PORT="$2"
+      shift 2
+      ;;
+    --watch-dir-id)
+      require_option_value "$1" "${2:-}"
+      PIPELINE_WATCH_DIR_ID="$2"
+      shift 2
+      ;;
+    --mtls-dir)
+      require_option_value "$1" "${2:-}"
+      PIPELINE_MTLS_DIR="$2"
+      shift 2
+      ;;
     --dev-run) DEV_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "[ERROR] Unknown option: $1" >&2; usage >&2; exit 1 ;;
@@ -105,6 +217,8 @@ if [ ! -f "requirements.txt" ]; then
   exit 1
 fi
 
+validate_pipeline_inputs
+
 echo "[INFO] Building Docker image"
 echo "[INFO]   version tag: $VERSION_TAG"
 echo "[INFO]   latest tag:  $LATEST_TAG"
@@ -136,8 +250,27 @@ else
   else
     PYTHON_BIN="python3"
   fi
+  PIPELINE_ARGS=()
+  if [ -n "$PIPELINE_CA_HOST" ]; then
+    PIPELINE_ARGS+=(--ca-host "$PIPELINE_CA_HOST")
+  fi
+  if [ -n "$PIPELINE_CA_PORT" ]; then
+    PIPELINE_ARGS+=(--ca-port "$PIPELINE_CA_PORT")
+  fi
+  if [ -n "$PIPELINE_EDITOR_HOST" ]; then
+    PIPELINE_ARGS+=(--editor-host "$PIPELINE_EDITOR_HOST")
+  fi
+  if [ -n "$PIPELINE_EDITOR_PORT" ]; then
+    PIPELINE_ARGS+=(--editor-port "$PIPELINE_EDITOR_PORT")
+  fi
+  if [ -n "$PIPELINE_WATCH_DIR_ID" ]; then
+    PIPELINE_ARGS+=(--watch-dir-id "$PIPELINE_WATCH_DIR_ID")
+  fi
+  if [ -n "$PIPELINE_MTLS_DIR" ]; then
+    PIPELINE_ARGS+=(--mtls-dir "$PIPELINE_MTLS_DIR")
+  fi
   echo "[INFO] Running real-server editor->CA pipeline gate"
-  "$PYTHON_BIN" "$PROJECT_ROOT/scripts/verify_editor_ca_chain.py"
+  "$PYTHON_BIN" "$PROJECT_ROOT/scripts/verify_editor_ca_chain.py" "${PIPELINE_ARGS[@]}"
   echo "[SUCCESS] Real-server editor->CA pipeline gate passed"
 fi
 
