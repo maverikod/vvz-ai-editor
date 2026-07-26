@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, cast
 
-from mcp_proxy_adapter.commands.result import CommandResult, ErrorResult, SuccessResult
+from mcp_proxy_adapter.commands.result import CommandResult, ErrorResult
 
 from ai_editor.commands.base_mcp_command import BaseMCPCommand
 from ai_editor.commands.universal_file_edit.open_command_metadata import (

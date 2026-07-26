@@ -9,7 +9,7 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 import threading
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator
 from unittest.mock import MagicMock, patch
 
 import httpx

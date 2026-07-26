@@ -177,6 +177,8 @@ async def test_create_commit_allows_workspace_temp_project_import_not_found(
 ) -> None:
     cmd = UniversalFileWriteCommand()
     package_name = "tmp_live_bf98dd98_pkg_1056c"
+    project_root = tmp_path / "project"
+    project_root.mkdir()
     workspace_origin = (
         tmp_path
         / "editor_workspaces"
