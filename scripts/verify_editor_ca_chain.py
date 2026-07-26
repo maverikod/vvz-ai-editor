@@ -19,6 +19,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+import warnings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -71,15 +72,31 @@ def _client(
     cert = mtls_dir / "client" / "ai-editor.crt"
     key = mtls_dir / "client" / "ai-editor.key"
     ca = mtls_dir / "ca" / "ca.crt"
+    kwargs: dict[str, Any] = {
+        "host": host,
+        "port": port,
+        "protocol": "https",
+        "check_hostname": False,
+        "timeout": timeout,
+    }
+    missing = [str(path) for path in (cert, key, ca) if not path.is_file()]
+    if missing:
+        warnings.warn(
+            "verify_editor_ca_chain: mTLS files missing; continuing without client "
+            f"certificate material: {', '.join(missing)}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    else:
+        kwargs.update(
+            {
+                "cert": str(cert),
+                "key": str(key),
+                "ca": str(ca),
+            }
+        )
     return JsonRpcClient(
-        host=host,
-        port=port,
-        protocol="https",
-        cert=str(cert),
-        key=str(key),
-        ca=str(ca),
-        check_hostname=False,
-        timeout=timeout,
+        **kwargs,
     )
 
 

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
+import types
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -81,6 +84,48 @@ def test_run_pipeline_honors_single_selected_check(
         "source": "fake",
         "required": True,
     }
+
+
+def test_client_warns_and_skips_mtls_when_files_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Missing mTLS files must not crash pipeline bootstrap."""
+
+    seen: dict[str, Any] = {}
+
+    class FakeJsonRpcClient:
+        def __init__(self, **kwargs: Any) -> None:
+            seen.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "mcp_proxy_adapter", types.ModuleType("mcp_proxy_adapter"))
+    monkeypatch.setitem(
+        sys.modules,
+        "mcp_proxy_adapter.client",
+        types.ModuleType("mcp_proxy_adapter.client"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "mcp_proxy_adapter.client.jsonrpc_client",
+        types.ModuleType("mcp_proxy_adapter.client.jsonrpc_client"),
+    )
+    fake_module = types.ModuleType("mcp_proxy_adapter.client.jsonrpc_client.client")
+    fake_module.JsonRpcClient = FakeJsonRpcClient
+    monkeypatch.setitem(
+        sys.modules, "mcp_proxy_adapter.client.jsonrpc_client.client", fake_module
+    )
+
+    with pytest.warns(
+        RuntimeWarning, match="mTLS files missing; continuing without client"
+    ):
+        client = pipeline._client("127.0.0.1", 15000, tmp_path)
+
+    assert isinstance(client, FakeJsonRpcClient)
+    assert seen["host"] == "127.0.0.1"
+    assert seen["port"] == 15000
+    assert seen["protocol"] == "https"
+    assert "cert" not in seen
+    assert "key" not in seen
+    assert "ca" not in seen
 
 
 def test_read_file_text_sends_default_end_line_when_not_requested(
