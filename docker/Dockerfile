@@ -24,10 +24,12 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt pyproject.toml ./
+COPY docs/README.md docs/README.md
 COPY ai_editor/ ai_editor/
 COPY aiedmgr_entry/ aiedmgr_entry/
 COPY scripts/aiedmgr scripts/aiedmgr
 COPY scripts/aiedcfg scripts/aiedcfg
+COPY scripts/pipeline scripts/pipeline
 
 RUN pip install --default-timeout=300 --no-cache-dir -r requirements.txt
 
