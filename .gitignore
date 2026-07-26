@@ -15,6 +15,10 @@ downloads/
 eggs/
 .eggs/
 lib/
+!docker/debian/lib/
+!docker/debian/lib/systemd/
+!docker/debian/lib/systemd/system/
+!docker/debian/lib/systemd/system/*
 lib64/
 parts/
 sdist/

@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Editor Docker container
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/ai-editor/docker-run.sh start
+ExecStop=/usr/lib/ai-editor/docker-run.sh stop
+ExecReload=/usr/lib/ai-editor/docker-run.sh restart
+TimeoutStartSec=900
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

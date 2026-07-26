@@ -1,0 +1,12 @@
+[Unit]
+Description=Recreate AI Editor Docker container
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/ai-editor/docker-run.sh recreate
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
