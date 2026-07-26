@@ -34,6 +34,7 @@ DEFAULT_CA_HOST = "192.168.254.26"
 DEFAULT_CA_PORT = 15010
 DEFAULT_EDITOR_HOST = "192.168.254.26"
 DEFAULT_EDITOR_PORT = 15000
+DEFAULT_CLOSE_TIMEOUT_SECONDS = 20.0
 
 METADATA_CHECK_NAME = "universal_file_edit_metadata"
 
@@ -62,6 +63,10 @@ def _jsonable(value: Any) -> Any:
         return value
     except TypeError:
         return repr(value)
+
+
+def _progress(message: str) -> None:
+    print(f"[pipeline] {message}", file=sys.stderr, flush=True)
 
 
 def _default_mtls_dir() -> Path:
@@ -262,15 +267,26 @@ async def _close_suppress(
     ed: JsonRpcClient, project_id: str, session_id: str, file_path: str
 ) -> dict[str, Any] | None:
     try:
-        return await _call(
-            ed,
-            "universal_file_close",
-            {
-                "project_id": project_id,
-                "session_id": session_id,
-                "file_path": file_path,
-            },
+        return await asyncio.wait_for(
+            _call(
+                ed,
+                "universal_file_close",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                },
+            ),
+            timeout=DEFAULT_CLOSE_TIMEOUT_SECONDS,
         )
+    except TimeoutError:
+        return {
+            "close_error": (
+                "TimeoutError("
+                f"universal_file_close exceeded {DEFAULT_CLOSE_TIMEOUT_SECONDS:.0f}s"
+                ")"
+            )
+        }
     except Exception as exc:  # noqa: BLE001
         return {"close_error": repr(exc)}
 
@@ -1719,23 +1735,30 @@ async def _run_scenario(
     args: argparse.Namespace,
     watch_dir_id: str,
 ) -> dict[str, Any]:
+    _progress(f"START {name}")
     try:
         details = await fn(ca, ed, args, watch_dir_id)
-        return {"name": name, "status": "passed", "details": _jsonable(details)}
+        result = {"name": name, "status": "passed", "details": _jsonable(details)}
+        _progress(f"PASS  {name}")
+        return result
     except PipelineFailure as exc:
-        return {
+        result = {
             "name": name,
             "status": "failed",
             "error": str(exc),
             "details": _jsonable(exc.evidence),
         }
+        _progress(f"FAIL  {name}: {exc}")
+        return result
     except Exception as exc:  # noqa: BLE001
-        return {
+        result = {
             "name": name,
             "status": "failed",
             "error": repr(exc),
             "details": traceback.format_exc(),
         }
+        _progress(f"FAIL  {name}: {exc!r}")
+        return result
 
 
 def _scenario_registry() -> list[tuple[str, ScenarioFn]]:
@@ -1790,14 +1813,19 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     ca = _client(args.ca_host, args.ca_port, args.mtls_dir)
     ed = _client(args.editor_host, args.editor_port, args.mtls_dir)
     requested_checks = _resolve_requested_checks(args)
+    _progress(
+        "Resolved checks: " + ", ".join(requested_checks)
+    )
 
     watch_dir_source = "override"
     watch_dir_id = args.watch_dir_id
     requires_watch_dir = any(name != METADATA_CHECK_NAME for name in requested_checks)
     if requires_watch_dir and not watch_dir_id:
+        _progress("Discovering CA watch_dir_id")
         discovered = await _discover_watch_dir_id(ca)
         watch_dir_id = discovered["watch_dir_id"]
         watch_dir_source = discovered["source"]
+        _progress(f"Using watch_dir_id={watch_dir_id} from {watch_dir_source}")
 
     scenarios: list[dict[str, Any]] = []
     if METADATA_CHECK_NAME in requested_checks:

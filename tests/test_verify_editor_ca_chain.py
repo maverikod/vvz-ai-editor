@@ -143,6 +143,36 @@ def test_default_mtls_dir_prefers_renamed_directory(
     assert pipeline._default_mtls_dir() == renamed
 
 
+def test_close_suppress_times_out_instead_of_hanging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup close must not stall the whole pipeline indefinitely."""
+
+    async def fake_call(
+        _client: object,
+        _command: str,
+        _params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        await asyncio.sleep(0.05)
+        return {"success": True}
+
+    monkeypatch.setattr(pipeline, "_call", fake_call)
+    monkeypatch.setattr(pipeline, "DEFAULT_CLOSE_TIMEOUT_SECONDS", 0.01)
+
+    result = asyncio.run(
+        pipeline._close_suppress(
+            object(),
+            "project-1",
+            "session-1",
+            "verify/file.txt",
+        )
+    )
+
+    assert result == {
+        "close_error": "TimeoutError(universal_file_close exceeded 0s)"
+    }
+
+
 def test_read_file_text_sends_default_end_line_when_not_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
