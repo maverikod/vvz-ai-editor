@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 from typing import Any, Dict, Iterator, Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -18,6 +18,9 @@ import pytest
 from ai_editor.core.upstream.code_analysis_client import (
     CodeAnalysisClient,
     describe_exception,
+)
+from ai_editor.commands.universal_file_edit.open_command import (
+    UniversalFileOpenCommand,
 )
 from ai_editor.core.upstream.code_analysis_file_transfer import (
     _FILE_ID_CACHE,
@@ -85,6 +88,28 @@ class TestDescribeException:
             result = describe_exception(exc)
             assert isinstance(result, str)
             assert result.strip() != ""
+
+
+@pytest.mark.asyncio
+async def test_universal_file_open_facade_never_returns_blank_open_error() -> None:
+    """Facade-level OPEN_ERROR must also use describe_exception for blank exceptions."""
+    command = UniversalFileOpenCommand()
+
+    with patch(
+        "ai_editor.commands.universal_file_edit.open_command.run_open_execute",
+        side_effect=httpx.ReadTimeout(""),
+    ):
+        result = await command.execute(
+            project_id="proj-1",
+            file_path="pkg/mod.py",
+            session_id="sess-1",
+            create=True,
+        )
+
+    assert result.code == "OPEN_ERROR"
+    assert result.message.strip() != ""
+    assert "ReadTimeout" in result.message
+    assert "universal_file_open" in result.message
 
 
 class TestCallBlockingUnifiedAndFallback:

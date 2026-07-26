@@ -14,7 +14,10 @@ from ai_editor.commands.universal_file_edit.open_command_metadata import (
 from ai_editor.commands.universal_file_edit.open_command_runtime import run_open_execute
 from ai_editor.core.exceptions import ValidationError
 from ai_editor.core.host_filesystem import HostFileOperationError
-from ai_editor.core.upstream.code_analysis_client import get_code_analysis_client
+from ai_editor.core.upstream.code_analysis_client import (
+    describe_exception,
+    get_code_analysis_client,
+)
 from ai_editor.core.upstream.session_guard import (
     GuardDecision,
     OperationKind,
@@ -140,4 +143,7 @@ class UniversalFileOpenCommand(BaseMCPCommand):
             )
         except Exception as exc:
             logger.error("universal_file_open failed: %s", exc, exc_info=True)
-            return ErrorResult(message=str(exc), code=cast(Any, "OPEN_ERROR"))
+            return ErrorResult(
+                message=describe_exception(exc, context="universal_file_open"),
+                code=cast(Any, "OPEN_ERROR"),
+            )
