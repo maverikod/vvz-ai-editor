@@ -26,7 +26,13 @@ CLIENT_NAME="ai-editor"
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-CERT_DIR="$PROJECT_ROOT/mtls_certificates/mtls_certificates"
+RENAMED_CERT_DIR="$PROJECT_ROOT/mtls-certificates/mtls_certificates"
+LEGACY_CERT_DIR="$PROJECT_ROOT/mtls_certificates/mtls_certificates"
+if [ -d "$RENAMED_CERT_DIR" ]; then
+    CERT_DIR="$RENAMED_CERT_DIR"
+else
+    CERT_DIR="$LEGACY_CERT_DIR"
+fi
 
 # Check if CA exists
 if [ ! -f "$CERT_DIR/ca/ca.crt" ] || [ ! -f "$CERT_DIR/ca/ca.key" ]; then

@@ -30,6 +30,13 @@ NETWORK_NAME="${NET_NAME:-smart-assistant}"
 SECOND_NETWORK="${SECOND_DOCKER_NETWORK:-ai-editor-net}"
 DNS_DOMAIN="${DOCKER_DNS_DOMAIN:-}"
 DNS_NAME="${DOCKER_DNS_NAME:-ai-editor-server}"
+RENAMED_MTLS_ROOT="$PROJECT_ROOT/mtls-certificates"
+LEGACY_MTLS_ROOT="$PROJECT_ROOT/mtls_certificates"
+if [ -d "$RENAMED_MTLS_ROOT" ]; then
+  LOCAL_MTLS_ROOT="$RENAMED_MTLS_ROOT"
+else
+  LOCAL_MTLS_ROOT="$LEGACY_MTLS_ROOT"
+fi
 
 if [ -f "$SCRIPT_DIR/container.env" ]; then
   # shellcheck source=/dev/null
@@ -58,7 +65,7 @@ docker_ensure_network() {
 }
 
 mkdir -p "$PROJECT_ROOT/docker/data/logs" "$PROJECT_ROOT/docker/data/data" \
-  "$PROJECT_ROOT/config" "$PROJECT_ROOT/mtls_certificates"
+  "$PROJECT_ROOT/config" "$LOCAL_MTLS_ROOT"
 
 if [ ! -f "$PROJECT_ROOT/config/$CONFIG_FILE" ]; then
   BUNDLED="$PROJECT_ROOT/ai_editor/config_templates/$CONFIG_FILE"
@@ -88,7 +95,7 @@ docker run -d \
   --network-alias "$CONTAINER_NAME" \
   --network-alias "$DNS_NAME" \
   -v "$PROJECT_ROOT/config:/etc/ai-editor:ro" \
-  -v "$PROJECT_ROOT/mtls_certificates:/app/mtls_certificates:ro" \
+  -v "$LOCAL_MTLS_ROOT:/app/mtls_certificates:ro" \
   -v "$PROJECT_ROOT/docker/data/logs:/var/log/ai-editor" \
   -v "$PROJECT_ROOT/docker/data/data:/var/ai-editor" \
   -p "${PORT}:15000" \

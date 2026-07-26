@@ -144,6 +144,7 @@ logs/
 # Documentation build
 docs/_build/
 mtls_certificates/
+mtls-certificates/
 
 MagicMock/
 

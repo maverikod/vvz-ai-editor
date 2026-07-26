@@ -26,6 +26,16 @@ PIPELINE_EDITOR_PORT="${AI_EDITOR_PORT:-}"
 PIPELINE_WATCH_DIR_ID="${AI_EDITOR_WATCH_DIR_ID:-}"
 PIPELINE_MTLS_DIR="${AI_EDITOR_MTLS_DIR:-}"
 
+default_pipeline_mtls_dir() {
+  local renamed="$PROJECT_ROOT/mtls-certificates/mtls_certificates"
+  local legacy="$PROJECT_ROOT/mtls_certificates/mtls_certificates"
+  if [ -d "$renamed" ]; then
+    printf '%s\n' "$renamed"
+  else
+    printf '%s\n' "$legacy"
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: docker/build.sh [OPTIONS] [VERSION]
@@ -100,7 +110,7 @@ validate_pipeline_inputs() {
   if [ -n "$PIPELINE_MTLS_DIR" ]; then
     mtls_dir="$PIPELINE_MTLS_DIR"
   else
-    mtls_dir="$PROJECT_ROOT/mtls_certificates/mtls_certificates"
+    mtls_dir="$(default_pipeline_mtls_dir)"
   fi
 
   echo "[INFO] Live pipeline preflight"
@@ -308,8 +318,9 @@ fi
 if [ "$DEV_RUN" -eq 1 ]; then
   echo "[INFO] Starting local dev container (project bind mounts)"
   docker tag "$VERSION_TAG" "ai-editor:${TAG}" 2>/dev/null || true
+  LOCAL_MTLS_ROOT="$(dirname "$(default_pipeline_mtls_dir)")"
   mkdir -p "$PROJECT_ROOT/docker/data/logs" "$PROJECT_ROOT/docker/data/data" \
-    "$PROJECT_ROOT/config" "$PROJECT_ROOT/mtls_certificates"
+    "$PROJECT_ROOT/config" "$LOCAL_MTLS_ROOT"
   exec bash "$SCRIPT_DIR/run.sh"
 fi
 

@@ -16,10 +16,10 @@ import sys
 import time
 import traceback
 import uuid
+import warnings
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-import warnings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -62,6 +62,13 @@ def _jsonable(value: Any) -> Any:
         return value
     except TypeError:
         return repr(value)
+
+
+def _default_mtls_dir() -> Path:
+    renamed = REPO_ROOT / "mtls-certificates" / "mtls_certificates"
+    if renamed.exists():
+        return renamed
+    return REPO_ROOT / "mtls_certificates" / "mtls_certificates"
 
 
 def _client(
@@ -1913,12 +1920,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mtls-dir",
         type=Path,
-        default=Path(
-            _env(
-                "AI_EDITOR_MTLS_DIR",
-                str(REPO_ROOT / "mtls_certificates/mtls_certificates"),
-            )
-        ),
+        default=Path(_env("AI_EDITOR_MTLS_DIR", str(_default_mtls_dir()))),
     )
     return parser.parse_args()
 

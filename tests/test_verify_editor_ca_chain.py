@@ -128,6 +128,21 @@ def test_client_warns_and_skips_mtls_when_files_missing(
     assert "ca" not in seen
 
 
+def test_default_mtls_dir_prefers_renamed_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Local tooling must prefer the renamed ``mtls-certificates`` directory."""
+
+    fake_root = tmp_path / "repo"
+    renamed = fake_root / "mtls-certificates" / "mtls_certificates"
+    legacy = fake_root / "mtls_certificates" / "mtls_certificates"
+    legacy.mkdir(parents=True)
+    renamed.mkdir(parents=True)
+    monkeypatch.setattr(pipeline, "REPO_ROOT", fake_root)
+
+    assert pipeline._default_mtls_dir() == renamed
+
+
 def test_read_file_text_sends_default_end_line_when_not_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
