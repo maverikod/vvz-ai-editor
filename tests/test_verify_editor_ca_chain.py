@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import sys
 import types
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +61,18 @@ def test_run_pipeline_honors_single_selected_check(
     async def fake_discover_watch_dir_id(_ca: object) -> dict[str, str]:
         return {"watch_dir_id": "watch-1", "source": "fake"}
 
-    monkeypatch.setattr(pipeline, "_client", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        pipeline, "_client", lambda *_args, **_kwargs: SimpleNamespace()
+    )
+    async def fake_assert_server_reachable(
+        _server_name: str, _host: str, _port: int, *, timeout_seconds: float = 3.0
+    ) -> None:
+        del timeout_seconds
+        return None
+
+    monkeypatch.setattr(
+        pipeline, "_assert_server_reachable", fake_assert_server_reachable
+    )
     monkeypatch.setattr(pipeline, "_discover_watch_dir_id", fake_discover_watch_dir_id)
     monkeypatch.setattr(pipeline, "_run_scenario", fake_run_scenario)
 
@@ -85,6 +97,93 @@ def test_run_pipeline_honors_single_selected_check(
         "source": "fake",
         "required": True,
     }
+
+
+def test_call_wraps_connect_error_with_endpoint_context() -> None:
+    """Connect failures must surface as concise server/endpoint pipeline errors."""
+
+    class FakeClient:
+        async def execute_command(
+            self, _command: str, _params: dict[str, Any]
+        ) -> dict[str, Any]:
+            raise httpx.ConnectError("All connection attempts failed")
+
+    client = pipeline._annotate_client(
+        FakeClient(),
+        server_name="code-analysis-server",
+        host="192.168.254.26",
+        port=15010,
+    )
+
+    with pytest.raises(pipeline.PipelineFailure) as exc_info:
+        asyncio.run(pipeline._call(client, "list_watch_dirs", {}))
+
+    assert str(exc_info.value) == (
+        "code-analysis-server unreachable at 192.168.254.26:15010 "
+        "during list_watch_dirs"
+    )
+    assert exc_info.value.evidence == {
+        "server": "code-analysis-server",
+        "host": "192.168.254.26",
+        "port": 15010,
+        "command": "list_watch_dirs",
+        "transport_error": "ConnectError: All connection attempts failed",
+    }
+
+
+def test_run_pipeline_preflights_required_servers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Full runs must check editor and CA reachability before JSON-RPC calls."""
+
+    seen: list[tuple[str, str, int]] = []
+
+    async def fake_assert_server_reachable(
+        server_name: str, host: str, port: int, *, timeout_seconds: float = 3.0
+    ) -> None:
+        del timeout_seconds
+        seen.append((server_name, host, port))
+
+    async def fake_run_scenario(
+        name: str,
+        _fn: object,
+        _ca: object,
+        _ed: object,
+        _args: object,
+        _watch_dir_id: str,
+    ) -> dict[str, Any]:
+        return {"name": name, "status": "passed", "details": {}}
+
+    async def fake_discover_watch_dir_id(_ca: object) -> dict[str, str]:
+        return {"watch_dir_id": "watch-1", "source": "fake"}
+
+    monkeypatch.setattr(
+        pipeline, "_client", lambda *_args, **_kwargs: SimpleNamespace()
+    )
+    monkeypatch.setattr(
+        pipeline, "_assert_server_reachable", fake_assert_server_reachable
+    )
+    monkeypatch.setattr(pipeline, "_discover_watch_dir_id", fake_discover_watch_dir_id)
+    monkeypatch.setattr(pipeline, "_run_scenario", fake_run_scenario)
+
+    args = argparse.Namespace(
+        checks=["open_queue_autopoll_84d93cca"],
+        watch_dir_id="",
+        ca_host="ca-host",
+        ca_port=15010,
+        editor_host="editor-host",
+        editor_port=15000,
+        mtls_dir=pipeline.REPO_ROOT,
+        list=False,
+    )
+
+    result = asyncio.run(pipeline.run_pipeline(args))
+
+    assert result["summary"] == {"passed": 1, "failed": 0, "total": 1}
+    assert seen == [
+        ("ai-editor-server", "editor-host", 15000),
+        ("code-analysis-server", "ca-host", 15010),
+    ]
 
 
 def test_client_warns_and_skips_mtls_when_files_missing(

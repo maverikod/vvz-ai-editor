@@ -140,6 +140,8 @@ async def _call(
             return _unwrap(await client.execute_command(command, params or {}))
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            if _is_connectivity_transport_error(exc):
+                raise _connectivity_failure(client, command, exc) from exc
             if (
                 not retry_on_transport_error
                 or attempt + 1 >= attempts
@@ -159,6 +161,49 @@ def _is_retryable_transport_error(exc: Exception) -> bool:
         "RemoteProtocolError",
         "WriteError",
     }
+
+
+def _is_connectivity_transport_error(exc: Exception) -> bool:
+    module = type(exc).__module__
+    name = type(exc).__name__
+    return module.startswith(("httpx", "httpcore")) and name in {
+        "ConnectError",
+        "ConnectTimeout",
+    }
+
+
+def _annotate_client(
+    client: JsonRpcClient, *, server_name: str, host: str, port: int
+) -> JsonRpcClient:
+    setattr(client, "_pipeline_server_name", server_name)
+    setattr(client, "_pipeline_host", host)
+    setattr(client, "_pipeline_port", port)
+    return client
+
+
+def _connectivity_failure(
+    client: JsonRpcClient,
+    command: str,
+    exc: Exception,
+) -> PipelineFailure:
+    server_name = str(getattr(client, "_pipeline_server_name", "server"))
+    host = getattr(client, "_pipeline_host", None)
+    port = getattr(client, "_pipeline_port", None)
+    endpoint = (
+        f"{host}:{port}"
+        if isinstance(host, str) and host and isinstance(port, int)
+        else "unknown endpoint"
+    )
+    return PipelineFailure(
+        f"{server_name} unreachable at {endpoint} during {command}",
+        {
+            "server": server_name,
+            "host": host,
+            "port": port,
+            "command": command,
+            "transport_error": f"{type(exc).__name__}: {exc}",
+        },
+    )
 
 
 async def _reset_pipeline_client_connection(client: JsonRpcClient) -> None:
@@ -1863,17 +1908,62 @@ def _resolve_requested_checks(args: argparse.Namespace) -> list[str]:
     return requested
 
 
+async def _assert_server_reachable(
+    server_name: str, host: str, port: int, *, timeout_seconds: float = 3.0
+) -> None:
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=timeout_seconds,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise PipelineFailure(
+            f"{server_name} unreachable at {host}:{port}",
+            {
+                "server": server_name,
+                "host": host,
+                "port": port,
+                "transport_error": f"{type(exc).__name__}: {exc}",
+            },
+        ) from exc
+    else:
+        del reader
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+
 async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
-    ca = _client(args.ca_host, args.ca_port, args.mtls_dir)
-    ed = _client(args.editor_host, args.editor_port, args.mtls_dir)
+    ca = _annotate_client(
+        _client(args.ca_host, args.ca_port, args.mtls_dir),
+        server_name="code-analysis-server",
+        host=args.ca_host,
+        port=args.ca_port,
+    )
+    ed = _annotate_client(
+        _client(args.editor_host, args.editor_port, args.mtls_dir),
+        server_name="ai-editor-server",
+        host=args.editor_host,
+        port=args.editor_port,
+    )
     requested_checks = _resolve_requested_checks(args)
     _progress(
         "Resolved checks: " + ", ".join(requested_checks)
     )
+    requires_ca = any(name != METADATA_CHECK_NAME for name in requested_checks)
+    await _assert_server_reachable(
+        "ai-editor-server", args.editor_host, args.editor_port
+    )
+    if requires_ca:
+        await _assert_server_reachable(
+            "code-analysis-server", args.ca_host, args.ca_port
+        )
 
     watch_dir_source = "override"
     watch_dir_id = args.watch_dir_id
-    requires_watch_dir = any(name != METADATA_CHECK_NAME for name in requested_checks)
+    requires_watch_dir = requires_ca
     if requires_watch_dir and not watch_dir_id:
         _progress("Discovering CA watch_dir_id")
         discovered = await _discover_watch_dir_id(ca)
