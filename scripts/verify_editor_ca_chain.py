@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import os
 import sys
@@ -126,9 +127,47 @@ def _unwrap(resp: Any) -> dict[str, Any]:
 
 
 async def _call(
-    client: JsonRpcClient, command: str, params: dict[str, Any] | None = None
+    client: JsonRpcClient,
+    command: str,
+    params: dict[str, Any] | None = None,
+    *,
+    retry_on_transport_error: bool = False,
 ) -> dict[str, Any]:
-    return _unwrap(await client.execute_command(command, params or {}))
+    attempts = 2 if retry_on_transport_error else 1
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return _unwrap(await client.execute_command(command, params or {}))
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if (
+                not retry_on_transport_error
+                or attempt + 1 >= attempts
+                or not _is_retryable_transport_error(exc)
+            ):
+                raise
+            await _reset_pipeline_client_connection(client)
+    assert last_exc is not None
+    raise last_exc
+
+
+def _is_retryable_transport_error(exc: Exception) -> bool:
+    module = type(exc).__module__
+    name = type(exc).__name__
+    return module.startswith(("httpx", "httpcore")) and name in {
+        "ReadError",
+        "RemoteProtocolError",
+        "WriteError",
+    }
+
+
+async def _reset_pipeline_client_connection(client: JsonRpcClient) -> None:
+    close = getattr(client, "close", None)
+    if callable(close):
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+    await asyncio.sleep(0)
 
 
 def _find_nested_str(value: Any, keys: set[str]) -> str | None:
@@ -442,7 +481,12 @@ async def _open_edit_write_read(
         commit_params = {**write_common, "write_mode": "commit"}
         if verify_after_upload:
             commit_params["verify_after_upload"] = True
-        commit = await _call(ed, "universal_file_write", commit_params)
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            commit_params,
+            retry_on_transport_error=True,
+        )
         if not commit.get("uploaded"):
             raise PipelineFailure("commit did not upload changes", commit)
         if verify_after_upload:
@@ -596,6 +640,7 @@ async def _scenario_45b27a37_yaml_create_noop_commit_fidelity(
                 "file_path": file_path,
                 "write_mode": "commit",
             },
+            retry_on_transport_error=True,
         )
         if not commit.get("uploaded"):
             raise PipelineFailure("zero-edit create commit did not upload", commit)
@@ -1106,6 +1151,7 @@ async def _scenario_sibling_insert_delete_trivia(
                 "write_mode": "commit",
                 "format_python": True,
             },
+            retry_on_transport_error=True,
         )
         if not insert_commit.get("uploaded"):
             raise PipelineFailure(
@@ -1196,6 +1242,7 @@ async def _scenario_sibling_insert_delete_trivia(
                 "write_mode": "commit",
                 "format_python": True,
             },
+            retry_on_transport_error=True,
         )
         if not delete_commit.get("uploaded"):
             raise PipelineFailure(
@@ -1287,6 +1334,7 @@ async def _scenario_sibling_import(
                 "file_path": module_path,
                 "write_mode": "commit",
             },
+            retry_on_transport_error=True,
         )
         if not module_commit.get("uploaded"):
             raise PipelineFailure("sibling module commit did not upload", module_commit)
@@ -1346,7 +1394,12 @@ async def _scenario_sibling_import(
             "format_python": True,
             "verify_after_upload": True,
         }
-        importer_commit = await _call(ed, "universal_file_write", commit_params)
+        importer_commit = await _call(
+            ed,
+            "universal_file_write",
+            commit_params,
+            retry_on_transport_error=True,
+        )
         if not importer_commit.get("uploaded"):
             raise PipelineFailure("importer commit did not upload", importer_commit)
         ca_verify = importer_commit.get("ca_verify") or {}
@@ -1641,6 +1694,7 @@ async def _scenario_styled_yaml_minimal_diff(
                 "write_mode": "commit",
                 "verify_after_upload": True,
             },
+            retry_on_transport_error=True,
         )
         if not commit.get("uploaded"):
             raise PipelineFailure("styled YAML commit did not upload changes", commit)

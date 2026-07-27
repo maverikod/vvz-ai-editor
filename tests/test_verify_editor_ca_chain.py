@@ -9,6 +9,7 @@ import types
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from scripts import verify_editor_ca_chain as pipeline
@@ -276,3 +277,38 @@ def test_read_file_text_uses_explicit_short_end_line(
 
     assert text == "only"
     assert seen["params"]["end_line"] == 1
+
+
+def test_call_retries_once_on_transport_read_error() -> None:
+    """A transient transport ReadError on commit-path calls must reconnect once."""
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.closed = 0
+
+        async def execute_command(
+            self, _command: str, _params: dict[str, Any]
+        ) -> dict[str, Any]:
+            self.calls += 1
+            if self.calls == 1:
+                raise httpx.ReadError("boom")
+            return {"success": True, "data": {"uploaded": True}}
+
+        async def close(self) -> None:
+            self.closed += 1
+
+    client = FakeClient()
+
+    result = asyncio.run(
+        pipeline._call(
+            client,
+            "universal_file_write",
+            {"write_mode": "commit"},
+            retry_on_transport_error=True,
+        )
+    )
+
+    assert result == {"uploaded": True}
+    assert client.calls == 2
+    assert client.closed == 1
