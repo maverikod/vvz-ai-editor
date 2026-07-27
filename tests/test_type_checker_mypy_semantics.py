@@ -5,6 +5,7 @@ Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
 """
 
+import os
 from pathlib import Path
 from subprocess import CompletedProcess
 from typing import Any
@@ -87,7 +88,9 @@ def test_write_path_mypy_uses_project_context_for_draft_imports(tmp_path) -> Non
     assert observed["config"] == config.resolve()
     assert observed["cwd"] == project_root.resolve()
     assert observed["pythonpath"] is None
-    assert observed["mypypath"] == str(project_root.resolve())
+    mypy_paths = observed["mypypath"].split(os.pathsep)
+    assert mypy_paths[0] == str(observed["target"].parent.resolve())
+    assert mypy_paths[1:] == [str(project_root.resolve())]
     assert outcome.temp_path is not None
     outcome.temp_path.unlink(missing_ok=True)
 
@@ -152,7 +155,9 @@ def read_value() -> int:
     assert observed["source"] == source
     assert observed["cwd"] == project_root.resolve()
     assert observed["pythonpath"] is None
-    assert observed["mypypath"] == str(project_root.resolve())
+    mypy_paths = observed["mypypath"].split(os.pathsep)
+    assert mypy_paths[0] == str(package.resolve())
+    assert mypy_paths[1:] == [str(project_root.resolve())]
     assert outcome.temp_path is not None
     outcome.temp_path.unlink(missing_ok=True)
 
