@@ -453,6 +453,125 @@ def read_value() -> int:
 
 
 @pytest.mark.asyncio
+async def test_commit_stages_same_dir_sibling_imports_inside_project_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "project"
+    verify_dir = project_root / "verify"
+    verify_dir.mkdir(parents=True)
+    (project_root / "pyproject.toml").write_text("[tool.mypy]\n", encoding="utf-8")
+    target = verify_dir / "importer.py"
+    target.write_text('"""Old module."""\n', encoding="utf-8")
+
+    workspace_origin = tmp_path / "editor_workspaces" / "sess-sibling" / "importer.py"
+    workspace_origin.parent.mkdir(parents=True)
+    workspace_origin.write_text('"""Initial module."""\n', encoding="utf-8")
+    workspace_edit = workspace_origin.parent / "importer.py-edit"
+    workspace_edit.mkdir()
+
+    core = MagicMock()
+    core.project_root = workspace_edit
+    session = EditSession(
+        session_id="sess-sibling",
+        project_id="proj-1",
+        file_path="verify/importer.py",
+        abs_path=workspace_origin,
+        draft_path=workspace_edit / "importer.py",
+        lockfile_path=workspace_edit / "importer.py.lock",
+        format_group="text",
+        handler_id=HANDLER_PYTHON,
+        tree_id=None,
+        core=core,
+        persisted_on_ca=True,
+    )
+    source = '''\
+"""Live verifier importer fixture."""
+
+from sibling_mod import VALUE
+
+RESULT = VALUE
+
+
+def get_value() -> int:
+    """Return the imported fixture value.
+
+    Returns:
+        Imported fixture value.
+    """
+    return VALUE
+'''
+    exported = source.encode("utf-8")
+    comparison = WriteComparison(
+        result=CompareResult.DIFF,
+        origin_bytes=b'"""Old module."""\n',
+        exported_bytes=exported,
+    )
+    client = MagicMock()
+    client.get_project_root.return_value = project_root
+    client.download_without_lock.return_value = b"VALUE: int = 7\n"
+    client.upload_session_file_content.return_value = exported
+    observed: dict[str, Path] = {}
+    real_validate = write_command_phases.validate_draft_in_project_context
+
+    def observe_validation(*args, **kwargs):  # noqa: ANN002, ANN003
+        observed["target_path"] = kwargs["target_path"]
+        observed["project_root"] = kwargs["project_root"]
+        return real_validate(*args, **kwargs)
+
+    venv_bin = Path(sys.executable).parent
+    monkeypatch.setenv("PATH", f"{venv_bin}:{os.environ.get('PATH', '')}")
+
+    with (
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.get_code_analysis_client",
+            return_value=client,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command.SessionGuard"
+        ) as mock_guard_cls,
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.resolve_session_for_command",
+            return_value=session,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.compare_session_to_origin",
+            return_value=comparison,
+        ),
+        patch(
+            "ai_editor.commands.universal_file_edit.write_command_runtime.phases.validate_draft_in_project_context",
+            side_effect=observe_validation,
+        ),
+    ):
+        mock_guard_cls.return_value.check.return_value = GuardDecision.ALLOW
+        cmd = UniversalFileWriteCommand()
+        result = await cmd.execute(
+            project_id="proj-1",
+            session_id="sess-sibling",
+            write_mode="commit",
+        )
+
+    assert isinstance(result, SuccessResult)
+    assert observed["project_root"] == project_root.resolve()
+    assert observed["target_path"].parent.name == "verify"
+    assert observed["target_path"].name == "importer.py"
+    assert observed["target_path"].is_relative_to(project_root)
+    assert ".ai_editor_validation_" in str(observed["target_path"].parent.parent)
+    client.download_without_lock.assert_called_once_with(
+        project_id="proj-1",
+        file_path="verify/sibling_mod.py",
+    )
+    client.upload_session_file_content.assert_called_once_with(
+        session_id="sess-sibling",
+        project_id="proj-1",
+        file_path="verify/importer.py",
+        content=exported,
+    )
+    assert not any(project_root.glob(".ai_editor_validation_*"))
+    assert not (verify_dir / "sibling_mod.py").exists()
+
+
+@pytest.mark.asyncio
 async def test_upload_success_origin_snapshot_permission_error_is_structured() -> None:
     cmd = UniversalFileWriteCommand()
     session = _mock_session()

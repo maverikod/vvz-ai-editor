@@ -108,6 +108,7 @@ def validate_draft_in_project_context(
     project_root: Optional[Path],
     skip_quality_tools: bool = False,
     validate_docstrings: bool = True,
+    force_project_staging: bool = False,
 ) -> PreWriteValidationOutcome:
     """Validate a draft from the authoritative project environment.
 
@@ -134,7 +135,7 @@ def validate_draft_in_project_context(
     except ValueError:
         relative_target = Path(target.name)
 
-    if target.is_relative_to(root):
+    if target.is_relative_to(root) and not force_project_staging:
         return validate_before_promote(
             handler_id,
             source_code=source_code,

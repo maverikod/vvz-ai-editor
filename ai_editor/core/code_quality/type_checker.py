@@ -273,8 +273,16 @@ def _type_check_with_subprocess(
 
         env = os.environ.copy()
         env.pop("PYTHONPATH", None)
+        mypy_paths: list[str] = []
+        target_parent = str(target_file.parent.resolve())
+        if target_parent:
+            mypy_paths.append(target_parent)
         if project_root_resolved is not None:
-            env["MYPYPATH"] = str(project_root_resolved)
+            root_str = str(project_root_resolved)
+            if root_str not in mypy_paths:
+                mypy_paths.append(root_str)
+        if mypy_paths:
+            env["MYPYPATH"] = os.pathsep.join(mypy_paths)
 
         result = subprocess.run(
             cmd,

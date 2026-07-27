@@ -9,7 +9,9 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import ast
+import uuid
 from pathlib import Path
 from typing import Any, Dict, cast
 from unittest.mock import Mock
@@ -231,12 +233,6 @@ def _stage_validation_sibling_imports(
 ) -> list[Path]:
     if session.handler_id != HANDLER_PYTHON:
         return []
-    if project_root is not None:
-        try:
-            target_path.resolve().relative_to(project_root.resolve())
-            return []
-        except ValueError:
-            pass
     staged: list[Path] = []
     for rel in _simple_sibling_import_paths(source_text, session.file_path):
         candidate = target_path.parent / Path(rel).name
@@ -248,6 +244,7 @@ def _stage_validation_sibling_imports(
             continue
         if not isinstance(content, (bytes, bytearray)):
             continue
+        candidate.parent.mkdir(parents=True, exist_ok=True)
         candidate.write_bytes(content)
         staged.append(candidate)
     return staged
@@ -415,6 +412,18 @@ def _run_write_commit_ca(
         except ValueError:
             project_root = None
     validation_target = _validation_target_path(session, project_root)
+    force_project_staging = bool(
+        session.handler_id == HANDLER_PYTHON
+        and _simple_sibling_import_paths(source_text, session.file_path)
+    )
+    validation_staging_root: Path | None = None
+    if force_project_staging and project_root is not None:
+        rel_path = Path(session.file_path.replace("\\", "/"))
+        if not rel_path.is_absolute() and all(part != ".." for part in rel_path.parts):
+            validation_staging_root = (
+                project_root / f".ai_editor_validation_{uuid.uuid4().hex[:8]}"
+            )
+            validation_target = validation_staging_root / rel_path
     staged_imports = _stage_validation_sibling_imports(
         session=session,
         source_text=source_text,
@@ -433,6 +442,8 @@ def _run_write_commit_ca(
     finally:
         for staged in staged_imports:
             staged.unlink(missing_ok=True)
+        if validation_staging_root is not None:
+            shutil.rmtree(validation_staging_root, ignore_errors=True)
     if validation.temp_path is not None:
         validation.temp_path.unlink(missing_ok=True)
     if not validation.success and not _validation_failure_is_non_blocking(
