@@ -509,10 +509,12 @@ def get_value() -> int:
     )
     client = MagicMock()
     client.get_project_root.return_value = project_root
-    client.download_without_lock.return_value = b"VALUE: int = 7\n"
     client.upload_session_file_content.return_value = exported
     observed: dict[str, Path] = {}
     real_validate = write_command_phases.validate_draft_in_project_context
+    sibling_path = project_root / "verify" / "sibling_mod.py"
+    sibling_path.parent.mkdir(parents=True, exist_ok=True)
+    sibling_path.write_text("VALUE: int = 7\n", encoding="utf-8")
 
     def observe_validation(*args, **kwargs):  # noqa: ANN002, ANN003
         observed["target_path"] = kwargs["target_path"]
@@ -557,10 +559,7 @@ def get_value() -> int:
     assert observed["target_path"].name == "importer.py"
     assert observed["target_path"].is_relative_to(project_root)
     assert ".ai_editor_validation_" in str(observed["target_path"].parent.parent)
-    client.download_without_lock.assert_called_once_with(
-        project_id="proj-1",
-        file_path="verify/sibling_mod.py",
-    )
+    client.download_without_lock.assert_not_called()
     client.upload_session_file_content.assert_called_once_with(
         session_id="sess-sibling",
         project_id="proj-1",
@@ -568,7 +567,7 @@ def get_value() -> int:
         content=exported,
     )
     assert not any(project_root.glob(".ai_editor_validation_*"))
-    assert not (verify_dir / "sibling_mod.py").exists()
+    assert sibling_path.read_text(encoding="utf-8") == "VALUE: int = 7\n"
 
 
 @pytest.mark.asyncio

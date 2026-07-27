@@ -238,10 +238,27 @@ def _stage_validation_sibling_imports(
         candidate = target_path.parent / Path(rel).name
         if candidate.exists():
             continue
-        try:
-            content = client.download_without_lock(project_id=project_id, file_path=rel)
-        except Exception:
-            continue
+        content: bytes | bytearray | None = None
+        if project_root is not None:
+            rel_path = Path(rel.replace("\\", "/"))
+            if not rel_path.is_absolute() and all(part != ".." for part in rel_path.parts):
+                sibling_path = (project_root / rel_path).resolve()
+                try:
+                    sibling_path.relative_to(project_root.resolve())
+                except ValueError:
+                    sibling_path = Path()
+                if sibling_path.is_file():
+                    try:
+                        content = sibling_path.read_bytes()
+                    except OSError:
+                        content = None
+        if content is None:
+            try:
+                content = client.download_without_lock(
+                    project_id=project_id, file_path=rel
+                )
+            except Exception:
+                continue
         if not isinstance(content, (bytes, bytearray)):
             continue
         candidate.parent.mkdir(parents=True, exist_ok=True)
