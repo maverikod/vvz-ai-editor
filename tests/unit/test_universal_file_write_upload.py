@@ -19,6 +19,7 @@ from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
 from ai_editor.commands.universal_file_edit import write_command_phases
 from ai_editor.commands.universal_file_edit.session import EditSession
+from ai_editor.commands.universal_file_edit import write_command_runtime
 from ai_editor.commands.universal_file_edit.write_command import (
     UniversalFileWriteCommand,
 )
@@ -568,6 +569,54 @@ def get_value() -> int:
     )
     assert not any(project_root.glob(".ai_editor_validation_*"))
     assert sibling_path.read_text(encoding="utf-8") == "VALUE: int = 7\n"
+
+
+def test_stage_validation_sibling_imports_uses_recent_uploaded_cache(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    target_path = project_root / ".ai_editor_validation_demo" / "verify" / "importer.py"
+    target_path.parent.mkdir(parents=True)
+    client = MagicMock()
+    client.download_without_lock.side_effect = RuntimeError("should not download")
+    session = EditSession(
+        session_id="sess-cache",
+        project_id="proj-1",
+        file_path="verify/importer.py",
+        abs_path=tmp_path / "workspace" / "verify" / "importer.py",
+        draft_path=tmp_path / "workspace" / "verify" / "importer.py",
+        lockfile_path=tmp_path / "workspace" / "verify" / "importer.py.lock",
+        format_group="text",
+        handler_id=HANDLER_PYTHON,
+        tree_id=None,
+        core=MagicMock(),
+        persisted_on_ca=False,
+    )
+    source = "from sibling_mod import VALUE\n"
+    cache_key = write_command_runtime._normalized_project_file_key(
+        "proj-1", "verify/sibling_mod.py"
+    )
+    write_command_runtime._RECENT_VALIDATION_FILE_BYTES.pop(cache_key, None)
+    try:
+        write_command_runtime._remember_recent_validation_file_bytes(
+            project_id="proj-1",
+            file_path="verify/sibling_mod.py",
+            content=b"VALUE = 42\n",
+        )
+        staged = write_command_runtime._stage_validation_sibling_imports(
+            session=session,
+            source_text=source,
+            target_path=target_path,
+            project_root=project_root,
+            project_id="proj-1",
+            client=client,
+        )
+        assert [path.name for path in staged] == ["sibling_mod.py"]
+        assert staged[0].read_text(encoding="utf-8") == "VALUE = 42\n"
+        client.download_without_lock.assert_not_called()
+    finally:
+        write_command_runtime._RECENT_VALIDATION_FILE_BYTES.pop(cache_key, None)
 
 
 @pytest.mark.asyncio

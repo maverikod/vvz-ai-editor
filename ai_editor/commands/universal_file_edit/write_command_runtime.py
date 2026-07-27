@@ -56,6 +56,7 @@ from . import write_command_phases as phases
 from ai_editor.core.upstream.code_analysis_client import describe_exception
 
 logger = logging.getLogger(__name__)
+_RECENT_VALIDATION_FILE_BYTES: dict[tuple[str, str], bytes] = {}
 
 
 def _pathlike_value(value: Any) -> Path | None:
@@ -64,6 +65,25 @@ def _pathlike_value(value: Any) -> Path | None:
     if not isinstance(value, (str, os.PathLike)):
         return None
     return Path(value)
+
+
+def _normalized_project_file_key(project_id: str, file_path: str) -> tuple[str, str]:
+    rel = Path(str(file_path).replace("\\", "/")).as_posix().lstrip("./")
+    return str(project_id or "").strip(), rel
+
+
+def _remember_recent_validation_file_bytes(
+    *, project_id: str, file_path: str, content: bytes
+) -> None:
+    _RECENT_VALIDATION_FILE_BYTES[
+        _normalized_project_file_key(project_id, file_path)
+    ] = bytes(content)
+
+
+def _recent_validation_file_bytes(project_id: str, file_path: str) -> bytes | None:
+    return _RECENT_VALIDATION_FILE_BYTES.get(
+        _normalized_project_file_key(project_id, file_path)
+    )
 
 
 def _is_unavailable_quality_tool(result: Any) -> bool:
@@ -239,6 +259,9 @@ def _stage_validation_sibling_imports(
         if candidate.exists():
             continue
         content: bytes | bytearray | None = None
+        recent = _recent_validation_file_bytes(project_id, rel)
+        if recent is not None:
+            content = recent
         if project_root is not None:
             rel_path = Path(rel.replace("\\", "/"))
             if not rel_path.is_absolute() and all(part != ".." for part in rel_path.parts):
@@ -534,6 +557,11 @@ def _run_write_commit_ca(
     # The file now exists on CA under a session lock; subsequent commits use the
     # update-existing path and close (R4) will release the lock.
     session.persisted_on_ca = True
+    _remember_recent_validation_file_bytes(
+        project_id=project_id,
+        file_path=session.file_path,
+        content=bytes(accepted),
+    )
     try:
         guard_host_file_operation(
             file_name=session.abs_path,
