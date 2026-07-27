@@ -89,10 +89,13 @@ def _make_workspace(tmp_path: Path) -> Path:
 
 @pytest.mark.asyncio
 async def test_r1_open_new_file_issues_zero_ca_calls(tmp_path: Path) -> None:
-    """R1: open(create=true) performs no CA call and marks the file unpersisted."""
+    """R1: open(create=true) performs no lock/upload CA calls and marks the file unpersisted."""
     workspace = _make_workspace(tmp_path)
+    project_root = tmp_path / "project"
     sid, project_id, file_path = "ca-r1", "p1", "new_r1.txt"
     upstream = _mock_upstream()
+    project_root.mkdir(parents=True, exist_ok=True)
+    upstream.get_project_root.return_value = project_root
 
     with _patch_context(workspace=workspace, upstream=upstream):
         open_res = await UniversalFileOpenCommand().execute(
@@ -105,12 +108,16 @@ async def test_r1_open_new_file_issues_zero_ca_calls(tmp_path: Path) -> None:
         assert isinstance(open_res, SuccessResult)
         assert open_res.data.get("created") is True
 
-        # Zero CA round-trips of any kind for a new-file open.
-        assert upstream.mock_calls == []
+        upstream.get_project_root.assert_called_once_with(project_id)
+        assert upstream.lock_file_and_download.call_count == 0
+        assert upstream.upload_session_file_content.call_count == 0
+        assert upstream.upload_create_and_lock.call_count == 0
+        assert upstream.unlock_session_file.call_count == 0
 
         session = get_session(sid, file_path)
         assert session.persisted_on_ca is False
         assert session.modified is False
+        assert session.core.project_root == project_root.resolve()
 
         layout = file_workspace_layout(workspace, sid, project_id, file_path)
         assert layout.origin_path.read_bytes() == b"hello\n"

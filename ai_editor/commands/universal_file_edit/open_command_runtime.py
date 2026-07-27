@@ -139,6 +139,8 @@ def run_open_execute(
         # into the local workspace draft and marked not-yet-persisted. The CA lock
         # row and the file registration are created later, atomically, on the first
         # successful commit (R3 lock-then-transfer in universal_file_write).
+        if client is None:
+            client = get_code_analysis_client()
         raw_bytes = initial_content.encode("utf-8")
         return _build_open_result(
             ca_session_id=ca_session_id,
@@ -148,7 +150,11 @@ def run_open_execute(
             create=True,
             persisted_on_ca=False,
             format_group_hint=format_group_hint,
-            project_root=resolve_workspace_root(),
+            project_root=_resolve_session_project_root(
+                client=client,
+                project_id=project_id,
+                fallback_root=resolve_workspace_root(),
+            ),
         )
 
     if client is None:
