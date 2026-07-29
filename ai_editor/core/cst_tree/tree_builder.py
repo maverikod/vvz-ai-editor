@@ -264,6 +264,11 @@ def reload_tree_from_file(
     logical_source, persisted_node_ids = _read_logical_py_source_sync_disk(path)
     module = cst.parse_module(logical_source)
     previous_metadata_map = dict(tree.metadata_map)
+    # Captured before tree.module is reassigned below the sidecar path inside
+    # _finalize_cst_tree; needed so a fresh node_id can only be carried over
+    # from exact_key_to_id when the content at that coordinate span actually
+    # matches the prior build (bug 086a8f6c) -- not just its position.
+    previous_module = tree.module
 
     # Update tree in place
     tree.file_path = str(path.resolve())
@@ -283,6 +288,7 @@ def reload_tree_from_file(
         previous_metadata_map=previous_metadata_map,
         legacy_persisted=persisted_node_ids,
         write_sidecar=True,
+        previous_module=previous_module,
     )
 
     return tree

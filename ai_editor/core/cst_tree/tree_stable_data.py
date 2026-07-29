@@ -178,6 +178,11 @@ def restore_stable_data(
             _obj_to_stable_from_metadata(prev, mod_for_keys) if prev else None
         ),
         pinned_node_id=pinned_node_id,
+        # Only the caller-supplied pre-mutation module is safe for content-based
+        # node_id reuse gating; the ``mod_for_keys`` fallback (tree.module, i.e.
+        # already-mutated) must never be used here or every reuse would be
+        # checked against post-mutation content at pre-mutation line numbers.
+        previous_module=previous_module if prev else None,
     )
     _restore_decorators_from_metadata(tree, decorator_map)
 
