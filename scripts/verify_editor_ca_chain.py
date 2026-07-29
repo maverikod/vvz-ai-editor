@@ -2298,6 +2298,809 @@ async def _scenario_create_draft_discard_close_2e44a0a9(
                 pass
 
 
+_831A82BE_PY_FIXTURE = (
+    '"""Fixture module for bug 831a82be (FunctionDef replace no-nesting)."""\n'
+    "\n"
+    "\n"
+    "def first_function() -> int:\n"
+    '    """Return the first fixture value.\n'
+    "\n"
+    "    Returns:\n"
+    "        First fixture value.\n"
+    '    """\n'
+    "    return 1\n"
+    "\n"
+    "\n"
+    "def second_function() -> int:\n"
+    '    """Return the second fixture value.\n'
+    "\n"
+    "    Returns:\n"
+    "        Second fixture value.\n"
+    '    """\n'
+    "    return 2\n"
+)
+
+
+async def _scenario_py_replace_functiondef_no_nesting_831a82be(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 831a82be: replacing a top-level FunctionDef by node_ref must not
+    nest it inside the function it replaces.
+
+    Two module-level functions are fixtures; ``universal_file_search``
+    resolves the SECOND function's node_ref (mirrors the bug's own repro: two
+    top-level FunctionDef node_refs obtained via search, then a batch
+    ``replace`` targeting them). ``universal_file_edit`` replaces
+    ``second_function`` with a differently-bodied implementation of the SAME
+    name. Live 1.0.69 inserted the new definition NESTED inside the old
+    function's body instead of replacing the module-level statement, with the
+    old body's tail surviving after the nested copy. This check FAILS when
+    the committed file contains more than one ``def second_function``, when
+    that definition is indented (nested) rather than at module level, or when
+    the original body (``return 2``) survives; it PASSES only when the
+    function is replaced cleanly at module level.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the search node_ref, edit result, and readback.
+    """
+    del args
+    scenario_slug = "831a82be_functiondef_no_nesting"
+    file_path = "verify/831a82be_functiondef_no_nesting.py"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _831A82BE_PY_FIXTURE,
+        },
+    )
+    try:
+        search_result = await _call(
+            ed,
+            "universal_file_search",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "search_type": "simple",
+                "node_type": "FunctionDef",
+                "name": "second_function",
+                "require_one": True,
+            },
+        )
+        node_ref_raw = search_result.get("node_ref")
+        node_ref = str(node_ref_raw) if node_ref_raw is not None else None
+        if not node_ref:
+            raise PipelineFailure(
+                "universal_file_search did not resolve second_function's node_ref",
+                search_result,
+            )
+        replacement_code_lines = [
+            "def second_function() -> int:",
+            '    """Return the replaced fixture value.',
+            "",
+            "    Returns:",
+            "        Replaced fixture value.",
+            '    """',
+            "    return 99",
+        ]
+        edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "replace",
+                        "node_id": node_ref,
+                        "code_lines": replacement_code_lines,
+                    }
+                ],
+            },
+        )
+        await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "preview",
+            },
+        )
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+                "format_python": True,
+            },
+            retry_on_transport_error=True,
+        )
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                "second_function replace commit did not upload changes", commit
+            )
+        content = await _read_file_text(ca, project_id, file_path)
+        def_lines = [
+            line for line in content.splitlines() if "def second_function" in line
+        ]
+        def_count = len(def_lines)
+        indents = [len(line) - len(line.lstrip(" ")) for line in def_lines]
+        if def_count != 1 or any(indent != 0 for indent in indents):
+            raise PipelineFailure(
+                "replaced FunctionDef was nested instead of replacing the "
+                "module-level statement (bug 831a82be)",
+                {
+                    "def_second_function_count": def_count,
+                    "indents": indents,
+                    "content": content,
+                },
+            )
+        if "return 2" in content:
+            raise PipelineFailure(
+                "original second_function body survived the replace "
+                "(bug 831a82be)",
+                {"content": content},
+            )
+        if "return 99" not in content:
+            raise PipelineFailure(
+                "replaced second_function body missing from CA readback",
+                {"content": content},
+            )
+        if "def first_function" not in content or "return 1" not in content:
+            raise PipelineFailure(
+                "untouched first_function was corrupted by the replace",
+                {"content": content},
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "search_node_ref": node_ref,
+            "edit": _jsonable(edit),
+            "commit_uploaded": commit.get("uploaded"),
+            "def_second_function_count": def_count,
+            "readback_content": content,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+_5495F4BE_PY_FIXTURE = (
+    '"""Fixture module for bug 5495f4be (leading comment preservation on '
+    'replace)."""\n'
+    "\n"
+    "# fixture: standalone comment above the constant\n"
+    "# second line of the comment block\n"
+    "CONST_VALUE = 1\n"
+)
+
+
+async def _scenario_py_replace_keeps_leading_comments_5495f4be(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 5495f4be: replacing a SimpleStatementLine must not drop its
+    leading standalone comment block.
+
+    A two-line standalone comment sits directly above a module-level
+    ``CONST_VALUE = 1`` statement. ``universal_file_edit`` replaces that SAME
+    statement (not the comment) with a new value, keeping the module valid
+    Python -- the same replace shape as the bug's own repro (a
+    SimpleStatementLine replace via ``code_lines``). Live 1.0.69 silently
+    dropped leading comment trivia when replacing the statement below it.
+    This check FAILS when either original comment line is missing from the
+    committed file; it PASSES only when both comment lines and the new value
+    are present.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the located statement node_ref and readback.
+    """
+    del args
+    scenario_slug = "5495f4be_leading_comment_preservation"
+    file_path = "verify/5495f4be_leading_comment_preservation.py"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _5495F4BE_PY_FIXTURE,
+        },
+    )
+    try:
+        preview = await _call(
+            ed,
+            "universal_file_preview",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+            },
+        )
+        stmt_ref = _find_smallest_preview_node_ref(preview, "CONST_VALUE = 1")
+        if not stmt_ref:
+            raise PipelineFailure(
+                "preview did not expose CONST_VALUE statement node_ref", preview
+            )
+        edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "replace",
+                        "node_id": stmt_ref,
+                        "code_lines": ["CONST_VALUE = 2"],
+                    }
+                ],
+            },
+        )
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+                "format_python": True,
+            },
+            retry_on_transport_error=True,
+        )
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                "CONST_VALUE replace commit did not upload changes", commit
+            )
+        content = await _read_file_text(ca, project_id, file_path)
+        required_substrings = (
+            "# fixture: standalone comment above the constant",
+            "# second line of the comment block",
+            "CONST_VALUE = 2",
+        )
+        missing = [needle for needle in required_substrings if needle not in content]
+        if missing:
+            raise PipelineFailure(
+                "leading standalone comment block was dropped by the replace "
+                "(bug 5495f4be)",
+                {"missing": missing, "content": content},
+            )
+        if "CONST_VALUE = 1" in content:
+            raise PipelineFailure(
+                "original CONST_VALUE statement survived the replace",
+                {"content": content},
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "stmt_node_ref": stmt_ref,
+            "edit": _jsonable(edit),
+            "commit_uploaded": commit.get("uploaded"),
+            "readback_content": content,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+_086A8F6C_PY_FIXTURE = (
+    '"""Fixture module for bug 086a8f6c (search node_id/stable_id '
+    'uniqueness)."""\n'
+    "\n"
+    "\n"
+    "class Alpha:\n"
+    '    """Alpha fixture class."""\n'
+    "\n"
+    "    def method_one(self) -> int:\n"
+    '        """Return the Alpha fixture value.\n'
+    "\n"
+    "        Returns:\n"
+    "            Alpha fixture value.\n"
+    '        """\n'
+    "        return 1\n"
+    "\n"
+    "\n"
+    "class Beta:\n"
+    '    """Beta fixture class."""\n'
+    "\n"
+    "    def method_two(self) -> int:\n"
+    '        """Return the Beta fixture value.\n'
+    "\n"
+    "        Returns:\n"
+    "            Beta fixture value.\n"
+    '        """\n'
+    "        return 2\n"
+    "\n"
+    "\n"
+    "def standalone_one() -> int:\n"
+    '    """Return the first standalone fixture value.\n'
+    "\n"
+    "    Returns:\n"
+    "        First standalone fixture value.\n"
+    '    """\n'
+    "    return 10\n"
+    "\n"
+    "\n"
+    "def standalone_two() -> int:\n"
+    '    """Return the second standalone fixture value.\n'
+    "\n"
+    "    Returns:\n"
+    "        Second standalone fixture value.\n"
+    '    """\n'
+    "    return 20\n"
+)
+
+
+async def _scenario_search_ids_unique_086a8f6c(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 086a8f6c: universal_file_search must not collide one node's
+    stable_id with a DIFFERENT node's node_id.
+
+    A fixture with two classes (one method each) and two standalone
+    functions gives ``universal_file_search`` a tree with many distinct
+    nodes, mirroring the bug's own repro shape (a ``simple`` search returning
+    several def/statement nodes, as in the 86288c9c scenario's search call).
+    Every match's ``node_id``, ``stable_id``, and ``node_ref`` is collected.
+    Live 1.0.69 returned one node's ``stable_id`` equal to a DIFFERENT node's
+    ``node_id``, making id-based addressing ambiguous and explaining
+    downstream STALE_NODE_ID/wrong-node-replaced failures. This check FAILS
+    when any identifier value is simultaneously the ``stable_id`` of one
+    match and the ``node_id`` of a distinct match, or when any ``node_ref``
+    value is shared by more than one distinct node.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the match count and any detected collisions.
+    """
+    del args
+    scenario_slug = "086a8f6c_search_ids_unique"
+    file_path = "verify/086a8f6c_search_ids_unique.py"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _086A8F6C_PY_FIXTURE,
+        },
+    )
+    try:
+        search_result = await _call(
+            ed,
+            "universal_file_search",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "search_type": "simple",
+            },
+        )
+        matches = search_result.get("matches")
+        if not isinstance(matches, list) or len(matches) < 4:
+            raise PipelineFailure(
+                "universal_file_search returned too few matches to exercise "
+                "id uniqueness (bug 086a8f6c)",
+                search_result,
+            )
+        entries: list[dict[str, Any]] = []
+        for match in matches:
+            if not isinstance(match, dict):
+                continue
+            node_id = match.get("node_id")
+            stable_id = match.get("stable_id")
+            node_ref = match.get("node_ref")
+            entries.append(
+                {
+                    "node_id": str(node_id) if node_id is not None else None,
+                    "stable_id": str(stable_id) if stable_id is not None else None,
+                    "node_ref": str(node_ref) if node_ref is not None else None,
+                    "type": match.get("type"),
+                    "start_line": match.get("start_line"),
+                }
+            )
+
+        stable_vs_node_id_collisions = []
+        for i, entry_i in enumerate(entries):
+            for j, entry_j in enumerate(entries):
+                if i == j:
+                    continue
+                if (
+                    entry_i["stable_id"] is not None
+                    and entry_i["stable_id"] == entry_j["node_id"]
+                ):
+                    stable_vs_node_id_collisions.append(
+                        {"stable_id_owner": entry_i, "node_id_owner": entry_j}
+                    )
+
+        node_ref_owners: dict[str, list[dict[str, Any]]] = {}
+        for entry in entries:
+            ref = entry["node_ref"]
+            if ref is None:
+                continue
+            node_ref_owners.setdefault(ref, []).append(entry)
+        duplicate_node_refs = {
+            ref: owners
+            for ref, owners in node_ref_owners.items()
+            if len(owners) > 1 and len({owner["node_id"] for owner in owners}) > 1
+        }
+
+        if stable_vs_node_id_collisions or duplicate_node_refs:
+            raise PipelineFailure(
+                "universal_file_search returned colliding node identifiers "
+                "across distinct nodes (bug 086a8f6c)",
+                {
+                    "stable_vs_node_id_collisions": stable_vs_node_id_collisions[:10],
+                    "duplicate_node_refs": duplicate_node_refs,
+                    "total_matches": len(entries),
+                },
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "total_matches": len(entries),
+            "sample_entries": entries[:10],
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+_1DB1038B_PY_FIXTURE = (
+    '"""Fixture module for bug 1db1038b (search-then-edit same-session '
+    'stale id)."""\n'
+    "\n"
+    "\n"
+    "def compute(query_object: int) -> int:\n"
+    '    """Compute a value from the query object.\n'
+    "\n"
+    "    Args:\n"
+    "        query_object: Input fixture value.\n"
+    "\n"
+    "    Returns:\n"
+    "        Computed fixture value.\n"
+    '    """\n'
+    "    return query_object + query_object\n"
+)
+
+
+async def _scenario_search_stable_id_usable_in_edit_1db1038b(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 1db1038b: stable_ids from universal_file_search must be usable in
+    the VERY NEXT universal_file_edit, unchanged session.
+
+    ``universal_file_search`` for ``Name[name=query_object]`` resolves
+    several matches (the parameter and its uses in ``return query_object +
+    query_object``, mirroring the bug's own repro of three Name matches). The
+    last two matches' ``stable_id`` values are passed straight into ONE
+    ``universal_file_edit`` replace batch -- no intervening preview/search/
+    edit call. Live 1.0.69 rejected one of the just-returned stable_ids with
+    STALE_NODE_ID inside the SAME unchanged session tree. This check FAILS on
+    a STALE_NODE_ID or UNKNOWN_NODE_REF error from that edit call; it PASSES
+    when the batch applies and the commit uploads.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the search matches and edit/commit outcome.
+    """
+    del args
+    scenario_slug = "1db1038b_search_stable_id_usable_in_edit"
+    file_path = "verify/1db1038b_search_stable_id_usable_in_edit.py"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _1DB1038B_PY_FIXTURE,
+        },
+    )
+    try:
+        search_result = await _call(
+            ed,
+            "universal_file_search",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "search_type": "simple",
+                "node_type": "Name",
+                "name": "query_object",
+            },
+        )
+        matches = search_result.get("matches")
+        if not isinstance(matches, list) or len(matches) < 2:
+            raise PipelineFailure(
+                "universal_file_search returned fewer than 2 query_object "
+                "Name matches",
+                search_result,
+            )
+        target_matches = matches[-2:]
+        stable_ids: list[str] = []
+        for match in target_matches:
+            stable_id = match.get("stable_id") if isinstance(match, dict) else None
+            if not stable_id:
+                raise PipelineFailure(
+                    "a query_object search match had no stable_id", search_result
+                )
+            stable_ids.append(str(stable_id))
+
+        try:
+            edit = await _edit(
+                ed,
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "operations": [
+                        {
+                            "type": "replace",
+                            "node_id": stable_ids[0],
+                            "code_lines": ["query_object"],
+                        },
+                        {
+                            "type": "replace",
+                            "node_id": stable_ids[1],
+                            "code_lines": ["query_object"],
+                        },
+                    ],
+                },
+            )
+        except PipelineFailure as exc:
+            error_code = _extract_error_code(exc.evidence)
+            if error_code in {"STALE_NODE_ID", "UNKNOWN_NODE_REF"}:
+                raise PipelineFailure(
+                    "a stable_id returned by the immediately-preceding "
+                    "universal_file_search was rejected by universal_file_edit "
+                    "in the SAME unchanged session (bug 1db1038b)",
+                    {
+                        "error_code": error_code,
+                        "error_message": _extract_error_message(exc.evidence),
+                        "stable_ids": stable_ids,
+                        "evidence": exc.evidence,
+                    },
+                ) from exc
+            raise
+
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+                "format_python": True,
+            },
+            retry_on_transport_error=True,
+        )
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                "query_object replace batch commit did not upload changes", commit
+            )
+        content = await _read_file_text(ca, project_id, file_path)
+        if "return query_object + query_object" not in content:
+            raise PipelineFailure(
+                "committed content lost the query_object expression",
+                {"content": content},
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "stable_ids": stable_ids,
+            "edit": _jsonable(edit),
+            "commit_uploaded": commit.get("uploaded"),
+            "readback_content": content,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+_20B4BA84_YAML_FIXTURE = (
+    "# top comment\n"
+    "service:\n"
+    '  name: release-1668-check   # inline comment\n'
+    "  ports:\n"
+    "    - 8080  # http\n"
+    "    - 8443  # https\n"
+    "# trailing comment\n"
+)
+
+
+async def _scenario_yaml_trailing_doc_comment_20b4ba84(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 20b4ba84: a trailing document-level comment after a nested block
+    sequence must not crash the YAML serializer.
+
+    Fixture (verbatim from the bug record): a banner comment, a mapping
+    whose scalar carries an inline comment, a nested block sequence whose
+    LAST item also carries an inline comment, followed by a column-0
+    document-level trailing comment. The parser's known footer-comment
+    misattachment merges the trailing document comment into the last array
+    item's ``comment_before`` while that item still carries its own
+    ``comment_inline``; live 1.0.69/cas@bb15d22 serialization then crashed
+    with ``'CommentToken' object is not iterable`` inside ruamel's
+    ``yaml_key_comment_extend``. A minimal unrelated edit (``service.name``)
+    is applied and committed. This check FAILS when the write/commit raises
+    a serializer crash mentioning CommentToken/"not iterable"; it PASSES only
+    when the commit succeeds AND the readback still contains both the
+    trailing document comment and the last item's inline comment.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the commit outcome and readback content.
+    """
+    del args
+    scenario_slug = "20b4ba84_yaml_trailing_doc_comment"
+    file_path = "verify/20b4ba84_yaml_trailing_doc_comment.yaml"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _20B4BA84_YAML_FIXTURE,
+        },
+    )
+    try:
+        edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "replace",
+                        "json_pointer": "/service/name",
+                        "value": "release-1669-check",
+                    }
+                ],
+            },
+        )
+        try:
+            preview_write = await _call(
+                ed,
+                "universal_file_write",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "write_mode": "preview",
+                },
+            )
+            commit = await _call(
+                ed,
+                "universal_file_write",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "write_mode": "commit",
+                    "verify_after_upload": True,
+                },
+                retry_on_transport_error=True,
+            )
+        except PipelineFailure as exc:
+            evidence_text = json.dumps(exc.evidence, ensure_ascii=False)
+            message = _extract_error_message(exc.evidence)
+            haystack = f"{message}\n{evidence_text}".lower()
+            if "commenttoken" in haystack or "not iterable" in haystack:
+                raise PipelineFailure(
+                    "YAML write/commit crashed serializing a trailing "
+                    "document-level comment merged onto a commented last "
+                    "array item (bug 20b4ba84)",
+                    {
+                        "error_code": _extract_error_code(exc.evidence),
+                        "error_message": message,
+                        "evidence": exc.evidence,
+                    },
+                ) from exc
+            raise
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                "20b4ba84 minimal edit commit did not upload changes", commit
+            )
+        ca_verify = commit.get("ca_verify") or {}
+        if isinstance(ca_verify, dict) and not ca_verify.get("verified"):
+            raise PipelineFailure("20b4ba84 commit ca_verify failed", commit)
+
+        content = await _read_file_text(ca, project_id, file_path)
+        required_substrings = (
+            "# top comment",
+            "# inline comment",
+            "release-1669-check",
+            "# http",
+            "# https",
+            "# trailing comment",
+        )
+        missing = [needle for needle in required_substrings if needle not in content]
+        if missing:
+            raise PipelineFailure(
+                "YAML round-trip lost required comment(s) (bug 20b4ba84)",
+                {"missing": missing, "content": content},
+            )
+        if "release-1668-check" in content:
+            raise PipelineFailure(
+                "YAML round-trip did not apply the minimal edit",
+                {"content": content},
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "edit": _jsonable(edit),
+            "preview_has_changes": preview_write.get("has_changes"),
+            "commit_uploaded": commit.get("uploaded"),
+            "ca_verify": commit.get("ca_verify"),
+            "readback_content": content,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
 async def _run_scenario(
     name: str,
     fn: ScenarioFn,
@@ -2374,6 +3177,26 @@ def _scenario_registry() -> list[tuple[str, ScenarioFn]]:
         (
             "create_draft_discard_close_2e44a0a9",
             _scenario_create_draft_discard_close_2e44a0a9,
+        ),
+        (
+            "py_replace_functiondef_no_nesting_831a82be",
+            _scenario_py_replace_functiondef_no_nesting_831a82be,
+        ),
+        (
+            "py_replace_keeps_leading_comments_5495f4be",
+            _scenario_py_replace_keeps_leading_comments_5495f4be,
+        ),
+        (
+            "search_ids_unique_086a8f6c",
+            _scenario_search_ids_unique_086a8f6c,
+        ),
+        (
+            "search_stable_id_usable_in_edit_1db1038b",
+            _scenario_search_stable_id_usable_in_edit_1db1038b,
+        ),
+        (
+            "yaml_trailing_doc_comment_20b4ba84",
+            _scenario_yaml_trailing_doc_comment_20b4ba84,
         ),
     ]
 
