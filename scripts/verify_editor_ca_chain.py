@@ -1553,6 +1553,32 @@ def _extract_error_message(evidence: Any) -> str:
     return ""
 
 
+def _extract_error_code(evidence: Any) -> str | None:
+    """Extract the upstream error code from a JSON-RPC evidence payload.
+
+    Mirrors ``_extract_error_message``'s traversal of ``data.error``/``error``,
+    but reads the ``code`` field instead of ``message``.
+
+    Args:
+        evidence: Raw JSON-RPC response dict captured on a caught
+            ``PipelineFailure`` (may be None or a non-dict payload).
+
+    Returns:
+        The most specific ``code`` string found, or None when absent.
+    """
+    if not isinstance(evidence, dict):
+        return None
+    data = evidence.get("data")
+    if isinstance(data, dict):
+        inner = data.get("error")
+        if isinstance(inner, dict) and inner.get("code"):
+            return str(inner["code"])
+    top = evidence.get("error")
+    if isinstance(top, dict) and top.get("code"):
+        return str(top["code"])
+    return None
+
+
 async def _scenario_open_queue_autopoll(
     ca: JsonRpcClient,
     ed: JsonRpcClient,
@@ -1826,6 +1852,452 @@ async def _scenario_styled_yaml_minimal_diff(
         await _close_suppress(ed, project_id, session_id, file_path)
 
 
+_71D29A80_TOML_FIXTURE = (
+    "[project]\n"
+    'name = "ai-editor"\n'
+    'version = "1.0.77"\n'
+    'description = "AI Editor MCP server: universal file preview, open, edit, '
+    'write, and close"\n'
+    'readme = { file = "docs/README.md", content-type = "text/markdown" }\n'
+    'requires-python = ">=3.10"\n'
+    "dependencies = [\n"
+    '    "python-dotenv>=1.0",\n'
+    '    "pyyaml>=6.0",\n'
+    '    "click>=8.0",\n'
+    '    "mcp>=1.0.0",\n'
+    "]\n"
+)
+
+
+async def _scenario_toml_valid_open_71d29a80(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 71d29a80: a pyproject.toml-shaped fixture must open as valid TOML.
+
+    Reproduces ai-editor's OWN pyproject.toml constructs: an inline table
+    (``readme = { file = ..., content-type = ... }``) together with a
+    multi-line array of strings (``dependencies = [...]``). Live 1.0.77
+    wrongly falls back to text mode, reporting "Invalid TOML value: Invalid
+    value (at end of document)" via ``fallback_reason`` -- a construct that
+    is unambiguously valid TOML (importable with ``tomllib.loads`` directly).
+    This check FAILS whenever ``universal_file_open`` reports ``is_invalid``
+    or a non-empty ``fallback_reason`` for this fixture.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the open response's format_group/is_invalid.
+    """
+    del args
+    scenario_slug = "71d29a80_toml_valid_open"
+    file_path = "verify/71d29a80_pyproject_shape.toml"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    open_response = await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": _71D29A80_TOML_FIXTURE,
+        },
+    )
+    try:
+        is_invalid = open_response.get("is_invalid")
+        fallback_reason = open_response.get("fallback_reason")
+        if is_invalid or fallback_reason:
+            raise PipelineFailure(
+                "universal_file_open reported is_invalid/fallback_reason for a "
+                "valid pyproject.toml-shaped TOML fixture (bug 71d29a80)",
+                {
+                    "is_invalid": is_invalid,
+                    "fallback_reason": fallback_reason,
+                    "format_group": open_response.get("format_group"),
+                    "open_response": open_response,
+                },
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "format_group": open_response.get("format_group"),
+            "is_invalid": is_invalid,
+            "fallback_reason": fallback_reason,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+_91B8CE0B_GITIGNORE_FIXTURE = (
+    "# verify_editor_ca_chain fixture: .gitignore-style extensionless file\n"
+    "*.pyc\n"
+    "__pycache__/\n"
+    ".venv/\n"
+)
+
+
+async def _scenario_extensionless_open_91b8ce0b(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 91b8ce0b: a `.gitignore`-style extensionless file must open as text.
+
+    ``Path(".gitignore").suffix`` is empty, so the handler registry has no
+    extension to key off. Expected behavior: an extensionless dotfile is a
+    routine text file and should open successfully in text/line mode WITHOUT
+    requiring the caller to pass ``format_group`` as a hint. Live 1.0.77
+    instead rejects the open with ``UNKNOWN_FORMAT`` unless ``format_group``
+    is explicitly supplied. This check FAILS when the open response's error
+    code is ``UNKNOWN_FORMAT``.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the open response's format_group.
+    """
+    del args
+    scenario_slug = "91b8ce0b_extensionless_open"
+    file_path = "verify/.gitignore"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    try:
+        open_response = await _call(
+            ed,
+            "universal_file_open",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "create": True,
+                "initial_content": _91B8CE0B_GITIGNORE_FIXTURE,
+            },
+        )
+    except PipelineFailure as exc:
+        error_code = _extract_error_code(exc.evidence)
+        if error_code == "UNKNOWN_FORMAT":
+            raise PipelineFailure(
+                "universal_file_open rejected an extensionless .gitignore-style "
+                "file with UNKNOWN_FORMAT instead of a text-mode open "
+                "(bug 91b8ce0b)",
+                {
+                    "error_code": error_code,
+                    "error_message": _extract_error_message(exc.evidence),
+                    "evidence": exc.evidence,
+                },
+            ) from exc
+        raise
+    try:
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "format_group": open_response.get("format_group"),
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+async def _scenario_created_draft_trailing_newline_62759f8a(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 62759f8a: a freshly-created module inserted via code_lines must commit
+    with a trailing newline.
+
+    Opens a brand-new .py file (create=True, minimal placeholder content),
+    inserts a minimal valid module -- a module docstring plus one function
+    with a Google-style docstring -- via ``universal_file_edit`` at
+    ``parent_node_id="__root__"``, then commits. Expected behavior: the
+    committed file ends with a newline, matching PEP 8/flake8 W292. Live
+    1.0.77 assembles the inserted ``code_lines`` without a final newline and
+    the commit is rejected by the server's own flake8 quality gate with W292
+    ("no newline at end of file") -- the server fails its own pre-write
+    validation on output it produced itself. This check FAILS when the
+    commit is rejected with an error mentioning W292/"no newline at end of
+    file"; it PASSES only when the commit succeeds AND a CA readback shows
+    the file ends with a newline.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the commit outcome and trailing-newline check.
+    """
+    del args
+    scenario_slug = "62759f8a_trailing_newline"
+    file_path = "verify/62759f8a_trailing_newline.py"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": "",
+        },
+    )
+    try:
+        module_code_lines = [
+            '"""Module docstring for the 62759f8a trailing-newline fixture."""',
+            "",
+            "",
+            "def compute_value() -> int:",
+            '    """Return the fixture value.',
+            "",
+            "    Returns:",
+            "        Fixture value.",
+            '    """',
+            "    return 1",
+        ]
+        edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "insert",
+                        "parent_node_id": "__root__",
+                        "position": "last",
+                        "code_lines": module_code_lines,
+                    }
+                ],
+            },
+        )
+        try:
+            commit = await _call(
+                ed,
+                "universal_file_write",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "write_mode": "commit",
+                },
+                retry_on_transport_error=True,
+            )
+        except PipelineFailure as exc:
+            # The W292 detail lives inside error.data.validation_results, not
+            # in the top-level error message -- search the WHOLE evidence
+            # payload for the symptom, not just _extract_error_message's
+            # top-level message, so this branch does not silently fall
+            # through to a generic re-raise on a real symptom match.
+            evidence_text = json.dumps(exc.evidence, ensure_ascii=False).lower()
+            if "w292" in evidence_text or "no newline at end of file" in evidence_text:
+                raise PipelineFailure(
+                    "commit of a freshly-inserted module was rejected by the "
+                    "server's own flake8 gate for missing a trailing newline "
+                    "(bug 62759f8a)",
+                    {
+                        "error_code": _extract_error_code(exc.evidence),
+                        "error_message": _extract_error_message(exc.evidence),
+                        "evidence": exc.evidence,
+                    },
+                ) from exc
+            raise
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                "created-draft module commit did not upload changes", commit
+            )
+        content = await _read_file_text(ca, project_id, file_path, end_line=20)
+        if not content.endswith("\n"):
+            raise PipelineFailure(
+                "CA readback of the committed module lacks a trailing newline "
+                "(bug 62759f8a)",
+                {"content": content},
+            )
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "edit": _jsonable(edit),
+            "commit_uploaded": commit.get("uploaded"),
+            "ends_with_newline": content.endswith("\n"),
+            "readback_excerpt": content[:1000],
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+async def _scenario_create_draft_discard_close_2e44a0a9(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 2e44a0a9: closing a never-committed new-file draft must discard,
+    not reject with MODIFIED_NOT_WRITTEN.
+
+    Opens a brand-new .py file (create=True), modifies the draft via
+    ``universal_file_edit`` insert, then closes WITHOUT committing --
+    requesting the discard path via ``discard=true`` if the API accepts it,
+    else a plain ``universal_file_close`` call. Per ai-editor's own
+    documented contract for new files (R1/R3): "a file opened with
+    create=true is held only in the local workspace until its first
+    universal_file_write commit ... Closing such a file before any commit
+    releases no CA lock and simply discards the draft." Live 1.0.77
+    contradicts its own documented contract: ``universal_file_close``
+    gates on ``session.modified`` BEFORE checking whether the file was ever
+    persisted to CA, so closing an uncommitted new-file draft is rejected
+    with MODIFIED_NOT_WRITTEN exactly like an edit to an existing committed
+    file. This check FAILS when the close is rejected with
+    MODIFIED_NOT_WRITTEN.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload including any API surprise from a discard=true probe.
+    """
+    del args
+    scenario_slug = "2e44a0a9_create_draft_discard_close"
+    file_path = "verify/2e44a0a9_discard_close.py"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": '"""Module docstring for the 2e44a0a9 discard-close fixture."""\n',
+        },
+    )
+    close_attempted = False
+    try:
+        await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "insert",
+                        "parent_node_id": "__root__",
+                        "position": "last",
+                        "code_lines": ["", "NEVER_COMMITTED = 1"],
+                    }
+                ],
+            },
+        )
+
+        # API surprise probe: does universal_file_close accept a discard=true
+        # parameter at all? Recorded regardless of outcome; the schema is
+        # additionalProperties: False so this is expected to be rejected at
+        # parameter-validation with a VALIDATION_ERROR (not MODIFIED_NOT_WRITTEN)
+        # rather than actually performing a discard.
+        discard_probe: dict[str, Any] = {"attempted": True}
+        try:
+            discard_response = await _call(
+                ed,
+                "universal_file_close",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "discard": True,
+                },
+            )
+            discard_probe["accepted"] = True
+            discard_probe["response"] = discard_response
+            close_attempted = True
+        except PipelineFailure as exc:
+            discard_probe["accepted"] = False
+            discard_probe["error_code"] = _extract_error_code(exc.evidence)
+            discard_probe["error_message"] = _extract_error_message(exc.evidence)
+
+        if discard_probe["accepted"]:
+            return {
+                **project,
+                "session_id": session_id,
+                "file_path": file_path,
+                "discard_probe": discard_probe,
+                "close_path": "discard=true accepted directly",
+            }
+
+        # Fall back to a plain close: no discard parameter, no
+        # write_before_close -- the never-committed draft should simply be
+        # discarded per the documented new-file (R1/R3) close contract.
+        try:
+            close_response = await _call(
+                ed,
+                "universal_file_close",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                },
+            )
+            close_attempted = True
+        except PipelineFailure as exc:
+            error_code = _extract_error_code(exc.evidence)
+            if error_code == "MODIFIED_NOT_WRITTEN":
+                raise PipelineFailure(
+                    "closing a never-committed new-file draft was rejected "
+                    "with MODIFIED_NOT_WRITTEN instead of discarding it "
+                    "(bug 2e44a0a9)",
+                    {
+                        "discard_probe": discard_probe,
+                        "error_code": error_code,
+                        "error_message": _extract_error_message(exc.evidence),
+                        "evidence": exc.evidence,
+                    },
+                ) from exc
+            raise
+        return {
+            **project,
+            "session_id": session_id,
+            "file_path": file_path,
+            "discard_probe": discard_probe,
+            "close_path": "plain close (no discard param, no write_before_close)",
+            "close_response": close_response,
+        }
+    finally:
+        if not close_attempted:
+            # Best-effort cleanup only: write_before_close=true commits and
+            # closes so the throwaway project does not leak an open session.
+            # Never raised from the scenario -- this is not part of the
+            # assertion above.
+            try:
+                await asyncio.wait_for(
+                    _call(
+                        ed,
+                        "universal_file_close",
+                        {
+                            "project_id": project_id,
+                            "session_id": session_id,
+                            "file_path": file_path,
+                            "write_before_close": True,
+                        },
+                    ),
+                    timeout=DEFAULT_CLOSE_TIMEOUT_SECONDS,
+                )
+            except Exception:  # noqa: BLE001 - cleanup only
+                pass
+
+
 async def _run_scenario(
     name: str,
     fn: ScenarioFn,
@@ -1886,6 +2358,22 @@ def _scenario_registry() -> list[tuple[str, ScenarioFn]]:
         (
             "styled_yaml_minimal_diff_b215fbd3",
             _scenario_styled_yaml_minimal_diff,
+        ),
+        (
+            "toml_valid_open_71d29a80",
+            _scenario_toml_valid_open_71d29a80,
+        ),
+        (
+            "extensionless_open_91b8ce0b",
+            _scenario_extensionless_open_91b8ce0b,
+        ),
+        (
+            "created_draft_trailing_newline_62759f8a",
+            _scenario_created_draft_trailing_newline_62759f8a,
+        ),
+        (
+            "create_draft_discard_close_2e44a0a9",
+            _scenario_create_draft_discard_close_2e44a0a9,
         ),
     ]
 
