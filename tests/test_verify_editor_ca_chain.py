@@ -64,6 +64,7 @@ def test_run_pipeline_honors_single_selected_check(
     monkeypatch.setattr(
         pipeline, "_client", lambda *_args, **_kwargs: SimpleNamespace()
     )
+
     async def fake_assert_server_reachable(
         _server_name: str, _host: str, _port: int, *, timeout_seconds: float = 3.0
     ) -> None:
@@ -197,7 +198,9 @@ def test_client_warns_and_skips_mtls_when_files_missing(
         def __init__(self, **kwargs: Any) -> None:
             seen.update(kwargs)
 
-    monkeypatch.setitem(sys.modules, "mcp_proxy_adapter", types.ModuleType("mcp_proxy_adapter"))
+    monkeypatch.setitem(
+        sys.modules, "mcp_proxy_adapter", types.ModuleType("mcp_proxy_adapter")
+    )
     monkeypatch.setitem(
         sys.modules,
         "mcp_proxy_adapter.client",
@@ -268,17 +271,31 @@ def test_close_suppress_times_out_instead_of_hanging(
         )
     )
 
-    assert result == {
-        "close_error": "TimeoutError(universal_file_close exceeded 0s)"
-    }
+    assert result == {"close_error": "TimeoutError(universal_file_close exceeded 0s)"}
 
 
-def test_read_file_text_sends_default_end_line_when_not_requested(
+class _FakeDownloadClient:
+    """Stub JsonRpcClient exposing only the async ``download_file`` helper."""
+
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+        self.downloads: list[str] = []
+
+    async def download_file(self, transfer_id: str, dest_path: str) -> None:
+        self.downloads.append(transfer_id)
+        with open(dest_path, "wb") as handle:
+            handle.write(self.payload)
+
+
+def test_read_file_text_downloads_bytes_via_transfer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``get_file_lines`` REQUIRES ``end_line``, so a default readback must always
-    send a concrete value -- the generous ``_READ_FILE_TEXT_DEFAULT_END_LINE``
-    -- when the caller does not know the file's exact line count."""
+    """Readback uses path-based transfer download and preserves EOF newline.
+
+    CAS 1.6.90 removed ``get_file_lines``; the helper must begin a
+    ``transfer_download_begin`` with the project-root-resolved absolute
+    ``source_path`` and return the exact downloaded bytes as text.
+    """
     seen: dict[str, Any] = {}
 
     async def fake_call(
@@ -288,94 +305,66 @@ def test_read_file_text_sends_default_end_line_when_not_requested(
     ) -> dict[str, Any]:
         seen["command"] = command
         seen["params"] = params or {}
-        return {"lines": [{"content": "one"}, {"content": "two"}]}
+        return {"transfer_id": "t-1"}
 
     monkeypatch.setattr(pipeline, "_call", fake_call)
+    monkeypatch.setattr(pipeline, "_PROJECT_ROOTS", {"project-1": "/srv/projects/demo"})
+    client = _FakeDownloadClient(b"one\ntwo\n")
 
     text = asyncio.run(
         pipeline._read_file_text(
-            object(),
+            client,
             "project-1",
             "verify/small.txt",
+            end_line=5,
         )
     )
 
-    assert text == "one\ntwo"
-    assert seen["command"] == "get_file_lines"
+    assert text == "one\ntwo\n"
+    assert seen["command"] == "transfer_download_begin"
     assert seen["params"] == {
-        "project_id": "project-1",
-        "file_path": "verify/small.txt",
-        "start_line": 1,
-        "end_line": pipeline._READ_FILE_TEXT_DEFAULT_END_LINE,
-        "allow_healthy_line_ops": True,
+        "source_path": "/srv/projects/demo/verify/small.txt",
+        "filename": "small.txt",
+        "compression": "identity",
     }
+    assert client.downloads == ["t-1"]
 
 
-def test_read_file_text_retries_on_invalid_range_with_total_lines(
+def test_read_file_text_resolves_root_via_list_projects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A first-call INVALID_RANGE (end_line beyond the real file length) must
-    retry once with the file's real ``total_lines`` taken from the error
-    payload, instead of crashing on line-count surprises."""
-    calls: list[dict[str, Any]] = []
+    """An unknown project root is resolved through ``list_projects`` once."""
+    commands: list[str] = []
 
     async def fake_call(
         _client: object,
-        _command: str,
+        command: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        calls.append(params or {})
-        if len(calls) == 1:
-            raise pipeline.PipelineFailure(
-                "get_file_lines rejected end_line",
-                {"error": {"code": "INVALID_RANGE", "data": {"total_lines": 2}}},
-            )
-        return {"lines": [{"content": "one"}, {"content": "two"}]}
+        commands.append(command)
+        if command == "list_projects":
+            return {
+                "projects": [
+                    {"project_id": "project-2", "root_path": "/srv/projects/other"}
+                ]
+            }
+        return {"transfer_id": "t-2"}
 
     monkeypatch.setattr(pipeline, "_call", fake_call)
+    monkeypatch.setattr(pipeline, "_PROJECT_ROOTS", {})
+    client = _FakeDownloadClient(b"only")
 
     text = asyncio.run(
         pipeline._read_file_text(
-            object(),
-            "project-1",
-            "verify/small.txt",
-        )
-    )
-
-    assert text == "one\ntwo"
-    assert [call["end_line"] for call in calls] == [
-        pipeline._READ_FILE_TEXT_DEFAULT_END_LINE,
-        2,
-    ]
-
-
-def test_read_file_text_uses_explicit_short_end_line(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Scenarios with known fixture length may request an in-bounds end_line."""
-    seen: dict[str, Any] = {}
-
-    async def fake_call(
-        _client: object,
-        _command: str,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        seen["params"] = params or {}
-        return {"lines": ["only"]}
-
-    monkeypatch.setattr(pipeline, "_call", fake_call)
-
-    text = asyncio.run(
-        pipeline._read_file_text(
-            object(),
-            "project-1",
-            "verify/small.txt",
-            end_line=1,
+            client,
+            "project-2",
+            "verify/one.txt",
         )
     )
 
     assert text == "only"
-    assert seen["params"]["end_line"] == 1
+    assert commands == ["list_projects", "transfer_download_begin"]
+    assert pipeline._PROJECT_ROOTS == {"project-2": "/srv/projects/other"}
 
 
 def test_call_retries_once_on_transport_read_error() -> None:
