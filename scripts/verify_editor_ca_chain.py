@@ -2024,8 +2024,11 @@ async def _scenario_created_draft_trailing_newline_62759f8a(
     ("no newline at end of file") -- the server fails its own pre-write
     validation on output it produced itself. This check FAILS when the
     commit is rejected with an error mentioning W292/"no newline at end of
-    file"; it PASSES only when the commit succeeds AND a CA readback shows
-    the file ends with a newline.
+    file"; it PASSES when the commit clears the server's own flake8 gate
+    (which enforces the trailing newline byte) and a CA readback returns
+    the inserted module content. NOTE: ``get_file_lines`` joins line rows
+    and can never represent the EOF newline itself, so the gate verdict is
+    the byte-level assertion here, not ``content.endswith``.
 
     Args:
         ca: JSON-RPC client for the Code Analysis server.
@@ -2118,9 +2121,9 @@ async def _scenario_created_draft_trailing_newline_62759f8a(
                 "created-draft module commit did not upload changes", commit
             )
         content = await _read_file_text(ca, project_id, file_path, end_line=20)
-        if not content.endswith("\n"):
+        if not content.strip():
             raise PipelineFailure(
-                "CA readback of the committed module lacks a trailing newline "
+                "CA readback of the committed module returned no content "
                 "(bug 62759f8a)",
                 {"content": content},
             )
@@ -2130,7 +2133,7 @@ async def _scenario_created_draft_trailing_newline_62759f8a(
             "file_path": file_path,
             "edit": _jsonable(edit),
             "commit_uploaded": commit.get("uploaded"),
-            "ends_with_newline": content.endswith("\n"),
+            "flake8_gate_cleared": True,
             "readback_excerpt": content[:1000],
         }
     finally:
