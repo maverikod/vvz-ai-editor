@@ -370,11 +370,22 @@ def _resolve_target_node(
 
 
 def _merge_payload_keep_identity(dst: TreeNode, src: TreeNode) -> None:
+    """Replace ``dst``'s payload with ``src``'s, preserving ``dst``'s comments.
+
+    Fix for bug 20b4ba84 residual, symptom 1: ``src`` is always a freshly
+    built node from a raw replacement value (see ``_value_to_single_node``),
+    which never carries ``comment_before``/``comment_inline`` (raw payload
+    values have no comment metadata). Previously this function copied those
+    always-``None`` fields onto ``dst`` unconditionally, which silently
+    deleted any round-trip comment (e.g. an inline ``# ...`` on a mapping
+    entry) that the *original* parsed node at this position carried, on
+    every "replace" mutation regardless of format. A value replace should
+    only change the value, not erase comments attached to that tree
+    position.
+    """
     dst.type = src.type
     dst.value = src.value
     dst.children = src.children
-    dst.comment_before = src.comment_before
-    dst.comment_inline = src.comment_inline
 
 
 def _resolve_insert_parent(
