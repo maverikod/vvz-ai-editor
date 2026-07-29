@@ -3,7 +3,7 @@
 `../CLAUDE.md` is the entrypoint. This directory contains the project-bound
 Claude contract bundle.
 
-Package version: `v1.6.3`
+Package version: `v1.6.8`
 
 ## Layout
 
@@ -16,7 +16,7 @@ Package version: `v1.6.3`
 ## Project bindings
 
 - Project: `ai-editor`
-- Local checkout: `/home/testuser/projects/ai-editor`
+- Local checkout: `/home/vasilyvz/projects/tools/ai_editor`
 - CAS project ID: `3509ae38-0f02-4f16-8e44-e6de7ca0c050`
 - CAS server: `code-analysis-server-vvz`
 
