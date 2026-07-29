@@ -295,6 +295,10 @@ class TreeOperation:
     start_node_id: Optional[str] = None
     end_node_id: Optional[str] = None
     replace_all_child_nodes: bool = False
+    # Explicit opt-in for header-only ClassDef/FunctionDef patching. Implicit
+    # inference from snippet line count silently kept the old body (bug
+    # 831a82be); a bare signature without this flag is now a parse error.
+    header_only: bool = False
 
 
 # Reserved node_id: denotes the Module (root) node of the tree.

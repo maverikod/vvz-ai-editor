@@ -228,6 +228,9 @@ def _parse_function_def_module_level(code: str) -> cst.FunctionDef:
     )
     if found is None or not isinstance(found, cst.FunctionDef):
         raise ValueError("Function snippet must contain a def statement")
+    if any(line.comment is not None for line in mod.header):
+        # Preserve snippet-leading comments held in Module.header (bug 5495f4be).
+        found = found.with_changes(leading_lines=[*mod.header, *found.leading_lines])
     return found
 
 
@@ -534,7 +537,15 @@ def parse_code_snippet(
     # Try parsing as module first
     try:
         mod = cst.parse_module(normalized)
-        return list(mod.body)
+        body = list(mod.body)
+        # LibCST stores comment/blank lines preceding the first statement in
+        # Module.header, not in body[0].leading_lines. Dropping it silently
+        # loses leading comments of the snippet (bug 5495f4be).
+        if body and any(line.comment is not None for line in mod.header):
+            body[0] = body[0].with_changes(
+                leading_lines=[*mod.header, *body[0].leading_lines]
+            )
+        return body
     except cst.ParserSyntaxError:
         # If parsing as module fails, try wrapping in a function body
         # This handles cases where code is a statement sequence (not valid module-level)

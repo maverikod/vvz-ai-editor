@@ -19,7 +19,6 @@ from .tree_modifier_ops import (
     parse_code_snippet,
     parse_param_snippet,
 )
-from .tree_modifier_ops_parse import class_or_function_snippet_needs_full_replace
 
 
 def _validate_operation(tree: CSTTree, operation: TreeOperation) -> None:
@@ -68,16 +67,12 @@ def _validate_operation(tree: CSTTree, operation: TreeOperation) -> None:
                 )
             elif (
                 not operation.replace_all_child_nodes
+                and operation.header_only
                 and meta
                 and meta.type in ("ClassDef", "FunctionDef")
             ):
-                if class_or_function_snippet_needs_full_replace(text):
-                    parse_code_snippet(
-                        code=operation.code, code_lines=operation.code_lines
-                    )
-                else:
-                    _stub = text.rstrip().rstrip(":") + ":\n    pass\n"
-                    cst.parse_module(_stub)
+                _stub = text.rstrip().rstrip(":") + ":\n    pass\n"
+                cst.parse_module(_stub)
             else:
                 parse_code_snippet(code=operation.code, code_lines=operation.code_lines)
         except Exception as e:

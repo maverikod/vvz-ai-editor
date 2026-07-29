@@ -236,6 +236,7 @@ def build_tree_operations(
                     replace_all_child_nodes=bool(
                         op_dict.get("replace_all_child_nodes", False)
                     ),
+                    header_only=bool(op_dict.get("header_only", False)),
                 )
             )
 

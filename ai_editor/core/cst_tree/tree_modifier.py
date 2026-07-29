@@ -25,7 +25,7 @@ from .models import (
     TreeOperationType,
 )
 
-from .node_id_markers import append_persisted_node_ids, strip_persisted_node_ids
+from .node_id_markers import strip_persisted_node_ids
 from .node_stable_id import logical_source_from_module
 from .tree_builder import _build_tree_index, get_tree
 
@@ -42,7 +42,6 @@ from .tree_modifier_ops import (
 from .tree_modifier_ops_parse import (
     FINE_GRAINED_REPLACE_NODE_TYPES,
     class_body_indent_prefix,
-    class_or_function_snippet_needs_full_replace,
     def_snippet_container_kind,
     insert_target_container_kind,
     join_code_lines,
@@ -457,16 +456,16 @@ def _apply_operation(
             code = join_code_lines(operation.code_lines)
         if not code:
             raise ValueError("code or code_lines required for replace operation")
-        if not operation.replace_all_child_nodes:
+        if not operation.replace_all_child_nodes and operation.header_only:
             _nid = tree.node_id_aliases.get(operation.node_id, operation.node_id)
             _meta = tree.metadata_map.get(_nid) or tree.metadata_map.get(
                 operation.node_id
             )
-            if (
-                _meta
-                and _meta.type in ("ClassDef", "FunctionDef")
-                and not class_or_function_snippet_needs_full_replace(code)
-            ):
+            # Header-only patching is explicit opt-in (bug 831a82be): a bare
+            # signature snippet without the flag falls through to the full
+            # replace path, where it fails with an explicit parse error
+            # instead of silently keeping the old body.
+            if _meta and _meta.type in ("ClassDef", "FunctionDef"):
                 return _replace_node_header(module, tree, operation.node_id, code)
         return replace_node(module, tree, operation.node_id, code)
     elif operation.action == TreeOperationType.REPLACE_RANGE:
