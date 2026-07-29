@@ -17,6 +17,7 @@ import sys
 import time
 import traceback
 import uuid
+import tempfile
 import warnings
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -334,6 +335,9 @@ async def _create_project(
     project_id = project.get("project_id")
     if not isinstance(project_id, str) or not project_id:
         raise PipelineFailure("create_project returned no project_id", project)
+    project_root = project.get("project_root")
+    if isinstance(project_root, str) and project_root:
+        _PROJECT_ROOTS[project_id] = project_root
     return {"project_id": project_id, "project_name": project_name}
 
 
@@ -375,92 +379,62 @@ async def _close_suppress(
         return {"close_error": repr(exc)}
 
 
-_READ_FILE_TEXT_DEFAULT_END_LINE = 1000
+_PROJECT_ROOTS: dict[str, str] = {}
 
 
-def _get_file_lines_invalid_range_total_lines(evidence: Any) -> int | None:
-    """Extract ``total_lines`` from a ``get_file_lines`` INVALID_RANGE error.
-
-    CA's ``get_file_lines`` rejects an ``end_line`` beyond the file's actual
-    length with an ``INVALID_RANGE`` error whose ``error.data`` carries the
-    file's real ``total_lines`` -- the value to retry with.
-
-    Args:
-        evidence: The ``PipelineFailure.evidence`` payload from a failed
-            ``get_file_lines`` call (the unwrapped JSON-RPC result dict).
-
-    Returns:
-        The file's total line count, or None when the evidence is not an
-        INVALID_RANGE error carrying that field.
-    """
-    if not isinstance(evidence, dict):
-        return None
-    error = evidence.get("error")
-    if not isinstance(error, dict) or error.get("code") != "INVALID_RANGE":
-        return None
-    data = error.get("data")
-    if isinstance(data, dict):
-        total_lines = data.get("total_lines")
-        if isinstance(total_lines, int) and total_lines >= 0:
-            return total_lines
-    return None
-
-
-async def _get_file_lines(
-    ca: JsonRpcClient, project_id: str, file_path: str, end_line: int
-) -> dict[str, Any]:
-    return await _call(
-        ca,
-        "get_file_lines",
-        {
-            "project_id": project_id,
-            "file_path": file_path,
-            "start_line": 1,
-            "end_line": end_line,
-            "allow_healthy_line_ops": True,
-        },
+async def _resolve_project_root(ca: JsonRpcClient, project_id: str) -> str:
+    """Return the server-side absolute root directory of a project."""
+    cached = _PROJECT_ROOTS.get(project_id)
+    if cached:
+        return cached
+    listing = await _call(ca, "list_projects", {})
+    for row in listing.get("projects") or listing.get("items") or []:
+        if isinstance(row, dict) and row.get("project_id") == project_id:
+            root = row.get("root_path") or row.get("project_root")
+            if isinstance(root, str) and root:
+                _PROJECT_ROOTS[project_id] = root
+                return root
+    raise PipelineFailure(
+        f"cannot resolve server root for project {project_id!r}", listing
     )
 
 
 async def _read_file_text(
     ca: JsonRpcClient, project_id: str, file_path: str, *, end_line: int | None = None
 ) -> str:
-    """Read a project file's full text back through CA's ``get_file_lines``.
+    """Read a project file's full text via the chunked transfer download.
 
-    ``get_file_lines`` REQUIRES ``end_line`` (a missing/None ``end_line`` is a
-    hard JSON-RPC error, code -32603, "required parameter 'end_line' is
-    missing") -- there is no "read whole file" mode. The caller may not know
-    the file's exact line count in advance (e.g. after a lossy rewrite
-    shrinks the file), so this always sends a concrete, generous end_line
-    first and, if CA rejects it as INVALID_RANGE, retries once with the
-    file's real ``total_lines`` taken from the error payload. The scenario
-    must never crash on line-count surprises.
+    CAS 1.6.90 removed ``get_file_lines`` (this helper's previous source),
+    so readback now goes through the path-based ``transfer_download_begin``
+    (absolute ``source_path`` on the server, which works for freshly
+    created files before indexing assigns them a ``file_id``) plus
+    ``JsonRpcClient.download_file``. Unlike the old line-join readback this
+    returns the file's exact bytes decoded as UTF-8, so it CAN represent a
+    trailing EOF newline. ``end_line`` is kept for call-site compatibility
+    and ignored: the transfer always yields the whole file.
     """
-    first_end_line = (
-        end_line if end_line is not None else _READ_FILE_TEXT_DEFAULT_END_LINE
+    del end_line
+    root = await _resolve_project_root(ca, project_id)
+    source_path = f"{root.rstrip('/')}/{file_path}"
+    begin = await _call(
+        ca,
+        "transfer_download_begin",
+        {
+            "source_path": source_path,
+            "filename": source_path.rsplit("/", 1)[-1],
+            "compression": "identity",
+        },
     )
+    transfer_id = str(begin.get("transfer_id") or "").strip()
+    if not transfer_id:
+        raise PipelineFailure("download begin returned no transfer_id", begin)
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp_path = tmp.name
     try:
-        lines_payload = await _get_file_lines(ca, project_id, file_path, first_end_line)
-    except PipelineFailure as exc:
-        total_lines = _get_file_lines_invalid_range_total_lines(exc.evidence)
-        if total_lines is None or total_lines == first_end_line:
-            raise
-        lines_payload = await _get_file_lines(ca, project_id, file_path, total_lines)
-    raw_lines = lines_payload.get("lines")
-    if isinstance(raw_lines, list):
-        lines: list[str] = []
-        for row in raw_lines:
-            if isinstance(row, str):
-                lines.append(row)
-            elif isinstance(row, dict):
-                text = row.get("content") or row.get("text") or row.get("line")
-                if isinstance(text, str):
-                    lines.append(text)
-        return "\n".join(lines)
-    content = lines_payload.get("content") or lines_payload.get("text")
-    if isinstance(content, str):
-        return content
-    raise PipelineFailure("get_file_lines returned no readable content", lines_payload)
+        await ca.download_file(transfer_id, tmp_path)
+        return Path(tmp_path).read_text(encoding="utf-8")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 async def _open_edit_write_read(
@@ -2321,6 +2295,15 @@ _831A82BE_PY_FIXTURE = (
     "        Second fixture value.\n"
     '    """\n'
     "    return 2\n"
+    "\n"
+    "\n"
+    "def third_function() -> int:\n"
+    '    """Return the third fixture value.\n'
+    "\n"
+    "    Returns:\n"
+    "        Third fixture value.\n"
+    '    """\n'
+    "    return 3\n"
 )
 
 
@@ -2328,20 +2311,38 @@ async def _scenario_py_replace_functiondef_no_nesting_831a82be(
     ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
 ) -> dict[str, Any]:
     """Bug 831a82be: replacing a top-level FunctionDef by node_ref must not
-    nest it inside the function it replaces.
+    nest it inside the function it replaces, AND a single-line header-only
+    snippet must not silently keep the OLD body under a success response.
 
-    Two module-level functions are fixtures; ``universal_file_search``
-    resolves the SECOND function's node_ref (mirrors the bug's own repro: two
-    top-level FunctionDef node_refs obtained via search, then a batch
-    ``replace`` targeting them). ``universal_file_edit`` replaces
-    ``second_function`` with a differently-bodied implementation of the SAME
-    name. Live 1.0.69 inserted the new definition NESTED inside the old
-    function's body instead of replacing the module-level statement, with the
-    old body's tail surviving after the nested copy. This check FAILS when
-    the committed file contains more than one ``def second_function``, when
-    that definition is indented (nested) rather than at module level, or when
-    the original body (``return 2``) survives; it PASSES only when the
-    function is replaced cleanly at module level.
+    Sub-assertion A (full-body replace): ``universal_file_search`` resolves
+    ``second_function``'s node_ref (mirrors the bug's own repro: two top-level
+    FunctionDef node_refs obtained via search, then a ``replace``). The
+    replacement code_lines carry a full new body. Live 1.0.69 inserted the
+    new definition NESTED inside the old function's body instead of replacing
+    the module-level statement, with the old body's tail surviving after the
+    nested copy. This sub-assertion FAILS when the committed file contains
+    more than one ``def second_function``, when that definition is indented
+    (nested) rather than at module level, or when the original body
+    (``return 2``) survives.
+
+    Sub-assertion B (single-line header-only snippet -- the REAL failing
+    shape verified against code): ``universal_file_edit`` replaces
+    ``third_function`` with a replacement snippet that is a SINGLE non-blank
+    line (``def third_function() -> int:``, no body at all). Verified against
+    ``ai_editor/core/cst_tree/tree_modifier_ops_parse.py::
+    class_or_function_snippet_needs_full_replace`` (returns False for a
+    single non-blank line with no indented/blank follow-on lines) and
+    ``ai_editor/core/cst_tree/tree_modifier.py::_replace_node_header`` (swaps
+    only name/params/returns/decorators, keeping the OLD ``body`` untouched):
+    this routes a ``replace`` operation to the header-only path, which
+    reports ``success``/``updated=true`` and commits successfully while
+    SILENTLY retaining the old function body. Expected correct behavior per
+    the bug record: either a full replacement (old body gone) or an explicit
+    error -- a success response that leaves the old body intact is the bug.
+    This sub-assertion FAILS when the edit AND commit both report success
+    while the original body (``return 3``) survives in the CA readback; it
+    accepts (does not fail on) an explicit error from either call, since that
+    is the documented alternative correct behavior.
 
     Args:
         ca: JSON-RPC client for the Code Analysis server.
@@ -2350,7 +2351,7 @@ async def _scenario_py_replace_functiondef_no_nesting_831a82be(
         watch_dir_id: CA watch directory that hosts the throwaway project.
 
     Returns:
-        Evidence payload with the search node_ref, edit result, and readback.
+        Evidence payload with both sub-assertions' search/edit/commit results.
     """
     del args
     scenario_slug = "831a82be_functiondef_no_nesting"
@@ -2458,8 +2459,7 @@ async def _scenario_py_replace_functiondef_no_nesting_831a82be(
             )
         if "return 2" in content:
             raise PipelineFailure(
-                "original second_function body survived the replace "
-                "(bug 831a82be)",
+                "original second_function body survived the replace " "(bug 831a82be)",
                 {"content": content},
             )
         if "return 99" not in content:
@@ -2472,15 +2472,150 @@ async def _scenario_py_replace_functiondef_no_nesting_831a82be(
                 "untouched first_function was corrupted by the replace",
                 {"content": content},
             )
+
+        # Sub-assertion B: single-line header-only snippet, no body at all.
+        # Re-search for third_function's node_ref -- the tree was rebuilt by
+        # the commit above, so any pre-commit ref would be stale.
+        search_result_b = await _call(
+            ed,
+            "universal_file_search",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "search_type": "simple",
+                "node_type": "FunctionDef",
+                "name": "third_function",
+                "require_one": True,
+            },
+        )
+        node_ref_b_raw = search_result_b.get("node_ref")
+        node_ref_b = str(node_ref_b_raw) if node_ref_b_raw is not None else None
+        if not node_ref_b:
+            raise PipelineFailure(
+                "universal_file_search did not resolve third_function's node_ref",
+                search_result_b,
+            )
+        # NOTE: the header text must differ from the CURRENT committed header
+        # in a way _replace_node_header actually COPIES (name/params/returns/
+        # decorators only -- verified against tree_modifier.py), else the
+        # write is a genuine no-op (CA reports unchanged=true/uploaded=false,
+        # proving nothing). A trailing comment on the def line is NOT copied
+        # (confirmed live: reported unchanged=true) since it lives outside
+        # those four fields. Renaming the function IS copied (the ``name``
+        # field) and keeps the SAME return annotation (avoids an unrelated
+        # "missing return type hint" docstring-gate rejection that would mask
+        # the symptom under a false explicit-error outcome) -- still ONE
+        # non-blank line, no body.
+        header_only_snippet = ["def third_function_renamed() -> int:"]
+        edit_b_error: dict[str, Any] | None = None
+        edit_b: dict[str, Any] | None = None
+        try:
+            edit_b = await _edit(
+                ed,
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "operations": [
+                        {
+                            "type": "replace",
+                            "node_id": node_ref_b,
+                            "code_lines": header_only_snippet,
+                        }
+                    ],
+                },
+            )
+        except PipelineFailure as exc:
+            edit_b_error = {
+                "stage": "edit",
+                "error_code": _extract_error_code(exc.evidence),
+                "error_message": _extract_error_message(exc.evidence),
+            }
+
+        commit_b: dict[str, Any] | None = None
+        commit_b_error: dict[str, Any] | None = None
+        if edit_b_error is None:
+            try:
+                commit_b = await _call(
+                    ed,
+                    "universal_file_write",
+                    {
+                        "project_id": project_id,
+                        "session_id": session_id,
+                        "file_path": file_path,
+                        "write_mode": "commit",
+                        "format_python": True,
+                    },
+                    retry_on_transport_error=True,
+                )
+            except PipelineFailure as exc:
+                commit_b_error = {
+                    "stage": "commit",
+                    "error_code": _extract_error_code(exc.evidence),
+                    "error_message": _extract_error_message(exc.evidence),
+                }
+
+        if edit_b_error is not None or commit_b_error is not None:
+            # Explicit rejection is the documented acceptable alternative --
+            # not the bug (the bug is a SILENT success with a stale body).
+            header_only_result: dict[str, Any] = {
+                "outcome": "explicit_error",
+                "edit_error": edit_b_error,
+                "commit_error": commit_b_error,
+            }
+        else:
+            assert commit_b is not None
+            if not commit_b.get("uploaded"):
+                raise PipelineFailure(
+                    "third_function header-only replace commit did not upload "
+                    "changes",
+                    commit_b,
+                )
+            content_b = await _read_file_text(ca, project_id, file_path)
+            header_renamed = "def third_function_renamed" in content_b
+            old_body_survived = "return 3" in content_b
+            if header_renamed and old_body_survived:
+                raise PipelineFailure(
+                    "single-line header-only replace on third_function reported "
+                    "success (edit updated=true, commit uploaded=true) and DID "
+                    "rename the header, while SILENTLY retaining the OLD "
+                    "function body -- class_or_function_snippet_needs_full_"
+                    "replace routed a body-less single-line snippet to "
+                    "_replace_node_header, which preserves the old body "
+                    "verbatim (bug 831a82be)",
+                    {
+                        "node_ref": node_ref_b,
+                        "snippet": header_only_snippet,
+                        "header_renamed": header_renamed,
+                        "old_body_survived": old_body_survived,
+                        "content": content_b,
+                    },
+                )
+            header_only_result = {
+                "outcome": "success_body_removed",
+                "header_renamed": header_renamed,
+                "old_body_survived": old_body_survived,
+                "content": content_b,
+            }
+
         return {
             **project,
             "session_id": session_id,
             "file_path": file_path,
-            "search_node_ref": node_ref,
-            "edit": _jsonable(edit),
-            "commit_uploaded": commit.get("uploaded"),
-            "def_second_function_count": def_count,
-            "readback_content": content,
+            "sub_assertion_a": {
+                "search_node_ref": node_ref,
+                "edit": _jsonable(edit),
+                "commit_uploaded": commit.get("uploaded"),
+                "def_second_function_count": def_count,
+                "readback_content": content,
+            },
+            "sub_assertion_b": {
+                "search_node_ref": node_ref_b,
+                "edit": _jsonable(edit_b),
+                "commit_uploaded": commit_b.get("uploaded") if commit_b else None,
+                "result": header_only_result,
+            },
         }
     finally:
         await _close_suppress(ed, project_id, session_id, file_path)
@@ -2490,8 +2625,6 @@ _5495F4BE_PY_FIXTURE = (
     '"""Fixture module for bug 5495f4be (leading comment preservation on '
     'replace)."""\n'
     "\n"
-    "# fixture: standalone comment above the constant\n"
-    "# second line of the comment block\n"
     "CONST_VALUE = 1\n"
 )
 
@@ -2499,18 +2632,27 @@ _5495F4BE_PY_FIXTURE = (
 async def _scenario_py_replace_keeps_leading_comments_5495f4be(
     ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
 ) -> dict[str, Any]:
-    """Bug 5495f4be: replacing a SimpleStatementLine must not drop its
-    leading standalone comment block.
+    """Bug 5495f4be: comment lines LEADING a replacement snippet must not be
+    silently dropped by ``universal_file_edit`` replace.
 
-    A two-line standalone comment sits directly above a module-level
-    ``CONST_VALUE = 1`` statement. ``universal_file_edit`` replaces that SAME
-    statement (not the comment) with a new value, keeping the module valid
-    Python -- the same replace shape as the bug's own repro (a
-    SimpleStatementLine replace via ``code_lines``). Live 1.0.69 silently
-    dropped leading comment trivia when replacing the statement below it.
-    This check FAILS when either original comment line is missing from the
-    committed file; it PASSES only when both comment lines and the new value
-    are present.
+    The REAL failing shape (verified against code, matches the bug's own
+    repro of adding comment directives via ``code_lines``): the comments are
+    NOT pre-existing above the target statement -- they are part of the
+    REPLACEMENT snippet itself. A module-level ``CONST_VALUE = 1`` statement
+    is replaced via ``code_lines=["# directive one", "# directive two",
+    "CONST_VALUE = 2"]``. Verified against
+    ``ai_editor/core/cst_tree/tree_modifier_ops_parse.py::parse_code_snippet``:
+    it calls ``cst.parse_module(normalized)`` and returns ``list(mod.body)``
+    -- but libcst puts leading standalone comment lines that precede the
+    first real statement into ``mod.header``, NOT into the first body
+    statement's ``leading_lines``; ``list(mod.body)`` discards ``mod.header``
+    entirely, so the two comment lines vanish before the replacement is ever
+    spliced into the tree. Live confirmed via direct ``libcst.parse_module``
+    on this exact snippet: ``mod.header`` holds both ``Comment`` tokens while
+    the sole body statement's ``leading_lines`` is empty. This check FAILS
+    when either comment line is missing from the committed file despite the
+    edit and commit both reporting success; it PASSES only when both
+    directive comments and the new value are present.
 
     Args:
         ca: JSON-RPC client for the Code Analysis server.
@@ -2553,6 +2695,11 @@ async def _scenario_py_replace_keeps_leading_comments_5495f4be(
             raise PipelineFailure(
                 "preview did not expose CONST_VALUE statement node_ref", preview
             )
+        replacement_code_lines = [
+            "# directive one",
+            "# directive two",
+            "CONST_VALUE = 2",
+        ]
         edit = await _edit(
             ed,
             {
@@ -2563,7 +2710,7 @@ async def _scenario_py_replace_keeps_leading_comments_5495f4be(
                     {
                         "type": "replace",
                         "node_id": stmt_ref,
-                        "code_lines": ["CONST_VALUE = 2"],
+                        "code_lines": replacement_code_lines,
                     }
                 ],
             },
@@ -2586,16 +2733,22 @@ async def _scenario_py_replace_keeps_leading_comments_5495f4be(
             )
         content = await _read_file_text(ca, project_id, file_path)
         required_substrings = (
-            "# fixture: standalone comment above the constant",
-            "# second line of the comment block",
+            "# directive one",
+            "# directive two",
             "CONST_VALUE = 2",
         )
         missing = [needle for needle in required_substrings if needle not in content]
         if missing:
             raise PipelineFailure(
-                "leading standalone comment block was dropped by the replace "
-                "(bug 5495f4be)",
-                {"missing": missing, "content": content},
+                "leading comment lines of the REPLACEMENT snippet were "
+                "silently dropped (parse_code_snippet returns list(mod.body), "
+                "discarding mod.header where libcst places comments leading "
+                "the first statement) (bug 5495f4be)",
+                {
+                    "missing": missing,
+                    "replacement_code_lines": replacement_code_lines,
+                    "content": content,
+                },
             )
         if "CONST_VALUE = 1" in content:
             raise PipelineFailure(
@@ -2616,50 +2769,10 @@ async def _scenario_py_replace_keeps_leading_comments_5495f4be(
 
 
 _086A8F6C_PY_FIXTURE = (
-    '"""Fixture module for bug 086a8f6c (search node_id/stable_id '
-    'uniqueness)."""\n'
-    "\n"
-    "\n"
-    "class Alpha:\n"
-    '    """Alpha fixture class."""\n'
-    "\n"
-    "    def method_one(self) -> int:\n"
-    '        """Return the Alpha fixture value.\n'
-    "\n"
-    "        Returns:\n"
-    "            Alpha fixture value.\n"
-    '        """\n'
-    "        return 1\n"
-    "\n"
-    "\n"
-    "class Beta:\n"
-    '    """Beta fixture class."""\n'
-    "\n"
-    "    def method_two(self) -> int:\n"
-    '        """Return the Beta fixture value.\n'
-    "\n"
-    "        Returns:\n"
-    "            Beta fixture value.\n"
-    '        """\n'
-    "        return 2\n"
-    "\n"
-    "\n"
-    "def standalone_one() -> int:\n"
-    '    """Return the first standalone fixture value.\n'
-    "\n"
-    "    Returns:\n"
-    "        First standalone fixture value.\n"
-    '    """\n'
-    "    return 10\n"
-    "\n"
-    "\n"
-    "def standalone_two() -> int:\n"
-    '    """Return the second standalone fixture value.\n'
-    "\n"
-    "    Returns:\n"
-    "        Second standalone fixture value.\n"
-    '    """\n'
-    "    return 20\n"
+    '"""Fixture module for bug 086a8f6c (id uniqueness after a shift)."""\n'
+    "CONST_A = 1\n"
+    "CONST_B = 2\n"
+    "CONST_C = 3\n"
 )
 
 
@@ -2667,19 +2780,62 @@ async def _scenario_search_ids_unique_086a8f6c(
     ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
 ) -> dict[str, Any]:
     """Bug 086a8f6c: universal_file_search must not collide one node's
-    stable_id with a DIFFERENT node's node_id.
+    stable_id with a DIFFERENT node's node_id AFTER a structural shift.
 
-    A fixture with two classes (one method each) and two standalone
-    functions gives ``universal_file_search`` a tree with many distinct
-    nodes, mirroring the bug's own repro shape (a ``simple`` search returning
-    several def/statement nodes, as in the 86288c9c scenario's search call).
-    Every match's ``node_id``, ``stable_id``, and ``node_ref`` is collected.
-    Live 1.0.69 returned one node's ``stable_id`` equal to a DIFFERENT node's
-    ``node_id``, making id-based addressing ambiguous and explaining
-    downstream STALE_NODE_ID/wrong-node-replaced failures. This check FAILS
-    when any identifier value is simultaneously the ``stable_id`` of one
-    match and the ``node_id`` of a distinct match, or when any ``node_ref``
-    value is shared by more than one distinct node.
+    The REAL failing shape (verified against code, and against two dead
+    ends this rework ruled out empirically):
+
+    1. A fresh, never-edited tree trivially has ``node_id == stable_id`` per
+       node (both fall back to the same freshly-generated uuid on first
+       build -- ``ai_editor/core/cst_tree/tree_builder_index.py::
+       _build_tree_index``), so searching an unedited file cannot reproduce
+       this bug -- confirmed live (193/27-match broad searches on untouched
+       fixtures, zero collisions).
+    2. Deleting by the statement's own MAP short_id (what
+       ``universal_file_search``/preview normally hand back) does NOT
+       reproduce it either -- confirmed live: that resolves via
+       ``ai_editor/core/edit_session/edit_operations_adapter.py::
+       sidecar_ops_use_unified_tree`` straight to
+       ``sidecar_cst_apply.py::_run_valid_session_sidecar_batch``, which
+       calls ``_refresh_in_memory_cst_without_sidecar`` -- a from-scratch
+       ``create_tree_from_code`` with NO previous_metadata_map at all -- so
+       every id comes back freshly random with no collision.
+
+    The collision requires forcing the OTHER internal path: deleting by an
+    INNER leaf's stable_id that the MAP does not track (here, the
+    ``Assign`` node inside the ``SimpleStatementLine``, not the statement
+    line itself). That stable_id fails to resolve in
+    ``sidecar_ops_use_unified_tree`` (raises ``ValueError`, no MAP entry
+    matches), forcing the FALLBACK path
+    (``sidecar_cst_apply.py::run_sidecar_cst_edit_batch``) -- the only path
+    that calls ``tree_modifier.py::modify_tree`` -> ``_apply_single_op`` ->
+    ``tree_stable_data.py::restore_stable_data``, which rebuilds the index
+    assigning ``node_id`` via an EXACT positional key -- ``(start_line,
+    start_col, end_line, end_col, node_type)``, carried over from the
+    PREVIOUS metadata_map (``exact_key_to_id``/``build_exact_node_key``) --
+    while ``stable_id`` for statement-shaped nodes is carried over via a
+    CONTENT-based key -- ``(node_type, qualname, normalized_text)`` -- from
+    ``_obj_to_stable_from_metadata``. Deleting the fixture's FIRST statement
+    (``CONST_A = 1``) shifts every later statement up by one line. The new
+    ``CONST_B`` node now sits at the exact line/col span the OLD (deleted)
+    ``CONST_A`` node used to occupy, so it inherits ``CONST_A``'s old
+    node_id (which equals ``CONST_A``'s own stable_id, since on the initial
+    fresh build node_id and stable_id start equal) via the POSITIONAL key --
+    while ``CONST_B`` correctly keeps its OWN stable_id via the CONTENT key.
+    The same shift gives new ``CONST_C`` the OLD ``CONST_B`` node_id. Net
+    result: post-edit, ``CONST_B``'s stable_id equals ``CONST_C``'s node_id
+    -- two DISTINCT nodes (confirmed live at BOTH the ``Assign`` and the
+    ``SimpleStatementLine`` granularity simultaneously).
+
+    Also verified live: a post-COMMIT re-search does NOT show this -- commit
+    replaces the session tree with a freshly re-parsed one, discarding the
+    carryover artifacts. The failing shape lives ONLY in the uncommitted
+    DRAFT tree, which ``universal_file_search`` reads directly per the
+    editor's own contract ("universal_file_edit mutates the draft only").
+    This check therefore re-searches BEFORE commit and FAILS when any
+    identifier value is simultaneously the ``stable_id`` of one match and
+    the ``node_id`` of a distinct match, or when any ``node_ref`` value is
+    shared by more than one distinct node.
 
     Args:
         ca: JSON-RPC client for the Code Analysis server.
@@ -2688,7 +2844,7 @@ async def _scenario_search_ids_unique_086a8f6c(
         watch_dir_id: CA watch directory that hosts the throwaway project.
 
     Returns:
-        Evidence payload with the match count and any detected collisions.
+        Evidence payload with the pre/post-edit match counts and collisions.
     """
     del args
     scenario_slug = "086a8f6c_search_ids_unique"
@@ -2708,6 +2864,70 @@ async def _scenario_search_ids_unique_086a8f6c(
         },
     )
     try:
+        # Baseline broad search: collect the CONST_A "Assign" node's
+        # stable_id (NOT the wrapping SimpleStatementLine's MAP short_id).
+        # Verified against code -- this distinction is load-bearing:
+        # ai_editor/core/edit_session/edit_operations_adapter.py::
+        # sidecar_ops_use_unified_tree resolves a delete op's node_id against
+        # the CURRENT MAP tree (resolve_node_ref_to_short_id, matching either
+        # a numeric short_id or a MAP entry's own uuid); the MAP only tracks
+        # "interesting" nodes (statements/defs), so an inner "Assign" leaf's
+        # stable_id does NOT resolve there and raises ValueError, which
+        # forces ``sidecar_cst_apply.py::run_sidecar_cst_edit_batch``'s
+        # FALLBACK path -- the only path that calls
+        # ``ai_editor/core/cst_tree/tree_modifier.py::modify_tree`` ->
+        # ``_apply_single_op`` -> ``restore_stable_data``, which is where the
+        # positional node_id (exact_key_to_id, keyed by line/col/type from
+        # the PREVIOUS metadata_map) collides with the content-based
+        # stable_id (keyed by normalized statement text) after the shift.
+        # Targeting the delete by the MAP short_id instead (confirmed live)
+        # routes through ``_run_valid_session_sidecar_batch``, which calls
+        # ``_refresh_in_memory_cst_without_sidecar`` -- a from-scratch
+        # ``create_tree_from_code`` with NO previous_metadata_map at all --
+        # so every id comes back freshly random and no collision is
+        # observable there.
+        baseline_search = await _call(
+            ed,
+            "universal_file_search",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "search_type": "simple",
+                "node_type": "Assign",
+                "start_line": 2,
+                "end_line": 2,
+                "require_one": True,
+            },
+        )
+        const_a_stable_id_raw = baseline_search.get("match", {}).get("stable_id")
+        const_a_ref = (
+            str(const_a_stable_id_raw) if const_a_stable_id_raw is not None else None
+        )
+        if not const_a_ref:
+            raise PipelineFailure(
+                "baseline search did not resolve CONST_A's Assign stable_id",
+                baseline_search,
+            )
+
+        delete_edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [{"type": "delete", "node_id": const_a_ref}],
+            },
+        )
+
+        # Re-search the SAME session's DRAFT tree immediately after the
+        # delete -- BEFORE commit. A post-COMMIT re-search does NOT
+        # reproduce this (confirmed live): commit replaces the session tree
+        # with a freshly re-parsed one, discarding the carryover artifacts.
+        # The failing shape lives in the uncommitted
+        # DRAFT, which ``universal_file_search`` reads directly per the
+        # editor's own contract ("universal_file_edit mutates the draft
+        # only").
         search_result = await _call(
             ed,
             "universal_file_search",
@@ -2719,10 +2939,10 @@ async def _scenario_search_ids_unique_086a8f6c(
             },
         )
         matches = search_result.get("matches")
-        if not isinstance(matches, list) or len(matches) < 4:
+        if not isinstance(matches, list) or len(matches) < 2:
             raise PipelineFailure(
-                "universal_file_search returned too few matches to exercise "
-                "id uniqueness (bug 086a8f6c)",
+                "post-delete universal_file_search returned too few matches "
+                "to exercise id uniqueness (bug 086a8f6c)",
                 search_result,
             )
         entries: list[dict[str, Any]] = []
@@ -2769,18 +2989,59 @@ async def _scenario_search_ids_unique_086a8f6c(
 
         if stable_vs_node_id_collisions or duplicate_node_refs:
             raise PipelineFailure(
-                "universal_file_search returned colliding node identifiers "
-                "across distinct nodes (bug 086a8f6c)",
+                "post-delete (pre-commit draft) universal_file_search "
+                "returned colliding node identifiers across distinct nodes "
+                "-- positional node_id carryover collided with content-based "
+                "stable_id carryover after the structural shift "
+                "(bug 086a8f6c)",
                 {
+                    "const_a_ref": const_a_ref,
                     "stable_vs_node_id_collisions": stable_vs_node_id_collisions[:10],
                     "duplicate_node_refs": duplicate_node_refs,
                     "total_matches": len(entries),
                 },
             )
+
+        # No collision observed pre-commit -- finish the round-trip as
+        # additional evidence (not part of the id-uniqueness assertion).
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+            },
+            retry_on_transport_error=True,
+        )
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                "CONST_A delete commit did not upload changes", commit
+            )
+        content_after_delete = await _read_file_text(ca, project_id, file_path)
+        if "CONST_A" in content_after_delete:
+            raise PipelineFailure(
+                "CONST_A statement survived the delete",
+                {"content": content_after_delete},
+            )
+        if (
+            "CONST_B = 2" not in content_after_delete
+            or "CONST_C = 3" not in content_after_delete
+        ):
+            raise PipelineFailure(
+                "delete of CONST_A corrupted the remaining statements",
+                {"content": content_after_delete},
+            )
+
         return {
             **project,
             "session_id": session_id,
             "file_path": file_path,
+            "const_a_ref": const_a_ref,
+            "delete_edit": _jsonable(delete_edit),
+            "commit_uploaded": commit.get("uploaded"),
+            "post_delete_content": content_after_delete,
             "total_matches": len(entries),
             "sample_entries": entries[:10],
         }
@@ -2953,7 +3214,7 @@ async def _scenario_search_stable_id_usable_in_edit_1db1038b(
 _20B4BA84_YAML_FIXTURE = (
     "# top comment\n"
     "service:\n"
-    '  name: release-1668-check   # inline comment\n'
+    "  name: release-1668-check   # inline comment\n"
     "  ports:\n"
     "    - 8080  # http\n"
     "    - 8443  # https\n"
@@ -3209,7 +3470,9 @@ def available_checks() -> list[str]:
 
 
 def _resolve_requested_checks(args: argparse.Namespace) -> list[str]:
-    requested = [str(name).strip() for name in getattr(args, "checks", []) if str(name).strip()]
+    requested = [
+        str(name).strip() for name in getattr(args, "checks", []) if str(name).strip()
+    ]
     if not requested:
         return available_checks()
     known = set(available_checks())
@@ -3263,9 +3526,7 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         port=args.editor_port,
     )
     requested_checks = _resolve_requested_checks(args)
-    _progress(
-        "Resolved checks: " + ", ".join(requested_checks)
-    )
+    _progress("Resolved checks: " + ", ".join(requested_checks))
     requires_ca = any(name != METADATA_CHECK_NAME for name in requested_checks)
     await _assert_server_reachable(
         "ai-editor-server", args.editor_host, args.editor_port
@@ -3303,7 +3564,9 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     for name in requested_checks:
         if name == METADATA_CHECK_NAME:
             continue
-        scenarios.append(await _run_scenario(name, scenario_map[name], ca, ed, args, watch_dir_id))
+        scenarios.append(
+            await _run_scenario(name, scenario_map[name], ca, ed, args, watch_dir_id)
+        )
 
     failed = [scenario for scenario in scenarios if scenario["status"] != "passed"]
     return {
