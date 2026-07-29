@@ -90,6 +90,7 @@ def _finalize_cst_tree(
     previous_metadata_map: Optional[Dict[str, TreeNodeMetadata]],
     legacy_persisted: PersistedNodeIds,
     write_sidecar: bool,
+    previous_module: Optional[cst.Module] = None,
 ) -> None:
     """
     Parse-time CST index: try the sibling ``<source>.py.tree`` sidecar when SHA matches; else full
@@ -123,6 +124,15 @@ def _finalize_cst_tree(
                     include_children=include_children,
                     previous_metadata_map=prev_side,
                     persisted_node_ids=persisted_side,
+                    # NOTE: no previous_module here -- prev_side comes from the
+                    # sidecar payload, already content-verified against the
+                    # CURRENT logical_source (verify_sidecar_against_source
+                    # above), not from the caller's previous_module snapshot
+                    # (which may describe a different prior state, e.g. the
+                    # in-memory tree before an out-of-band on-disk edit).
+                    # Passing previous_module here would compare unrelated
+                    # content and wrongly reject legitimate sidecar-based id
+                    # reuse.
                 )
                 if sidecar_matches_built_tree(tree, payload):
                     tree.node_id_aliases = aliases_from_payload(payload)
@@ -147,6 +157,7 @@ def _finalize_cst_tree(
         include_children=include_children,
         previous_metadata_map=previous_metadata_map,
         persisted_node_ids=legacy_persisted or None,
+        previous_module=previous_module,
     )
     if raw_disk_source is not None:
         # SHA must match logical source (no inline/legacy markers)
@@ -161,6 +172,70 @@ def _finalize_cst_tree(
             logger.warning("Could not write CST sidecar for %s: %s", py_path, exc)
 
 
+def _deterministic_fresh_node_id(
+    file_path: str,
+    node_type: str,
+    start_line: int,
+    start_col: int,
+    end_line: int,
+    end_col: int,
+    content_text: str,
+    marker_path: str,
+) -> str:
+    """Deterministic fallback identity for a node with no persisted/carried id.
+
+    Two independent rebuilds of byte-identical source (e.g. a search-triggered
+    rebuild and a later, unrelated edit-triggered rebuild of the same session
+    file, each falling back to ``previous_metadata_map=None`` because the other
+    tree instance/tree_id is no longer resolvable) must mint the SAME
+    node_id/stable_id for the same node; otherwise an identifier captured from
+    one rebuild is rejected (``STALE_NODE_ID``) by code operating on the other.
+    ``uuid.uuid4()`` is random per call and cannot provide that.
+
+    ``content_text`` (normalized source at this node's span) MUST be part of
+    the key, not just position: this same fallback also fires right after the
+    content-equivalence gate above rejects an ``exact_key_to_id`` reuse
+    candidate (bug 086a8f6c -- a structural edit shifted a different node onto
+    that exact coordinate span). A position-only hash would then reproduce the
+    very same coordinate collision it was minted to avoid, deterministically
+    recreating the OLD occupant's id for the NEW occupant of that span.
+    Folding in the content breaks that tie while keeping two independent
+    rebuilds of byte-identical (position AND content) source in agreement.
+
+    ``marker_path`` (the traversal path from the module root, same shape as
+    the persisted-marker path key) MUST also be part of the key: two distinct
+    zero-width nodes (e.g. two separate empty ``SimpleWhitespace`` slots in a
+    ``def f():`` header) can share the exact same
+    (type, start, end) coordinates *and* the same whole-line normalized text,
+    yet are different children of different fields and must not collapse onto
+    one node_id. The traversal path is unique per node within a single parse
+    and, for byte-identical source, is itself reproduced identically by an
+    independent rebuild (same AST shape -> same child-index path), so adding
+    it does not weaken the cross-rebuild determinism this function exists for.
+
+    The digest is re-stamped with UUID version/variant bits (``version=4``)
+    so the result is byte-for-byte indistinguishable, format-wise, from a
+    genuine random UUID4 (passes ``_is_valid_uuid4`` used to validate mutation
+    targets elsewhere in the edit pipeline) while remaining fully
+    deterministic for a given (file_path, node_type, position, content,
+    marker_path) tuple.
+    """
+    key = "|".join(
+        [
+            file_path,
+            node_type,
+            str(start_line),
+            str(start_col),
+            str(end_line),
+            str(end_col),
+            content_text,
+            marker_path,
+        ]
+    )
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    return str(uuid.UUID(bytes=digest[:16], version=4))
+
+
 def _build_tree_index(
     tree: CSTTree,
     node_types: Optional[List[str]] = None,
@@ -170,12 +245,20 @@ def _build_tree_index(
     persisted_node_ids: Optional[PersistedNodeIds] = None,
     pinned_node_id: Optional[str] = None,
     obj_to_stable: Optional[Dict[Any, str]] = None,
+    previous_module: Optional[cst.Module] = None,
 ) -> None:
     """
     Build node index and metadata for tree.
 
     ``stable_id`` lives in ``TreeNodeMetadata`` (sidecar JSON). After mutation,
     it is carried over via semantic keys (qualname, statement text), not coordinates.
+
+    ``previous_module`` is the pre-mutation module snapshot (when available):
+    it gates ``node_id`` reuse from ``exact_key_to_id`` on content equivalence
+    (same normalized text at that position in the prior source), so a
+    structural edit that shifts line numbers (e.g. deleting the first of
+    several imports) cannot make an unrelated statement inherit another
+    statement's ``node_id`` by coordinate coincidence alone (bug 086a8f6c).
     """
     wrapper = MetadataWrapper(tree.module, unsafe_skip_copy=True)
     parents = wrapper.resolve(ParentNodeProvider)
@@ -186,11 +269,27 @@ def _build_tree_index(
         node_types_set = {t.lower() for t in node_types}
 
     exact_key_to_id: Dict[Tuple[int, int, int, int, str], str] = {}
+    exact_key_to_content: Dict[Tuple[int, int, int, int, str], str] = {}
     if previous_metadata_map:
         for key, node_id in build_exact_key_to_id_from_metadata(
             previous_metadata_map
         ).items():
             exact_key_to_id.setdefault(key, node_id)
+        if previous_module is not None:
+            for meta in previous_metadata_map.values():
+                content_key = build_exact_node_key(
+                    meta.start_line,
+                    meta.start_col,
+                    meta.end_line,
+                    meta.end_col,
+                    meta.type,
+                )
+                exact_key_to_content.setdefault(
+                    content_key,
+                    normalized_source_span(
+                        previous_module, meta.start_line, meta.end_line
+                    ),
+                )
     class_stack: List[str] = []
     func_stack: List[str] = []
     node_to_uuid: Dict[int, str] = {}
@@ -248,7 +347,21 @@ def _build_tree_index(
         if persisted_node_ids and marker_path in persisted_node_ids:
             node_id = persisted_node_ids[marker_path]
         elif exact_key in exact_key_to_id:
-            node_id = exact_key_to_id.pop(exact_key)
+            candidate_id = exact_key_to_id.pop(exact_key)
+            prior_content = exact_key_to_content.pop(exact_key, None)
+            if prior_content is None:
+                # No previous_module supplied for content verification (legacy
+                # callers): keep the pre-existing position-only behavior.
+                node_id = candidate_id
+            else:
+                current_content = normalized_source_span(
+                    tree.module, start_line, end_line
+                )
+                if current_content == prior_content:
+                    node_id = candidate_id
+                # else: a different statement/node now occupies this exact
+                # coordinate span (line shift after a structural edit) -- do
+                # not let it inherit candidate_id; mint a fresh identity below.
         elif (
             pinned_node_id
             and previous_metadata_map
@@ -262,7 +375,16 @@ def _build_tree_index(
             ):
                 node_id = pinned_node_id
         if node_id is None:
-            node_id = str(uuid.uuid4())
+            node_id = _deterministic_fresh_node_id(
+                tree.file_path,
+                node_type,
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+                normalized_source_span(tree.module, start_line, end_line),
+                marker_path,
+            )
         node_to_uuid[id(node)] = node_id
 
         tree.node_map[node_id] = node
