@@ -224,7 +224,14 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         # write first (write_before_close=true) or refuse to discard edits.
         # Tree-temp sessions are preview-oriented: closing without a commit must
         # discard the workspace draft so the external source remains unchanged.
-        if session.modified and session.format_group != FORMAT_TREE_TEMP:
+        # A create=true draft that was never committed exists only in the local
+        # workspace (persisted_on_ca=False): closing it discards the draft per
+        # the documented contract instead of demanding a commit (bug 2e44a0a9).
+        if (
+            session.modified
+            and session.format_group != FORMAT_TREE_TEMP
+            and session.persisted_on_ca
+        ):
             try:
                 comparison = compare_session_to_origin(session)
             except ValueError:

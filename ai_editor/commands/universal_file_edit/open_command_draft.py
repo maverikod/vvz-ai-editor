@@ -47,12 +47,19 @@ def resolve_and_create_draft(
     except ValueError:
         if format_group_hint:
             try:
-                descriptor = format_descriptor_from_hint(format_group_hint, edit_source_path)
+                descriptor = format_descriptor_from_hint(
+                    format_group_hint, edit_source_path
+                )
             except ValueError:
                 return make_error(
                     UNKNOWN_FORMAT,
                     f"Unsupported file type: {origin.suffix!r} (invalid hint: {format_group_hint!r})",
                 )
+        elif not origin.suffix:
+            # Extensionless files (.gitignore, LICENSE, Makefile-like dotfiles)
+            # have no registry mapping; open them in line-based text mode
+            # instead of refusing with UNKNOWN_FORMAT (bug 91b8ce0b).
+            descriptor = format_descriptor_from_hint(FORMAT_TEXT, edit_source_path)
         else:
             return make_error(
                 UNKNOWN_FORMAT,

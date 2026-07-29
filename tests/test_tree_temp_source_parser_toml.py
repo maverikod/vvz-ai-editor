@@ -6,7 +6,7 @@ from ai_editor.core.tree_temp.toml_source_parser import (
 
 
 def test_toml_parser_preserves_root_and_table_structure() -> None:
-    source = "# document\ntitle = \"demo#value\" # inline\n\n[server.http]\n# host comment\nhost = \"localhost\"\nport = 8080\n"
+    source = '# document\ntitle = "demo#value" # inline\n\n[server.http]\n# host comment\nhost = "localhost"\nport = 8080\n'
 
     root = parse_toml_source(source)[0]
     assert isinstance(root, TomlConfigContainer)
@@ -22,7 +22,7 @@ def test_toml_parser_preserves_root_and_table_structure() -> None:
     assert title.source_line == 2
     assert title.insert_before_line == 2
     assert title.insert_after_line == 3
-    assert title.value_raw == '\"demo#value\"'
+    assert title.value_raw == '"demo#value"'
     assert title.line_ending == "\n"
 
     table = root.children[1]
@@ -45,9 +45,9 @@ def test_toml_parser_preserves_root_and_table_structure() -> None:
 
 
 def test_toml_parser_supports_arrays_inline_tables_and_eof_trivia() -> None:
-    root = parse_toml_source(
-        "items = [1, 2]\nmetadata = { enabled = true }\n# eof\n"
-    )[0]
+    root = parse_toml_source("items = [1, 2]\nmetadata = { enabled = true }\n# eof\n")[
+        0
+    ]
 
     items, metadata = root.children[:2]
     assert isinstance(items, TomlConfigKey)
@@ -82,3 +82,48 @@ def test_toml_parser_rejects_invalid_toml() -> None:
         assert str(exc).startswith("Invalid TOML:")
     else:
         raise AssertionError("invalid TOML was accepted")
+
+
+def test_toml_parser_accepts_multiline_array_and_inline_table() -> None:
+    """Bug 71d29a80: pyproject.toml-shaped multi-line values must parse."""
+    source = (
+        "[project]\n"
+        'name = "ai-editor"\n'
+        'readme = { file = "docs/README.md", content-type = "text/markdown" }\n'
+        "dependencies = [\n"
+        '    "python-dotenv>=1.0",  # env loading\n'
+        '    "pyyaml>=6.0",\n'
+        "]  # deps\n"
+    )
+
+    root = parse_toml_source(source)[0]
+    table = root.children[0]
+    assert isinstance(table, TomlConfigContainer)
+    readme = table.children[1]
+    assert isinstance(readme, TomlConfigKey)
+    assert readme.value_raw.startswith("{")
+    deps = table.children[2]
+    assert isinstance(deps, TomlConfigKey)
+    assert deps.type == "array"
+    assert [child.value for child in deps.children or []] == [
+        "python-dotenv>=1.0",
+        "pyyaml>=6.0",
+    ]
+    assert deps.source_line == 4
+    assert deps.end_line == 7
+    assert deps.insert_after_line == 8
+    assert deps.value_raw.startswith("[\n")
+    assert deps.value_raw.endswith("]")
+    assert deps.comment_inline == "# deps"
+
+
+def test_toml_parser_accepts_multiline_string_value() -> None:
+    """Bug 71d29a80: triple-quoted values spanning lines must parse."""
+    source = 'text = """\nfirst\nsecond"""\n'
+
+    root = parse_toml_source(source)[0]
+    node = root.children[0]
+    assert isinstance(node, TomlConfigKey)
+    assert node.value == "first\nsecond"
+    assert node.source_line == 1
+    assert node.end_line == 3

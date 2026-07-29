@@ -70,9 +70,7 @@ class WriteComparison:
             "preview_diff",
             PreviewDiff(
                 status=(
-                    PreviewDiffStatus.CHANGED
-                    if changed
-                    else PreviewDiffStatus.NO_OP
+                    PreviewDiffStatus.CHANGED if changed else PreviewDiffStatus.NO_OP
                 ),
                 diff=diff,
                 content_changed=changed,
@@ -160,8 +158,13 @@ def _export_canonical_bytes(session: EditSession) -> bytes:
         tree = get_cst_tree(session.tree_id)
         if tree is None:
             raise ValueError(f"CST tree {session.tree_id!r} not found")
+        from ai_editor.core.file_handlers.path_utils import normalize_trailing_newline
+
+        # A create=true draft parses from "" (libcst has_trailing_newline=False)
+        # and would export without a final newline, tripping the flake8 W292
+        # gate on every new-file commit (bug 62759f8a).
         code = strip_inline_node_id_lines_from_source(str(tree.module.code))
-        return code.encode("utf-8")
+        return normalize_trailing_newline(code).encode("utf-8")
     if fg == FORMAT_TREE_TEMP:
         from ai_editor.commands.universal_file_edit.tree_temp_write_commit import (
             serialize_tree_temp_session_source,
