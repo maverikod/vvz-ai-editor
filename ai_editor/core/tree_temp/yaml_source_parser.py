@@ -76,6 +76,38 @@ def _merge_before(*parts: Optional[str]) -> Optional[str]:
     return "\n".join(out)
 
 
+def _attach_trailing_footer(last: TreeNode, pending: str) -> None:
+    """Attach a container's trailing/footer comment to its last child.
+
+    Fix for bug 20b4ba84 residual (45b27a37 audit note): a comment still
+    "pending" after the last child of a mapping/sequence/top-level document
+    is a footer/trailing comment of the *container* (text that followed the
+    last child with nothing else after it in the source), not a "before"
+    comment of that last child. Merging it into ``comment_before`` (the
+    prior behavior) silently moved it from after the last value to before
+    the last key/item on round-trip -- e.g. inserting a trailing document
+    comment in the middle of a sequence, right before its last element.
+
+    Ruamel itself folds a trailing comment onto the last child's own
+    EOL/inline comment-attachment cell as a raw continuation line (a second
+    ``\\n``-joined line in the same token) rather than tracking a distinct
+    "end of container" comment; ``ca.end``/``yaml_end_comment_extend`` is not
+    consumed by this ruamel version's emitter (verified: it silently drops
+    the comment), and per-key "after" comments
+    (``yaml_set_comment_before_after_key(..., after=...)``) are equally inert
+    on a freshly built document. Mirroring ruamel's own raw shape in
+    ``comment_inline`` -- appending as a further continuation line, or as a
+    lone leading-newline line when the child has no genuine same-line
+    comment of its own -- lets the serializer re-emit the footer in the
+    correct place (right after the last child) using the same mechanism,
+    without any TreeNode schema change.
+    """
+    if last.comment_inline:
+        last.comment_inline = last.comment_inline + "\n" + pending
+    else:
+        last.comment_inline = "\n" + pending
+
+
 def _yaml_key_str(key: Any) -> str:
     if isinstance(key, str):
         return key
@@ -174,22 +206,8 @@ def _build_object(data: Union[CommentedMap, Dict[Any, Any]]) -> TreeNode:
         if inl:
             child.comment_inline = inl
         children.append(child)
-    if pending:
-        # NOTE (45b27a37 audit): a comment still pending after the last key
-        # is really a footer/trailing comment of this mapping, not a
-        # "before" comment of the last key -- attaching it to
-        # last.comment_before (as done here) moves it from after the last
-        # value to before the last key on round-trip. A correct fix needs a
-        # dedicated container "footer comment" slot: TreeNode.comment_inline
-        # already has an established, relied-upon meaning for a *nested*
-        # container (EOL comment on the enclosing key/list-item line, applied
-        # by the parent's _apply_comments before recursing) and ruamel's
-        # yaml_end_comment_extend/ca.end is not consumed by this ruamel
-        # version's emitter, so neither can safely carry a footer comment
-        # without a TreeNode schema change. Deferred; see 45b27a37 report.
-        if children:
-            last = children[-1]
-            last.comment_before = _merge_before(last.comment_before, pending)
+    if pending and children:
+        _attach_trailing_footer(children[-1], pending)
     return obj
 
 
@@ -233,13 +251,7 @@ def _build_array_container(data: Union[CommentedSeq, List[Any]]) -> TreeNode:
             child.comment_inline = inl
         ch.append(child)
     if pending and ch:
-        # See the NOTE in _build_object: this mis-attaches a trailing/footer
-        # comment as the last element's comment_before. Deferred for the same
-        # reason (no schema slot for a container footer comment that would
-        # not collide with comment_inline's existing nested-container
-        # meaning).
-        last = ch[-1]
-        last.comment_before = _merge_before(last.comment_before, pending)
+        _attach_trailing_footer(ch[-1], pending)
     return arr
 
 
@@ -290,8 +302,7 @@ def _document_roots(data: Any) -> List[TreeNode]:
                 child.comment_inline = inl
             roots.append(child)
         if pending and roots:
-            last = roots[-1]
-            last.comment_before = _merge_before(last.comment_before, pending)
+            _attach_trailing_footer(roots[-1], pending)
         return roots
     if isinstance(data, (CommentedMap, dict)):
         return [_build_object(cast(Union[CommentedMap, Dict[Any, Any]], data))]

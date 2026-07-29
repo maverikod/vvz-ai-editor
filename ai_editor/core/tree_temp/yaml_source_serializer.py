@@ -8,7 +8,7 @@ email: vasilyvz@gmail.com
 from __future__ import annotations
 
 from io import StringIO
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -122,6 +122,58 @@ def _emit_container_end_inline(c: Union[CommentedMap, CommentedSeq], text: str) 
     c.yaml_end_comment_extend([CommentToken(arg, CommentMark(0))])
 
 
+def _set_inline_comment_cell(
+    ca_items: Dict[Any, Any], key: Any, slot: int, text: str
+) -> None:
+    """Set a comment-attachment cell's inline/EOL slot to raw ``text`` directly.
+
+    Bug 20b4ba84 residual: this bypasses ``yaml_add_eol_comment`` (which
+    unconditionally prepends ``"# "`` whenever the given text does not
+    already start with ``#``). That prepending is wanted for a normal
+    single-line inline comment, but it corrupts the two-line shape used to
+    carry a container's trailing/footer comment (``_attach_trailing_footer``
+    in the parser): a leading ``"\\n"`` there means "no genuine same-line
+    comment on this item, the footer starts on the next line", and
+    ``yaml_add_eol_comment`` would instead inject a stray ``"# "`` before
+    that newline. Constructing the ``CommentToken`` directly re-emits
+    exactly the raw text ruamel itself produced when it first folded the
+    footer onto this cell at parse time.
+    """
+    raw = text if text.endswith("\n") else text + "\n"
+    cell = ca_items.setdefault(key, [None, None, None, None])
+    while len(cell) <= slot:
+        cell.append(None)
+    cell[slot] = CommentToken(raw, CommentMark(0))
+
+
+def _apply_seq_inline_comment(seq: CommentedSeq, idx: int, text: str) -> None:
+    """Apply a sequence item's inline comment, handling an embedded footer.
+
+    A plain single-line comment goes through the existing
+    ``yaml_add_eol_comment`` path unchanged. A comment containing an
+    embedded newline is the two-line "own inline + trailing footer" (or
+    footer-only) shape produced by ``_attach_trailing_footer``, and must be
+    written as a single raw token (see ``_set_inline_comment_cell``).
+    """
+    if "\n" in text:
+        _set_inline_comment_cell(seq.ca.items, idx, 0, text)
+    else:
+        seq.yaml_add_eol_comment(_eol_comment_arg(text), key=idx)
+
+
+def _apply_map_inline_comment(cm: CommentedMap, key: str, text: str) -> None:
+    """Apply a mapping entry's inline comment, handling an embedded footer.
+
+    See ``_apply_seq_inline_comment``; the only difference is the
+    comment-attachment cell slot (2 for mapping entries, 0 for sequence
+    items).
+    """
+    if "\n" in text:
+        _set_inline_comment_cell(cm.ca.items, key, 2, text)
+    else:
+        cm.yaml_add_eol_comment(_eol_comment_arg(text), key=key)
+
+
 def _apply_seq_item_comments(
     seq: CommentedSeq,
     idx: int,
@@ -138,11 +190,9 @@ def _apply_seq_item_comments(
     extension.
     """
     if comment_inline:
-        seq.yaml_add_eol_comment(_eol_comment_arg(comment_inline), key=idx)
+        _apply_seq_inline_comment(seq, idx, comment_inline)
     if comment_before:
-        seq.yaml_set_comment_before_after_key(
-            idx, before=_ruamel_body(comment_before)
-        )
+        seq.yaml_set_comment_before_after_key(idx, before=_ruamel_body(comment_before))
 
 
 def _apply_comments(
@@ -176,7 +226,7 @@ def _apply_comments(
                 idx, before=_ruamel_body(node.comment_before)
             )
         if node.comment_inline:
-            seq.yaml_add_eol_comment(_eol_comment_arg(node.comment_inline), key=idx)
+            _apply_seq_inline_comment(seq, idx, node.comment_inline)
 
     if node.type == "object":
         cm = cast(CommentedMap, c)
@@ -188,7 +238,7 @@ def _apply_comments(
                     ch.key, before=_ruamel_body(ch.comment_before)
                 )
             if ch.comment_inline:
-                cm.yaml_add_eol_comment(_eol_comment_arg(ch.comment_inline), key=ch.key)
+                _apply_map_inline_comment(cm, ch.key, ch.comment_inline)
             _apply_comments(ch, sub)
     elif node.type == "array":
         seqn = cast(CommentedSeq, c)
