@@ -212,6 +212,19 @@ def type_check_with_mypy(
     )
 
 
+def _resolve_project_python(project_root: Optional[Path]) -> Optional[Path]:
+    """Return the target project's venv interpreter when one exists."""
+    if project_root is None:
+        return None
+    for candidate in (
+        project_root / ".venv" / "bin" / "python",
+        project_root / "venv" / "bin" / "python",
+    ):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def _type_check_with_subprocess(
     file_path: Path,
     config_file: Optional[Path] = None,
@@ -283,6 +296,14 @@ def _type_check_with_subprocess(
                 mypy_paths.append(root_str)
         if mypy_paths:
             env["MYPYPATH"] = os.pathsep.join(mypy_paths)
+
+        # Third-party deps live in the TARGET project's venv, not in this
+        # server's environment (bug 7629cc48): point mypy at the project
+        # interpreter so site-packages resolve. The venv itself stays
+        # excluded from source crawling via _MYPY_EXCLUDE_VENV_CONFIG.
+        project_python = _resolve_project_python(project_root_resolved)
+        if project_python is not None:
+            cmd.extend(["--python-executable", str(project_python)])
 
         result = subprocess.run(
             cmd,
