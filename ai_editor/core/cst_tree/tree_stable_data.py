@@ -64,15 +64,44 @@ def statement_stable_key_from_meta(
     return build_statement_stable_key(meta.type, meta.qualname, norm)
 
 
+def node_identity_stable_key(node: cst.CSTNode) -> Tuple[str, int]:
+    """Object-identity lookup key for stable_id carryover across one rebuild.
+
+    LibCST transformers rebuild only the nodes on the path to the change; every
+    untouched subtree is handed back as the SAME Python object. That object
+    identity is the ground truth for "this is still the same logical node", and
+    unlike coordinates or normalized text it also disambiguates two nodes whose
+    content is byte-identical (bug 1db1038b: two ``query_object`` ``Name``
+    tokens on one ``return`` line, where the first op of a batch shifts the
+    second one's columns).
+
+    Only valid while the pre-mutation node objects are still referenced —
+    :func:`restore_stable_data` keeps the caller's snapshot alive for exactly
+    the duration of the rebuild so ``id()`` values cannot be recycled.
+
+    Args:
+        node: A CST node from the pre-mutation tree.
+
+    Returns:
+        Namespaced key usable inside the ``obj_to_stable`` mapping.
+    """
+    return ("obj", id(node))
+
+
 def _obj_to_stable_from_metadata(
     metadata_map: Dict[str, "TreeNodeMetadata"],
     source_module: Optional[cst.Module] = None,
+    node_map: Optional[Dict[str, cst.CSTNode]] = None,
 ) -> Dict[Any, str]:
     """Build semantic lookup keys for stable_id preservation across index rebuild."""
     out: Dict[Any, str] = {}
-    for meta in metadata_map.values():
+    for node_id, meta in metadata_map.items():
         if not meta.stable_id:
             continue
+        if node_map is not None:
+            node = node_map.get(node_id)
+            if node is not None:
+                out.setdefault(node_identity_stable_key(node), meta.stable_id)
         if meta.qualname and meta.type in (
             "FunctionDef",
             "AsyncFunctionDef",
@@ -152,14 +181,19 @@ def restore_stable_data(
     *,
     previous_metadata_map: Optional[Dict[str, "TreeNodeMetadata"]] = None,
     previous_module: Optional[cst.Module] = None,
+    previous_node_map: Optional[Dict[str, cst.CSTNode]] = None,
     pinned_node_id: Optional[str] = None,
 ) -> "CSTTree":
     """After mutation: rebuild index; ``stable_id`` stays in ``metadata_map`` / sidecar.
 
-    Identity transfer uses semantic keys (qualname, statement text) from the
-    pre-mutation metadata snapshot — not line/column coordinates.
+    Identity transfer uses object identity of the surviving pre-mutation node
+    objects (``previous_node_map``) and semantic keys (qualname, statement text)
+    from the pre-mutation metadata snapshot — not line/column coordinates.
+    ``previous_node_map`` must be a snapshot taken BEFORE the mutation; it is
+    held for the whole rebuild so ``id()`` values stay unique.
     """
     prev = dict(previous_metadata_map) if previous_metadata_map else None
+    prev_nodes = dict(previous_node_map) if previous_node_map else None
     mod_for_keys = previous_module if previous_module is not None else tree.module
 
     from .tree_builder import _build_tree_index
@@ -175,7 +209,9 @@ def restore_stable_data(
         include_children=True,
         previous_metadata_map=prev,
         obj_to_stable=(
-            _obj_to_stable_from_metadata(prev, mod_for_keys) if prev else None
+            _obj_to_stable_from_metadata(prev, mod_for_keys, prev_nodes)
+            if prev
+            else None
         ),
         pinned_node_id=pinned_node_id,
         # Only the caller-supplied pre-mutation module is safe for content-based
