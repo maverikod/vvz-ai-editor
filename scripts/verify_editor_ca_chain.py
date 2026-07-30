@@ -3365,6 +3365,692 @@ async def _scenario_yaml_trailing_doc_comment_20b4ba84(
         await _close_suppress(ed, project_id, session_id, file_path)
 
 
+async def _scenario_mypy_project_env_7629cc48(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 7629cc48: commit-time mypy must resolve third-party dependencies
+    installed in the TARGET PROJECT's own venv, not whatever interpreter runs
+    the ai-editor server process itself.
+
+    Root cause located in ``ai_editor.core.code_quality.type_checker``:
+    ``_resolve_cli_tool("mypy")`` always prefers ``sys.executable``'s own
+    scripts directory (the ai-editor SERVER's interpreter) and falls back to
+    ``PATH``; ``_type_check_with_subprocess`` never passes
+    ``--python-executable <project venv>/bin/python`` (or any other pointer
+    at the project's own venv) to mypy. ``run_quality_tools`` /
+    ``validate_before_promote`` forward ``project_root`` only for
+    ``MYPYPATH`` (import roots), never for interpreter selection. So a
+    package that exists ONLY in the target project's ``.venv`` -- exactly
+    what ``project_pip_install`` manages -- is invisible to the mypy
+    invocation that gates the commit.
+
+    Scenario: ``create_project(create_venv=True)`` gives the throwaway
+    project its own ``.venv``. CA ``project_pip_install`` queues
+    ``pip install tabulate`` (a tiny pure-python package not part of the
+    ai-editor container image) into THAT venv; poll ``queue_get_job_status``
+    to completion and confirm ``returncode == 0``. The editor then creates
+    (``universal_file_open`` create=true) a compliant, fully-docstringed
+    module that imports and calls ``tabulate`` and commits.
+
+    Live 1.0.80 evidence (verbatim, one representative run): the commit is
+    rejected with error code ``VALIDATION_ERROR`` and message
+    ``"Validation failed: type_checker: Found 4 mypy errors"``; the
+    associated ``quality.type_checker`` errors list contains
+    ``'... error: Library stubs not installed for "tabulate"  [import-untyped]'``
+    plus mypy's own remediation notes ("Hint: python3 -m pip install
+    types-tabulate", "or run mypy --install-types"). Note this is mypy's
+    ``import-untyped`` classification (module resolved from SOME interpreter,
+    but without stubs) rather than a plain ``import-not-found``; either
+    classification is accepted evidence for this check since both mean mypy
+    did not see the package the way it is actually installed in the
+    project's own pinned venv. This check FAILS when the commit is rejected
+    by ``quality.type_checker`` citing the just-installed package; it PASSES
+    only when the commit uploads (mypy resolved the project venv's own
+    ``tabulate``).
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the pip-install job outcome and commit/readback.
+    """
+    del args
+    scenario_slug = "7629cc48_mypy_project_env"
+    package_name = "tabulate"
+
+    project_name = f"verify_editor_{scenario_slug}_{uuid.uuid4().hex[:8]}"
+    project = await _call(
+        ca,
+        "create_project",
+        {
+            "watch_dir_id": watch_dir_id,
+            "project_name": project_name,
+            "description": f"verify_editor_ca_chain {scenario_slug}",
+            "create_venv": True,
+            "apply_template": False,
+        },
+    )
+    project_id = project.get("project_id")
+    if not isinstance(project_id, str) or not project_id:
+        raise PipelineFailure("create_project returned no project_id", project)
+    project_root = project.get("project_root")
+    if isinstance(project_root, str) and project_root:
+        _PROJECT_ROOTS[project_id] = project_root
+
+    install = await _call(
+        ca,
+        "project_pip_install",
+        {
+            "project_id": project_id,
+            "packages": [package_name],
+            "timeout_seconds": 120,
+        },
+    )
+    job_id = install.get("job_id") if isinstance(install, dict) else None
+    if not isinstance(job_id, str) or not job_id:
+        raise PipelineFailure("project_pip_install returned no job_id", install)
+
+    job_status: dict[str, Any] | None = None
+    deadline = time.monotonic() + 90.0
+    while time.monotonic() < deadline:
+        job_status = await _call(ca, "queue_get_job_status", {"job_id": job_id})
+        state = str(job_status.get("status") or "")
+        if state in {"completed", "failed", "error", "cancelled"}:
+            break
+        await asyncio.sleep(2.0)
+    if job_status is None or str(job_status.get("status")) != "completed":
+        raise PipelineFailure(
+            "project_pip_install job did not complete in time",
+            {"job_id": job_id, "last_status": job_status},
+        )
+    pip_command_result = (job_status.get("result") or {}).get("result") or {}
+    pip_data = (
+        pip_command_result.get("data") if isinstance(pip_command_result, dict) else None
+    )
+    if not isinstance(pip_data, dict) or pip_data.get("returncode") != 0:
+        raise PipelineFailure(
+            f"project_pip_install did not succeed installing {package_name!r} "
+            "into the project's own venv",
+            job_status,
+        )
+
+    session_id = await _create_session(ca, scenario_slug)
+    file_path = f"verify/{scenario_slug}_uses_{package_name}.py"
+    content = (
+        '"""Module exercising a dependency installed only in the project venv."""\n'
+        "\n"
+        f"from {package_name} import {package_name}\n"
+        "\n"
+        "\n"
+        "def format_row(headers: list[str], row: list[str]) -> str:\n"
+        '    """Format one row as a rendered table string.\n'
+        "\n"
+        "    Args:\n"
+        "        headers: Column header names.\n"
+        "        row: Row values.\n"
+        "\n"
+        "    Returns:\n"
+        "        Rendered table string.\n"
+        '    """\n'
+        f"    return {package_name}([row], headers=headers)\n"
+    )
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": content,
+        },
+    )
+    try:
+        try:
+            commit = await _call(
+                ed,
+                "universal_file_write",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "write_mode": "commit",
+                    "format_python": True,
+                },
+                retry_on_transport_error=True,
+            )
+        except PipelineFailure as exc:
+            evidence_text = json.dumps(_jsonable(exc.evidence), ensure_ascii=True)
+            mentions_package = package_name in evidence_text
+            mentions_mypy = (
+                "mypy" in evidence_text.lower()
+                or "type_checker" in evidence_text.lower()
+            )
+            if mentions_mypy and mentions_package:
+                raise PipelineFailure(
+                    "commit was rejected by mypy over a dependency installed "
+                    "only in the project's own venv, not the ai-editor "
+                    f"server's own interpreter (bug 7629cc48): "
+                    f"{_extract_error_message(exc.evidence)}",
+                    {
+                        "error_code": _extract_error_code(exc.evidence),
+                        "error_message": _extract_error_message(exc.evidence),
+                        "evidence": exc.evidence,
+                    },
+                ) from exc
+            raise
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                f"{package_name} import commit did not upload changes", commit
+            )
+        readback_content = await _read_file_text(ca, project_id, file_path)
+        return {
+            "project_id": project_id,
+            "file_path": file_path,
+            "package_name": package_name,
+            "pip_install_job_status": job_status,
+            "commit_uploaded": commit.get("uploaded"),
+            "readback_content": readback_content,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+_2F817AFC_LEGACY_PY_FIXTURE = (
+    '"""Legacy module fixture predating the docstring policy."""\n'
+    "\n"
+    "\n"
+    "def alpha(x: int) -> int:\n"
+    "    return x + 1\n"
+    "\n"
+    "\n"
+    "def beta(y: int) -> int:\n"
+    '    """Double the input.\n'
+    "\n"
+    "    Args:\n"
+    "        y: Value to double.\n"
+    "\n"
+    "    Returns:\n"
+    "        Twice y.\n"
+    '    """\n'
+    "    return y * 2\n"
+)
+
+
+async def _seed_file_outside_editor_qa(
+    ca: JsonRpcClient,
+    *,
+    project_id: str,
+    file_path: str,
+    content: str,
+    scenario_slug: str,
+) -> dict[str, Any]:
+    """Place file content on CA directly, bypassing the editor's QA gate entirely.
+
+    Chosen fixture route for bug 2f817afc (see that scenario's docstring for
+    the alternatives ruled out first): uploads via CA's chunked transfer
+    (``JsonRpcClient.upload_file``) followed by
+    ``project_file_transfer_upload_save`` -- the SAME two CA primitives
+    ``ai_editor.core.upstream.code_analysis_file_transfer.upload_create_save``
+    uses internally for the editor's own create-commit path, just invoked
+    directly here with NO editor session/open/edit/write in between. The
+    editor's docstring/mypy/flake8/black QA gate lives entirely inside
+    ``ai_editor.core.file_validation.pre_write_pipeline``, reached only
+    through ``universal_file_write``; a direct CA-side save never touches it.
+    This models how genuinely legacy code enters a project (checked in
+    before the docstring policy existed, or landed via any non-editor path)
+    without hand-faking or bypassing any repository file.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        project_id: Target CA project UUID.
+        file_path: Project-relative destination path.
+        content: Verbatim file content to place (already on CA at rest).
+        scenario_slug: Scenario slug used to name the throwaway seed session.
+
+    Returns:
+        The raw ``project_file_transfer_upload_save`` response payload.
+    """
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as tmp:
+        tmp.write(content.encode("utf-8"))
+        tmp_path = tmp.name
+    try:
+        receipt = await ca.upload_file(
+            tmp_path, filename=Path(file_path).name, compression="identity"
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+    transfer_id = getattr(receipt, "transfer_id", None)
+    if not transfer_id and isinstance(receipt, dict):
+        transfer_id = receipt.get("transfer_id")
+    if not isinstance(transfer_id, str) or not transfer_id:
+        raise PipelineFailure(
+            "CA upload_file returned no transfer_id", _jsonable(receipt)
+        )
+    seed_session_id = await _create_session(ca, f"{scenario_slug}_seed")
+    try:
+        saved = await _call(
+            ca,
+            "project_file_transfer_upload_save",
+            {
+                "session_id": seed_session_id,
+                "project_id": project_id,
+                "file_path": file_path,
+                "transfer_id": transfer_id,
+                "unlock_after_write": True,
+                "backup": False,
+                "dry_run": False,
+            },
+        )
+    finally:
+        await _call(ca, "session_delete", {"session_id": seed_session_id})
+    return saved
+
+
+async def _scenario_docstring_gate_scoped_2f817afc(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 2f817afc: committing a compliant edit to ONE entity must not be
+    blocked by PRE-EXISTING docstring violations in UNTOUCHED entities
+    elsewhere in the same file (the docstring gate should be scoped to what
+    the edit actually touches, not the whole module).
+
+    Fixture route explored and chosen: the docstring/mypy/quality gate in
+    ``ai_editor.core.file_validation.pre_write_pipeline`` runs on every
+    ``universal_file_write`` commit without exception, so any file that ever
+    enters (or is edited in) a project THROUGH the editor is always
+    gate-clean at rest -- there is no way to leave a docstring violation
+    in place via the currently-registered editor commands. Two ai_editor
+    commands DO expose a ``validate_docstrings=False`` escape hatch
+    (``universal_file_save``, ``universal_file_replace``,
+    see ``ai_editor/commands/universal_file_replace_command.py``) explicitly
+    documented for "patching a docstring while pre-existing docstring errors
+    exist elsewhere in the same file" -- exactly this scenario's fixture
+    need -- but BOTH are dead code on the live server: ``ed.help()`` returns
+    ``{"error": "Command 'universal_file_save' not found"}`` /
+    ``'universal_file_replace' not found"`` (confirmed live; only health,
+    info, universal_file_preview/open/search/node_at_line/edit/write/close
+    are registered). ``create_project(apply_template=true)`` was also
+    considered and ruled out: the deployed rules_template contains no
+    Python files at all (only .cursor/*.md, docs/*.md, README.md,
+    scripts/.gitkeep), so it cannot seed a docstring violation either.
+    The workable route: CA's own chunked-upload + save primitives (see
+    ``_seed_file_outside_editor_qa``) place file content directly on CA,
+    bypassing the editor (and its QA gate) entirely -- a genuine, already-
+    existing CA capability, not a hack, and the same one the editor's own
+    create-commit path uses internally.
+
+    Scenario: seed ``verify/<slug>_legacy.py`` with ``alpha()`` (no
+    docstring) and ``beta()`` (fully compliant) via that CA-direct route.
+    The editor then opens the file (create=False; it is already CA-indexed),
+    searches for ``beta``'s node_ref, replaces ONLY beta's body/docstring
+    (still fully compliant), and commits. ``alpha`` is never touched by the
+    editor.
+
+    Live 1.0.80 evidence (verbatim): the commit is rejected with error code
+    ``VALIDATION_ERROR`` and message ``"docstrings: Docstring validation
+    failed:\\n  - Method alpha (line 4) is missing docstring"`` -- naming the
+    UNTOUCHED alpha, not beta. This check FAILS on that symptom; it PASSES
+    only when the commit succeeds with alpha still undocumented and beta's
+    edit applied.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the seed result, commit outcome, and readback.
+    """
+    del args
+    scenario_slug = "2f817afc_docstring_gate_scoped"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    file_path = f"verify/{scenario_slug}_legacy.py"
+
+    seed_result = await _seed_file_outside_editor_qa(
+        ca,
+        project_id=project_id,
+        file_path=file_path,
+        content=_2F817AFC_LEGACY_PY_FIXTURE,
+        scenario_slug=scenario_slug,
+    )
+    if not seed_result.get("success"):
+        raise PipelineFailure("CA-direct seed upload did not succeed", seed_result)
+
+    seeded_content = await _read_file_text(ca, project_id, file_path)
+    if seeded_content != _2F817AFC_LEGACY_PY_FIXTURE:
+        raise PipelineFailure(
+            "seeded legacy fixture readback did not match the verbatim content",
+            {"content": seeded_content},
+        )
+
+    session_id = await _create_session(ca, scenario_slug)
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": session_id,
+            "file_path": file_path,
+            "create": False,
+        },
+    )
+    try:
+        search_result = await _call(
+            ed,
+            "universal_file_search",
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "search_type": "simple",
+                "node_type": "FunctionDef",
+                "name": "beta",
+                "require_one": True,
+            },
+        )
+        node_ref_raw = search_result.get("node_ref")
+        node_ref = str(node_ref_raw) if node_ref_raw is not None else None
+        if not node_ref:
+            raise PipelineFailure(
+                "universal_file_search did not resolve beta's node_ref",
+                search_result,
+            )
+        beta_replacement = [
+            "def beta(y: int) -> int:",
+            '    """Double the input, then add one.',
+            "",
+            "    Args:",
+            "        y: Value to double.",
+            "",
+            "    Returns:",
+            "        Twice y, plus one.",
+            '    """',
+            "    return y * 2 + 1",
+        ]
+        edit = await _edit(
+            ed,
+            {
+                "project_id": project_id,
+                "session_id": session_id,
+                "file_path": file_path,
+                "operations": [
+                    {
+                        "type": "replace",
+                        "node_id": node_ref,
+                        "code_lines": beta_replacement,
+                    }
+                ],
+            },
+        )
+        try:
+            commit = await _call(
+                ed,
+                "universal_file_write",
+                {
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "file_path": file_path,
+                    "write_mode": "commit",
+                    "format_python": True,
+                },
+                retry_on_transport_error=True,
+            )
+        except PipelineFailure as exc:
+            error_code = _extract_error_code(exc.evidence)
+            error_message = _extract_error_message(exc.evidence)
+            if "alpha" in error_message and "docstring" in error_message.lower():
+                raise PipelineFailure(
+                    "commit of a compliant edit to beta was rejected by the "
+                    "whole-file docstring gate citing the UNTOUCHED alpha "
+                    "(bug 2f817afc)",
+                    {
+                        "error_code": error_code,
+                        "error_message": error_message,
+                        "edit": _jsonable(edit),
+                        "evidence": exc.evidence,
+                    },
+                ) from exc
+            raise
+        if not commit.get("uploaded"):
+            raise PipelineFailure(
+                "beta-only replace commit did not upload changes", commit
+            )
+        content = await _read_file_text(ca, project_id, file_path)
+        if "def alpha(x: int) -> int:" not in content:
+            raise PipelineFailure(
+                "untouched alpha signature was corrupted by the beta-only edit",
+                {"content": content},
+            )
+        if "return y * 2 + 1" not in content:
+            raise PipelineFailure(
+                "beta's edited body is missing from CA readback",
+                {"content": content},
+            )
+        return {
+            "project_id": project_id,
+            "file_path": file_path,
+            "seed_result": _jsonable(seed_result),
+            "commit_uploaded": commit.get("uploaded"),
+            "readback_content": content,
+        }
+    finally:
+        await _close_suppress(ed, project_id, session_id, file_path)
+
+
+async def _scenario_open_foreign_lock_clean_error_3d1dd9ab(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug 3d1dd9ab: ``universal_file_open`` on a path exclusively locked by
+    ANOTHER session must return a fast, classified ``FILE_ALREADY_LOCKED``
+    error (non-empty message) and leave the editor healthy -- not a generic
+    catch-all error code.
+
+    Scenario: a project + committed file (via the normal editor
+    open/create/commit path). Session A (CA ``session_create`` only, no
+    editor) resolves the file's ``file_id`` via CA ``list_project_files``
+    and calls CA ``session_open_file`` directly to hold the file's lock.
+    Session B (a second CA ``session_create``) then calls the EDITOR's
+    ``universal_file_open`` for the SAME path with ``create=False``;
+    ``universal_file_open``'s own documented behavior is to perform
+    "session_open_file lock then chunked download" internally for existing
+    files, so session B's open reaches the very same CA lock row session A
+    holds.
+
+    Live 1.0.80 evidence (verbatim, one representative run): the editor
+    returns
+      error.code = "OPEN_ERROR"
+      error.message = "RuntimeError: {'code': 'FILE_LOCKED', 'message': "
+        "\\"File <file_id> in project <project_id> is locked by session "
+        "'<session_a>'; cannot acquire for session '<session_b>'.\\"}"
+    in under 4 seconds. CA itself DOES return a specific inner code
+    (``FILE_LOCKED``), but ``universal_file_open``'s generic
+    ``except Exception as exc`` handler (``open_command.py``) stringifies it
+    and wraps it into the catch-all ``OPEN_ERROR``, discarding the
+    classification instead of surfacing it as ``FILE_ALREADY_LOCKED``. This
+    check FAILS when the editor's top-level error code is anything other
+    than ``FILE_ALREADY_LOCKED``, or the open does not resolve within 60s,
+    or the message is empty, or editor `health` is not ``ok`` afterward; it
+    PASSES only when all of those hold. Session A's lock is ALWAYS released
+    (``session_close_file`` + ``session_delete`` for every session created
+    here) in a ``finally`` block, regardless of outcome.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload with the classified error code, message, wall time,
+        and editor health status.
+    """
+    del args
+    scenario_slug = "3d1dd9ab_open_foreign_lock_clean_error"
+    project = await _create_project(ca, watch_dir_id, scenario_slug)
+    project_id = project["project_id"]
+    file_path = f"verify/{scenario_slug}.py"
+
+    main_session_id = await _create_session(ca, f"{scenario_slug}_main")
+    await _call(
+        ed,
+        "universal_file_open",
+        {
+            "project_id": project_id,
+            "session_id": main_session_id,
+            "file_path": file_path,
+            "create": True,
+            "initial_content": '"""Fixture module for the foreign-lock open check."""\n',
+        },
+    )
+    try:
+        commit = await _call(
+            ed,
+            "universal_file_write",
+            {
+                "project_id": project_id,
+                "session_id": main_session_id,
+                "file_path": file_path,
+                "write_mode": "commit",
+            },
+            retry_on_transport_error=True,
+        )
+        if not commit.get("uploaded"):
+            raise PipelineFailure("fixture file commit did not upload changes", commit)
+    finally:
+        await _close_suppress(ed, project_id, main_session_id, file_path)
+
+    listing = await _call(
+        ca, "list_project_files", {"project_id": project_id, "file_pattern": file_path}
+    )
+    rows = listing.get("files") if isinstance(listing, dict) else listing
+    file_id: str | None = None
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            rel = row.get("relative_path") or row.get("path") or row.get("file_path")
+            if rel and str(rel).endswith(file_path):
+                fid = row.get("file_id") or row.get("id")
+                if isinstance(fid, str) and fid:
+                    file_id = fid
+                    break
+    if not file_id:
+        raise PipelineFailure(
+            "list_project_files did not resolve a file_id for the fixture file",
+            listing,
+        )
+
+    session_a = await _create_session(ca, f"{scenario_slug}_A")
+    session_b: str | None = None
+    try:
+        lock_a = await _call(
+            ca,
+            "session_open_file",
+            {"session_id": session_a, "project_id": project_id, "file_id": file_id},
+        )
+        if not lock_a.get("acquired"):
+            raise PipelineFailure(
+                "session A failed to acquire the exclusive CA file lock", lock_a
+            )
+
+        session_b = await _create_session(ca, f"{scenario_slug}_B")
+        t0 = time.monotonic()
+        open_b_result: dict[str, Any] | None = None
+        open_b_error: PipelineFailure | None = None
+        try:
+            open_b_result = await _call(
+                ed,
+                "universal_file_open",
+                {
+                    "project_id": project_id,
+                    "session_id": session_b,
+                    "file_path": file_path,
+                    "create": False,
+                },
+            )
+        except PipelineFailure as exc:
+            open_b_error = exc
+        wall_seconds = time.monotonic() - t0
+
+        if open_b_result is not None:
+            await _close_suppress(ed, project_id, session_b, file_path)
+            raise PipelineFailure(
+                "session B's universal_file_open succeeded despite session A "
+                "holding the exclusive CA lock (no conflict enforced at all)",
+                {"open_b": _jsonable(open_b_result), "wall_seconds": wall_seconds},
+            )
+
+        assert open_b_error is not None
+        if wall_seconds >= 60.0:
+            raise PipelineFailure(
+                "session B open did not resolve within the 60s bound "
+                f"({wall_seconds:.1f}s)",
+                {"evidence": open_b_error.evidence, "wall_seconds": wall_seconds},
+            ) from open_b_error
+
+        error_code = _extract_error_code(open_b_error.evidence)
+        error_message = _extract_error_message(open_b_error.evidence)
+        health = await _call(ed, "health", {})
+        health_status = health.get("status") if isinstance(health, dict) else None
+
+        if error_code != "FILE_ALREADY_LOCKED" or not error_message:
+            raise PipelineFailure(
+                "universal_file_open on a foreign-locked path did not return "
+                f"a clean classified FILE_ALREADY_LOCKED error (got "
+                f"code={error_code!r}, message={error_message!r}) "
+                "(bug 3d1dd9ab)",
+                {
+                    "error_code": error_code,
+                    "error_message": error_message,
+                    "wall_seconds": wall_seconds,
+                    "editor_health_status": health_status,
+                    "evidence": open_b_error.evidence,
+                },
+            ) from open_b_error
+
+        if health_status != "ok":
+            raise PipelineFailure(
+                "editor health degraded after the foreign-lock open attempt",
+                {"health": health},
+            ) from open_b_error
+
+        return {
+            "project_id": project_id,
+            "file_path": file_path,
+            "file_id": file_id,
+            "error_code": error_code,
+            "error_message": error_message,
+            "wall_seconds": wall_seconds,
+            "editor_health_status": health_status,
+        }
+    finally:
+        try:
+            await _call(
+                ca,
+                "session_close_file",
+                {
+                    "session_id": session_a,
+                    "project_id": project_id,
+                    "file_id": file_id,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        for sid in (session_b, session_a, main_session_id):
+            if not sid:
+                continue
+            try:
+                await _call(ca, "session_delete", {"session_id": sid})
+            except Exception:  # noqa: BLE001
+                pass
+
+
 async def _run_scenario(
     name: str,
     fn: ScenarioFn,
@@ -3461,6 +4147,18 @@ def _scenario_registry() -> list[tuple[str, ScenarioFn]]:
         (
             "yaml_trailing_doc_comment_20b4ba84",
             _scenario_yaml_trailing_doc_comment_20b4ba84,
+        ),
+        (
+            "mypy_project_env_7629cc48",
+            _scenario_mypy_project_env_7629cc48,
+        ),
+        (
+            "docstring_gate_scoped_2f817afc",
+            _scenario_docstring_gate_scoped_2f817afc,
+        ),
+        (
+            "open_foreign_lock_clean_error_3d1dd9ab",
+            _scenario_open_foreign_lock_clean_error_3d1dd9ab,
         ),
     ]
 
