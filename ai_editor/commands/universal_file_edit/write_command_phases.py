@@ -108,6 +108,7 @@ def validate_draft_in_project_context(
     project_root: Optional[Path],
     skip_quality_tools: bool = False,
     validate_docstrings: bool = True,
+    docstring_baseline: Optional[str] = None,
     force_project_staging: bool = False,
 ) -> PreWriteValidationOutcome:
     """Validate a draft from the authoritative project environment.
@@ -125,6 +126,7 @@ def validate_draft_in_project_context(
             target_path=target_path,
             skip_quality_tools=skip_quality_tools,
             validate_docstrings=validate_docstrings,
+            docstring_baseline=docstring_baseline,
             project_root=None,
         )
 
@@ -142,6 +144,7 @@ def validate_draft_in_project_context(
             target_path=target,
             skip_quality_tools=skip_quality_tools,
             validate_docstrings=validate_docstrings,
+            docstring_baseline=docstring_baseline,
             project_root=root,
         )
 
@@ -155,6 +158,7 @@ def validate_draft_in_project_context(
             target_path=staged_target,
             skip_quality_tools=skip_quality_tools,
             validate_docstrings=validate_docstrings,
+            docstring_baseline=docstring_baseline,
             project_root=root,
         )
         if outcome.temp_path is not None:

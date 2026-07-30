@@ -264,7 +264,9 @@ def _stage_validation_sibling_imports(
             content = recent
         if project_root is not None:
             rel_path = Path(rel.replace("\\", "/"))
-            if not rel_path.is_absolute() and all(part != ".." for part in rel_path.parts):
+            if not rel_path.is_absolute() and all(
+                part != ".." for part in rel_path.parts
+            ):
                 sibling_path = (project_root / rel_path).resolve()
                 try:
                     sibling_path.relative_to(project_root.resolve())
@@ -473,11 +475,17 @@ def _run_write_commit_ca(
         client=client,
     )
     try:
+        docstring_baseline = (
+            phases._origin_text(session) if session.persisted_on_ca else ""
+        )
         validation = phases.validate_draft_in_project_context(
             session.handler_id,
             source_code=source_text,
             target_path=validation_target,
             project_root=project_root,
+            docstring_baseline=(
+                docstring_baseline if docstring_baseline.strip() else None
+            ),
         )
     finally:
         for staged in staged_imports:
