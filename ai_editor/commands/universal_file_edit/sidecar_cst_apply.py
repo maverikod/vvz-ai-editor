@@ -123,7 +123,10 @@ def _restore_declaration_trivia(
                     changes["decorators"] = decorators
                 body = updated_node.body
                 if isinstance(body, cst.IndentedBlock):
-                    if body.header.comment is None and row.get("body_header") is not None:
+                    if (
+                        body.header.comment is None
+                        and row.get("body_header") is not None
+                    ):
                         body = body.with_changes(header=row["body_header"])
                     old_trivia = row.get("body_trailing", ())
                     body_items = list(body.body)
@@ -925,6 +928,14 @@ def run_sidecar_cst_edit_batch(
         )
         return err
 
+    # Resolve and normalize EVERY op against the pre-batch tree first, then
+    # apply them through ONE modify_tree call. Per-op apply loops re-resolved
+    # each later op against an already-rebuilt index, killing search-issued
+    # stable_ids whose coordinates shifted (bug 1db1038b); the shared batch
+    # builder also sorts replace/delete bottom-up right-to-left so earlier
+    # same-line sibling spans keep their coordinates.
+    normalized_ops: List[Dict[str, Any]] = []
+    preserve_declaration_trivia = False
     for op in ops_for_cst:
         try:
             resolved_op = _resolve_stable_to_span(op, tree)
@@ -944,7 +955,7 @@ def run_sidecar_cst_edit_batch(
                 )
             )
         try:
-            normalized_op = _normalized_cst_modify_operation(resolved_op)
+            normalized_ops.append(_normalized_cst_modify_operation(resolved_op))
         except ValueError as exc:
             return _rollback_and_fail(
                 error_result_for_edit(
@@ -953,10 +964,12 @@ def run_sidecar_cst_edit_batch(
                     {"operation": op},
                 )
             )
-        preserve_declaration_trivia = _operation_targets_declaration(tree, resolved_op)
-        if preserve_declaration_trivia and not declaration_trivia:
-            declaration_trivia = _snapshot_declaration_trivia(tree)
-        built, err = build_tree_operations(tree, [normalized_op])
+        if _operation_targets_declaration(tree, resolved_op):
+            preserve_declaration_trivia = True
+    if preserve_declaration_trivia and not declaration_trivia:
+        declaration_trivia = _snapshot_declaration_trivia(tree)
+    if normalized_ops:
+        built, err = build_tree_operations(tree, normalized_ops)
         if err is not None:
             return _rollback_and_fail(err)
         if not built:
@@ -964,7 +977,7 @@ def run_sidecar_cst_edit_batch(
                 error_result_for_edit(
                     "No operations built from edit payload",
                     "INVALID_OPERATION",
-                    {"operation": normalized_op},
+                    {"operations": normalized_ops},
                 )
             )
         try:

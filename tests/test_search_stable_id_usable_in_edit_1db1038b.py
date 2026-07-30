@@ -66,9 +66,7 @@ async def test_search_stable_ids_usable_in_next_edit_batch(tmp_path) -> None:
                     }
                 )
             )
-            assert isinstance(search, SuccessResult), getattr(
-                search, "message", search
-            )
+            assert isinstance(search, SuccessResult), getattr(search, "message", search)
             matches = list(search.data.get("matches") or [])
             assert len(matches) >= 2, matches
             stable_ids = [str(m["stable_id"]) for m in matches[-2:]]
@@ -127,9 +125,7 @@ async def test_search_stable_ids_survive_shifting_replacement(tmp_path) -> None:
                     }
                 )
             )
-            assert isinstance(search, SuccessResult), getattr(
-                search, "message", search
-            )
+            assert isinstance(search, SuccessResult), getattr(search, "message", search)
             matches = list(search.data.get("matches") or [])
             assert len(matches) >= 2, matches
             stable_ids = [str(m["stable_id"]) for m in matches[-2:]]

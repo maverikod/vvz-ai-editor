@@ -253,8 +253,13 @@ def build_tree_operations(
                 _resolve_node_id(original_tree, op.node_id)
             )
             line = getattr(meta, "start_line", None) or 0
-            return (0, -line)
-        return (1, 0)
+            col = getattr(meta, "start_col", None) or 0
+            # Bottom-up AND right-to-left: applying the rightmost target first
+            # keeps the coordinates of earlier same-line siblings intact, so
+            # their span node_ids survive the in-batch index rebuild via
+            # exact-position carryover (bug 1db1038b).
+            return (0, -line, -col)
+        return (1, 0, 0)
 
     tree_operations.sort(key=_replace_delete_sort_key)
     return (tree_operations, None)

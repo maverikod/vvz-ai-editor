@@ -169,6 +169,11 @@ def _apply_single_op(tree: CSTTree, op: TreeOperation) -> CSTTree:
 
     previous_metadata_map = dict(tree.metadata_map)
     previous_module = tree.module
+    # Snapshot pre-mutation node objects: libcst hands untouched subtrees back
+    # as the SAME Python objects, and object identity is the only key that
+    # disambiguates duplicate-content siblings across the in-batch rebuild
+    # (bug 1db1038b).
+    previous_node_map = dict(tree.node_map)
     decorator_map = extract_stable_data(tree)
     pinned_node_id = op.node_id if op.action == TreeOperationType.REPLACE else None
     modified_module = _apply_operation(tree.module, tree, op)
@@ -178,6 +183,7 @@ def _apply_single_op(tree: CSTTree, op: TreeOperation) -> CSTTree:
         decorator_map,
         previous_metadata_map=previous_metadata_map,
         previous_module=previous_module,
+        previous_node_map=previous_node_map,
         pinned_node_id=pinned_node_id,
     )
     from .tree_sidecar import persist_tree_sidecar_after_edit

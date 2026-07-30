@@ -11,8 +11,6 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import libcst as cst
 
-from .node_id_markers import build_exact_node_key
-from .node_stable_id import get_stable_id
 
 if TYPE_CHECKING:
     from .models import CSTTree, TreeNodeMetadata
@@ -40,6 +38,36 @@ def normalized_source_span(module: cst.Module, start_line: int, end_line: int) -
     if lo >= hi:
         return ""
     return " ".join("\n".join(lines[lo:hi]).split())
+
+
+def normalized_node_span(
+    module: cst.Module,
+    start_line: int,
+    start_col: int,
+    end_line: int,
+    end_col: int,
+) -> str:
+    """Normalize the exact column-bounded text of one node.
+
+    Whole-line keys wrongly change for a node whose SIBLING on the same line
+    was edited (bug 1db1038b): the node's own text is the correct content
+    signal for position-based identity carryover.
+    """
+    lines = module.code.splitlines()
+    if not lines or start_line < 1 or end_line < start_line:
+        return ""
+    lo = start_line - 1
+    hi = min(len(lines), end_line)
+    if lo >= hi:
+        return ""
+    span_lines = lines[lo:hi]
+    if len(span_lines) == 1:
+        text = span_lines[0][start_col:end_col]
+    else:
+        first = span_lines[0][start_col:]
+        last = span_lines[-1][:end_col]
+        text = "\n".join([first, *span_lines[1:-1], last])
+    return " ".join(text.split())
 
 
 def build_statement_stable_key(
@@ -214,6 +242,7 @@ def restore_stable_data(
             else None
         ),
         pinned_node_id=pinned_node_id,
+        previous_node_map=prev_nodes,
         # Only the caller-supplied pre-mutation module is safe for content-based
         # node_id reuse gating; the ``mod_for_keys`` fallback (tree.module, i.e.
         # already-mutated) must never be used here or every reuse would be

@@ -23,7 +23,6 @@ from .node_id_markers import (
     build_marker_path,
     build_exact_key_to_id_from_metadata,
     build_exact_node_key,
-    strip_persisted_node_ids,
 )
 from .node_type_utils import (
     decorator_stable_id,
@@ -33,12 +32,12 @@ from .node_type_utils import (
 )
 from .node_stable_id import (
     get_stable_id as _get_stable_id_from_node,
-    logical_source_from_module,
     strip_inline_node_id_lines_from_source,
 )
 from .tree_stable_data import (
     _STATEMENT_STABLE_TYPES,
     build_statement_stable_key,
+    normalized_node_span,
     normalized_source_span,
 )
 from .tree_sidecar import (
@@ -246,6 +245,7 @@ def _build_tree_index(
     pinned_node_id: Optional[str] = None,
     obj_to_stable: Optional[Dict[Any, str]] = None,
     previous_module: Optional[cst.Module] = None,
+    previous_node_map: Optional[Dict[str, cst.CSTNode]] = None,
 ) -> None:
     """
     Build node index and metadata for tree.
@@ -286,10 +286,26 @@ def _build_tree_index(
                 )
                 exact_key_to_content.setdefault(
                     content_key,
-                    normalized_source_span(
-                        previous_module, meta.start_line, meta.end_line
+                    normalized_node_span(
+                        previous_module,
+                        meta.start_line,
+                        meta.start_col,
+                        meta.end_line,
+                        meta.end_col,
                     ),
                 )
+    # Object ids of every node in the NEW module: a positionally-reusable
+    # node_id whose previous owner OBJECT survived the mutation must not be
+    # re-issued to a different node — the survivor keeps its identity via
+    # obj_to_stable and a re-issue would create a cross-node id collision on
+    # content-identical trivia (bug 1db1038b / 086a8f6c interplay).
+    surviving_obj_ids: set[int] = set()
+    if previous_node_map:
+        stack: List[cst.CSTNode] = [tree.module]
+        while stack:
+            current = stack.pop()
+            surviving_obj_ids.add(id(current))
+            stack.extend(current.children)
     class_stack: List[str] = []
     func_stack: List[str] = []
     node_to_uuid: Dict[int, str] = {}
@@ -349,13 +365,24 @@ def _build_tree_index(
         elif exact_key in exact_key_to_id:
             candidate_id = exact_key_to_id.pop(exact_key)
             prior_content = exact_key_to_content.pop(exact_key, None)
-            if prior_content is None:
+            prev_owner = (
+                previous_node_map.get(candidate_id) if previous_node_map else None
+            )
+            if (
+                prev_owner is not None
+                and prev_owner is not node
+                and id(prev_owner) in surviving_obj_ids
+            ):
+                # The id's previous owner survived elsewhere in the new tree;
+                # it keeps this identity, the new occupant mints fresh below.
+                pass
+            elif prior_content is None:
                 # No previous_module supplied for content verification (legacy
                 # callers): keep the pre-existing position-only behavior.
                 node_id = candidate_id
             else:
-                current_content = normalized_source_span(
-                    tree.module, start_line, end_line
+                current_content = normalized_node_span(
+                    tree.module, start_line, start_col, end_line, end_col
                 )
                 if current_content == prior_content:
                     node_id = candidate_id
@@ -402,9 +429,17 @@ def _build_tree_index(
         ):
             prev_meta = None
         carried_stable_id = _get_stable_id_from_node(node)
+        # Object identity beats every other carryover key: libcst returns
+        # untouched subtrees as the SAME Python objects, and identity is the
+        # only signal that disambiguates duplicate-content siblings across an
+        # in-batch rebuild (bug 1db1038b).
+        identity_stable_id = (
+            obj_to_stable.get(("obj", id(node))) if obj_to_stable else None
+        )
         if node_type in ("FunctionDef", "AsyncFunctionDef", "ClassDef"):
             stable_id = (
                 carried_stable_id
+                or identity_stable_id
                 or (
                     obj_to_stable.get(("qualname", qualname))
                     if obj_to_stable and qualname
@@ -421,6 +456,7 @@ def _build_tree_index(
                     stmt_sk = build_statement_stable_key(node_type, qualname, norm)
             stable_id = (
                 carried_stable_id
+                or identity_stable_id
                 or (obj_to_stable.get(stmt_sk) if stmt_sk else None)
                 or (prev_meta.stable_id if prev_meta else None)
                 or node_id
