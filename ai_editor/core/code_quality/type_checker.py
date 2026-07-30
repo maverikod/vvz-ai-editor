@@ -317,6 +317,12 @@ def _type_check_with_subprocess(
         if mypy_paths:
             env["MYPYPATH"] = os.pathsep.join(mypy_paths)
 
+        # An installed-but-untyped third-party dep (no stubs / py.typed) is a
+        # typing-completeness gap of the ENVIRONMENT, not a defect in the
+        # edited file; do not block commits on it (bug 7629cc48). Genuinely
+        # missing modules still fail via import-not-found.
+        cmd.append("--disable-error-code=import-untyped")
+
         result = subprocess.run(
             cmd,
             capture_output=True,
