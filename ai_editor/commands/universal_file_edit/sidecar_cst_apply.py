@@ -123,7 +123,10 @@ def _restore_declaration_trivia(
                     changes["decorators"] = decorators
                 body = updated_node.body
                 if isinstance(body, cst.IndentedBlock):
-                    if body.header.comment is None and row.get("body_header") is not None:
+                    if (
+                        body.header.comment is None
+                        and row.get("body_header") is not None
+                    ):
                         body = body.with_changes(header=row["body_header"])
                     old_trivia = row.get("body_trailing", ())
                     body_items = list(body.body)
@@ -216,6 +219,68 @@ class StaleNodeIdError(ValueError):
         super().__init__(message)
         self.field = field
         self.stable_id = stable_id
+
+
+def _replacement_is_bare_expression(op: Dict[str, Any]) -> bool:
+    """Return whether a replace op's snippet is a single bare expression.
+
+    ``universal_file_search`` hands out the ``stable_id`` of the exact node that
+    matched (e.g. one ``Name`` token), and the CST layer natively supports
+    replacing such a leaf (``FINE_GRAINED_REPLACE_NODE_TYPES`` /
+    ``BaseExpression`` in :func:`replace_node`). A snippet that is a bare
+    expression therefore addresses the leaf itself; a snippet that only parses
+    as a statement (``y = 2``) can only be meant for the enclosing statement
+    line and still needs :func:`_promote_leaf_ref_to_statement_line`.
+
+    Args:
+        op: Resolved edit operation dict (``code`` or ``code_lines``).
+
+    Returns:
+        True when the replacement text parses as one bare Python expression.
+    """
+    raw_lines = op.get("code_lines")
+    raw_code = op.get("code")
+    if raw_lines is not None:
+        if raw_code is not None:
+            return False
+        text = join_code_lines([str(line) for line in raw_lines])
+    elif isinstance(raw_code, str):
+        text = raw_code
+    else:
+        return False
+    stripped = textwrap.dedent(text).strip()
+    if not stripped or "\n" in stripped:
+        return False
+    try:
+        cst.parse_expression(stripped)
+    except cst.ParserSyntaxError:
+        return False
+    return True
+
+
+def _is_fine_grained_leaf_target(tree: CSTTree, node_id: str) -> bool:
+    """Return whether ``node_id`` names a leaf expression the CST layer can replace.
+
+    Mirrors the ``_use_leaf`` condition inside
+    :func:`ai_editor.core.cst_tree.tree_modifier_ops_replace.replace_node`.
+
+    Args:
+        tree: In-memory CST tree.
+        node_id: Span node_id already resolved from a stable_id.
+
+    Returns:
+        True for nodes replaceable in place without touching their statement line.
+    """
+    from ai_editor.core.cst_tree.tree_modifier_ops_parse import (
+        FINE_GRAINED_REPLACE_NODE_TYPES,
+    )
+
+    meta = tree.metadata_map.get(node_id)
+    if meta is not None and meta.type in FINE_GRAINED_REPLACE_NODE_TYPES:
+        return True
+    resolved = tree.node_id_aliases.get(node_id, node_id)
+    node = tree.node_map.get(resolved) or tree.node_map.get(node_id)
+    return isinstance(node, cst.BaseExpression)
 
 
 def _promote_leaf_ref_to_statement_line(tree: CSTTree, node_id: str) -> str:
@@ -506,7 +571,18 @@ def _resolve_stable_to_span(op: Dict[str, Any], tree: CSTTree) -> Dict[str, Any]
             raw = meta.node_id
         resolved = _resolve_node_id(tree, raw)
         if field == "node_id" and action in ("replace", "delete"):
-            resolved = _promote_leaf_ref_to_statement_line(tree, resolved)
+            # A search-issued stable_id names one exact node. Promoting a leaf
+            # to its statement line would replace the WHOLE line, destroying the
+            # sibling leaves that later ops of the same batch still reference
+            # (bug 1db1038b: two `query_object` Name tokens on one `return`
+            # line). Keep the leaf target whenever the CST layer can replace it
+            # in place with the supplied bare-expression snippet.
+            if not (
+                action == "replace"
+                and _replacement_is_bare_expression(m)
+                and _is_fine_grained_leaf_target(tree, resolved)
+            ):
+                resolved = _promote_leaf_ref_to_statement_line(tree, resolved)
         m[field] = resolved
     return m
 
@@ -852,6 +928,14 @@ def run_sidecar_cst_edit_batch(
         )
         return err
 
+    # Resolve and normalize EVERY op against the pre-batch tree first, then
+    # apply them through ONE modify_tree call. Per-op apply loops re-resolved
+    # each later op against an already-rebuilt index, killing search-issued
+    # stable_ids whose coordinates shifted (bug 1db1038b); the shared batch
+    # builder also sorts replace/delete bottom-up right-to-left so earlier
+    # same-line sibling spans keep their coordinates.
+    normalized_ops: List[Dict[str, Any]] = []
+    preserve_declaration_trivia = False
     for op in ops_for_cst:
         try:
             resolved_op = _resolve_stable_to_span(op, tree)
@@ -871,7 +955,7 @@ def run_sidecar_cst_edit_batch(
                 )
             )
         try:
-            normalized_op = _normalized_cst_modify_operation(resolved_op)
+            normalized_ops.append(_normalized_cst_modify_operation(resolved_op))
         except ValueError as exc:
             return _rollback_and_fail(
                 error_result_for_edit(
@@ -880,10 +964,12 @@ def run_sidecar_cst_edit_batch(
                     {"operation": op},
                 )
             )
-        preserve_declaration_trivia = _operation_targets_declaration(tree, resolved_op)
-        if preserve_declaration_trivia and not declaration_trivia:
-            declaration_trivia = _snapshot_declaration_trivia(tree)
-        built, err = build_tree_operations(tree, [normalized_op])
+        if _operation_targets_declaration(tree, resolved_op):
+            preserve_declaration_trivia = True
+    if preserve_declaration_trivia and not declaration_trivia:
+        declaration_trivia = _snapshot_declaration_trivia(tree)
+    if normalized_ops:
+        built, err = build_tree_operations(tree, normalized_ops)
         if err is not None:
             return _rollback_and_fail(err)
         if not built:
@@ -891,7 +977,7 @@ def run_sidecar_cst_edit_batch(
                 error_result_for_edit(
                     "No operations built from edit payload",
                     "INVALID_OPERATION",
-                    {"operation": normalized_op},
+                    {"operations": normalized_ops},
                 )
             )
         try:
