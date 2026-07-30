@@ -4085,6 +4085,73 @@ async def _run_scenario(
         return result
 
 
+async def _scenario_toml_blank_lines_preserved_dc6cd2c9(
+    ca: JsonRpcClient, ed: JsonRpcClient, args: argparse.Namespace, watch_dir_id: str
+) -> dict[str, Any]:
+    """Bug dc6cd2c9: TOML round-trip must keep blank separator lines.
+
+    The tree-temp TOML parser collapses runs of blank lines (collected into
+    ``pending``) to empty trivia strings, and the serializer emits nothing
+    for them, so an unrelated committed edit silently deletes every blank
+    line before ``[table]`` headers. This check commits a one-value edit to
+    a pyproject-shaped fixture and FAILS when the readback lost the blank
+    separators or the section comment.
+
+    Args:
+        ca: JSON-RPC client for the Code Analysis server.
+        ed: JSON-RPC client for the AI Editor server.
+        args: Parsed pipeline arguments; unused.
+        watch_dir_id: CA watch directory that hosts the throwaway project.
+
+    Returns:
+        Evidence payload from the shared open/edit/write/read helper.
+    """
+    del args
+    result = await _open_edit_write_read(
+        ca=ca,
+        ed=ed,
+        watch_dir_id=watch_dir_id,
+        scenario_slug="dc6cd2c9_toml_blank_lines",
+        file_path="verify/dc6cd2c9_blank_lines.toml",
+        initial_content=(
+            "# top comment\n"
+            "first = 1\n"
+            "\n"
+            "[server]\n"
+            'host = "a"\n'
+            "\n"
+            "# client section\n"
+            "[client]\n"
+            "port = 1\n"
+        ),
+        operations=[
+            {
+                "type": "replace",
+                "json_pointer": "/server/host",
+                "value": "renamed-dc6cd2c9",
+            }
+        ],
+        expected_substrings=["renamed-dc6cd2c9"],
+        read_end_line=12,
+    )
+    # Multi-line anchors cannot go through expected_substrings (the helper's
+    # preview gate matches against a JSON dump where newlines are escaped);
+    # assert blank-line preservation on the raw readback here instead.
+    readback = str(result.get("readback_excerpt") or "")
+    missing = [
+        anchor
+        for anchor in ("\n\n[server]", "\n\n# client section\n[client]")
+        if anchor not in readback
+    ]
+    if missing:
+        raise PipelineFailure(
+            "TOML round-trip dropped blank separator lines before table "
+            "headers (bug dc6cd2c9)",
+            {"missing": missing, "readback": readback},
+        )
+    return result
+
+
 def _scenario_registry() -> list[tuple[str, ScenarioFn]]:
     return [
         ("info_guide_smoke", _scenario_info_guide_smoke),
@@ -4159,6 +4226,10 @@ def _scenario_registry() -> list[tuple[str, ScenarioFn]]:
         (
             "open_foreign_lock_clean_error_3d1dd9ab",
             _scenario_open_foreign_lock_clean_error_3d1dd9ab,
+        ),
+        (
+            "toml_blank_lines_preserved_dc6cd2c9",
+            _scenario_toml_blank_lines_preserved_dc6cd2c9,
         ),
     ]
 

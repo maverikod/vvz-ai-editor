@@ -35,6 +35,7 @@ port = 80
     assert serialize_toml_source([root]) == """# root
 first = 1
 middle = 2
+
 [server] # table comment
 # host comment
 host = \"example.test\"
@@ -47,4 +48,30 @@ def test_toml_serializer_preserves_raw_value_format_until_replace() -> None:
     root = parse_toml_source(source)[0]
     assert serialize_toml_source([root]) == source
     root.children[0].value = "changed"
-    assert serialize_toml_source([root]) == 'title = "changed" # keep\nitems = [1,  2]\n'
+    assert (
+        serialize_toml_source([root]) == 'title = "changed" # keep\nitems = [1,  2]\n'
+    )
+
+
+def test_toml_roundtrip_preserves_blank_separator_lines() -> None:
+    """Bug dc6cd2c9: blank lines before table headers survive round-trip."""
+    source = (
+        "# top comment\n"
+        "first = 1\n"
+        "\n"
+        "[server]\n"
+        'host = "a"\n'
+        "\n"
+        "# client section\n"
+        "[client]\n"
+        "port = 1\n"
+    )
+    assert serialize_toml_source(parse_toml_source(source)) == source
+
+
+def test_toml_roundtrip_of_real_pyproject_is_identical() -> None:
+    """The project's own pyproject.toml must round-trip byte-identically."""
+    from pathlib import Path
+
+    source = Path("pyproject.toml").read_text(encoding="utf-8")
+    assert serialize_toml_source(parse_toml_source(source)) == source

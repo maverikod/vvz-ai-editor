@@ -17,7 +17,7 @@ def test_toml_parser_preserves_root_and_table_structure() -> None:
     assert isinstance(title, TomlConfigKey)
     assert title.key == "title"
     assert title.value == "demo#value"
-    assert title.comment_before == "# document"
+    assert title.comment_before == "# document\n"
     assert title.comment_inline == "# inline"
     assert title.source_line == 2
     assert title.insert_before_line == 2
@@ -29,7 +29,7 @@ def test_toml_parser_preserves_root_and_table_structure() -> None:
     assert isinstance(table, TomlConfigContainer)
     assert table.table_name == "server.http"
     assert table.dotted_path == ("server", "http")
-    assert table.comment_before == ""
+    assert table.comment_before == "\n"
     assert table.source_line == 4
     assert table.insert_before_line == 4
     assert table.insert_after_line == 8
@@ -37,7 +37,7 @@ def test_toml_parser_preserves_root_and_table_structure() -> None:
     host = table.children[0]
     port = table.children[1]
     assert isinstance(host, TomlConfigKey)
-    assert host.comment_before == "# host comment"
+    assert host.comment_before == "# host comment\n"
     assert host.value == "localhost"
     assert port.key == "port"
     assert port.value == 8080
@@ -57,7 +57,7 @@ def test_toml_parser_supports_arrays_inline_tables_and_eof_trivia() -> None:
     assert metadata.type == "object"
     assert metadata.children[0].key == "enabled"
     assert metadata.children[0].value is True
-    assert root.trailing_trivia == "# eof"
+    assert root.trailing_trivia == "# eof\n"
 
 
 def test_toml_parser_preserves_inline_table_header_comment() -> None:

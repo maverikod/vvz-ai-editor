@@ -225,6 +225,18 @@ def _decode_value(raw_value: str) -> Any:
         raise ValueError(f"Invalid TOML value: {exc}") from exc
 
 
+def _trivia_block(lines: List[str]) -> Optional[str]:
+    """Join pending comment/blank lines into a newline-terminated block.
+
+    A plain "\n".join collapses a run of blank lines to a falsy empty
+    string, which the serializer then drops entirely (bug dc6cd2c9); the
+    newline-terminated form keeps every blank separator representable.
+    """
+    if not lines:
+        return None
+    return "".join(f"{line}\n" for line in lines)
+
+
 _TABLE_RE = re.compile(r"^[ \t]*(\[\[?)([^\]]+)(\]\]?)[ \t]*$")
 
 
@@ -280,14 +292,14 @@ def parse_toml_source(source_text: str) -> List[TreeNode]:
                 source_line=line_number,
                 end_line=line_number,
                 raw_header=content,
-                leading_trivia="\n".join(pending),
+                leading_trivia=_trivia_block(pending) or "",
                 insert_before_line=line_number,
                 insert_after_line=line_number + 1,
                 table_name=table_name,
                 dotted_path=dotted_path,
                 is_array_table=marker == "[[",
             )
-            table.comment_before = "\n".join(pending) if pending else None
+            table.comment_before = _trivia_block(pending)
             table.comment_inline = header_comment or None
             pending.clear()
             root.children.append(table)
@@ -352,14 +364,14 @@ def parse_toml_source(source_text: str) -> List[TreeNode]:
             insert_before_line=line_number,
             insert_after_line=end_line_number + 1,
         )
-        key_node.comment_before = "\n".join(pending) if pending else None
+        key_node.comment_before = _trivia_block(pending)
         pending.clear()
         current.children.append(key_node)
         current.end_line = end_line_number
         last_content_line = end_line_number
 
     if pending:
-        current.trailing_trivia = "\n".join(pending)
+        current.trailing_trivia = _trivia_block(pending) or ""
         current.end_line = max(current.end_line, len(lines))
     root.end_line = max(root.end_line, last_content_line, len(lines))
     for child in root.children:
