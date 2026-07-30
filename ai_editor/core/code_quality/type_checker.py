@@ -212,6 +212,28 @@ def type_check_with_mypy(
     )
 
 
+def _resolve_project_site_packages(project_root: Optional[Path]) -> List[Path]:
+    """Return the target project's venv site-packages directories.
+
+    Read-only path discovery (no interpreter execution): the project venv may
+    come from another container whose python symlinks do not resolve here, so
+    ``--python-executable`` is not usable — mypy instead reads third-party
+    types straight from these directories via MYPYPATH (bug 7629cc48).
+    """
+    if project_root is None:
+        return []
+    found: List[Path] = []
+    for venv_name in (".venv", "venv"):
+        lib_dir = project_root / venv_name / "lib"
+        if not lib_dir.is_dir():
+            continue
+        for python_dir in sorted(lib_dir.glob("python*")):
+            site_packages = python_dir / "site-packages"
+            if site_packages.is_dir():
+                found.append(site_packages)
+    return found
+
+
 def _type_check_with_subprocess(
     file_path: Path,
     config_file: Optional[Path] = None,
@@ -281,6 +303,17 @@ def _type_check_with_subprocess(
             root_str = str(project_root_resolved)
             if root_str not in mypy_paths:
                 mypy_paths.append(root_str)
+        if mypy_paths:
+            env["MYPYPATH"] = os.pathsep.join(mypy_paths)
+
+        # Third-party deps live in the TARGET project's venv, not in this
+        # server's environment (bug 7629cc48): expose the project venv's
+        # site-packages to mypy via MYPYPATH. The venv itself stays excluded
+        # from source crawling via _MYPY_EXCLUDE_VENV_CONFIG.
+        for site_packages in _resolve_project_site_packages(project_root_resolved):
+            site_str = str(site_packages)
+            if site_str not in mypy_paths:
+                mypy_paths.append(site_str)
         if mypy_paths:
             env["MYPYPATH"] = os.pathsep.join(mypy_paths)
 

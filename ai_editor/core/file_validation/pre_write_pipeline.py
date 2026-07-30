@@ -102,6 +102,7 @@ def validate_before_promote(
     target_path: Path,
     skip_quality_tools: bool = False,
     validate_docstrings: bool = True,
+    docstring_baseline: Optional[str] = None,
     project_root: Optional[Path] = None,
 ) -> PreWriteValidationOutcome:
     """
@@ -145,6 +146,7 @@ def validate_before_promote(
         source_code=source_code,
         temp_file_path=temp_path,
         validate_docstrings=validate_docstrings,
+        docstring_baseline=docstring_baseline,
     )
     if not handler_ok:
         _cleanup_temp(temp_path)

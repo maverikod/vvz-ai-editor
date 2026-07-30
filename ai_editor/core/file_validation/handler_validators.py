@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -28,12 +29,22 @@ from ai_editor.core.file_handlers.registry import (
 
 logger = logging.getLogger(__name__)
 
+# Docstring findings embed shifting line numbers; identity for baseline
+# comparison is the finding text without them (bug 2f817afc).
+_DOCSTRING_LINE_RE = re.compile(r"\(line \d+\)|line \d+")
+
+
+def _normalize_docstring_error(error: str) -> str:
+    """Line-number-independent identity of one docstring finding."""
+    return _DOCSTRING_LINE_RE.sub("(line ?)", error).strip()
+
 
 def _validate_python_handler(
     source_code: str,
     temp_file_path: Path,
     *,
     validate_docstrings: bool = True,
+    docstring_baseline: str | None = None,
 ) -> Dict[str, ValidationResult]:
     results: Dict[str, ValidationResult] = {}
 
@@ -48,6 +59,28 @@ def _validate_python_handler(
 
     if validate_docstrings:
         doc_ok, doc_err, doc_errors = validate_module_docstrings(source_code)
+        if not doc_ok and docstring_baseline is not None:
+            # Grandfather PRE-EXISTING violations (bug 2f817afc): an edit to
+            # one entity must not be blocked by legacy findings in untouched
+            # entities. Only violations absent from the baseline source fail.
+            _, _, baseline_errors = validate_module_docstrings(docstring_baseline)
+            baseline_keys = {
+                _normalize_docstring_error(error) for error in baseline_errors
+            }
+            new_errors = [
+                error
+                for error in doc_errors
+                if _normalize_docstring_error(error) not in baseline_keys
+            ]
+            if new_errors:
+                doc_ok = False
+                doc_errors = new_errors
+                doc_err = (
+                    "Docstring validation failed (new violations only):\n"
+                    + "\n".join(f"  - {error}" for error in new_errors)
+                )
+            else:
+                doc_ok, doc_err, doc_errors = True, None, []
         results["docstrings"] = ValidationResult(
             success=doc_ok,
             error_message=doc_err,
@@ -154,6 +187,7 @@ def run_handler_validator(
     source_code: str,
     temp_file_path: Path,
     validate_docstrings: bool = True,
+    docstring_baseline: str | None = None,
 ) -> Tuple[bool, str | None, Dict[str, ValidationResult]]:
     """Run the mandatory validator for the file handler type."""
     runner = _HANDLER_RUNNERS.get(handler_id)
@@ -175,6 +209,7 @@ def run_handler_validator(
             source_code,
             temp_file_path,
             validate_docstrings=validate_docstrings,
+            docstring_baseline=docstring_baseline,
         )
     else:
         results = runner(source_code)

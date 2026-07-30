@@ -85,6 +85,28 @@ _PARSE_FALLBACK_ERROR_MARKERS = (
 )
 
 
+_LOCK_CONFLICT_ERROR_MARKERS = (
+    "already locked",
+    "exclusively locked",
+    "exclusive lock",
+    "locked by another",
+    "locked by session",
+    "file_already_locked",
+    "lock is held",
+)
+
+
+def _is_lock_conflict_error(exc: BaseException) -> bool:
+    """Return True when an upstream open error is a foreign-lock conflict.
+
+    A path exclusively locked by another CA session is a normal, expected
+    condition (bug 3d1dd9ab): it must classify as FILE_ALREADY_LOCKED
+    instead of the generic OPEN_ERROR.
+    """
+    text = str(exc).lower()
+    return any(marker in text for marker in _LOCK_CONFLICT_ERROR_MARKERS)
+
+
 def _is_parse_fallback_error(exc: BaseException) -> bool:
     """Return True when an upstream open error is a parse/save-validation failure.
 
@@ -163,6 +185,14 @@ def run_open_execute(
     try:
         raw_bytes = client.lock_file_and_download(ca_session_id, project_id, file_path)
     except RuntimeError as exc:
+        # A lock held by another session is a normal, classified condition
+        # (bug 3d1dd9ab): return it fast and explicitly instead of the
+        # generic OPEN_ERROR so callers can react without guessing.
+        if _is_lock_conflict_error(exc):
+            return ErrorResult(
+                message=describe_exception(exc, context="universal_file_open"),
+                code=cast(Any, "FILE_ALREADY_LOCKED"),
+            )
         # Open of an existing file must not fail closed when Code Analysis rejects
         # the content as unparsable (save-validation on registration/lock). Fetch
         # the raw bytes without validation so the local resolver opens the file in
