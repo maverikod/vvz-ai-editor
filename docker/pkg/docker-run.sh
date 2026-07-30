@@ -24,6 +24,9 @@ CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"
 LOG_DIR="${AI_EDITOR_LOG_DIR:-/var/log/ai-editor}"
 CONTAINER_LOG_DIR="/var/log/ai-editor"
 DATA_DIR="${AI_EDITOR_DATA_DIR:-/var/ai-editor}"
+# CAS project trees (read-only): commit-time QA resolves the target
+# project's venv site-packages for mypy (bug 7629cc48).
+PROJECTS_DIR="${AI_EDITOR_PROJECTS_DIR:-/var/casmgr/watch_catalog}"
 MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
 NETWORK_PRIMARY="${AI_EDITOR_NETWORK_PRIMARY:-smart-assistant}"
 NETWORK_SECONDARY="${AI_EDITOR_NETWORK_SECONDARY:-ai-editor-net}"
@@ -110,6 +113,7 @@ container_create() {
     -v "${LOG_DIR}:${CONTAINER_LOG_DIR}"
     -v "${DATA_DIR}:/var/ai-editor"
     -v "${MTLS_DIR}:/app/mtls_certificates:ro"
+    -v "${PROJECTS_DIR}:${PROJECTS_DIR}:ro"
     --network "$NETWORK_PRIMARY"
     --network-alias "$CONTAINER_NAME"
     --network-alias "$DNS_NAME"
