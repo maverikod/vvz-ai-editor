@@ -191,8 +191,8 @@ laws:
     must be closed before the work is accepted.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
-    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.13.tar.gz;
-    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.13.tar.gz). The model
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.14.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.14.tar.gz). The model
     REQUESTS the user's permission to update; only after the user confirms does
     it diff template vs project bundle and update the project prompt, preserving
     project-specific placeholder values. Template improvements flow back to the

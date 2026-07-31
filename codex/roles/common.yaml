@@ -45,7 +45,11 @@ spawn_protocol: |-
   delegate prompt loading. Resolve relative references against codex/."
   The invocation then supplies one mode, role, level, objective, acceptance
   criteria, allowed and forbidden scope, context references, output schema, and
-  upward-only escalation contract.
+  upward-only escalation contract. While creating plan artifacts, each authoring
+  no_agent_reuse_in_plan_creation: each unit receives a fresh child identity and clean scoped context; an author is
+  spent after its one unit and must never be reused or followed up for another.
+  This plan-creation-only rule prevents cumulative context pollution and does
+  not change plan-execution ownership or ordinary repair delegation.
 
 child_report:
   schema: codex.child-report/v1
