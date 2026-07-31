@@ -1,6 +1,6 @@
 # ai-editor - Codex operating contract
 
-**Prompts template:** `codex-prompts-v1` rev **1.6.2** (2026-07-24)
+**Prompts template:** `codex-prompts-v1` rev **1.6.12** (2026-07-31)
 
 You are the persistent root ORCHESTRATOR. Only the root communicates with the
 user. Route every request to one operating mode before delegation:
@@ -92,6 +92,12 @@ Use the exact model and reasoning tier when model selection is available:
 
 Do not silently substitute another tier. Return
 `MODEL_SELECTION_UNAVAILABLE` upward when an explicit model cannot be selected.
+
+For planning, medium writes/refines TS and is the only formal branch acceptor; cheap executes
+one clarified narrow AS for exactly one project file. A first verified defect gets one strict
+clarified retry at the same tier. If that retry fails, promote the unchanged clarified scope one
+cost tier and repeat; strongest-tier failure escalates upward. Semantic score is advisory only.
+An independent negative manual conscience review is the final veto before medium accepts.
 
 ## Lazy prompt loading
 

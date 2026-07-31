@@ -20,6 +20,8 @@ concepts:
     caps the whole subtree); embeddings-down -> trust floor 0.2, reported not hidden.
   verification_cycles: cycle 1 (HRS<->MRS source/machine alignment); tactical_triple (MRS+GS+TS self-contained, no sibling
     TS overlap); atomic_quadruple (MRS+GS+TS+AS self-contained for a coder model).
+  acceptance: semantic score is advisory/diagnostic only; an independent negative manual conscience review is the final veto
+    before the medium TS owner formally accepts a branch.
 
 gotchas:
   - 'plan_validate/plan_score/branch_weak are QUEUED — poll queue_get_job_status, NEVER job_status (separate store, silently wrong)'

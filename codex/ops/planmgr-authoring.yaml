@@ -24,7 +24,7 @@ gotchas:
   - step_create: CONTEXT_BLOCKS_MISSING unless the parent has a CURRENT context_common for the child level (a stale-revision block counts as absent)
   - compile_order_rule: child context blocks compile LAST, after the parent settles — never author a child before parent context is current
   - downward_narrowing: child scope_concepts must be a subset of parent common scope — else CONCEPT_OUT_OF_SCOPE
-  - one_file_rule / atomicity: an AS must be one code file, not meaningfully splittable — push file-granularity problems to TS redesign
+  - one_file_rule / atomicity: an AS processes exactly one project file of any kind; one file may have several priority-ordered AS steps
   - file_size_limit: target files <400 lines (350 recommended); over-limit escalates to TS redesign, not an AS workaround
   - step_update concepts placement is the single most common authoring mistake — see tooling-rules.yaml planmgr_gotchas
 

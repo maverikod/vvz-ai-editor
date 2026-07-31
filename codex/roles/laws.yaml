@@ -1,5 +1,5 @@
 # ai-editor standing laws. Every role reads this file before acting.
-# prompts-template: codex-prompts-v1 rev 1.6.2 (2026-07-24)
+# prompts-template: codex-prompts-v1 rev 1.6.12 (2026-07-24)
 
 variables:
   file_access: local      # local (default) | cas | local_ide. Governs local_mode/cas_mode/local_ide_mode and the profile-dependent parts of branch_discipline.
@@ -9,6 +9,10 @@ variables:
   escalation: strict      # strict (default) | off. User pre-sets 'off' -> law server_error_recovery is relaxed.
 
 laws:
+  active_profile_declaration: >-
+    [TRIGGER: first project action] Read `variables.file_access` and state the active profile.
+    It decides legitimate tools; default is `local`, only the user may change it, and a failed
+    tool never authorizes switching profiles.
   branch_discipline: >-
     There are three branches: local is the local working branch, cas is the Code
     Analysis Server working branch, and main is transfer-only. Work only on the
@@ -65,6 +69,12 @@ laws:
     A child report is a claim, not evidence. Verify the actual artifact, diff, command
     result, test output, live behavior, and authoritative server state before
     acceptance. Re-check weak branches manually even when semantic scoring is green.
+  codex_ts_as_retry_acceptance: >-
+    In planning, medium authors/refines TS and owns formal branch acceptance; cheap executes one
+    clarified narrow AS for exactly one project file. The first verified defect gets one strict
+    clarified retry at the same tier. On failure, promote the unchanged clarified scope one cost
+    tier and repeat; strongest-tier failure escalates upward. Semantic score is advisory only and
+    an independent negative manual conscience review is the final veto before medium accepts.
   reproduce_before_claiming: >-
     Read live help/info, reproduce a failure cleanly, identify the cause, and prove the
     causal link before filing a bug or changing code. A title, old workaround, single
@@ -145,30 +155,15 @@ laws:
     mode a queued job/message handoff is valid. Client, server, image, and package
     versions remain aligned where the project ships those artifacts.
   bugfix_acceptance_cycle: >-
-    [TRIGGER: any bug fix AND any acceptance of new code - fires immediately and
-    independently of any scheduled delivery] The mandatory cycle is, in order: (1)
-    REPRODUCE the defect (live, through the project's real access surface when the
-    project is a server); (2) when the project is a server, EXTEND
-    scripts/verify_editor_ca_chain.py with a covering check for this defect and
-    CONFIRM the defect WITH the pipeline - RED - before any further step (a
-    non-server project confirms the reproduction directly and skips to step 3); (3)
-    FIND THE CAUSE in code; (4) PROVE cause->symptom with concrete evidence; (5) FIX
-    with focused regression tests; (6) BUMP the version (pyproject.toml, in lockstep
-    with client/ai_editor_client/version.txt and ai_editor/config_templates/
-    ai_editor_container.json - see ops/delivery-release.yaml `version_sources`) -
-    always before any deploy; (7) DEPLOY to root@192.168.254.26 - only when the
-    current project is a server; everything on root@192.168.254.26 is a test target
-    EXCEPT the doc-store project's database (which is NEVER touched); (8) RE-RUN
-    scripts/verify_editor_ca_chain.py and require it GREEN, THEN SMOKE-TEST the
-    original defect path on the deployed live server. LOOP, do not stop short:
-    reproduction fails at (1) -> OK, done; still red after (8) -> return to (3). ECONOMY PRINCIPLE: a test
-    deploy is CHEAPER than extended model reasoning - when judging "is it fixed",
-    prefer deploy-and-check over further analysis. After the cause of an error is
-    found, checks proving its elimination MUST be added to the pipeline (named
-    after the bug) - this is step (2)/(8) above, not a separate action. Work is not
-    accepted until every applicable step has passed. Single authoritative
-    definition of this cycle - do not restate it elsewhere; ops files, modes.yaml,
-    and AGENTS.md cross-reference this law by name instead.
+    [TRIGGER: any bug fix] The mandatory cycle is: (1) REPRODUCE on the REAL DEPLOYED SERVER;
+    (2) immediately add a named covering check to the single real-server pipeline, run it against
+    that server, and confirm RED. This run confirms reproduction through the pipeline, not a fix;
+    no code changes precede it. (3) FIND the cause; (4) PROVE cause-to-symptom; (5) FIX with
+    focused regression coverage; (6) TEST locally with `pipeline` and confirm GREEN, including
+    the new check; (7) BUMP every lockstep version source; (8) BUILD locally via `docker/build.sh`;
+    (9) DEPLOY to `root@192.168.254.26`, never touching the doc-store database, and publish the
+    client at the same version; (10) re-run the real-server pipeline and smoke-test the original
+    path. Loop from root cause if still RED. This is the sole authoritative cycle.
   single_real_server_pipeline: >-
     [once per session; applies when the current project is a server] Verify the
     project HAS a full-testing pipeline that runs against the REAL deployed
@@ -196,8 +191,8 @@ laws:
     must be closed before the work is accepted.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
-    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.2.tar.gz;
-    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.2.tar.gz). The model
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.13.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.13.tar.gz). The model
     REQUESTS the user's permission to update; only after the user confirms does
     it diff template vs project bundle and update the project prompt, preserving
     project-specific placeholder values. Template improvements flow back to the
