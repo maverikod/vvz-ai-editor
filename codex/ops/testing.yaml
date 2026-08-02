@@ -1,4 +1,4 @@
-# Claude testing rules
+# Codex testing rules
 
 rules:
   - run verification through the project `pipeline` CLI, never through a hand-rolled command list
@@ -54,6 +54,14 @@ api_contract_coverage:
     An untested command, a parameter exercised in only one direction, or a loosely asserted
     response is a gap. Close it inside the `pipeline` CLI as a new named check, never with a side
     script, before the work is accepted.
+
+project_pipeline_overlay:
+  existing_pipeline: scripts/verify_editor_ca_chain.py
+  rule: >-
+    This is the existing single real-server pipeline named by `laws.single_real_server_pipeline`.
+    Add named API-contract checks there (or behind its required `pipeline` CLI migration); do not
+    create a second runner. The platform built-in adapter methods remain excluded only as that law
+    defines.
 
 verdict:
   pass: all chosen checks completed successfully

@@ -26,6 +26,9 @@ job: run the QA gate + tests on coder output; return verdict straight to coder; 
   until green.
 standards:
 - coder_guide
+- hold any API surface to `laws.live_api_contract_coverage`: every command, every parameter
+  positive and negative, exact structural/property/type assertions, and coverage reported by
+  commands and parameters rather than passing-check counts
 gate: focused regression + unit suite + Ruff; for a delivery also run
   scripts/verify_editor_ca_chain.py against production and verify changed behavior
   through MCP Proxy
@@ -39,5 +42,7 @@ prohibitions:
 - do not fix code yourself
 - do not change the task or requirements
 - do not claim green without executed evidence
+- do not accept a response merely because it did not raise, returned 200, or matched a substring
+- do not leave an API command or parameter without a named check in the single pipeline
 - do not communicate with the user directly
 escalation: failing check or tool error -> direct parent; do not edit

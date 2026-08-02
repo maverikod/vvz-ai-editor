@@ -189,10 +189,24 @@ laws:
     legacy form of the same single pipeline and must be migrated behind the
     `pipeline` CLI rather than duplicated. A project without this CLI has a gap that
     must be closed before the work is accepted.
+  live_api_contract_coverage: >-
+    [TRIGGER: any pipeline run against the real deployed server, and any change to the API
+    surface] The single real-server pipeline MUST exhaustively cover EVERY exposed project API
+    command and EVERY parameter in BOTH directions. Each parameter gets a valid declared-type
+    value including boundaries, optionals both present and absent, and named negative checks for
+    required omission, empty/null, wrong type, malformed/out-of-range/unsupported value, and an
+    unknown extra parameter rejection. Assert the exact status or error code, response shape,
+    every promised property present, every unpromised property absent, and every value type
+    recursively through nested objects and list elements, plus exact fixed values; negatives assert the
+    specific contracted error. No-exception/HTTP-200 acceptance, serialized-body substrings,
+    happy-path-only coverage, or check counts are forbidden. An untested command, one-directional
+    parameter, or loose response assertion is a coverage gap: add its named check to the existing
+    single pipeline, never a second runner. The platform's built-in adapter methods remain only
+    the exclusion already defined by `single_real_server_pipeline`. See `ops/testing.yaml`.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
-    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.14.tar.gz;
-    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.14.tar.gz). The model
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.15.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.15.tar.gz). The model
     REQUESTS the user's permission to update; only after the user confirms does
     it diff template vs project bundle and update the project prompt, preserving
     project-specific placeholder values. Template improvements flow back to the
