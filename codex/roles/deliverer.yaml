@@ -6,7 +6,7 @@ role: deliverer
 # at orchestrator level with conscience approval — it only executes the mandated
 # procedure and reports verbatim evidence.
 requested_model:
-  model: gpt-5.5
+  model: gpt-5.6-terra
   reasoning_effort: medium
 reads_first:
 - common.yaml

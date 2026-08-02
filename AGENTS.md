@@ -82,13 +82,13 @@ tree.
 
 Use the exact model and reasoning tier when model selection is available:
 
-- Root orchestrator and HRS/MRS owner: `gpt-5.6-sol`, `max`.
-- GS owner: `gpt-5.6-terra`, `xhigh`.
-- TS owner: `gpt-5.6-terra`, `medium`.
-- AS author/executor: `gpt-5.6-luna`, `medium`.
-- Refactor/repair researcher, executor, and tester: `gpt-5.5`, `medium`.
-- Delivery mechanics (deliverer, `codex/roles/deliverer.yaml`): `gpt-5.5`, `medium`.
-- Independent architectural conscience: `gpt-5.6-sol`, `max`.
+- Root orchestrator and HRS/MRS owner: `gpt-5.6-sol`, ultra.
+- GS owner: `gpt-5.6-sol`, ultra.
+- TS owner: `gpt-5.6-sol`, ultra.
+- AS author/executor: `gpt-5.6-terra`, `medium`.
+- Refactor/repair researcher, executor, and tester: `gpt-5.6-terra`, `medium`.
+- Delivery mechanics (deliverer, `codex/roles/deliverer.yaml`): `gpt-5.6-terra`, `medium`.
+- Independent architectural conscience: `gpt-5.6-sol`, ultra.
 
 Do not silently substitute another tier. Return
 `MODEL_SELECTION_UNAVAILABLE` upward when an explicit model cannot be selected.

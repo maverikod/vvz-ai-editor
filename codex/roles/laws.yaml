@@ -70,7 +70,7 @@ laws:
     result, test output, live behavior, and authoritative server state before
     acceptance. Re-check weak branches manually even when semantic scoring is green.
   codex_ts_as_retry_acceptance: >-
-    In planning, medium authors/refines TS and owns formal branch acceptance; cheap executes one
+    In planning, workhorse authors/refines TS and owns formal branch acceptance; cheap executes one
     clarified narrow AS for exactly one project file. The first verified defect gets one strict
     clarified retry at the same tier. On failure, promote the unchanged clarified scope one cost
     tier and repeat; strongest-tier failure escalates upward. Semantic score is advisory only and
@@ -205,8 +205,8 @@ laws:
     the exclusion already defined by `single_real_server_pipeline`. See `ops/testing.yaml`.
   template_prompt_reconciliation: >-
     [once per session] Reconcile the project's prompt bundle with its source
-    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.15.tar.gz;
-    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.15.tar.gz). The model
+    template archive (claude: /home/vasilyvz/projects/prompts/claude-prompts-v1.6.16.tar.gz;
+    codex: /home/vasilyvz/projects/prompts/codex-prompts-v1.6.16.tar.gz). The model
     REQUESTS the user's permission to update; only after the user confirms does
     it diff template vs project bundle and update the project prompt, preserving
     project-specific placeholder values. Template improvements flow back to the

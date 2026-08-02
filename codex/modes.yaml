@@ -7,10 +7,10 @@ router:
       - create or change HRS, MRS, GS, TS, or AS
       - repair plan coverage, decomposition, drift, or cascade state
     hierarchy:
-      HRS_MRS: {model: gpt-5.6-sol, reasoning_effort: max, spawns: GS}
-      GS: {model: gpt-5.6-terra, reasoning_effort: xhigh, spawns: TS}
-      TS: {model: gpt-5.6-terra, reasoning_effort: medium, spawns: AS}
-      AS: {model: gpt-5.6-luna, reasoning_effort: medium, spawns: null}
+      HRS_MRS: {model: gpt-5.6-sol, reasoning_effort: ultra, spawns: GS}
+      GS: {model: gpt-5.6-sol, reasoning_effort: max, spawns: TS}
+      TS: {model: gpt-5.6-terra, reasoning_effort: xhigh, spawns: AS}
+      AS: {model: gpt-5.6-terra, reasoning_effort: medium, spawns: null}
     always_read: [servers/planmgr.yaml]
     operations:
       authoring: ops/planmgr-authoring.yaml
@@ -28,10 +28,10 @@ router:
       - execute or continue an existing admitted plan or branch
       - implement a frozen or ready-for-review GS, TS, or AS scope
     hierarchy:
-      root: {model: gpt-5.6-sol, reasoning_effort: max, spawns: GS}
-      GS: {model: gpt-5.6-terra, reasoning_effort: xhigh, spawns: TS}
-      TS: {model: gpt-5.6-terra, reasoning_effort: medium, spawns: AS}
-      AS: {model: gpt-5.6-luna, reasoning_effort: medium, spawns: null}
+      root: {model: gpt-5.6-sol, reasoning_effort: ultra, spawns: GS}
+      GS: {model: gpt-5.6-sol, reasoning_effort: max, spawns: TS}
+      TS: {model: gpt-5.6-terra, reasoning_effort: xhigh, spawns: AS}
+      AS: {model: gpt-5.6-terra, reasoning_effort: medium, spawns: null}
     entry_gate:
       - requested scope resolves in Plan Manager
       - mechanical gate is green
@@ -44,9 +44,9 @@ router:
       - defect diagnosis and localized repair outside an existing plan
       - behavior-preserving refactoring or small maintenance change
     roles:
-      researcher: {model: gpt-5.5, reasoning_effort: medium}
-      executor: {model: gpt-5.5, reasoning_effort: medium}
-      tester: {model: gpt-5.5, reasoning_effort: medium}
+      researcher: {model: gpt-5.6-terra, reasoning_effort: medium}
+      executor: {model: gpt-5.6-terra, reasoning_effort: medium}
+      tester: {model: gpt-5.6-terra, reasoning_effort: medium}
     flow:
       - research when facts are missing
       - execute only after scope and acceptance are confirmed

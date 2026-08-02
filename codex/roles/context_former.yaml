@@ -1,7 +1,7 @@
 role: context_former
 status: optional legacy helper; context formation is normally owned by every non-leaf parent
 requested_model:
-  model: gpt-5.5
+  model: gpt-5.6-terra
   reasoning_effort: medium
 reads_first:
 - common.yaml
@@ -37,7 +37,7 @@ coder_model_choice: use the exact mode and level mapping from modes.yaml; never
 coder_task_rules:
 - inline every constant, path, and code fragment the coder needs
 - give exact editor node targets where known
-- do NOT send a gpt-5.6-luna-coder to "go read" external files beyond common+role+manuals
+- do NOT send a a gpt-5.6-terra AS executor to "go read" external files beyond common+role+manuals
   named in the task (derail risk)
 spawn: only when the parent explicitly delegates this optional helper role
 coder_tester_loop:

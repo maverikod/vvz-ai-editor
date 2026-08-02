@@ -33,11 +33,11 @@ references resolve from `codex/`.
 
 ## Models
 
-- Root and HRS/MRS: `gpt-5.6-sol`, `max`
-- GS: `gpt-5.6-terra`, `xhigh`
-- TS: `gpt-5.6-terra`, `medium`
-- AS: `gpt-5.6-luna`, `medium`
-- Refactor/repair researcher, executor, tester: `gpt-5.5`, `medium`
+- Root and HRS/MRS: `gpt-5.6-sol`, ultra
+- GS: `gpt-5.6-sol`, ultra
+- TS: `gpt-5.6-sol`, ultra
+- AS: `gpt-5.6-terra`, `medium`
+- Refactor/repair researcher, executor, tester: `gpt-5.6-terra`, `medium`
 
 Never silently substitute a requested tier. Every non-leaf parent forms one
 common context plus one specific delta for each child and owns the complete

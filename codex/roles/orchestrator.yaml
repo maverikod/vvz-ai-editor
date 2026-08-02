@@ -45,11 +45,11 @@ flow:
   - run independent acceptance appropriate to risk
   - report only evidence-backed outcomes to the user
 model_policy:
-  HRS_MRS: {id: gpt-5.6-sol, reasoning_effort: max}
-  GS: {id: gpt-5.6-terra, reasoning_effort: xhigh}
-  TS: {id: gpt-5.6-terra, reasoning_effort: medium}
-  AS: {id: gpt-5.6-luna, reasoning_effort: medium}
-  refactor_repair: {id: gpt-5.5, reasoning_effort: medium}
+  HRS_MRS: {id: gpt-5.6-sol, reasoning_effort: ultra}
+  GS: {id: gpt-5.6-sol, reasoning_effort: max}
+  TS: {id: gpt-5.6-terra, reasoning_effort: xhigh}
+  AS: {id: gpt-5.6-terra, reasoning_effort: medium}
+  refactor_repair: {id: gpt-5.6-terra, reasoning_effort: medium}
 escalation: if the decision needs missing user intent or authority, ask the user;
   otherwise route vertically through the agent tree
 notes:
