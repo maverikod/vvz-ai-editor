@@ -1,14 +1,25 @@
 <!--
-Author: Vasiliy Zdanovskiy — vasilyvz@gmail.com
+Author: Vasiliy Zdanovskiy
+email: vasilyvz@gmail.com
 -->
 
-# Project rules
+# Repository conventions (ai-editor)
 
-Rule IDs: `CR-*`, `LAYOUT-*`, `NAME-*`. A matching file in `.cursor/agents/*.md` overrides conflicting rows for that role.
+**The operating contract for agents is [`CLAUDE.md`](../CLAUDE.md) and the `claude/` package next
+to it.** This file is not a contract and does not govern how an agent works: it records the house
+conventions of THIS repository — profile keys, layout, naming — that the contract deliberately does
+not fix. If the two ever disagree, `CLAUDE.md` and `claude/` win.
+
+The rule system this file came from has been removed: the `.cursor/agents/` role pack, the
+precedence table that ranked those roles above this file, the required-agent rule that halted work
+when a role could not be spawned, and the rules that merely repeated the contract (literal task
+execution, repository boundary, answering questions in chat, commit/push discipline, parallel
+work). Rule IDs of the surviving rows are unchanged so existing documents that cite them still
+resolve.
 
 ---
 
-## Profile (this repository)
+## 1. Project profile
 
 | Key | Value | Notes |
 |-----|-------|--------|
@@ -30,26 +41,11 @@ Rule IDs: `CR-*`, `LAYOUT-*`, `NAME-*`. A matching file in `.cursor/agents/*.md`
 
 ---
 
-## 1. Precedence (highest first)
-
-| Rank | Layer |
-|------|--------|
-| 1 | Current user message. |
-| 2 | Safety / repo boundary — **CR-002**. |
-| 3 | Active subagent — `.cursor/agents/<name>.md`. |
-| 4 | This file — `CR-*`, `LAYOUT-*`, `NAME-*`, Profile. |
-| 5 | Tool / IDE defaults. |
-
----
-
-## 2. Core rules (`CR-*`)
+## 2. Engineering conventions (`CR-*`)
 
 | ID | P | Rule |
 |----|---|------|
-| **CR-001** | 0 | Execute the current task literally; do not skip stacked instructions. |
-| **CR-002** | 0 | Do not modify paths outside this repository without explicit user permission. |
 | **CR-003** | 0 | If `projectid` is required: valid JSON with UUID4 `id` + `description`; missing/invalid → stop and report. |
-| **CR-004** | 0 | Analysis-only questions → answer in chat; no unsolicited files. Durable docs only when the task asks. |
 | **CR-005** | 1 | **Python / venv:** `VENV_DIR` active before `python`, `pip`, tests, linters. On import/`pip` errors, verify interpreter (`which python`, `$VIRTUAL_ENV`), activate, retry. |
 | **CR-015** | 0 | No `pip install --break-system-packages` or PEP 668 overrides unless the user explicitly approves that exact command. |
 | **CR-006** | 1 | If `USE_CODE_MAP` = yes: after each logically finished structural change, refresh indices (project code-map → under `code_analysis/`). |
@@ -57,11 +53,9 @@ Rule IDs: `CR-*`, `LAYOUT-*`, `NAME-*`. A matching file in `.cursor/agents/*.md`
 | **CR-008** | 1 | Python module size: ~350 lines → prefer split; ≤ ~400 OK; ≥ ~450 → must split. |
 | **CR-009** | 1 | Docstrings / types for public API; non-obvious logic: short comments. Abstract API → explicit failure, not silent stubs. CST saves: [docs/standards/PYTHON_DOCSTRING_STANDARD.md](standards/PYTHON_DOCSTRING_STANDARD.md). |
 | **CR-010** | 1 | Chat: `CHAT_LOCALE`; artifacts: `ARTIFACT_LOCALE` unless user specifies otherwise. |
-| **CR-011** | 2 | Commit after a logical batch; push only when the user asks. |
 | **CR-012** | 2 | Headers: `HEADER_AUTHOR` and `HEADER_EMAIL` where the project requires them. |
 | **CR-013** | 2 | Imports at top unless lazy-loading is intentional. |
 | **CR-014** | 3 | If the project defines log importance (0–10), use it consistently. |
-| **CR-016** | 1 | Parallelize independent work when safe; do not serialize without a stated reason. |
 
 **P:** 0 = governance / stop, 1 = quality, 2 = hygiene, 3 = optional.
 
@@ -121,16 +115,9 @@ Python (PEP 8) defaults.
 
 ---
 
-## 5. Anti-patterns (naming & layout)
+## 5. Anti-patterns
 
 - Mixed `camelCase` / `snake_case` in public Python APIs without reason.
 - Generic names (`data`, `manager`, …) without qualifier.
 - Cryptic abbreviations only one author understands.
 - Test files not discoverable by pytest (`test_*.py`) unless configured otherwise.
-
----
-
-## 6. Cursor / agents
-
-- IDE pointer: `.cursor/rules/project_canonical.mdc` → this file and `docs/agents/*`.
-- Subagent roles: `.cursor/agents/*.md` with shared rules in `docs/agents/common_agent_rules.md`.
