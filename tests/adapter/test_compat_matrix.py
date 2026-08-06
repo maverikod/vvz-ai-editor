@@ -16,15 +16,14 @@ public traversal API (``by_format``, ``by_capability``, ``known_format_ids``,
 ``gaps``, ``validate_adapter_coverage``) and structural shape are tested
 against the module's own output, since that *is* the contract under test.
 
-Known finding pinned here rather than hidden: ``json``'s ``cst_query_selector``
-row claims NOT_IMPLEMENTED because ``adapter.compat_matrix._QUERY_PROBE_SAMPLES``
-has no ``"json"`` entry, so the matrix's own probe never actually calls
-``TreeQueryEngine`` for json -- it reports "untested" as "not implemented".
-A direct, independent call below shows the real query genuinely succeeds
-(real ``short_id`` assigned, real matches returned). That row is wrong today
-and ``test_json_cst_query_selector_row_is_stale`` is written to fail loudly
-about it, per instruction: a wrong row is the point of this suite, and this
-file must never be softened to hide it.
+Two findings this suite forced out and that are now fixed in the matrix:
+``json``'s ``cst_query_selector`` row read NOT_IMPLEMENTED only because
+``_QUERY_PROBE_SAMPLES`` had no ``"json"`` entry, so the probe never called
+``TreeQueryEngine`` at all and reported "untested" as "not implemented"; and
+``toml``/``yaml`` had no rows whatsoever because ``LIVE_PLUGINS`` had never
+been extended when those plugins shipped. Both are the same failure mode --
+silence read as a negative claim -- and both are covered below by tests that
+compare every row against a real call, never against the matrix's own logic.
 """
 
 from __future__ import annotations
@@ -53,7 +52,7 @@ from tree_engine.plugins.registry import (
 )
 from tree_engine.query.engine import TreeQueryEngine
 
-FORMAT_IDS = ("python", "bsl", "plain_text", "json")
+FORMAT_IDS = ("python", "bsl", "plain_text", "json", "toml", "yaml")
 
 # Independent real samples -- not imported from compat_matrix's own probe
 # tables, so a coincidental agreement there cannot mask a real disagreement.
@@ -62,6 +61,8 @@ REAL_SOURCE = {
     "bsl": "Процедура Проба()\nКонецПроцедуры\n",
     "plain_text": "first paragraph\n\nsecond paragraph\n",
     "json": '{"a": 1, "b": [1, 2, 3]}',
+    "toml": 'name = "probe"\n[table]\nvalue = 1\n',
+    "yaml": "name: probe\nitems:\n  - one\n  - two\n",
 }
 
 
@@ -91,9 +92,13 @@ def test_build_matrix_is_deterministic():
 
 
 def test_known_format_ids_matches_live_plugins_today():
-    # Pins today's reality: exactly these four concrete formats plus the
-    # registry's global "*" rows, in first-seen order.
-    assert known_format_ids() == ("python", "bsl", "plain_text", "json", "*")
+    # Pins today's reality: every concrete format plugin the engine ships,
+    # plus the registry's global "*" rows, in first-seen order. A plugin that
+    # exists but is missing here would be silently uncovered by the matrix --
+    # which is exactly how toml and yaml went unrecorded for a while.
+    assert known_format_ids() == (
+        "python", "bsl", "plain_text", "json", "toml", "yaml", "*",
+    )
     assert set(LIVE_PLUGINS) == set(FORMAT_IDS)
 
 
