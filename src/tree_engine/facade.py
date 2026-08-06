@@ -366,7 +366,12 @@ def set_attribute(document: TreeDocument, address: Address, name: str, value: An
     """Set one primitive field on the addressed node ({p011}); admissibility is decided by the node
     itself and a rejection mutates nothing."""
     with _operation(document, expected_version, ErrorCode.INVALID_PARENT_TYPE):
-        result = _updates.set_attribute(document, _nodes(document, address)[0], name, value)
+        node = _nodes(document, address)[0]
+        result = _updates.set_attribute(document, node, name, value)
+        # The edited node and its ancestors may still hold a parse-time source
+        # slice; without invalidating it the new value is written into fields
+        # and silently absent from rendered output ({p022}).
+        invalidate_cached_source(node)
         document.document_version += 1
         return result
 
