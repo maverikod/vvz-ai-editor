@@ -181,3 +181,14 @@ def test_reserved_extension_slots_are_inert_by_default() -> None:
     # node/document are unchanged and remain usable afterward.
     assert node.kind == "python:Pass"
     assert document.root is node
+
+
+def test_representation_format_id_defaults_to_source_format_id() -> None:
+    """Per {p050} the ordinary case needs no explicit representation format."""
+    document = Document(root=make_node("module"), source_format_id="python")
+    assert document.representation_format_id == "python"
+    assert document.format_id == "python"
+
+    document.representation_format_id = "plain_text"
+    assert document.format_id == "plain_text"
+    assert document.source_format_id == "python"
