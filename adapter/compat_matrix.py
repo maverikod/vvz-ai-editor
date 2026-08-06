@@ -21,12 +21,14 @@ string is a documentation pointer, not a runtime dependency; the one live
 ``ai_editor.cst_query`` import (the reused selector parser/AST) lives in
 ``tree_engine/query/engine.py`` itself, out of this file's scope.
 
-Only three concrete format plugins exist in this worktree at the baseline:
-``python`` (LibCST), ``bsl`` (tree-sitter-bsl), ``plain_text`` (the mandatory
-fallback). A fourth, ``json``, is named by this step's task context but its
-module (``tree_engine.plugins.json_format``) does not exist yet -- verified
-live below via ``ModuleNotFoundError``, not assumed; asserting capabilities
-that do not exist would itself be the defect this matrix exists to prevent.
+The concrete format plugins are discovered live, never assumed: ``python``
+(LibCST), ``bsl`` (tree-sitter-bsl), ``plain_text`` (the mandatory fallback)
+and ``json`` (stdlib only). A plugin whose module cannot be imported is
+recorded as absent rather than credited with capabilities -- claiming a
+capability that does not exist is precisely the defect this matrix exists to
+prevent, and so is withholding one that does: a format missing from
+``_QUERY_PROBE_SAMPLES`` would report "not implemented" when the truth is
+merely "not probed".
 """
 
 from __future__ import annotations
@@ -134,6 +136,7 @@ _QUERY_PROBE_SAMPLES: Dict[str, str] = {
     "python": "def probe():\n    pass\n",
     "bsl": "Процедура Проба()\nКонецПроцедуры\n",
     "plain_text": "probe\n",
+    "json": '{"a": 1, "b": [1, 2, 3]}',
 }
 
 _CONTRACT_METHODS = (
