@@ -129,6 +129,8 @@ LIVE_PLUGINS: Dict[str, Optional[FormatPluginContract]] = {
     "bsl": _load_plugin("tree_engine.plugins.bsl.plugin", "BSL_FORMAT_PLUGIN"),
     "plain_text": _load_plugin("tree_engine.plugins.plain_text", "PLAIN_TEXT_FORMAT_PLUGIN"),
     "json": _load_plugin("tree_engine.plugins.json_format", "JSON_FORMAT_PLUGIN"),
+    "toml": _load_plugin("tree_engine.plugins.toml_format", "TOML_FORMAT_PLUGIN"),
+    "yaml": _load_plugin("tree_engine.plugins.yaml.plugin", "YAML_FORMAT_PLUGIN"),
 }
 
 # Minimal real samples used only to probe live behavior; not a claim by themselves.
@@ -137,6 +139,8 @@ _QUERY_PROBE_SAMPLES: Dict[str, str] = {
     "bsl": "Процедура Проба()\nКонецПроцедуры\n",
     "plain_text": "probe\n",
     "json": '{"a": 1, "b": [1, 2, 3]}',
+    "toml": 'a = 1\n[t]\nb = "probe"\n',
+    "yaml": "a: 1\nb:\n  - probe\n",
 }
 
 _CONTRACT_METHODS = (
