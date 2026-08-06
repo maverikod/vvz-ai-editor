@@ -246,7 +246,7 @@ def _probe_cst_query(format_id: str, plugin: Optional[FormatPluginContract]) -> 
             coverage=CoverageStatus.PARTIAL,
             legacy_reference=_legacy("cst_query_selector"),
             notes=(
-                "selector parser/AST reused unchanged from ai_editor.cst_query, traversal is "
+                "selector parser/AST vendored into tree_engine.query.selector, traversal is "
                 f"format-agnostic by construction, but query('*') on a freshly parsed "
                 f"{format_id} document raised {type(exc).__name__}: {exc}. short_id assignment "
                 "(core.identity/short_id) is out of this module's scope; only python's import "
