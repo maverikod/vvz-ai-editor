@@ -372,9 +372,15 @@ def test_thread_store_add_is_lock_protected_against_lost_updates():
     assert store.phases[instr.PHASE_SAVE].invocations == writers * per_writer == 18000
 
 
+@pytest.mark.timeout(180)
 def test_real_parse_duration_is_nonzero_and_scales_with_work():
     """A real parse of a small real file against one roughly four times its size:
-    both durations are non-zero, and more real work never measures as less time."""
+    both durations are non-zero, and more real work never measures as less time.
+
+    This one really parses 60 files with libcst, so its wall clock tracks how
+    loaded the machine is; it carries its own timeout instead of the suite
+    default, which it exceeds under concurrent load while asserting nothing
+    about elapsed time itself."""
 
     instr.enable()
     small_text = _SMALL_SOURCE.read_text(encoding="utf-8")
