@@ -92,7 +92,7 @@ importing each plugin module directly in the venv:
 | `toml_format.py` | none — stdlib only (`tomllib`, `json`, `re`, `dataclasses`, `datetime`, `typing`) | grep of its import block |
 | `plain_text.py` | none — stdlib only (`itertools`, `collections`, `dataclasses`, `typing`, `uuid`) | grep of its import block |
 | `fallback.py` | none — stdlib only | grep of its import block |
-| `yaml` | **module does not exist** | see "yaml plugin" finding below |
+| `yaml/` (`plugin.py`, `reader.py`, `flow.py`, `scanner.py`, `emitter.py`, `builder.py`) | none — stdlib only | grep of its import block |
 
 All five existing concrete/fallback plugins import cleanly:
 `PYTHONPATH=src .venv/bin/python -c "import tree_engine.plugins.python.plugin, tree_engine.plugins.bsl.plugin, tree_engine.plugins.json_format, tree_engine.plugins.toml_format, tree_engine.plugins.plain_text"`
@@ -130,14 +130,16 @@ with required-for-first-release flag and status as measured above:
 | BSL/1C translator | Bidirectional tree-sitter-bsl-based plugin (`src/tree_engine/plugins/bsl/`, 4 modules, 1421 lines) | yes | **Complete** — imports cleanly, `plugin_version="1.0.0"`, exercised by `tests/plugins/bsl/`; see the tree-sitter version discrepancy above |
 | `plain_text` plugin | Mandatory fallback plugin, stdlib-only (`plugins/plain_text.py`, 398 lines) | yes | **Complete** — imports cleanly, `plugin_version="1.0.0"` |
 | `json` plugin | Stdlib-only JSON format plugin (`plugins/json_format.py`, 399 lines) | yes | **Complete** — imports cleanly, `plugin_version="1.0.0"`. Note: `adapter/compat_matrix.py`'s own module docstring still says this plugin "does not exist yet"; that docstring is stale relative to the current tree and should be corrected in the sibling step that owns `adapter/` |
-| `yaml` plugin | Stdlib/`pyyaml`-based YAML format plugin | yes | **Not started** — no `plugins/yaml_format.py` or equivalent module exists; confirmed live via `ModuleNotFoundError` importing `tree_engine.plugins.yaml_format`. The only trace of YAML in `src/tree_engine` is forward-looking comment text in `plugins/selection.py` (lines 7 and 150) listing `yaml` among formats "delivered by sibling" work — no implementation |
+| `yaml` plugin | Stdlib-only YAML format plugin, split into a package (`plugins/yaml/`, 6 modules, 1324 lines) | yes | **Complete** — imports cleanly, `plugin_version="1.0.0"`, registered among the facade's built-ins. Measured on a 500-file real corpus: 496 byte-identical round trips, zero mismatches, zero unsupported constructs; the 4 failures are files PyYAML also rejects. It was first delivered as a single 636-line module refusing 41% of real YAML for lack of flow collections, then reworked into this package |
 | `toml` plugin | Stdlib-only TOML format plugin (`plugins/toml_format.py`, 397 lines) | yes | **Complete** — imports cleanly, `plugin_version="1.0.0"` |
 | Canonical `pipeline` CLI | Single named-check runner (`pipeline/cli.py` 155 lines, `pipeline/registry.py` 259 lines) | yes | **Partial** — the CLI machinery is complete and generic (`pipeline`, `pipeline list`, `pipeline <name>` all work as designed), but only **one** check is registered: `check-boundary-check` (`pipeline/checks/check_boundary.py`, 247 lines). None of the unit/lint/type/round-trip/benchmark/package/adapter/deploy/live-server checks named in `pipeline/registry.py`'s own module docstring are implemented yet. Additionally, the installed `scripts/pipeline` launcher still execs the **legacy** `scripts/verify_editor_ca_chain.py`, not `pipeline.cli` — `pipeline.cli`'s own docstring confirms this migration is "explicitly out of scope for this file and is deferred to later, dedicated steps" |
 
-7 of 9 components are complete; the `yaml` plugin has not been started;
-the `pipeline` CLI is structurally complete but has only one of its
-intended checks registered and is not yet wired to the installed
-`pipeline` script, so it counts as partial rather than complete.
+8 of 9 components are complete. The `pipeline` CLI is structurally
+complete and now discovers checks automatically under `pipeline/checks/`
+(four registered: `check-boundary-check`, `check-contract`,
+`check-recovery`, `check-roundtrip`), but the installed `pipeline` script
+still execs the legacy `scripts/verify_editor_ca_chain.py`, so it counts
+as partial until that launcher is migrated.
 
 ## What ships alongside the library
 
