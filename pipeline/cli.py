@@ -25,10 +25,15 @@ Invocation modes
     invoking any of them. Nothing registered is executed in this mode.
 
 Check modules register themselves on the shared registry singleton (see
-``pipeline/registry.py``) before ``main()`` is called; this module never
-imports check modules itself, it only reads whatever is already on the
-registry. That keeps this file the single canonical runner without needing
-to know what kinds of checks exist.
+``pipeline/registry.py``) as an import-time side effect; nothing else ever
+triggers that side effect for them, so this module is also responsible for
+*discovery*: walking the real ``pipeline/checks/`` package with
+``pkgutil``/``importlib`` and importing every module it finds there before
+building the argparse parser. Discovery never hard-codes a check's module
+name — a new file dropped into ``pipeline/checks/`` becomes a subcommand
+with zero change to this file. Once discovery has run, the rest of this
+module only reads whatever is on the registry; it still never imports a
+specific check module by name itself.
 
 Migrating the legacy verification script's behaviour behind this
 application (as opposed to the fresh checks registered by later work) is
@@ -39,12 +44,20 @@ steps; nothing under ``scripts/`` is imported, wrapped, or modified here.
 from __future__ import annotations
 
 import argparse
+import importlib
+import pkgutil
 import sys
-from typing import IO, Optional, Sequence
+from typing import IO, List, Optional, Sequence
 
 from pipeline.registry import Check, CheckNotFoundError, CheckResult, Registry, get_registry
 
 PROG = "pipeline"
+
+# Dotted path of the package that holds one module per check. Discovery
+# walks this package's real directory at call time; it is the only place
+# that names the checks package, and it never lists individual check
+# modules by name.
+CHECKS_PACKAGE = "pipeline.checks"
 
 
 def _print_result(check: Check, result: CheckResult, stream: IO[str]) -> None:
@@ -113,6 +126,61 @@ def list_registered_checks(registry: Optional[Registry] = None, stream: IO[str] 
     return 0
 
 
+def discover_checks(package_name: str = CHECKS_PACKAGE, stream: IO[str] = sys.stderr) -> List[str]:
+    """Import every module under ``package_name`` so each check registers itself.
+
+    A check module registers on the shared registry as an import-time side
+    effect (see ``pipeline/checks/check_boundary.py``: the ``register()``
+    call at the bottom of the file). Nothing else ever imports these
+    modules, so this function is what makes discovery real: it walks the
+    actual ``pipeline/checks/`` directory with ``pkgutil.iter_modules`` and
+    imports whatever ``*.py`` files it finds there. Nothing here is a
+    hand-maintained list of check names — a check file that lands in that
+    directory later becomes a subcommand automatically, with zero change
+    to this module.
+
+    ``pipeline`` and ``pipeline.checks`` are plain implicit namespace
+    packages (no ``__init__.py``); ``importlib``/``pkgutil`` resolve those
+    the same way as regular packages; no package markers are needed for
+    discovery to work.
+
+    A module that fails to import (syntax error, a bad top-level import, a
+    duplicate-name registration, ...) must not take the rest of the CLI
+    down with it: the failure is caught here, reported as one warning line
+    on ``stream``, and discovery continues with the next module. The dotted
+    names of modules that failed to import are returned (mainly so tests
+    can assert on them); this failure is deliberately kept out of the
+    process exit code — a check that failed to *load* never became a
+    registered check in the first place, so it cannot fail *run*, and a
+    broken check file must never be able to make ``list`` or an unrelated
+    check's subcommand exit non-zero.
+    """
+    failed: List[str] = []
+    try:
+        package = importlib.import_module(package_name)
+    except ImportError as exc:
+        print(f"{PROG}: warning: could not import package {package_name!r}: {exc}", file=stream)
+        return failed
+
+    package_path = getattr(package, "__path__", None)
+    if package_path is None:
+        # Resolved to a plain module, not a package; nothing to walk.
+        return failed
+
+    for module_info in pkgutil.iter_modules(package_path, prefix=f"{package_name}."):
+        if module_info.ispkg:
+            continue
+        try:
+            importlib.import_module(module_info.name)
+        except Exception as exc:  # noqa: BLE001 - a bad check must not crash the CLI
+            print(
+                f"{PROG}: warning: failed to import check module {module_info.name!r}: {exc}",
+                file=stream,
+            )
+            failed.append(module_info.name)
+    return failed
+
+
 def _build_parser(registry: Registry) -> argparse.ArgumentParser:
     """Build the argparse parser with one subcommand per registered check.
 
@@ -134,13 +202,20 @@ def _build_parser(registry: Registry) -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None, registry: Optional[Registry] = None) -> int:
-    """Entry point: parse argv against the current registry and dispatch.
+    """Entry point: discover checks, parse argv against the registry, dispatch.
 
     ``registry`` defaults to the process-wide singleton
     (``pipeline.registry.get_registry()``); tests may pass an isolated
-    :class:`~pipeline.registry.Registry` instance instead.
+    :class:`~pipeline.registry.Registry` instance instead. Discovery (see
+    ``discover_checks()``) only runs against the real ``pipeline/checks/``
+    package when the default singleton registry is in play — a caller that
+    supplies its own ``Registry`` is doing test isolation and populates it
+    explicitly, so real filesystem discovery is skipped for it.
     """
+    using_default_registry = registry is None
     registry = registry if registry is not None else get_registry()
+    if using_default_registry:
+        discover_checks()
     parser = _build_parser(registry)
     args = parser.parse_args(argv)
 
