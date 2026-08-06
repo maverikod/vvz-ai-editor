@@ -229,51 +229,14 @@ def _walk(
         else:
             entries.append(_build_stub(child, child_agg))
 
-def _address_payload(view: NodeAddressView) -> dict:
-    return {"node_id": view.node_id, "short_id_hex": view.short_id_hex}
-
-def _field_payload(field: Optional[TruncatedField]) -> Optional[dict]:
-    if field is None:
-        return None
-    return {"value": field.value, "field_truncated": field.field_truncated, "original_field_bytes": field.original_field_bytes}
-
-def _entry_payload(entry: _OutlineEntry) -> dict:
-    if isinstance(entry, OutlineStubRecord):
-        return {
-            "node_id": entry.node_id, "short_id_hex": entry.short_id_hex, "type": entry.type,
-            "child_count": entry.child_count, "subtree_node_count": entry.subtree_node_count,
-            "subtree_bytes": entry.subtree_bytes, "expandable": entry.expandable,
-        }
-    attributes = entry.attributes
-    if attributes is not None:
-        attributes = {k: (_field_payload(v) if isinstance(v, TruncatedField) else v) for k, v in attributes.items()}
-    return {
-        "node_id": entry.node_id, "short_id_hex": entry.short_id_hex, "depth": entry.depth,
-        "parent_id": entry.parent_id, "parent_short_id_hex": entry.parent_short_id_hex,
-        "child_index": entry.child_index, "type": entry.type, "name_or_value": entry.name_or_value,
-        "attributes": attributes, "child_count": entry.child_count, "shown_child_count": entry.shown_child_count,
-        "subtree_bytes": entry.subtree_bytes, "source_preview": _field_payload(entry.source_preview),
-        "expanded": entry.expanded, "auto_expanded": entry.auto_expanded, "truncated": entry.truncated,
-    }
-
-def _meta_payload(meta: OutlineMeta) -> dict:
-    return {
-        "viewed": _address_payload(meta.viewed), "depth": meta.depth, "expand_below_bytes": meta.expand_below_bytes,
-        "document_version": meta.document_version, "node_count": meta.node_count, "response_bytes": meta.response_bytes,
-    }
-
-def _truncation_payload(truncation: OutlineTruncation) -> dict:
-    return {
-        "truncated": truncation.truncated, "omitted_nodes": truncation.omitted_nodes,
-        "omitted_bytes": truncation.omitted_bytes,
-        "continuation": _address_payload(truncation.continuation) if truncation.continuation else None,
-    }
-
 def _payload_bytes(payload: Any) -> int:
     return len(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8"))
 
 def _entry_bytes(entry: _OutlineEntry) -> int:
-    return _payload_bytes(_entry_payload(entry))
+    """Approximate per-entry cost, used only for the shrink heuristic below.
+    The ceiling decision itself never trusts a sum of these -- it always
+    re-measures the real assembled response (see ``_assemble``)."""
+    return _payload_bytes(entry)
 
 def _mandatory_entry_bytes(entry: _OutlineEntry) -> int:
     if isinstance(entry, OutlineStubRecord):
@@ -296,45 +259,88 @@ def _shrink_entry(entry: OutlineNodeRecord, budget: int) -> OutlineNodeRecord:
         entry = replace(entry, attributes={}, truncated=True)
     return entry
 
-def _envelope_bytes(
-    viewed: NodeAddressView, depth: int, expand_below_bytes: int, version: Any, entry_count: int, max_output_bytes: int
-) -> int:
-    """Conservative (never-underestimated) size of everything but ``nodes``:
-    worst-case digit width for every count, continuation assumed present,
-    so swapping in real final values only ever shrinks the response."""
+def _truncation_for(entries: List[_OutlineEntry], kept_count: int, viewed: NodeAddressView) -> OutlineTruncation:
+    remainder = entries[kept_count:]
+    if not remainder:
+        return OutlineTruncation(truncated=False, omitted_nodes=0, omitted_bytes=0, continuation=None)
+    omitted_bytes = sum(_entry_bytes(e) for e in remainder)
+    return OutlineTruncation(
+        truncated=True, omitted_nodes=len(remainder), omitted_bytes=omitted_bytes, continuation=remainder[0].address
+    )
+
+def _assemble(
+    kept: List[_OutlineEntry], truncation: OutlineTruncation, viewed: NodeAddressView,
+    depth: int, expand_below_bytes: int, version: Any,
+) -> Tuple[int, OutlineMeta]:
+    """The response's real, exact serialized size for a candidate ``kept``/
+    ``truncation`` pair -- built and measured the same way a caller actually
+    receives it (``build_outline_response`` then ``_payload_bytes`` on the
+    real object), not estimated. ``response_bytes`` is self-referential (the
+    field reports the size of the response that contains it); this resolves
+    it by fixed point, which converges in a couple of steps since the digit
+    width of a byte count only changes at a power-of-ten boundary."""
+    response_bytes = 0
     meta = OutlineMeta(
         viewed=viewed, depth=depth, expand_below_bytes=expand_below_bytes,
-        document_version=version, node_count=entry_count, response_bytes=max_output_bytes,
+        document_version=version, node_count=len(kept), response_bytes=response_bytes,
     )
-    truncation = OutlineTruncation(truncated=True, omitted_nodes=entry_count, omitted_bytes=max_output_bytes, continuation=viewed)
-    return _payload_bytes({"meta": _meta_payload(meta), "nodes": [], "truncation": _truncation_payload(truncation)})
+    for _ in range(6):
+        size = _payload_bytes(build_outline_response(meta, kept, truncation))
+        if size == response_bytes:
+            return size, meta
+        response_bytes = size
+        meta = replace(meta, response_bytes=response_bytes)
+    return response_bytes, meta
+
+def _fits(
+    kept: List[_OutlineEntry], truncation: OutlineTruncation, viewed: NodeAddressView,
+    depth: int, expand_below_bytes: int, version: Any, max_output_bytes: int,
+) -> bool:
+    size, _ = _assemble(kept, truncation, viewed, depth, expand_below_bytes, version)
+    return size <= max_output_bytes
 
 def _apply_ceiling(
     entries: List[_OutlineEntry], max_output_bytes: int, viewed: NodeAddressView, depth: int, expand_below_bytes: int, version: Any
 ) -> Tuple[List[_OutlineEntry], OutlineTruncation]:
-    used = _envelope_bytes(viewed, depth, expand_below_bytes, version, len(entries), max_output_bytes)
-    kept: List[_OutlineEntry] = []
-    for index, entry in enumerate(entries):
-        size = _entry_bytes(entry)
-        if used + size <= max_output_bytes:
-            kept.append(entry)
-            used += size
-            continue
-        if not isinstance(entry, OutlineStubRecord):
-            mandatory = _mandatory_entry_bytes(entry)
-            if used + mandatory <= max_output_bytes:
-                shrunk = _shrink_entry(entry, max_output_bytes - used - mandatory)
-                shrunk_size = _entry_bytes(shrunk)
-                if used + shrunk_size <= max_output_bytes:
-                    kept.append(shrunk)
-                    used += shrunk_size
-                    continue
-        remainder = entries[index:]
-        omitted_bytes = sum(_entry_bytes(e) for e in remainder)
-        return kept, OutlineTruncation(
-            truncated=True, omitted_nodes=len(remainder), omitted_bytes=omitted_bytes, continuation=remainder[0].address
-        )
-    return kept, OutlineTruncation(truncated=False, omitted_nodes=0, omitted_bytes=0, continuation=None)
+    """Pick the largest prefix of ``entries`` whose real, exactly measured
+    response fits ``max_output_bytes`` ({p069}). A binary search over the
+    prefix length keeps this to O(log n) real (not estimated) measurements
+    for the common case; response size is non-decreasing in prefix length
+    for any realistic content, so the search is sound, and every candidate
+    it accepts is verified against the exact size a caller would see -- no
+    breach can hide behind an approximation. One shrink attempt on the
+    first excluded entry avoids wasting a large leftover budget on a bare
+    cutoff ({p069}); a final linear safety net re-verifies (and, if needed,
+    trims) the exact size, so the ceiling holds even if that shrink guess
+    was too optimistic."""
+    n = len(entries)
+    lo, hi, fit_k = 0, n, 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        truncation = _truncation_for(entries, mid, viewed)
+        if _fits(entries[:mid], truncation, viewed, depth, expand_below_bytes, version, max_output_bytes):
+            fit_k, lo = mid, mid + 1
+        else:
+            hi = mid - 1
+
+    kept: List[_OutlineEntry] = list(entries[:fit_k])
+    truncation = _truncation_for(entries, fit_k, viewed)
+
+    if fit_k < n and not isinstance(entries[fit_k], OutlineStubRecord):
+        trial_truncation = _truncation_for(entries, fit_k + 1, viewed)
+        used, _ = _assemble(kept, trial_truncation, viewed, depth, expand_below_bytes, version)
+        mandatory = _mandatory_entry_bytes(entries[fit_k])
+        if used + mandatory <= max_output_bytes:
+            shrunk = _shrink_entry(entries[fit_k], max_output_bytes - used - mandatory)
+            if _fits(kept + [shrunk], trial_truncation, viewed, depth, expand_below_bytes, version, max_output_bytes):
+                kept.append(shrunk)
+                truncation = trial_truncation
+
+    while kept and not _fits(kept, truncation, viewed, depth, expand_below_bytes, version, max_output_bytes):
+        kept.pop()
+        truncation = _truncation_for(entries, len(kept), viewed)
+
+    return kept, truncation
 
 def drill_down(
     document: Any,
@@ -386,14 +392,6 @@ def drill_down(
 
     viewed_view = build_node_address_view(viewed_node.node_id, viewed_node.short_id)
     kept, truncation = _apply_ceiling(entries, max_output_bytes, viewed_view, depth, expand_below_bytes, version)
-
-    meta = OutlineMeta(
-        viewed=viewed_view, depth=depth, expand_below_bytes=expand_below_bytes,
-        document_version=version, node_count=len(kept), response_bytes=0,
-    )
-    response_bytes = _payload_bytes(
-        {"meta": _meta_payload(meta), "nodes": [_entry_payload(e) for e in kept], "truncation": _truncation_payload(truncation)}
-    )
-    meta = replace(meta, response_bytes=response_bytes)
+    _, meta = _assemble(kept, truncation, viewed_view, depth, expand_below_bytes, version)
 
     return build_outline_response(meta, kept, truncation)
