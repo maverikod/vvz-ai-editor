@@ -63,8 +63,9 @@ class TestPreprocessorDirectiveNode:
         # `copy()` wraps the same immutable base `Node`, so identity travels
         # with it rather than being reassigned: see module note in the
         # final report about this diverging from a new-identity reading.
-        assert copy.node_id == original.node_id
-        assert copy.short_id == original.short_id
+        assert copy.node_id != original.node_id
+        assert copy.short_id != original.short_id
+        assert original.copy(preserve_ids=True).node_id == original.node_id
 
     def test_move_updates_parent_id_only(self) -> None:
         node = PreprocessorDirectiveNode(start_byte=0, end_byte=8, content="#Вставка")
@@ -264,7 +265,7 @@ class TestVariableDeclarationNode:
         assert copy.separators == original.separators
         assert copy.content == original.content
         assert copy.byte_range == original.byte_range
-        assert copy.node_id == original.node_id
+        assert copy.node_id != original.node_id
 
     def test_move_updates_parent_id_only_and_preserves_declarator_order(self) -> None:
         a = VariableDeclaratorNode(start_byte=0, end_byte=1, content="p", name="p")
@@ -323,7 +324,7 @@ class TestVariableDeclaratorNode:
         declarator = VariableDeclaratorNode(start_byte=0, end_byte=1, content="z", name="z")
 
         copy = declarator.copy()
-        assert copy.node_id == declarator.node_id
+        assert copy.node_id != declarator.node_id
         assert copy.name == declarator.name
 
         moved = declarator.move_to(uuid4())

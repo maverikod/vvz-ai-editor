@@ -182,10 +182,19 @@ class _NodeWrapper:
                 return False
         return True
 
-    def copy(self) -> "_NodeWrapper":
-        """Sharing the same immutable ``Node`` is safe; identity, range,
-        content and every field (including ``export``) come along."""
-        return type(self).from_node(self._node, index_map_hook=self.index_map_hook, parent_id=self.parent_id)
+    def copy(self, *, preserve_ids: bool = False) -> "_NodeWrapper":
+        """Copy content, range and every field (including ``export``).
+
+        By default the copy gets a FRESH ``node_id`` and no ``short_id``:
+        two live nodes must never share an identifier, and the document
+        that receives the copy allocates its own short id. ``preserve_ids``
+        keeps the original identity for the {p074} copy mode that moves a
+        subtree into a new document under its existing UUIDs.
+        """
+        node = self._node
+        if not preserve_ids:
+            node = replace(node, node_id=generate_node_id(), short_id=None)
+        return type(self).from_node(node, index_map_hook=self.index_map_hook, parent_id=self.parent_id)
 
     def move_to(self, new_parent_id: Optional[UUID]) -> "_NodeWrapper":
         """Reparent in place; the wrapped ``Node`` (identity, range,
