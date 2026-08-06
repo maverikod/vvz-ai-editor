@@ -26,12 +26,19 @@ RUN apt-get update && \
 COPY requirements.txt pyproject.toml ./
 COPY docs/README.md docs/README.md
 COPY ai_editor/ ai_editor/
+# src/ holds the tree_engine package. pyproject declares it, but without this
+# copy pip has nothing to install from and the image silently ships without it.
+COPY src/ src/
 COPY aiedmgr_entry/ aiedmgr_entry/
 COPY scripts/aiedmgr scripts/aiedmgr
 COPY scripts/aiedcfg scripts/aiedcfg
 COPY scripts/pipeline scripts/pipeline
 
 RUN pip install --default-timeout=300 --no-cache-dir -r requirements.txt
+
+# tree_engine's format backends are optional extras by design; the server
+# needs all of them, so install the aggregate explicitly.
+RUN pip install --default-timeout=300 --no-cache-dir -e ".[tree-engine]"
 
 RUN mkdir -p "$CONFIG_DIR" && python -c "\
 from ai_editor.config_templates import copy_bundled_template; \
