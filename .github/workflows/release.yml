@@ -1,0 +1,204 @@
+# Author: Vasiliy Zdanovskiy
+# email: vasilyvz@gmail.com
+#
+# G-030/T-001/A-005 (plan 24271419-4dc6-44f2-8613-f350310f5c12): continuous-integration
+# release workflow for the standalone tree_engine/ai-editor distribution.
+#
+# Scope and honesty notes (read before editing):
+#
+# - This workflow gates a release; it never publishes. No PyPI upload, no registry push,
+#   no deployment happens here. `publish` below carries two explicitly disabled steps that
+#   document the shape a real publish would take; they stay `if: false` until the owner
+#   ratifies the open items in docs/release_identity.md (PyPI distribution name, license,
+#   and the initial version number are deliberately undecided there -- nothing here invents
+#   them, and no PyPI credential secret is referenced anywhere in this file).
+# - `pipeline` (pipeline/cli.py) is this project's single canonical check runner
+#   (check-boundary-check, check-contract, check-examples, check-recovery, check-roundtrip).
+#   It is invoked whole (`python -m pipeline.cli`, no per-check subcommand) and never
+#   duplicated by ad-hoc mypy/flake8/ruff calls, per the plan's "single entry point" rule.
+#   It does not wrap the pytest suite (see pipeline/cli.py's own docstring) or lint/type
+#   checks -- those are not yet registered checks, so this workflow does not fabricate calls
+#   to them; the pytest suite runs as its own step because it is the project's unit-test
+#   suite, not a duplicate of what `pipeline` already owns.
+# - check-roundtrip reads an external 1C corpus (BSL_CORPUS_DEFAULT) that does not exist on
+#   a hosted runner; when absent it reports that format SKIPPED with a reason, which is a
+#   pass for `pipeline`'s exit code, not a masked failure.
+# - Backend dependency major-version re-gating (plan {p032}): check-contract and
+#   check-roundtrip already run unconditionally in the `test` job on every push and pull
+#   request, so any edit to the libcst/tree-sitter/tree-sitter-bsl pins in pyproject.toml
+#   re-runs both automatically -- no separate diff-detection step is needed or added.
+# - benchmark-gate (benchmarks/gate.py) has no committed baseline
+#   (benchmarks/baselines/<major>.<minor>.json does not exist yet), so it cannot block a
+#   fresh runner: `run_gate()` returns status "no-baseline" by construction until one is
+#   recorded. It still runs on every tag and reports its structural findings; only a real
+#   "fail" status (once a baseline exists) fails the job.
+# - Python 3.10 is included because pyproject.toml's `requires-python = ">=3.10"` says it is
+#   supported, but as measured on this branch it is NOT yet: tests/test_release_metadata.py,
+#   tests/unit/test_config_templates_package.py and pipeline/checks/check_roundtrip.py import
+#   the stdlib `tomllib` module unconditionally, and `tomllib` was only added in Python 3.11.
+#   That is a pre-existing gap outside this single-file step's scope; this workflow reports it
+#   honestly (a red 3.10 leg) instead of quietly dropping 3.10 from the matrix.
+
+name: Release
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install the package with dev and tree-engine backend extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,tree-engine]"
+
+      - name: Run the pytest suite
+        env:
+          PYTHONPATH: src
+        run: python -m pytest tests -q
+
+      - name: Run the canonical pipeline (single entry point, every registered check)
+        env:
+          PYTHONPATH: .:src
+        run: python -m pipeline.cli
+
+  build:
+    name: Build and validate sdist/wheel
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the build frontend
+        run: python -m pip install --upgrade pip build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Verify the wheel really contains tree_engine
+        run: |
+          set -euo pipefail
+          whl=$(ls dist/*.whl)
+          count=$(python -m zipfile -l "$whl" | grep -c "^tree_engine/.*\.py " || true)
+          echo "tree_engine modules in wheel: $count"
+          test "$count" -gt 0
+
+      - name: Verify the wheel imports standalone, out of tree
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/tree-engine-verify-venv
+          /tmp/tree-engine-verify-venv/bin/pip install --upgrade pip
+          /tmp/tree-engine-verify-venv/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/tree-engine-verify-venv/bin/python -c "
+          import tree_engine.errors, tree_engine.exceptions
+          import tree_engine.plugins.plain_text as pt
+          import tree_engine.plugins.json_format as jf
+          import tree_engine.plugins.toml_format as tf
+          for mod in (tree_engine.exceptions, pt, jf, tf):
+              assert getattr(mod, '__all__', None), f'{mod.__name__} has no __all__'
+              for name in mod.__all__:
+                  getattr(mod, name)
+          print('tree_engine standalone import OK')
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  benchmark-gate:
+    name: Benchmark gate (advisory until a baseline exists)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the tree-engine backend extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[tree-engine]"
+
+      - name: Run benchmarks/gate.py against the version-branch baseline
+        env:
+          PYTHONPATH: .:src
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "benchmarks")
+          import gate
+          result = gate.run_gate(sizes=[1000], formats=["python", "json"], iterations=5)
+          print(f"status={result['status']} passed={result['passed']}")
+          print(result["message"])
+          if result["status"] == "no-baseline":
+              print("::warning::no committed benchmarks/baselines/<major.minor>.json yet; "
+                    "the gate is advisory-only until a baseline is recorded with "
+                    "run_gate(update_baseline=True, decision=...)")
+          elif not result["passed"]:
+              sys.exit(1)
+          PY
+
+  publish:
+    name: Publish (manual approval; disabled pending release-identity decisions)
+    needs: [build, benchmark-gate]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    # A real GitHub Environment named "pypi-release" with required reviewers configured in
+    # repository Settings -> Environments is what turns this into an actual manual-approval
+    # gate; declaring the name here does not itself create that configuration.
+    environment: pypi-release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      # DISABLED: the PyPI distribution name, license, and initial version number are
+      # deliberately open decisions (docs/release_identity.md, sections 2, 4, 5). Flip this
+      # to a real publish step (e.g. pypa/gh-action-pypi-publish with OIDC trusted publishing,
+      # or twine upload with a repository secret) only after the owner ratifies them.
+      - name: Publish a pre-release build to PyPI
+        if: false
+        run: echo "pre-release publish is intentionally disabled"
+
+      # DISABLED for the same reason; this is the stable-release counterpart, meant to run
+      # only on a tag that is not itself a pre-release identifier (no "-" suffix).
+      - name: Publish the stable release to PyPI
+        if: false
+        run: echo "stable release publish is intentionally disabled"
+
+      - name: Explain why nothing was published
+        run: |
+          echo "Publication is intentionally disabled in this workflow."
+          echo "docs/release_identity.md leaves the PyPI distribution name, the license,"
+          echo "and the initial version number open -- nothing here invents them."
+          echo "The build above is validated (sdist+wheel, tree_engine present, standalone"
+          echo "import proven) and uploaded as the 'dist' artifact for manual inspection."
+          echo "Enable the two disabled steps above only after the owner ratifies those"
+          echo "identity decisions and a PyPI publish credential is configured."
