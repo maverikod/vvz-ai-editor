@@ -106,6 +106,11 @@ class _NodeWrapper:
                 f"end_byte ({end_byte}) precedes start_byte ({start_byte})",
             )
         resolved_id = node_id or generate_node_id()
+        # Construction must not be a back door around the export rule that
+        # set_attribute enforces: on a kind where export is inapplicable,
+        # requesting it here fails just as loudly ({p044}).
+        if extra_fields.get("export") and not getattr(self, "_export_applicable", True):
+            raise ExportNotApplicableError(type(self).__name__)
         fields: Dict[str, Any] = {"content": content, **extra_fields}
         base = make_node(self._KIND, fields=fields, children=tuple(children))
         self._node: Node = replace(
