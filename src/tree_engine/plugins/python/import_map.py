@@ -97,7 +97,11 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 import libcst
 from libcst.metadata import ByteSpanPositionProvider, MetadataWrapper
 
+import itertools
+
+from tree_engine.core.identity import generate_node_id
 from tree_engine.core.nodes import Document, FieldValue, Node, make_node
+_short_id_counter = itertools.count(1)
 from tree_engine.plugins.contract import FormatPluginContractError
 
 __all__ = [
@@ -125,7 +129,11 @@ def _marker_node(kind: str, fields: Mapping[str, Any]) -> Node:
     wrapped for tuple-of-``Node`` homogeneity). Goes through the same
     ``make_node`` validation as every other node -- no shortcut path."""
 
-    return make_node(kind, fields=dict(fields))
+    return dataclasses.replace(
+        make_node(kind, fields=dict(fields)),
+        node_id=generate_node_id(),
+        short_id=next(_short_id_counter),
+    )
 
 
 def _ensure_node(value: FieldValue) -> Node:
@@ -191,8 +199,15 @@ def _convert_cst_node(cst_node: "libcst.CSTNode", spans: _SpanMap) -> Node:
 
     node = make_node(kind, fields=fields, children=tuple(children))
     span = spans.get(cst_node)
-    if span is not None:
-        node = dataclasses.replace(node, buffer_range=(span.start, span.start + span.length))
+    # Every node of the common model carries identity ({p013}) and a compact
+    # short id ({p021}); assigning them here means an imported document is
+    # addressable without a second pass.
+    node = dataclasses.replace(
+        node,
+        node_id=generate_node_id(),
+        short_id=next(_short_id_counter),
+        buffer_range=(span.start, span.start + span.length) if span is not None else None,
+    )
     return node
 
 
