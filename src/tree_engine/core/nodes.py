@@ -176,7 +176,10 @@ class Document:
 
     root: Node
     source_format_id: str
-    representation_format_id: str
+    # Omitting it means "ordinary case" and derives it from source_format_id
+    # ({p050}); it is set explicitly only when the two genuinely differ, as
+    # under plain-text fallback.
+    representation_format_id: Optional[str] = None
 
     # Reserved extension-point slot for a sibling step (cross-document
     # identity). Inert here: default only, never read or written anywhere
@@ -190,6 +193,8 @@ class Document:
                 f"Document.root must be a Node, got {type(self.root).__name__}",
             )
         _validate_format_id("source_format_id", self.source_format_id)
+        if self.representation_format_id is None:
+            self.representation_format_id = self.source_format_id
         _validate_format_id("representation_format_id", self.representation_format_id)
 
     @property
