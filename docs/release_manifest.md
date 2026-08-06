@@ -191,14 +191,14 @@ step, not this manifest.
 ## Completion criterion
 
 Per this step's mandate, **all nine components above must reach Complete
-status before the release gate is satisfied.** As measured today, 7 are
-Complete, 1 (`yaml` plugin) has Not started status, and 1 (`pipeline`
-CLI) is Partial (framework complete, only one of the required named
-checks registered, and not yet wired to the installed `scripts/pipeline`
-launcher). The release gate for the first stable version is **not yet
-satisfied**; the remaining unmet items are the `yaml` plugin's
-implementation and the outstanding `pipeline` named checks (unit, lint,
-type, round-trip, benchmark, package, adapter, deploy, live-server) plus
-the `scripts/pipeline` wiring. No release number is assigned by this
+status before the release gate is satisfied.** As measured today, 8 are
+Complete and 1 (`pipeline` CLI) is Partial: the framework is complete and
+discovers checks automatically, four are registered (`check-boundary-check`,
+`check-contract`, `check-recovery`, `check-roundtrip`), but the installed
+`scripts/pipeline` launcher still execs the legacy chain script. The
+release gate for the first stable version is **not yet satisfied**; the
+remaining unmet items are the outstanding `pipeline` named checks (unit,
+lint, type, benchmark, package, adapter, deploy, live-server) and the
+`scripts/pipeline` wiring. No release number is assigned by this
 document, and none has ever been cut for this package — there is nothing
 to record there beyond the plan's own baseline commit reference.
