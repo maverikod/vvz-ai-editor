@@ -19,7 +19,7 @@ memory and on disk; an unparsable source degrades to the one authorized plain-te
 still renders the ORIGINAL BYTES ({p058}); every reachable failure is typed with a real
 ``ErrorCode`` and layer ({p023}); every {j9rh} address form resolves and every bad one is rejected
 first; a stale ``expected_version`` changes nothing ({p024}); each mutating entry point changes the
-render; and the two documented limits fail typed. One strict ``xfail`` records a defect found here.
+render; and the two documented limits fail typed.
 """
 
 from __future__ import annotations
@@ -363,14 +363,14 @@ def test_documented_limits_fail_typed_rather_than_silently_not_rendering() -> No
     assert b"def n(self):" in facade.dumps(ambiguous)
 
 
-@pytest.mark.xfail(strict=True, reason="DEFECT: facade.set_attribute is the one mutating entry "
-                   "point never invalidating the cached source slice its ancestors hold, so on a "
-                   "cache-replaying format (JSON 'raw', BSL 'content', TOML 'raw') the edit is "
-                   "accepted and the version bumped while dumps() replays the pre-edit text -- it "
-                   "renders once an earlier structural edit cleared that cache, which isolates "
-                   "the missing invalidate_cached_source call.")
 def test_set_attribute_is_rendered_on_an_untouched_cached_source_document() -> None:
-    """An accepted, version-bumping attribute edit must reach the rendered output."""
+    """An accepted, version-bumping attribute edit must reach the rendered output.
+
+    Regression: `set_attribute` was once the only mutating entry point that did
+    not invalidate the cached source slice its ancestors hold, so on a
+    cache-replaying format (JSON `raw`, BSL `content`, TOML `raw`) the edit was
+    accepted and the version bumped while `dumps()` replayed the pre-edit text --
+    silently wrong bytes, no error. It now invalidates like every sibling."""
     document = facade.loads(JSON, format_id="json")
     facade.set_attribute(document, _first(document, "json:Member").short_id, "key", "renamed")
     assert document.document_version == 2 and b"renamed" in facade.dumps(document)
