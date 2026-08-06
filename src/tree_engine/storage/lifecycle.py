@@ -348,8 +348,14 @@ class StorageLifecycle:
     def _parse(self, plugin: Any, source_bytes: bytes, format_id: str) -> Tuple[Document, bool]:
         try:
             return plugin.parse_document(source_bytes, source_format_id=format_id), False
-        except TreeEngineException:
-            raise
+        except TreeEngineException as exc:
+            # A typed error is already classified, but "already typed" must not
+            # mean "never rescued": FormatContentParseFailed IS the fallback
+            # trigger, and plugins split across two exception carriers. Keying
+            # only on the older one left json/toml/yaml with no fallback at all.
+            if _code_of(exc) is not ErrorCode.FORMAT_CONTENT_PARSE_FAILED:
+                raise
+            return build_fallback_tree(source_bytes, exc, source_format_id=format_id).document, True
         except Exception as exc:  # noqa: BLE001 - classified below, never swallowed
             if _code_of(exc) is not ErrorCode.FORMAT_CONTENT_PARSE_FAILED:
                 typed = _typed(exc)
