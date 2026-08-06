@@ -60,8 +60,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from ai_editor.core.exceptions import QueryParseError
-from ai_editor.cst_query.ast import Predicate, PredicateOp
+from tree_engine.query.selector import Predicate, PredicateOp, QueryParseError
 from tree_engine.errors import ErrorCode
 
 __all__ = [

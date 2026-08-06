@@ -52,6 +52,7 @@ Source-of-truth requirement labels honored here: {p022}, {p049}, {p060}.
 
 from __future__ import annotations
 
+import itertools
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping, Optional, Union
@@ -104,6 +105,10 @@ _METADATA = FormatPluginMetadata(
 # per SemanticRoleMapping's own documented "absent role -> empty tuple"
 # contract for the roles this format does not have.
 _ROLE_MAP = SemanticRoleMapping({_ROOT_KIND: SemanticRole.MODULE})
+
+# Every node built here gets a node_id plus a compact short_id ({p097}),
+# from one module-level counter shared by every node this plugin builds.
+_short_id_counter = itertools.count(1)
 
 
 def _contract_error(
@@ -282,20 +287,14 @@ class PlainTextFormatPlugin(FormatPluginContract, FormatBoundary):
         children = []
         for node_id, text in external_representation.paragraphs.items():
             validated = make_node(_PARAGRAPH_KIND, fields={"text": text})
-            children.append(
-                Node(
-                    kind=validated.kind,
-                    fields=validated.fields,
-                    children=validated.children,
-                    node_id=node_id,
-                )
-            )
+            children.append(Node(
+                kind=validated.kind, fields=validated.fields, children=validated.children,
+                node_id=node_id, short_id=next(_short_id_counter),
+            ))
         validated_root = make_node(_ROOT_KIND, fields={}, children=children)
         root = Node(
-            kind=validated_root.kind,
-            fields=validated_root.fields,
-            children=validated_root.children,
-            node_id=generate_node_id(),
+            kind=validated_root.kind, fields=validated_root.fields, children=validated_root.children,
+            node_id=generate_node_id(), short_id=next(_short_id_counter),
         )
         if as_document:
             return Document(root=root, source_format_id=FORMAT_ID)
