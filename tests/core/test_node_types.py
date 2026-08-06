@@ -37,7 +37,7 @@ class TestPreprocessorDirectiveNode:
 
         assert isinstance(node.node_id, UUID)
         assert node.node_id.version == 4
-        assert isinstance(node.short_id, str) and node.short_id
+        assert isinstance(node.short_id, int) and node.short_id > 0
         assert node.parent_id is None
         assert node.byte_range == (10, 10 + len(content))
         assert node.content == content

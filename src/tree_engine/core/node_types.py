@@ -28,6 +28,8 @@ from dataclasses import replace
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple
 from uuid import UUID
 
+import itertools
+
 from tree_engine.core.identity import generate_node_id
 from tree_engine.core.nodes import Node, NodeKind, NodeSchemaError, make_node
 from tree_engine.errors import ErrorCode
@@ -43,6 +45,8 @@ __all__ = [
 ]
 
 IndexMapHookFn = Callable[[Any, str, Any], None]
+# short_id is a positive integer per {p097}; hex is only its outward rendering.
+_short_id_counter = itertools.count(1)
 _SEP = "\x00"
 
 
@@ -116,7 +120,7 @@ class _NodeWrapper:
         self._node: Node = replace(
             base,
             node_id=resolved_id,
-            short_id=str(resolved_id)[:8],
+            short_id=next(_short_id_counter),
             extended_type=type(self).__name__,
             buffer_range=(start_byte, end_byte),
         )
@@ -146,7 +150,7 @@ class _NodeWrapper:
         return self._node.node_id
 
     @property
-    def short_id(self) -> str:
+    def short_id(self) -> int:
         return self._node.short_id
 
     @property
