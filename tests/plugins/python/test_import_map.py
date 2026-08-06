@@ -216,20 +216,36 @@ def test_import_tree_bridge_external_objects() -> None:
     bridged_document = import_tree(external_module)
 
     assert isinstance(bridged_document, Document)
-    assert bridged_document == direct_document
-    assert bridged_document.root == direct_document.root
+
+    # Structure must match, but identity must not: every imported node gets a
+    # fresh UUID4 per {p013}, so two independent imports of the same source are
+    # structurally equal and identity-distinct.
+    def shape(node):
+        return (
+            node.kind,
+            node.buffer_range,
+            tuple(sorted(k for k in node.fields)),
+            tuple(shape(child) for child in node.children),
+        )
+
+    assert shape(bridged_document.root) == shape(direct_document.root)
+    direct_ids = {n.node_id for n in walk(direct_document.root)}
+    bridged_ids = {n.node_id for n in walk(bridged_document.root)}
+    assert direct_ids.isdisjoint(bridged_ids)
+    assert None not in direct_ids and None not in bridged_ids
 
     # The bridge also accepts a keyword-only `options` mapping, unused by
     # the import path but required for contract-signature compatibility.
     bridged_with_options = import_tree(libcst.parse_module(source), options={"any": "value"})
-    assert bridged_with_options == direct_document
+    assert shape(bridged_with_options.root) == shape(direct_document.root)
 
     # A bare externally constructed fragment CSTNode goes through the same
     # path as the main import direction (buffer_range stays None).
     external_fragment = libcst.parse_expression("1 + 2")
     bridged_fragment = import_tree(external_fragment)
     direct_fragment = PythonImportMap().import_to_common(libcst.parse_expression("1 + 2"))
-    assert bridged_fragment == direct_fragment
+    assert shape(bridged_fragment) == shape(direct_fragment)
+    assert bridged_fragment.node_id != direct_fragment.node_id
     assert isinstance(bridged_fragment, Node)
     assert bridged_fragment.buffer_range is None
 
