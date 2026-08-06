@@ -96,10 +96,13 @@ The plan text (requirement `p032`) states tree-sitter-bsl `0.1.6` requires
 "the supported tree-sitter 0.24.x branch." The installed `tree-sitter` is
 `0.25.2`, not `0.24.x`. This is a discrepancy between the plan's stated
 dependency pin and the environment actually installed and in use; it is
-recorded here as measured fact, not silently reconciled. Whether this is
-an ABI-compatible superset or a genuine mismatch is not established by
-this record and is out of scope for a single-file baseline anchor — it is
-flagged for the owning dependency-pin step to resolve. `libcst` is
+recorded here as measured fact, not silently reconciled. The pairing was
+then exercised rather than argued about: `tree-sitter 0.25.2` with
+`tree-sitter-bsl 0.1.6` parses real 1C sources and renders them back
+byte-identically, including a 1.1 MB module of 127,719 nodes, so the pin
+that actually works is `0.25.x`. The plan's `0.24.x` is the wrong number
+(0.24 speaks ABI 13-14 while this grammar needs 15) and the packaging step
+must record `0.25.x`, not the plan's value. `libcst` is
 `1.8.6`, not the `1.9.x` the plan states; likewise recorded as measured,
 not corrected here.
 
