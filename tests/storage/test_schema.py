@@ -353,21 +353,18 @@ def test_short_id_map_malformed_rejected(mutate) -> None:
     assert exc_info.value.code == ErrorCode.TREE_PAYLOAD_INVALID
 
 
-def test_short_id_map_entries_not_a_mapping_escapes_as_bare_attribute_error() -> None:
-    """Documents a real defect: TreeFilePayload.from_dict only catches
-    (KeyError, ValueError, TypeError) around ShortIdMap.from_dict, but
-    ``short_id_map.entries`` being a non-mapping (e.g. a str) makes
-    ShortIdMap.from_dict call ``.items()`` on it, raising a bare
-    AttributeError that is NOT caught -- so it escapes TreeFile.from_dict
-    uncaught instead of becoming TreeFileSchemaError(TREE_PAYLOAD_INVALID),
-    contradicting this module's own documented contract ("every other
-    malformed field" -> TREE_PAYLOAD_INVALID). This test pins the actual
-    (buggy) behavior; see the step report for the finding."""
+def test_short_id_map_entries_not_a_mapping_rejected() -> None:
+    """A non-mapping ``short_id_map.entries`` makes ShortIdMap.from_dict call
+    ``.items()`` on it. That AttributeError must not escape: like every other
+    malformed field it has to surface as TreeFileSchemaError with
+    TREE_PAYLOAD_INVALID, which is what this module's contract promises."""
 
-    data = _valid_tree_file_dict()
-    data["payload"]["short_id_map"]["entries"] = "not-a-mapping"
-    with pytest.raises(AttributeError):
-        TreeFile.from_dict(data)
+    for probe in ("not-a-mapping", ["a"], 42, None):
+        data = _valid_tree_file_dict()
+        data["payload"]["short_id_map"]["entries"] = probe
+        with pytest.raises(TreeFileSchemaError) as exc_info:
+            TreeFile.from_dict(data)
+        assert exc_info.value.code == ErrorCode.TREE_PAYLOAD_INVALID
 
 
 def test_top_level_not_a_mapping_rejected() -> None:
