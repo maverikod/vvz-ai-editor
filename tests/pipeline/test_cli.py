@@ -254,7 +254,14 @@ def test_check_run_wraps_raised_exception_but_not_bad_return_type():
 
 # Subprocess tests against the real repository: real discovery, real checks.
 
+@pytest.mark.timeout(180)
 def test_cli_list_single_and_aggregate_real_checks():
+    """The no-argument aggregate run executes every real check, so this test
+    costs as much as the whole battery does -- check-roundtrip alone parses
+    hundreds of real files. It carries its own generous timeout rather than
+    the suite default: if it ever exceeds even this, the aggregate run has
+    genuinely become too slow to be used, which is worth failing over."""
+
     root = _repo_root()
     pp = _real_pythonpath(root)
 
