@@ -25,7 +25,7 @@ from typing import Any, Dict, Optional, Sequence
 import libcst
 import pytest
 
-from ai_editor.core.exceptions import QueryParseError
+from tree_engine.query.selector import QueryParseError
 from tree_engine.core.nodes import Document, Node, make_node
 from tree_engine.query.engine import TreeQueryEngine, query as query_fn
 
@@ -288,11 +288,11 @@ def test_query_never_reparses_source(fixture: _Fixture, monkeypatch: pytest.Monk
 
 
 # ---------------------------------------------------------------------------
-# A malformed selector raises the legacy QueryParseError, by class identity.
+# A malformed selector raises tree_engine's own QueryParseError, by class identity.
 # ---------------------------------------------------------------------------
 
 
-def test_malformed_selector_raises_legacy_exception(fixture: _Fixture) -> None:
+def test_malformed_selector_raises_query_parse_error(fixture: _Fixture) -> None:
     for bad_selector in ("[[[", "class[name=", "???"):
         with pytest.raises(QueryParseError) as excinfo:
             fixture.engine.query(bad_selector)

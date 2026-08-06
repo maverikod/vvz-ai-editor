@@ -58,13 +58,14 @@ from typing import List, Tuple
 
 import pytest
 
-from ai_editor.core.exceptions import QueryParseError
+from ai_editor.core.exceptions import QueryParseError as LegacyQueryParseError
 from ai_editor.cst_query.executor import query_source
 from ai_editor.cst_query.parser import parse_selector
 
 from tree_engine.plugins.python.plugin import PythonFormatPlugin
 from tree_engine.query.engine import TreeQueryEngine
 from tree_engine.query.results import QueryMatch
+from tree_engine.query.selector import QueryParseError as PortedQueryParseError
 
 # One fixture shared by every scenario category below: two classes (one with
 # two methods), two top-level functions, and the module itself -- enough
@@ -246,11 +247,15 @@ def test_compat_pseudo_selector_scenarios() -> None:
 
 
 def test_compat_malformed_selector_raises_identical_exception() -> None:
-    """A malformed selector raises the identical ``QueryParseError`` class
-    on both engines -- expected, since both ultimately call the same
-    unchanged ``ai_editor.cst_query.parser.parse_selector`` to parse
-    selector text; this test guards against a future port accidentally
-    wrapping, subclassing, or otherwise renaming that shared exception.
+    """Both engines reject exactly the same malformed selectors.
+
+    The ported engine no longer shares the legacy parser: the selector
+    language now lives in ``tree_engine.query.selector`` so the package can
+    ship without ``ai_editor`` at all. What must stay identical is the
+    REJECTION SET -- every selector the legacy parser refuses, the ported
+    one refuses too, and neither leaks a bare builtin. Each engine raises
+    its own package's ``QueryParseError``; asserting one class object for
+    both would pin exactly the coupling that was deliberately cut.
     """
 
     malformed_selectors = [
@@ -261,15 +266,14 @@ def test_compat_malformed_selector_raises_identical_exception() -> None:
         ":::",
     ]
     for selector in malformed_selectors:
-        with pytest.raises(QueryParseError) as legacy_excinfo:
+        with pytest.raises(LegacyQueryParseError) as legacy_excinfo:
             parse_selector(selector)
-        assert type(legacy_excinfo.value) is QueryParseError, selector
+        assert type(legacy_excinfo.value) is LegacyQueryParseError, selector
 
-        with pytest.raises(QueryParseError) as new_excinfo:
+        with pytest.raises(PortedQueryParseError) as new_excinfo:
             _new_matches(selector)
-        assert type(new_excinfo.value) is QueryParseError, selector
+        assert type(new_excinfo.value) is PortedQueryParseError, selector
 
-        # Not merely "both raise QueryParseError" (a subclass would satisfy
-        # that too) -- the identical class object, so a caller migrating
-        # from the legacy engine observes no change in exception type.
-        assert type(legacy_excinfo.value) is type(new_excinfo.value)
+        # The bare message stays identical, so a caller that reported the
+        # legacy text to a user reports the same text after migrating.
+        assert new_excinfo.value.message == legacy_excinfo.value.message, selector
