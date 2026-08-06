@@ -267,11 +267,12 @@ def test_uuid4_keyed_paragraphs_structure() -> None:
     ids = [n.node_id for n in nodes]
     assert all(isinstance(i, UUID) and i.version == 4 for i in ids)
     assert len(ids) == len(set(ids)), "duplicate node_id: identity is not unique"
-    # short_id is a reserved extension-point attribute (core/nodes.py,
-    # {p013}'s sibling step); this plugin never assigns it, so every node
-    # exposes the attribute (no AttributeError) but its value stays None.
-    assert all(hasattr(n, "short_id") for n in nodes)
-    assert all(n.short_id is None for n in nodes)
+    # Every node also carries a short_id ({p097}): a positive integer, unique
+    # within the document. Without it the query engine cannot address a
+    # plain-text node at all.
+    short_ids = [n.short_id for n in nodes]
+    assert all(isinstance(s, int) and s > 0 for s in short_ids)
+    assert len(short_ids) == len(set(short_ids))
 
 
 def test_root_container_structure() -> None:
