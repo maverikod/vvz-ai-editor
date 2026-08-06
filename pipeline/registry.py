@@ -163,6 +163,18 @@ class Registry:
                 "it must start with a letter and contain only letters, "
                 "digits, hyphens, and underscores"
             )
+        if not isinstance(description, str):
+            raise TypeError(
+                f"check {name!r}: description must be a string, got "
+                f"{type(description).__name__}; the signature is "
+                "register(name, description, func)"
+            )
+        if not callable(func):
+            raise TypeError(
+                f"check {name!r}: func must be callable, got "
+                f"{type(func).__name__}; the signature is "
+                "register(name, description, func)"
+            )
         if name in self._checks and not replace:
             raise ValueError(
                 f"a check named {name!r} is already registered "
