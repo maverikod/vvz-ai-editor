@@ -115,6 +115,15 @@ def _parse_document_source(source: Union[str, bytes]) -> "libcst.Module":
     contract-error carrier is used, exactly as it is designed to be.
     """
 
+    if not isinstance(source, (str, bytes)):
+        # A wrong argument type is the CALLER breaking the contract, not
+        # damaged content: without this guard libcst leaks a bare TypeError,
+        # which every sibling plugin classifies and this one did not.
+        raise FormatPluginContractError(
+            plugin_id=FORMAT_ID,
+            error_code=ErrorCode.FORMAT_PLUGIN_CONTRACT_ERROR,
+            message=f"source must be str or bytes, got {type(source).__name__}",
+        )
     try:
         return libcst.parse_module(source)
     except libcst.ParserSyntaxError as exc:
