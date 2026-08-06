@@ -148,6 +148,14 @@ def _detect_dialect(root: Node) -> str:
             continue
         token = content.strip()
         kind = str(node.kind)
+        # A variable declaration swallows its own VAR/EXPORT keyword tokens
+        # into fields, so the scan must read the raw source fragment too --
+        # otherwise an English document silently regenerates in Russian.
+        first_word = token.split(",")[0].split()[0] if token.split() else ""
+        if first_word:
+            for dialect in (dialects.RUSSIAN, dialects.ENGLISH):
+                if dialects.get_canonical_keyword(first_word, dialect) is not None:
+                    return dialect
         if kind.endswith("_KEYWORD"):
             if dialects.get_canonical_keyword(token, dialects.RUSSIAN) is not None:
                 return dialects.RUSSIAN
