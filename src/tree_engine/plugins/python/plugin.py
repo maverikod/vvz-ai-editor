@@ -126,20 +126,24 @@ def _parse_document_source(source: Union[str, bytes]) -> "libcst.Module":
 
 
 def _parse_fragment_source(source: Union[str, bytes]) -> Optional["libcst.CSTNode"]:
-    """Parse a fragment via LibCST's statement parser, falling back to the
-    expression parser, into a temporary tree. Returns ``None`` (never
+    """Parse a fragment via LibCST's expression parser, falling back to the
+    statement parser, into a temporary tree. Returns ``None`` (never
     raises) when neither parser recognizes ``source`` as a structure, so
     the caller can apply the contract's documented plain-fallback-string
     behavior instead of treating "no structure" as an error.
     """
 
     text = source.decode("utf-8") if isinstance(source, bytes) else source
+    # Expression first: an expression is also a valid expression-statement,
+    # and the statement parser would wrap it in a SimpleStatementLine, adding
+    # a newline the source never had and breaking the byte-identical fragment
+    # round trip {p106} demands.
     try:
-        return libcst.parse_statement(text)
+        return libcst.parse_expression(text)
     except libcst.ParserSyntaxError:
         pass
     try:
-        return libcst.parse_expression(text)
+        return libcst.parse_statement(text)
     except libcst.ParserSyntaxError:
         return None
 
