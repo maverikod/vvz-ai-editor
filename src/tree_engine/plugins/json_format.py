@@ -23,19 +23,18 @@ Source-of-truth requirement labels honored here: {p026}, {p060}, {p062}.
 
 from __future__ import annotations
 
+import itertools
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
+from tree_engine.core.identity import generate_node_id
 from tree_engine.core.nodes import Document, Node, make_node
 from tree_engine.core.plugin_boundary import FormatBoundary
-from tree_engine.errors import ErrorCode
+from tree_engine.exceptions import FormatContentParseFailed
 from tree_engine.plugins.contract import (
-    FormatPluginContract,
-    FormatPluginContractError,
-    FormatPluginMetadata,
-    SemanticRoleMapping,
-    UnsupportedTranslationError,
+    FormatPluginContract, FormatPluginContractError, FormatPluginMetadata,
+    SemanticRoleMapping, UnsupportedTranslationError,
 )
 
 __all__ = ["FORMAT_ID", "JsonFormatPlugin", "JSON_FORMAT_PLUGIN"]
@@ -67,6 +66,14 @@ def _contract_error(message: str) -> FormatPluginContractError:
 
 def _unsupported(node_type: str, message: str) -> UnsupportedTranslationError:
     return UnsupportedTranslationError(node_type=node_type, format_id=FORMAT_ID, message=message)
+
+# Every node built here gets a UUID4 ({p013}) + short id ({p097}); never bare make_node.
+_short_id_counter = itertools.count(1)
+
+def _identified_node(kind: str, fields: Mapping[str, Any], children: Tuple[Node, ...] = ()) -> Node:
+    """``make_node`` plus a fresh ``node_id``/``short_id``."""
+    return replace(make_node(kind, fields=fields, children=children),
+                    node_id=generate_node_id(), short_id=next(_short_id_counter))
 
 class _JsonParseError(Exception):
     """Internal, module-private malformed-JSON signal (never escapes)."""
@@ -187,16 +194,16 @@ def _parse_json_text(text: str) -> _RawValue:
 def _raw_to_node(raw_value: _RawValue) -> Node:
     if raw_value.kind == KIND_OBJECT:
         members = tuple(
-            make_node(KIND_MEMBER, fields={"key": key}, children=(_raw_to_node(value),))
+            _identified_node(KIND_MEMBER, fields={"key": key}, children=(_raw_to_node(value),))
             for key, value in raw_value.members
         )
-        return make_node(KIND_OBJECT, fields={"raw": raw_value.raw}, children=members)
+        return _identified_node(KIND_OBJECT, fields={"raw": raw_value.raw}, children=members)
     if raw_value.kind == KIND_ARRAY:
         items = tuple(_raw_to_node(item) for item in raw_value.items)
-        return make_node(KIND_ARRAY, fields={"raw": raw_value.raw}, children=items)
+        return _identified_node(KIND_ARRAY, fields={"raw": raw_value.raw}, children=items)
     if raw_value.kind == KIND_NULL:
-        return make_node(KIND_NULL, fields={"raw": raw_value.raw})
-    return make_node(raw_value.kind, fields={"value": raw_value.value, "raw": raw_value.raw})
+        return _identified_node(KIND_NULL, fields={"raw": raw_value.raw})
+    return _identified_node(raw_value.kind, fields={"value": raw_value.value, "raw": raw_value.raw})
 
 def _plain_to_node(value: Any, ancestors: frozenset) -> Node:
     """Build a raw-less node tree from an already-decoded plain Python
@@ -212,23 +219,23 @@ def _plain_to_node(value: Any, ancestors: frozenset) -> Node:
             if not isinstance(key, str):
                 raise _unsupported("object-key", f"non-string object key: {key!r}")
             members.append(
-                make_node(KIND_MEMBER, fields={"key": key}, children=(_plain_to_node(item, nested),))
+                _identified_node(KIND_MEMBER, fields={"key": key}, children=(_plain_to_node(item, nested),))
             )
-        return make_node(KIND_OBJECT, fields={}, children=tuple(members))
+        return _identified_node(KIND_OBJECT, fields={}, children=tuple(members))
     if isinstance(value, (list, tuple)):
         marker = id(value)
         if marker in ancestors:
             raise _unsupported("array", "circular reference detected")
         nested = ancestors | {marker}
-        return make_node(KIND_ARRAY, fields={}, children=tuple(_plain_to_node(v, nested) for v in value))
+        return _identified_node(KIND_ARRAY, fields={}, children=tuple(_plain_to_node(v, nested) for v in value))
     if isinstance(value, bool):
-        return make_node(KIND_BOOLEAN, fields={"value": value})
+        return _identified_node(KIND_BOOLEAN, fields={"value": value})
     if isinstance(value, str):
-        return make_node(KIND_STRING, fields={"value": value})
+        return _identified_node(KIND_STRING, fields={"value": value})
     if isinstance(value, (int, float)):
-        return make_node(KIND_NUMBER, fields={"value": value})
+        return _identified_node(KIND_NUMBER, fields={"value": value})
     if value is None:
-        return make_node(KIND_NULL, fields={})
+        return _identified_node(KIND_NULL, fields={})
     raise _unsupported(
         type(value).__name__, f"Python type {type(value).__name__!r} has no JSON representation"
     )
@@ -303,21 +310,16 @@ class JsonFormatPlugin(FormatPluginContract, FormatBoundary):
     def metadata(self) -> FormatPluginMetadata:
         return _METADATA
 
-    def parse_document(
-        self, source: Union[str, bytes], options: Optional[Mapping[str, Any]] = None,
-        *, source_format_id: Optional[str] = None,
-    ) -> Document:
-        """Parse full JSON source into a ``Document``; raises
-        ``FORMAT_CONTENT_PARSE_FAILED`` on malformed JSON."""
+    def parse_document(self, source: Union[str, bytes], options: Optional[Mapping[str, Any]] = None, *, source_format_id: Optional[str] = None) -> Document:
+        """Parse JSON source into a ``Document``. Raises ``FormatContentParseFailed``
+        on malformed JSON; ``FormatPluginContractError`` if ``source`` is not ``str``/``bytes``."""
+        if not isinstance(source, (str, bytes)):
+            raise _contract_error(f"parse_document expects str or bytes, got {type(source).__name__}")
         text = source.decode("utf-8") if isinstance(source, bytes) else source
         try:
             value = _parse_json_text(text)
         except _JsonParseError as exc:
-            raise FormatPluginContractError(
-                plugin_id=FORMAT_ID,
-                error_code=ErrorCode.FORMAT_CONTENT_PARSE_FAILED,
-                message=f"cannot parse JSON document: {exc}",
-            ) from exc
+            raise FormatContentParseFailed(f"cannot parse JSON document: {exc}", plugin_id=FORMAT_ID) from exc
         result = self.import_to_common(_DocumentSource(value=value, full_text=text), options)
         if not isinstance(result, Document):
             raise _contract_error(f"parsing a document must yield a Document, got {type(result).__name__}")
@@ -326,12 +328,11 @@ class JsonFormatPlugin(FormatPluginContract, FormatBoundary):
     def import_external_tree(self, external_tree: Any, options: Optional[Mapping[str, Any]] = None) -> Union[Node, Document]:
         return self.import_to_common(external_tree, options)
 
-    def parse_fragment(
-        self, fragment: Union[str, bytes], options: Optional[Mapping[str, Any]] = None,
-        *, source_format_id: Optional[str] = None,
-    ) -> Union[Node, str]:
-        """Parse a single JSON value fragment; returns the fragment's own
-        text (never raising) when it is not a recognizable JSON value."""
+    def parse_fragment(self, fragment: Union[str, bytes], options: Optional[Mapping[str, Any]] = None, *, source_format_id: Optional[str] = None) -> Union[Node, str]:
+        """Parse a JSON value fragment; returns the fragment's own text (never raising)
+        when unrecognizable. Raises ``FormatPluginContractError`` on a non-``str``/``bytes`` input."""
+        if not isinstance(fragment, (str, bytes)):
+            raise _contract_error(f"parse_fragment expects str or bytes, got {type(fragment).__name__}")
         text = fragment.decode("utf-8") if isinstance(fragment, bytes) else fragment
         try:
             value = _parse_json_text(text)
@@ -349,7 +350,9 @@ class JsonFormatPlugin(FormatPluginContract, FormatBoundary):
             root = _raw_to_node(external_representation.value)
             widened = dict(root.fields)
             widened["raw"] = external_representation.full_text
-            root = make_node(root.kind, fields=widened, children=root.children)
+            # Same document root, just a widened raw span: keep its identity.
+            root = replace(make_node(root.kind, fields=widened, children=root.children),
+                            node_id=root.node_id, short_id=root.short_id)
             return Document(root=root, source_format_id=FORMAT_ID)
         if isinstance(external_representation, _RawValue):
             return _raw_to_node(external_representation)
