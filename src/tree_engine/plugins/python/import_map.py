@@ -101,8 +101,6 @@ import itertools
 
 from tree_engine.core.identity import generate_node_id
 from tree_engine.core.nodes import Document, FieldValue, Node, make_node
-from tree_engine.core.short_id import to_hex
-
 _short_id_counter = itertools.count(1)
 from tree_engine.plugins.contract import FormatPluginContractError
 
@@ -134,7 +132,7 @@ def _marker_node(kind: str, fields: Mapping[str, Any]) -> Node:
     return dataclasses.replace(
         make_node(kind, fields=dict(fields)),
         node_id=generate_node_id(),
-        short_id=to_hex(next(_short_id_counter)),
+        short_id=next(_short_id_counter),
     )
 
 
@@ -207,7 +205,7 @@ def _convert_cst_node(cst_node: "libcst.CSTNode", spans: _SpanMap) -> Node:
     node = dataclasses.replace(
         node,
         node_id=generate_node_id(),
-        short_id=to_hex(next(_short_id_counter)),
+        short_id=next(_short_id_counter),
         buffer_range=(span.start, span.start + span.length) if span is not None else None,
     )
     return node
