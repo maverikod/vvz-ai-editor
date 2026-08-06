@@ -77,9 +77,14 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
-from ai_editor.core.exceptions import QueryParseError
-from ai_editor.cst_query.ast import Combinator, PseudoKind, Query, SelectorStep
-from ai_editor.cst_query.parser import parse_selector
+from tree_engine.query.selector import (
+    Combinator,
+    PseudoKind,
+    Query,
+    QueryParseError,
+    SelectorStep,
+    parse_selector,
+)
 
 from tree_engine.core.address import build_node_address_view
 from tree_engine.core.nodes import Document, Node

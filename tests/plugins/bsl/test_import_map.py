@@ -301,7 +301,8 @@ def test_extensible_node_mapping() -> None:
     assert node.kind == "bsl:source_file"
     func_node = _first_common(node, "bsl:function_definition")
     assert func_node.fields["content"] == data.decode("utf-8").rstrip("\n")
-    assert func_node.node_id is None  # no identity synthesized for generic nodes
+    # A generic node still carries UUID4 identity {p013} and short_id {p097}.
+    assert isinstance(func_node.node_id, UUID) and func_node.short_id > 0
 
     return_node = _first_common(node, "bsl:return_statement")
     assert return_node.fields["content"] == "Возврат 1;"

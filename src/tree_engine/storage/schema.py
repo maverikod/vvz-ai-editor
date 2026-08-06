@@ -314,7 +314,11 @@ class TreeFilePayload:
         short_id_map_data = _require_mapping(data, "short_id_map")
         try:
             short_id_map = ShortIdMap.from_dict(dict(short_id_map_data))
-        except (KeyError, ValueError, TypeError) as exc:
+        # AttributeError belongs here too: a non-mapping ``entries`` makes
+        # ShortIdMap.from_dict call ``.items()`` on it, and a malformed field
+        # must surface as TREE_PAYLOAD_INVALID like every other one, never as
+        # a bare builtin escaping this boundary.
+        except (KeyError, ValueError, TypeError, AttributeError) as exc:
             raise TreeFileSchemaError(
                 ErrorCode.TREE_PAYLOAD_INVALID, f"payload.short_id_map is malformed: {exc}"
             ) from exc
