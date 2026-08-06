@@ -288,3 +288,12 @@ def test_two_independent_stub_plugins_do_not_leak_types_across_boundary(plugin_p
         plugin_b._external_to_node(ext_a)
     with pytest.raises(TypeError):
         plugin_a._external_to_node(ext_b)
+
+
+def test_conformance_helper_rejects_incomplete_subclass() -> None:
+    """Inheritance is not conformance: a missing method must fail the check."""
+    class Incomplete(FormatBoundary):
+        def parse_document(self, source, *, source_format_id):  # type: ignore[override]
+            raise NotImplementedError
+
+    assert implements_format_boundary(Incomplete) is False

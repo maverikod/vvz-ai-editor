@@ -147,4 +147,14 @@ def implements_format_boundary(candidate: Any) -> bool:
     """
 
     target = candidate if isinstance(candidate, type) else type(candidate)
-    return issubclass(target, FormatBoundary)
+    if not issubclass(target, FormatBoundary):
+        return False
+    # Inheritance alone is not conformance: a subclass that leaves an
+    # abstract method unimplemented cannot honour the boundary, and saying
+    # otherwise would let a broken plugin pass a conformance assertion.
+    if getattr(target, "__abstractmethods__", frozenset()):
+        return False
+    return all(
+        callable(getattr(target, name, None))
+        for name in ("parse_document", "parse_fragment", "render_document", "render_fragment")
+    )
