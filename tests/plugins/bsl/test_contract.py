@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import dataclasses
 from typing import Callable
+from uuid import UUID
 
 import pytest
 import tree_sitter_bsl
@@ -363,3 +364,30 @@ def test_bsl_semantic_role_mapping(plugin: BSLFormatPlugin) -> None:
     # never an error.
     assert mapping.roles_for(SemanticRole.METHOD) == ()
     assert mapping.roles_for(SemanticRole.CLASS) == ()
+
+
+# -- 8. Node identity across a whole parsed document
+
+
+@pytest.mark.parametrize("source_bytes", [RUSSIAN_FULL, ENGLISH_FULL], ids=["russian", "english"])
+def test_every_imported_node_carries_identity(plugin: BSLFormatPlugin, source_bytes: bytes) -> None:
+    """Every node of a parsed BSL document -- the root, generic nodes and
+    wrapper-typed constructs alike -- carries a UUID4 ``node_id`` {p013} and
+    a positive integer ``short_id`` {p097}, both unique within the document,
+    and a fragment parse carries them too. Identity is per parse: two parses
+    of the same source share no node_id ({p013})."""
+
+    document = plugin.parse_document(source_bytes)
+    nodes = list(walk(document.root))
+
+    assert all(isinstance(n.node_id, UUID) and n.node_id.version == 4 for n in nodes)
+    assert all(isinstance(n.short_id, int) and n.short_id > 0 for n in nodes)
+    assert len({n.node_id for n in nodes}) == len(nodes)
+    assert len({n.short_id for n in nodes}) == len(nodes)
+
+    fragment = plugin.parse_fragment(source_bytes)
+    fragment_nodes = list(walk(fragment))
+    assert all(n.node_id is not None and n.short_id is not None for n in fragment_nodes)
+
+    second = plugin.parse_document(source_bytes)
+    assert {n.node_id for n in walk(second.root)}.isdisjoint({n.node_id for n in nodes})
