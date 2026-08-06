@@ -44,6 +44,7 @@ from tree_engine.plugins.python.plugin import PYTHON_FORMAT_PLUGIN
 from tree_engine.plugins.registry import FormatPluginRegistry
 from tree_engine.plugins.selection import build_extension_table, resolve_format_plugin
 from tree_engine.plugins.toml_format import TOML_FORMAT_PLUGIN
+from tree_engine.plugins.yaml.plugin import YAML_FORMAT_PLUGIN
 from tree_engine.query.engine import query as _query
 from tree_engine.query.inspection import SOURCE_FULL, SOURCE_NONE, SOURCE_PREVIEW, drill_down as _drill_down
 from tree_engine.query.outline import OutlineResponse
@@ -67,7 +68,7 @@ MoveResult, MutationResult = _move_mod.MoveResult, _ops.MutationResult
 ApplySubtreeResult, CopiedDocument = _apply_mod.ApplySubtreeResult, _copy_mod.CopiedDocument
 
 _BUILTINS = (PYTHON_FORMAT_PLUGIN, BSL_FORMAT_PLUGIN, JSON_FORMAT_PLUGIN, TOML_FORMAT_PLUGIN,
-             PLAIN_TEXT_FORMAT_PLUGIN)
+             YAML_FORMAT_PLUGIN, PLAIN_TEXT_FORMAT_PLUGIN)
 _REGISTRY = FormatPluginRegistry()
 for _builtin in _BUILTINS:
     _REGISTRY.register_format_plugin(_builtin, replace=True)
