@@ -76,8 +76,15 @@ values -- the shapes ``tree_engine.core.nodes.make_node`` already
 validates. No tree-sitter object is retained or returned once
 ``import_to_common`` returns.
 
-Source-of-truth requirement labels honored here: {p043}, {an01}, {p044},
-{p046}, {p047}, {p104}, {iblr}, {p115}.
+Node identity: every node this module returns carries a fresh UUID4
+``node_id`` ({p013}) and a positive integer ``short_id`` ({p097}), assigned
+at the single :func:`_convert` dispatch point every mapped node passes
+through -- the root, every generic node, and the wrapper-typed constructs
+alike -- so an imported BSL document is addressable and queryable without a
+second pass, exactly as the Python translator's import map already does.
+
+Source-of-truth requirement labels honored here: {p013}, {p043}, {an01},
+{p044}, {p046}, {p047}, {p097}, {p104}, {iblr}, {p115}.
 """
 
 from __future__ import annotations
@@ -85,12 +92,22 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Dict, List, Mapping, Optional, TYPE_CHECKING, Tuple
 
+from tree_engine.core.identity import generate_node_id
 from tree_engine.core.node_types import (
     AnnotationNode,
     PreprocessorDirectiveNode,
     VariableDeclarationNode,
     VariableDeclaratorNode,
 )
+
+# The wrapper types imported above already stamp node_id/short_id on the
+# nodes they build, drawing every short id from this one monotonic counter in
+# ``node_types``. The generic mapping below deliberately reuses that same
+# counter object rather than opening a second sequence of its own: a single
+# imported BSL document mixes wrapper-built nodes (variable declarations,
+# annotations, preprocessor directives) with generic ones, and two
+# independent counters would hand out colliding short ids inside it.
+from tree_engine.core.node_types import _short_id_counter as _SHORT_ID_COUNTER
 from tree_engine.core.nodes import Node, make_node
 from tree_engine.errors import ErrorCode
 from tree_engine.plugins.bsl import dialects
@@ -243,6 +260,26 @@ def _convert_var_declaration(ts_node: "TSNode") -> Node:
     return wrapped.node
 
 
+def _with_identity(node: Node) -> Node:
+    """Guarantee the identity invariant on one mapped node: a fresh UUID4
+    ``node_id`` ({p013}) and the next monotonic ``short_id`` ({p097}), a
+    positive integer whose 0x-hex form is only an outward rendering.
+
+    A slot already filled by the wrapper types -- which stamp both from the
+    very counter reused here -- is kept as it stands: re-stamping would
+    desynchronize a wrapper node from the copies of itself that
+    :class:`VariableDeclarationNode`/:class:`AnnotationNode` keep in both
+    ``fields`` and ``children``."""
+
+    if node.node_id is not None and node.short_id is not None:
+        return node
+    return dataclasses.replace(
+        node,
+        node_id=node.node_id if node.node_id is not None else generate_node_id(),
+        short_id=node.short_id if node.short_id is not None else next(_SHORT_ID_COUNTER),
+    )
+
+
 def _convert(ts_node: "TSNode") -> Node:
     """Dispatch one tree-sitter-bsl node to its mapped common-model
     ``Node``, per this module's mapping rules. Every branch ultimately
@@ -250,16 +287,24 @@ def _convert(ts_node: "TSNode") -> Node:
     (:class:`AnnotationNode` and friends) are unwrapped to their own
     ``.node`` immediately, so a parent's ``children`` tuple never holds
     anything but base ``Node`` instances, satisfying
-    ``tree_engine.core.nodes.make_node``'s own shape contract."""
+    ``tree_engine.core.nodes.make_node``'s own shape contract.
+
+    This is also the one choke point every mapped node passes through --
+    the document root, every generic node, and each recursively converted
+    child alike -- so :func:`_with_identity` applied to the dispatch result
+    is what makes the whole imported tree carry identity, on the fragment
+    path exactly as on the document path."""
 
     node_type = ts_node.type
     if node_type in _VAR_DECLARATION_TYPES:
-        return _convert_var_declaration(ts_node)
-    if node_type == _PREPROCESSOR_TYPE:
-        return _convert_preprocessor(ts_node)
-    if node_type == _PARAMETER_TYPE:
-        return _convert_parameter(ts_node)
-    return _convert_generic(ts_node)
+        mapped = _convert_var_declaration(ts_node)
+    elif node_type == _PREPROCESSOR_TYPE:
+        mapped = _convert_preprocessor(ts_node)
+    elif node_type == _PARAMETER_TYPE:
+        mapped = _convert_parameter(ts_node)
+    else:
+        mapped = _convert_generic(ts_node)
+    return _with_identity(mapped)
 
 
 def import_to_common(
