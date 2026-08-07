@@ -1,38 +1,42 @@
 #!/bin/bash
-# Post-install reminder: set real values for config placeholders before start.
+# Post-install banner: what the package configured, and the one thing it cannot.
 #
 # Author: Vasiliy Zdanovskiy
 # email: vasilyvz@gmail.com
 
-cat <<'EOF'
+MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
+
+cat <<EOF
 
 ================================================================================
-  AI Editor Docker — configuration required before first start
+  AI Editor Docker — installed and configured
 ================================================================================
 
-  The installed config (/etc/ai-editor/ai_editor_container.json) contains
-  ${AI_EDITOR_*} placeholders. Set real hostnames or IP addresses on the host:
+  The package configures the service itself. Every setting is written to
+  /etc/default/ai-editor and substituted into
+  /etc/ai-editor/ai_editor_container.json when the container starts. No file
+  needs to be edited by hand.
 
-    sudo editor /etc/default/ai-editor
+  Review or change any setting through the argument surface — it validates the
+  value, writes it, and recreates the container:
 
-  Required variables:
-    AI_EDITOR_ADVERTISED_HOST       — host/IP advertised to MCP clients
-    AI_EDITOR_REGISTRATION_HOST     — MCP proxy registration host
-    AI_EDITOR_CODE_ANALYSIS_HOST    — Code Analysis Server (direct JSON-RPC)
+    ai-editor-config list
+    sudo ai-editor-config set --registration-host mcp-proxy --port 15000
+    sudo ai-editor-config apply
 
-  Optional (defaults apply if omitted):
-    AI_EDITOR_REGISTRATION_PORT     — default 3004
+  Settings cover the host port, bind and advertised host, protocol, the
+  registration and Code Analysis endpoints, the certificate paths, the server-id
+  suffix, and the Docker networks. See: man ai-editor-config
 
-  Install mTLS material under:
-    /etc/ai-editor/mtls_certificates/
+  The one thing the package cannot supply is the mTLS material itself: private
+  keys are copied to the host out of band, before a deploy. Place it under
 
-  Validate, then recreate and start the container:
+    ${MTLS_DIR}/
 
-    sudo /usr/lib/ai-editor/config-preflight.sh
-    sudo ai-editor-docker recreate
+  and the package applies the access rule on every install: owned by
+  root:\${AI_EDITOR_GROUP}, directories 750, files 640.
 
-  The systemd service refuses to start until placeholders are resolved and
-  the configuration passes validation.
+  The service refuses to start until the configuration passes validation.
 
 ================================================================================
 

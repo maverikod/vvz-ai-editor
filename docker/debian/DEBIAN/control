@@ -7,6 +7,8 @@ Priority: optional
 Depends: docker.io | docker-ce, adduser, python3, curl, ca-certificates
 Suggests: man-db
 Description: AI Editor MCP server (Docker image + host integration)
- Installs systemd unit, host directories, and pulls the matching Docker Hub image
- on install/upgrade. Config: /etc/ai-editor/ai_editor_container.json,
- data: /var/ai-editor/, logs: /var/log/ai-editor/. Run "ai-editor-info" for status.
+ Installs systemd unit, host user and group, host directories, Docker networks, and
+ pulls the matching Docker Hub image on install/upgrade. Settings:
+ /etc/default/ai-editor, edited through "ai-editor-config". Config:
+ /etc/ai-editor/ai_editor_container.json, data: /var/ai-editor/,
+ logs: /var/log/ai-editor/. Run "ai-editor-info" for status.

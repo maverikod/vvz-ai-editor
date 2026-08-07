@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 
-# shellcheck source=/dev/null
-[ -f /etc/default/ai-editor ] && . /etc/default/ai-editor
+SETTINGS_ENV="/usr/lib/ai-editor/settings-env.sh"
+# shellcheck source=../../pkg/settings-env.sh
+[ -f "$SETTINGS_ENV" ] && . "$SETTINGS_ENV"
 
 AI_EDITOR_USER="${AI_EDITOR_USER:-ai-editor}"
 AI_EDITOR_GROUP="${AI_EDITOR_GROUP:-ai-editor}"
@@ -11,12 +12,16 @@ CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"
 LOG_DIR="${AI_EDITOR_LOG_DIR:-/var/log/ai-editor}"
 DATA_DIR="${AI_EDITOR_DATA_DIR:-/var/ai-editor}"
 MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
+NETWORK_PRIMARY="${AI_EDITOR_NETWORK_PRIMARY:-smart-assistant}"
+NETWORK_SECONDARY="${AI_EDITOR_NETWORK_SECONDARY:-ai-editor-net}"
 DEFAULT_CONFIG="${CONFIG_DIR}/${CONFIG_FILE}"
 SHARE_CONFIG="/usr/share/ai-editor/${CONFIG_FILE}"
 IMAGE_SPEC="/usr/lib/ai-editor/image-spec"
 PREFLIGHT="/usr/lib/ai-editor/config-preflight.sh"
+CONFIG_CLI="/usr/lib/ai-editor/ai_editor_config.py"
 BANNER="/usr/lib/ai-editor/show-install-banner.sh"
 SETUP_FLAG="/var/lib/ai-editor/config-needs-setup"
+SETTINGS_FILE="${AI_EDITOR_SETTINGS_FILE:-/etc/default/ai-editor}"
 
 ensure_user() {
   if ! getent group "$AI_EDITOR_GROUP" >/dev/null 2>&1; then
@@ -37,6 +42,13 @@ ensure_dirs() {
   install -d -o root -g "$AI_EDITOR_GROUP" -m 750 "$MTLS_DIR"
   install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 /var/lib/ai-editor
 
+  # The settings file is root-owned and world-readable but never group-writable:
+  # dpkg keeps the mode of a conffile that already exists, so enforce it here.
+  if [ -f "$SETTINGS_FILE" ]; then
+    chown root:root "$SETTINGS_FILE"
+    chmod 644 "$SETTINGS_FILE"
+  fi
+
   if [ ! -f "$DEFAULT_CONFIG" ] && [ -f "$SHARE_CONFIG" ]; then
     install -o root -g root -m 644 "$SHARE_CONFIG" "$DEFAULT_CONFIG"
   elif [ -f "$DEFAULT_CONFIG" ]; then
@@ -56,6 +68,33 @@ ensure_mtls_permissions() {
   chown -R "root:$AI_EDITOR_GROUP" "$MTLS_DIR"
   find "$MTLS_DIR" -type d -exec chmod 750 {} +
   find "$MTLS_DIR" -type f -exec chmod 640 {} +
+}
+
+ensure_settings_complete() {
+  # A fresh install ships a complete /etc/default/ai-editor. An upgrade keeps the
+  # operator's conffile, which may predate newer settings: backfill only what is
+  # missing, from the package defaults in settings-env.sh, and never overwrite a
+  # value the operator chose.
+  [ -f "$CONFIG_CLI" ] || return 0
+  python3 "$CONFIG_CLI" init || {
+    echo "[ai-editor-docker] Failed to complete /etc/default/ai-editor" >&2
+    return 1
+  }
+}
+
+ensure_networks() {
+  # Peers are reached over Docker DNS on these networks; create them if absent so a
+  # fresh install has somewhere to attach without any manual step.
+  local net
+  for net in "$NETWORK_PRIMARY" "$NETWORK_SECONDARY"; do
+    [ -n "$net" ] || continue
+    if docker network inspect "$net" >/dev/null 2>&1; then
+      echo "[ai-editor-docker] Docker network present: $net"
+    else
+      echo "[ai-editor-docker] Creating Docker network: $net"
+      docker network create "$net" >/dev/null
+    fi
+  done
 }
 
 ensure_docker_ready() {
@@ -93,6 +132,14 @@ pull_image() {
   local image_ref="${DOCKERHUB_REPO}:${IMAGE_TAG}"
   echo "[ai-editor-docker] Pulling ${image_ref} ..."
   if ! docker pull "$image_ref"; then
+    # A pull failure is fatal only when the host has no usable image. On a host that
+    # already carries the tag — a local build, a re-install, an air-gapped machine —
+    # the install continues with what is there.
+    if docker image inspect "$image_ref" >/dev/null 2>&1; then
+      echo "[ai-editor-docker] docker pull failed; using the image already on this host" >&2
+      echo "[ai-editor-docker] Image ready (local): ${image_ref}"
+      return 0
+    fi
     echo "[ai-editor-docker] docker pull failed for ${image_ref}" >&2
     echo "[ai-editor-docker] If the repository is private, run: docker login" >&2
     return 1
@@ -125,7 +172,9 @@ config_preflight_ok() {
 }
 
 mark_config_needs_setup() {
-  echo "Set AI_EDITOR_* variables in /etc/default/ai-editor before starting." \
+  # The package configures every setting itself; what it cannot supply is the mTLS
+  # material, which is copied to the host out of band before a deploy.
+  echo "Install the mTLS material into ${MTLS_DIR}, then run: ai-editor-config apply" \
     >"$SETUP_FLAG"
   chmod 644 "$SETUP_FLAG"
 }
@@ -146,8 +195,10 @@ case "${1:-}" in
     ensure_user
     ensure_dirs
     ensure_mtls_permissions
+    ensure_settings_complete
     show_install_banner
     pull_image
+    ensure_networks
     systemctl daemon-reload
     systemctl enable ai-editor-docker.service
     if config_preflight_ok; then
@@ -159,9 +210,10 @@ case "${1:-}" in
     else
       mark_config_needs_setup
       echo "[ai-editor-docker] Service was NOT started: configuration placeholders are not set." >&2
-      echo "[ai-editor-docker] Follow the instructions above, then run:" >&2
-      echo "[ai-editor-docker]   sudo /usr/lib/ai-editor/config-preflight.sh" >&2
-      echo "[ai-editor-docker]   sudo ai-editor-docker recreate" >&2
+      echo "[ai-editor-docker] Install the mTLS material into ${MTLS_DIR}, then run:" >&2
+      echo "[ai-editor-docker]   sudo ai-editor-config apply" >&2
+      echo "[ai-editor-docker] Review or change any setting with:" >&2
+      echo "[ai-editor-docker]   ai-editor-config list" >&2
     fi
     update_documentation_index
     show_host_info

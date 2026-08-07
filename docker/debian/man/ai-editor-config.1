@@ -1,0 +1,104 @@
+.TH AI-EDITOR-CONFIG 1 "@VERSION@" "ai-editor-docker" "User Commands"
+.SH NAME
+ai-editor-config \- configure the AI Editor service settings on the host
+.SH SYNOPSIS
+.B ai-editor-config
+.I command
+[\fIoptions\fR] [\fIKEY=VALUE\fR ...]
+.SH DESCRIPTION
+.B ai-editor-config
+is the argument surface for \fB/etc/default/ai-editor\fR, the settings file of the
+\fBai-editor-docker\fR package. Every value is validated before anything is written;
+a rejected argument leaves the settings file untouched. After a successful write the
+tool re-applies the result: it runs the config preflight and recreates the container,
+so the change reaches the running service.
+.PP
+The settings are substituted into \fB/etc/ai-editor/ai_editor_container.json\fR as
+\fB${AI_EDITOR_*}\fR placeholders when the container loads its configuration.
+.SH COMMANDS
+.TP
+.B list
+List every supported setting with its option, current value, and description.
+.TP
+.B show
+Print the settings file.
+.TP
+.B get \fIKEY\fR
+Print the value of one setting.
+.TP
+.B set \fIoptions\fR
+Validate and write settings, then re-apply them. Use \fB\-\-no\-apply\fR to write
+without recreating the container. Requires root.
+.TP
+.B init
+Fill any setting the file does not carry yet with the package default. Never
+overwrites a value that is already set. Run by the package on install. Requires root.
+.TP
+.B apply
+Re-run the config preflight and recreate the container. Use \fB\-\-check\-only\fR to
+run the preflight alone. Requires root.
+.SH SETTINGS
+.TP
+.B \-\-port\fR, \fB\-\-bind\-host\fR, \fB\-\-advertised\-host\fR, \fB\-\-protocol
+Published host port, in-container bind address, advertised host, and the
+server/client/transport protocol (\fBhttp\fR, \fBhttps\fR, \fBmtls\fR).
+.TP
+.B \-\-registration\-host\fR, \fB\-\-registration\-port\fR, \fB\-\-registration\-protocol
+MCP proxy endpoint used for register, unregister, and heartbeat.
+.TP
+.B \-\-code\-analysis\-host\fR, \fB\-\-code\-analysis\-port\fR, \fB\-\-code\-analysis\-protocol
+Code Analysis server endpoint. The protocol accepts \fBhttp\fR or \fBhttps\fR only.
+.TP
+.B \-\-server\-id\-suffix
+Suffix appended to \fBregistration.server_id\fR.
+.TP
+.B \-\-mtls\-dir\fR, \fB\-\-mtls\-container\-dir
+Host directory holding the mTLS material, and its mount point in the container.
+.TP
+.B \-\-server\-cert\fR, \fB\-\-server\-key\fR, \fB\-\-server\-ca
+Server certificate, private key, and CA bundle, as paths inside the container.
+.TP
+.B \-\-client\-cert\fR, \fB\-\-client\-key\fR, \fB\-\-client\-ca
+Client certificate, private key, and CA bundle, as paths inside the container.
+.TP
+.B \-\-network\-primary\fR, \fB\-\-network\-secondary\fR, \fB\-\-dns\-name
+Docker networks the container joins, and the network alias it publishes itself under.
+A missing network is created on install and on recreate.
+.TP
+.B \-\-container\fR, \fB\-\-user\fR, \fB\-\-group
+Container name and the system user and group owning the service files.
+.SH DOCKER DNS
+Container\-to\-container addressing goes by Docker network name, never by IP:
+\fBcasmgr\fR for the Code Analysis server, \fBmcp\-proxy\fR for the proxy, and this
+service publishes itself as \fBai\-editor\-server\fR. \fB\-\-dns\-name\fR rejects an
+IP literal for that reason; a peer host accepts one but leaves Docker DNS behind.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 2
+An argument was rejected. Nothing was written.
+.TP
+.B 3
+Permission denied; run under \fBsudo\fR.
+.SH EXAMPLES
+.nf
+ai\-editor\-config list
+ai\-editor\-config get AI_EDITOR_REGISTRATION_HOST
+sudo ai\-editor\-config set \-\-registration\-host mcp\-proxy \-\-registration\-port 3004
+sudo ai\-editor\-config set AI_EDITOR_CODE_ANALYSIS_PORT=15010 \-\-no\-apply
+sudo ai\-editor\-config apply
+.fi
+.SH FILES
+.TP
+.B /etc/default/ai-editor
+Settings file (dpkg conffile).
+.TP
+.B /etc/ai-editor/ai_editor_container.json
+Service configuration template with \fB${AI_EDITOR_*}\fR placeholders.
+.SH SEE ALSO
+.BR ai-editor-docker (1),
+.BR ai-editor-info (1)
+.SH AUTHOR
+Vasiliy Zdanovskiy <vasilyvz@gmail.com>

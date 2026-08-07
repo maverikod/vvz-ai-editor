@@ -1,7 +1,14 @@
 # AI Editor Docker service defaults (host-visible settings).
 # Managed by package ai-editor-docker.
+#
+# Edit through the argument surface rather than by hand — it validates every value
+# and re-applies the result (preflight + container recreate):
+#   ai-editor-config list                       # every supported setting
+#   ai-editor-config set --registration-host mcp-proxy --registration-port 3004
+#   ai-editor-config apply                      # re-apply after a manual edit
+#
 # restart:  systemctl restart ai-editor-docker   (stop + start, same container)
-# recreate: ai-editor-docker recreate             (remove + create; after config edits)
+# recreate: ai-editor-docker recreate            (remove + create; after config edits)
 
 AI_EDITOR_USER=ai-editor
 AI_EDITOR_GROUP=ai-editor
@@ -14,7 +21,11 @@ AI_EDITOR_LOG_DIR=/var/log/ai-editor
 AI_EDITOR_DATA_DIR=/var/ai-editor
 # CAS project trees mounted read-only into the editor container (QA venv resolution).
 AI_EDITOR_PROJECTS_DIR=/var/casmgr/watch_catalog
+# Host directory holding the mTLS material, and its mount point in the container.
+# The material is copied to the host out of band; the package owns the access rule
+# (root:<group>, dirs 750, files 640) and applies it on every install.
 AI_EDITOR_MTLS_DIR=/etc/ai-editor/mtls_certificates
+AI_EDITOR_MTLS_CONTAINER_DIR=/app/mtls_certificates
 
 AI_EDITOR_CONTAINER=ai-editor
 AI_EDITOR_NETWORK_PRIMARY=smart-assistant
@@ -30,18 +41,36 @@ AI_EDITOR_ULIMIT_NOFILE=65536:65536
 # Set to 1 on recreate to docker pull before container recreate.
 # AI_EDITOR_PULL_ON_RECREATE=0
 
-# Placeholders in /etc/ai-editor/ai_editor_container.json.
-# Assignments here are auto-exported by ai-editor-docker / config-preflight (set -a).
+# --- Placeholders in /etc/ai-editor/ai_editor_container.json -----------------
+# Assignments here are auto-exported by ai-editor-docker / config-preflight (set -a)
+# and handed to the container, which substitutes them into the service config.
+# Peers are addressed by Docker DNS name on the primary network, never by IP:
+# "casmgr" is the code-analysis server, "mcp-proxy" is the proxy, and this service
+# publishes itself as AI_EDITOR_DOCKER_DNS_NAME.
+
+AI_EDITOR_BIND_HOST=0.0.0.0
 AI_EDITOR_ADVERTISED_HOST=ai-editor-server
+AI_EDITOR_PROTOCOL=https
+
 AI_EDITOR_CODE_ANALYSIS_HOST=casmgr
 AI_EDITOR_CODE_ANALYSIS_PORT=15010
+AI_EDITOR_CODE_ANALYSIS_PROTOCOL=https
 
 # registration.register_url / unregister_url / heartbeat.url use the mcp-proxy
 # Docker alias on the smart-assistant network.
 AI_EDITOR_REGISTRATION_HOST=mcp-proxy
 AI_EDITOR_REGISTRATION_PORT=3004
+AI_EDITOR_REGISTRATION_PROTOCOL=https
 
-# registration.server_id / registration.metadata.server_id default to
-# "ai-editor-server-vvz" (the "-vvz" host suffix used on the current production host,
-# 192.168.254.26). Uncomment to override when installing on a different host.
-# AI_EDITOR_SERVER_ID_SUFFIX=-vvz
+# registration.server_id / registration.metadata.server_id resolve to
+# "ai-editor-server-vvz" (the "-vvz" host suffix used on the current production
+# host, 192.168.254.26). Change it when installing on a different host.
+AI_EDITOR_SERVER_ID_SUFFIX=-vvz
+
+# Certificate paths as the container sees them, below AI_EDITOR_MTLS_CONTAINER_DIR.
+AI_EDITOR_SERVER_SSL_CERT=/app/mtls_certificates/mtls_certificates/server/ai-editor-server.crt
+AI_EDITOR_SERVER_SSL_KEY=/app/mtls_certificates/mtls_certificates/server/ai-editor-server.key
+AI_EDITOR_SERVER_SSL_CA=/app/mtls_certificates/mtls_certificates/ca/ca.crt
+AI_EDITOR_CLIENT_SSL_CERT=/app/mtls_certificates/mtls_certificates/client/ai-editor.crt
+AI_EDITOR_CLIENT_SSL_KEY=/app/mtls_certificates/mtls_certificates/client/ai-editor.key
+AI_EDITOR_CLIENT_SSL_CA=/app/mtls_certificates/mtls_certificates/ca/ca.crt

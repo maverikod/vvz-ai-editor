@@ -20,6 +20,10 @@ from typing import Any, Iterable, Mapping
 
 _PLACEHOLDER_RE = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 
+_MTLS_CONTAINER_DIR = "/app/mtls_certificates"
+
+# Fallbacks that mirror docker/pkg/settings-env.sh, so the preflight still resolves a
+# template when an upgrade kept a settings file that predates the newer variables.
 _ENV_DEFAULTS: dict[str, str] = {
     "AI_EDITOR_REGISTRATION_PORT": "3004",
     "AI_EDITOR_CODE_ANALYSIS_PORT": "15010",
@@ -30,6 +34,25 @@ _ENV_DEFAULTS: dict[str, str] = {
     # "-vvz" host suffix used on the current production host (192.168.254.26);
     # override per-host when installing elsewhere.
     "AI_EDITOR_SERVER_ID_SUFFIX": "-vvz",
+    "AI_EDITOR_BIND_HOST": "0.0.0.0",
+    "AI_EDITOR_PROTOCOL": "https",
+    "AI_EDITOR_REGISTRATION_PROTOCOL": "https",
+    "AI_EDITOR_REGISTRATION_SCHEME": "https",
+    "AI_EDITOR_CODE_ANALYSIS_PROTOCOL": "https",
+    "AI_EDITOR_SERVER_SSL_CERT": (
+        f"{_MTLS_CONTAINER_DIR}/mtls_certificates/server/ai-editor-server.crt"
+    ),
+    "AI_EDITOR_SERVER_SSL_KEY": (
+        f"{_MTLS_CONTAINER_DIR}/mtls_certificates/server/ai-editor-server.key"
+    ),
+    "AI_EDITOR_SERVER_SSL_CA": f"{_MTLS_CONTAINER_DIR}/mtls_certificates/ca/ca.crt",
+    "AI_EDITOR_CLIENT_SSL_CERT": (
+        f"{_MTLS_CONTAINER_DIR}/mtls_certificates/client/ai-editor.crt"
+    ),
+    "AI_EDITOR_CLIENT_SSL_KEY": (
+        f"{_MTLS_CONTAINER_DIR}/mtls_certificates/client/ai-editor.key"
+    ),
+    "AI_EDITOR_CLIENT_SSL_CA": f"{_MTLS_CONTAINER_DIR}/mtls_certificates/ca/ca.crt",
 }
 
 _REQUIRED_FOR_AI_EDITOR: frozenset[str] = frozenset(

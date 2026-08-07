@@ -6,17 +6,14 @@
 set -euo pipefail
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f /etc/default/ai-editor ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . /etc/default/ai-editor
-  set +a
-fi
+# shellcheck source=settings-env.sh
+. "${LIB_DIR}/settings-env.sh"
 
-CONFIG_DIR="${AI_EDITOR_CONFIG_DIR:-/etc/ai-editor}"
-CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"
+CONFIG_DIR="$AI_EDITOR_CONFIG_DIR"
+CONFIG_FILE="$AI_EDITOR_CONFIG_FILE"
 CONFIG_PATH="${CONFIG_DIR}/${CONFIG_FILE}"
-MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
+MTLS_DIR="$AI_EDITOR_MTLS_DIR"
+MTLS_CONTAINER_DIR="$AI_EDITOR_MTLS_CONTAINER_DIR"
 IMAGE_SPEC="${LIB_DIR}/image-spec"
 
 export AI_EDITOR_CONFIG_PATH="$CONFIG_PATH"
@@ -55,13 +52,7 @@ fi
 
 config_in_container="/etc/ai-editor/${CONFIG_FILE}"
 docker_env_args=()
-for _var in \
-  AI_EDITOR_ADVERTISED_HOST \
-  AI_EDITOR_REGISTRATION_HOST \
-  AI_EDITOR_REGISTRATION_PORT \
-  AI_EDITOR_CODE_ANALYSIS_HOST \
-  AI_EDITOR_CODE_ANALYSIS_PORT \
-  AI_EDITOR_POSTGRES_PASSWORD; do
+for _var in "${AI_EDITOR_PLACEHOLDER_VARS[@]}" AI_EDITOR_POSTGRES_PASSWORD; do
   if [ -n "${!_var:-}" ]; then
     docker_env_args+=(-e "${_var}=${!_var}")
   fi
@@ -70,7 +61,7 @@ done
 if docker run --rm \
   "${docker_env_args[@]}" \
   -v "${CONFIG_PATH}:${config_in_container}:ro" \
-  -v "${MTLS_DIR}:/app/mtls_certificates:ro" \
+  -v "${MTLS_DIR}:${MTLS_CONTAINER_DIR}:ro" \
   --entrypoint aiedcfg \
   "$IMAGE_NAME" \
   validate --file "$config_in_container"; then
