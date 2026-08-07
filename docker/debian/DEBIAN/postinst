@@ -34,7 +34,7 @@ ensure_dirs() {
   install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 "$DATA_DIR"
   install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 \
     "${DATA_DIR}/editor_workspaces" "${DATA_DIR}/versions"
-  install -d -o root -g root -m 755 "$MTLS_DIR"
+  install -d -o root -g "$AI_EDITOR_GROUP" -m 750 "$MTLS_DIR"
   install -d -o "$AI_EDITOR_USER" -g "$AI_EDITOR_GROUP" -m 755 /var/lib/ai-editor
 
   if [ ! -f "$DEFAULT_CONFIG" ] && [ -f "$SHARE_CONFIG" ]; then
@@ -43,6 +43,19 @@ ensure_dirs() {
     chown root:root "$DEFAULT_CONFIG"
     chmod 644 "$DEFAULT_CONFIG"
   fi
+}
+
+ensure_mtls_permissions() {
+  # The mTLS material itself is copied into MTLS_DIR out of band, once, before a
+  # deploy — the package does not ship keys. What the package DOES own is the
+  # access rule, and it must apply it on every install/upgrade, whenever the
+  # material arrived and whatever mode the copy left behind: readable by the
+  # project's own group (that is who the container runs as), by nobody else,
+  # and never group-writable.
+  [ -d "$MTLS_DIR" ] || return 0
+  chown -R "root:$AI_EDITOR_GROUP" "$MTLS_DIR"
+  find "$MTLS_DIR" -type d -exec chmod 750 {} +
+  find "$MTLS_DIR" -type f -exec chmod 640 {} +
 }
 
 ensure_docker_ready() {
@@ -132,6 +145,7 @@ case "${1:-}" in
     rm -f /var/lib/ai-editor/uninstall-image-ref
     ensure_user
     ensure_dirs
+    ensure_mtls_permissions
     show_install_banner
     pull_image
     systemctl daemon-reload
