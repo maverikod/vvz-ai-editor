@@ -29,6 +29,7 @@ NOTHING_TO_UNDO = "NOTHING_TO_UNDO"
 NOTHING_TO_REDO = "NOTHING_TO_REDO"
 MODIFIED_NOT_WRITTEN = "MODIFIED_NOT_WRITTEN"
 READ_ONLY_SESSION = "READ_ONLY_SESSION"
+VALIDATION_ERROR = "VALIDATION_ERROR"
 
 # These are the operation names exposed by ``universal_file_edit`` metadata.
 # Keep remediation text tied to this catalog instead of leaking internal CST

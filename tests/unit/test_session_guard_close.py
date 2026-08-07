@@ -68,9 +68,9 @@ async def test_close_cleans_workspace_when_ca_session_not_found() -> None:
             "ai_editor.commands.universal_file_edit.close_command.resolve_session_for_command",
             return_value=session,
         ):
-            with patch.object(
-                cmd,
-                "_close_tree_temp_or_text",
+            with patch(
+                "ai_editor.commands.universal_file_edit.close_command."
+                "close_tree_temp_or_text",
                 return_value={"success": True, "draft_rebuilt": False},
             ):
                 with patch(
@@ -137,9 +137,9 @@ async def test_close_releases_bundle_when_workspace_file_missing() -> None:
             "ai_editor.commands.universal_file_edit.close_command.resolve_session_for_command",
             return_value=session,
         ):
-            with patch.object(
-                cmd,
-                "_close_tree_temp_or_text",
+            with patch(
+                "ai_editor.commands.universal_file_edit.close_command."
+                "close_tree_temp_or_text",
                 side_effect=FileNotFoundError(
                     "File not found: /var/ai-editor/editor_workspaces/sess-1/files/foo.py"
                 ),
@@ -198,9 +198,9 @@ async def test_close_releases_bundle_when_core_close_raises() -> None:
             "ai_editor.commands.universal_file_edit.close_command.resolve_session_for_command",
             return_value=session,
         ):
-            with patch.object(
-                cmd,
-                "_close_tree_temp_or_text",
+            with patch(
+                "ai_editor.commands.universal_file_edit.close_command."
+                "close_tree_temp_or_text",
                 return_value={"success": True, "draft_rebuilt": False},
             ):
                 with patch(
@@ -252,9 +252,9 @@ async def test_close_proceeds_on_allow_terminating_decision() -> None:
             "ai_editor.commands.universal_file_edit.close_command.resolve_session_for_command",
             return_value=session,
         ):
-            with patch.object(
-                cmd,
-                "_close_tree_temp_or_text",
+            with patch(
+                "ai_editor.commands.universal_file_edit.close_command."
+                "close_tree_temp_or_text",
                 return_value={"success": True, "draft_rebuilt": False},
             ):
                 with patch(

@@ -7,28 +7,28 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import shutil
-from typing import Any, Dict, Type, cast
+from typing import Any, Dict, Optional, Type, cast
 
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
 from ai_editor.commands.base_mcp_command import BaseMCPCommand
+from ai_editor.commands.universal_file_edit.close_command_cleanup import (
+    close_sidecar,
+    close_tree_temp_or_text,
+)
 from ai_editor.commands.universal_file_edit.errors import (
     MODIFIED_NOT_WRITTEN,
     SESSION_FILE_PATH_REQUIRED,
     SESSION_NOT_FOUND,
+    VALIDATION_ERROR,
     error_result_from_make_error,
     make_error,
 )
-from ai_editor.commands.universal_file_edit.format_group import (
-    FORMAT_SIDECAR,
-    FORMAT_TEXT,
-    FORMAT_TREE_TEMP,
-)
+from ai_editor.commands.universal_file_edit.format_group import FORMAT_SIDECAR
+from ai_editor.commands.universal_file_edit.project_scope import project_scope_error
 from ai_editor.commands.universal_file_edit.session import (
-    EditSession,
     list_bundle_file_paths,
     release_session,
     resolve_session_for_command,
@@ -156,7 +156,7 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         self,
         project_id: str,
         session_id: str,
-        file_path: str = "",
+        file_path: Optional[str] = None,
         write_before_close: bool = False,
         **kwargs: Any,
     ) -> SuccessResult | ErrorResult:
@@ -164,19 +164,24 @@ class UniversalFileCloseCommand(BaseMCPCommand):
 
         Args:
             project_id: Required by schema; used for CA unlock and workspace paths.
+                An empty value is rejected with VALIDATION_ERROR, exactly as
+                universal_file_open rejects it — a declared-required parameter is
+                validated, not silently defaulted.
             session_id: CA session identifier.
             file_path: Project-relative path when the session holds multiple files.
-            write_before_close: When the file has unsaved edits, ``True`` writes
-                (commits) before closing; ``False`` (default, matching the
-                established "close never silently writes" semantics) rejects the
-                close with MODIFIED_NOT_WRITTEN. Ignored when the file is
-                unmodified.
+                Omit it when exactly one file is open; an explicitly EMPTY string
+                is a malformed path and is rejected with VALIDATION_ERROR rather
+                than silently treated as omitted.
+            write_before_close: How to close a file that still holds unsaved edits.
+                ``True`` runs the full write/commit sequence first; ``False``
+                (default) refuses the close with MODIFIED_NOT_WRITTEN so edits are
+                never silently discarded. Ignored when the file is unmodified.
             **kwargs: Unused; accepted for adapter compatibility.
 
         Returns:
-            SuccessResult with cleanup details, or ErrorResult on session not found
-            or on a modified-but-unwritten file when ``write_before_close`` is
-            ``False``.
+            SuccessResult with cleanup details, or ErrorResult on invalid
+            parameters, session not found, or a modified-but-unwritten file when
+            ``write_before_close`` is ``False``.
         """
         _ = kwargs
         ca_session_id = str(session_id or "").strip()
@@ -186,6 +191,9 @@ class UniversalFileCloseCommand(BaseMCPCommand):
                 message="session_id is required for universal_file_close",
                 code=cast(Any, "SESSION_REJECTED"),
             )
+        invalid = self._validate_declared_params(project_id, ca_session_id, file_path)
+        if invalid is not None:
+            return invalid
         guard = SessionGuard(get_code_analysis_client())
         try:
             decision = guard.check(OperationKind.CLOSE, ca_session_id)
@@ -203,7 +211,7 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         try:
             session = resolve_session_for_command(
                 ca_session_id,
-                file_path or None,
+                file_path if file_path is not None else None,
             )
         except ValueError as exc:
             msg = str(exc)
@@ -220,18 +228,16 @@ class UniversalFileCloseCommand(BaseMCPCommand):
             )
         client = get_code_analysis_client()
 
-        # R5: handle unsaved edits before cleanup. Non-tree-temp files either
-        # write first (write_before_close=true) or refuse to discard edits.
-        # Tree-temp sessions are preview-oriented: closing without a commit must
-        # discard the workspace draft so the external source remains unchanged.
-        # A create=true draft that was never committed exists only in the local
-        # workspace (persisted_on_ca=False): closing it discards the draft per
-        # the documented contract instead of demanding a commit (bug 2e44a0a9).
-        if (
-            session.modified
-            and session.format_group != FORMAT_TREE_TEMP
-            and session.persisted_on_ca
-        ):
+        # R5: handle unsaved edits before cleanup. The guard applies to EVERY
+        # session that holds edits, with no format-group or persistence carve-out.
+        # It previously skipped tree-temp sessions and every create=true draft
+        # that had not been committed yet (persisted_on_ca=False), which is
+        # exactly the combination the documented promise rules out: a real edit,
+        # confirmed by universal_file_write as has_changes=true, was discarded by
+        # a default close that reported success. MODIFIED_NOT_WRITTEN exists so
+        # "edits are never silently discarded"; the only escape is the declared
+        # write_before_close=true, which commits first and then closes.
+        if session.modified:
             try:
                 comparison = compare_session_to_origin(session)
             except ValueError:
@@ -288,9 +294,9 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         payload: Dict[str, Any] = {"success": True, "draft_rebuilt": False}
         try:
             if fg == FORMAT_SIDECAR:
-                payload = self._close_sidecar(session)
+                payload = close_sidecar(session)
             else:
-                payload = self._close_tree_temp_or_text(session)
+                payload = close_tree_temp_or_text(session)
         except (FileNotFoundError, OSError) as exc:
             logger.warning(
                 "close format cleanup skipped for %s/%s: %s",
@@ -356,106 +362,36 @@ class UniversalFileCloseCommand(BaseMCPCommand):
         payload["session_dir_removed"] = session_dir_removed
         return SuccessResult(data=payload)
 
-    def _close_sidecar(self, session: EditSession) -> Dict[str, Any]:
-        """Close a sidecar group session.
+    def _validate_declared_params(
+        self,
+        project_id: Any,
+        session_id: str,
+        file_path: Optional[str],
+    ) -> Optional[ErrorResult]:
+        """Reject declared parameters whose value is present but unusable.
 
-        Verifies sidecar checksum. On mismatch rebuilds sidecar from source.
-        Sidecar is never deleted.
-
-        Args:
-            session: Active sidecar group EditSession.
-
-        Returns:
-            Dict with success=True and draft_rebuilt flag.
-        """
-        from ai_editor.core.cst_tree import tree_builder as cst_builder
-        from ai_editor.core.cst_tree.tree_sidecar import (
-            read_sidecar_payload,
-            verify_sidecar_against_source,
-            write_sidecar_atomic,
-        )
-
-        tree = cst_builder.load_file_to_tree(str(session.abs_path))
-        payload = read_sidecar_payload(session.abs_path)
-        if payload is not None and verify_sidecar_against_source(
-            tree.module.code, payload
-        ):
-            return {"success": True, "draft_rebuilt": False}
-        write_sidecar_atomic(session.abs_path, tree)
-        return {"success": True, "draft_rebuilt": True}
-
-    def _close_tree_temp_or_text(self, session: EditSession) -> Dict[str, Any]:
-        """Close a tree-temp or text group session.
+        ``project_id`` is delegated to the shared ``project_scope`` guard, the
+        one mechanism the session-scoped commands use, so close answers an empty
+        or foreign project id with the same VALIDATION_ERROR and the same
+        messages as edit/write/search/node_at_line — close was tearing the
+        session down regardless of what it was given. ``file_path`` is optional,
+        so being absent is legal, but an explicitly EMPTY string is a malformed
+        project-relative path, not a request to guess the only open file.
 
         Args:
-            session: Active tree-temp or text group EditSession.
+            project_id: Raw project UUID from the request.
+            session_id: Stripped CA session id the close was addressed to.
+            file_path: Raw file_path from the request; ``None`` when omitted.
 
         Returns:
-            Dict with success=True and draft_rebuilt flag.
+            An ErrorResult when a declared parameter is unusable, else ``None``.
         """
-        fg = session.format_group
-        abs_path = session.abs_path
-
-        if fg == FORMAT_TEXT:
-            session.draft_path.unlink(missing_ok=True)
-            return {"success": True, "draft_rebuilt": False}
-
-        if fg == FORMAT_TREE_TEMP and session.tree_temp_roots is not None:
-            session.draft_path.unlink(missing_ok=True)
-            session.tree_temp_roots = None
-            draft_rebuilt = False
-        else:
-            draft_rebuilt = False
-            if session.draft_path.exists():
-                draft_sha = hashlib.sha256(session.draft_path.read_bytes()).hexdigest()
-                orig_sha = hashlib.sha256(abs_path.read_bytes()).hexdigest()
-                if draft_sha == orig_sha:
-                    session.draft_path.unlink(missing_ok=True)
-                else:
-                    if session.handler_id == "json":
-                        import json
-
-                        from ai_editor.core.json_tree import (
-                            tree_builder as json_builder,
-                        )
-
-                        loaded_json = json_builder.load_file_to_tree(str(abs_path))
-                        draft_text = (
-                            json.dumps(
-                                loaded_json.root_data,
-                                indent=2,
-                                ensure_ascii=False,
-                            )
-                            + "\n"
-                        )
-                        session.draft_path.write_text(draft_text, encoding="utf-8")
-                        json_builder.remove_tree(loaded_json.tree_id)
-                    else:
-                        import yaml
-
-                        from ai_editor.core.yaml_tree import (
-                            tree_builder as yaml_builder,
-                        )
-
-                        loaded_yaml = yaml_builder.load_file_to_tree(str(abs_path))
-                        draft_text = yaml.safe_dump(
-                            loaded_yaml.root_data,
-                            default_flow_style=False,
-                            allow_unicode=True,
-                            sort_keys=False,
-                        )
-                        session.draft_path.write_text(draft_text, encoding="utf-8")
-                        yaml_builder.remove_tree(loaded_yaml.tree_id)
-                    draft_rebuilt = True
-
-        if session.tree_id:
-            if session.handler_id == "json":
-                from ai_editor.core.json_tree import tree_builder as json_builder
-
-                json_builder.remove_tree(session.tree_id)
-            else:
-                from ai_editor.core.yaml_tree import tree_builder as yaml_builder
-
-                yaml_builder.remove_tree(session.tree_id)
-
-        return {"success": True, "draft_rebuilt": draft_rebuilt}
+        if file_path is not None and not str(file_path).strip():
+            return error_result_from_make_error(
+                make_error(
+                    VALIDATION_ERROR,
+                    "file_path must be a non-empty project-relative path when given",
+                    details={"field": "file_path"},
+                )
+            )
+        return project_scope_error(project_id, session_id, file_path or "")
