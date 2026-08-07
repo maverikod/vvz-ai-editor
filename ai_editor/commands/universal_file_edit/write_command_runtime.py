@@ -297,19 +297,24 @@ def _run_write_preview(
     *,
     write_mode_explicit: bool,
     format_python: bool = False,
+    project_id: str = "",
+    ca_session_id: str = "",
 ) -> SuccessResult | ErrorResult:
+    # The echoed request values travel with the preview so its payload carries
+    # the same documented properties the commit payload does.
+    kw: Dict[str, Any] = {
+        "format_python": format_python,
+        "project_id": project_id,
+        "session_id": ca_session_id,
+    }
     if session.format_group == FORMAT_TREE_TEMP:
-        return phases.tree_temp_preview(session, format_python=format_python)
+        return phases.tree_temp_preview(session, **kw)
     if session.format_group == FORMAT_TEXT:
-        return phases.text_preview(session, format_python=format_python)
+        return phases.text_preview(session, **kw)
 
     if write_mode_explicit:
-        return phases.sidecar_preview(session, format_python=format_python)
-    return phases.sidecar_first_call_preview(
-        session,
-        os.getpid(),
-        format_python=format_python,
-    )
+        return phases.sidecar_preview(session, **kw)
+    return phases.sidecar_first_call_preview(session, os.getpid(), **kw)
 
 
 def _commit_response_data(
@@ -694,4 +699,6 @@ async def run_write_execute(
         session,
         write_mode_explicit=write_mode_explicit,
         format_python=format_python,
+        project_id=project_id,
+        ca_session_id=session_id,
     )

@@ -367,7 +367,9 @@ class UniversalFileSearchCommand(BaseMCPCommand):
                     )
                 )
 
-        if max_results is not None and max_results > 0:
+        # get_schema declares minimum=1 and validate_params enforces it, so 0 and
+        # negatives are VALIDATION_ERROR before reaching here: this guard only caps.
+        if max_results is not None and max_results >= 1:
             matches = matches[:max_results]
 
         match_dicts: List[Dict[str, Any]] = [

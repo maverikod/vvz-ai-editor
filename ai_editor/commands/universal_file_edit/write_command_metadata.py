@@ -115,7 +115,8 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
                         "True when commit found no diff vs origin (no CA upload)."
                     ),
                     "uploaded": (
-                        "True when commit uploaded to CA and origin snapshot refreshed."
+                        "True when commit uploaded to CA and origin snapshot "
+                        "refreshed; always False on preview, which never uploads."
                     ),
                     "diff": "Unified diff string (preview or commit when has_changes).",
                     "format_python": "Echo of format_python request flag.",
@@ -125,7 +126,11 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
                     ),
                     "session_id": "CA session id echoed from request.",
                     "project_id": "Project UUID echoed from request.",
-                    "file_path": "Project-relative path of the written file.",
+                    "file_path": (
+                        "Project-relative path of the written file. On preview "
+                        "this is the RESOLVED path, so a caller that omitted "
+                        "file_path learns which open file the server picked."
+                    ),
                 },
                 "example": {
                     "success": True,
@@ -135,6 +140,10 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
                     "unchanged": False,
                     "uploaded": False,
                     "diff": "--- origin\n+++ export\n...",
+                    "format_python": False,
+                    "session_id": "<ca-session-id>",
+                    "project_id": "8772a086-688d-4198-a0c4-f03817cc0e6c",
+                    "file_path": "src/example.py",
                 },
             },
             "error": {

@@ -44,7 +44,24 @@ def _origin_text(session: EditSession) -> str:
     return ""
 
 
-def _preview_success(preview_diff: Any) -> SuccessResult:
+def _preview_success(
+    preview_diff: Any,
+    *,
+    project_id: str,
+    session_id: str,
+    file_path: str,
+    format_python: bool,
+) -> SuccessResult:
+    """Build the preview payload in the shape ``return_value`` documents.
+
+    ``metadata()`` promises ``uploaded``, ``format_python``, ``session_id``,
+    ``project_id`` and ``file_path`` on EVERY successful write, and every one of
+    them is meaningful here: a preview never uploads, so ``uploaded`` is False by
+    definition, and the other four echo the request as the commit path already
+    does in ``write_command_runtime._commit_response_data``. ``file_path`` is the
+    RESOLVED path, which is how a caller that omitted it learns which open file
+    the server picked.
+    """
     has_changes = preview_diff.content_changed
     return SuccessResult(
         data={
@@ -53,8 +70,13 @@ def _preview_success(preview_diff: Any) -> SuccessResult:
             "write_mode": "preview",
             "has_changes": has_changes,
             "unchanged": not has_changes,
+            "uploaded": False,
             "diff": preview_diff.diff,
             "preview_diff": preview_diff.as_dict(),
+            "session_id": session_id,
+            "project_id": project_id,
+            "file_path": file_path,
+            "format_python": format_python,
         }
     )
 
@@ -183,8 +205,15 @@ def preview_export_vs_origin(
     session: EditSession,
     *,
     format_python: bool = False,
+    project_id: str = "",
+    session_id: str = "",
 ) -> SuccessResult | ErrorResult:
-    """Unified diff: origin snapshot (last write) vs canonical session export."""
+    """Unified diff: origin snapshot (last write) vs canonical session export.
+
+    ``project_id`` and ``session_id`` are the caller's request values, echoed
+    back in the payload; both fall back to the resolved session when a direct
+    in-process caller omits them.
+    """
     try:
         comparison = compare_session_to_origin(session, format_python=format_python)
     except Exception as exc:
@@ -200,31 +229,58 @@ def preview_export_vs_origin(
                 },
             )
         )
-    return _preview_success(comparison.preview_diff)
+    return _preview_success(
+        comparison.preview_diff,
+        project_id=project_id or session.project_id,
+        session_id=session_id or session.session_id,
+        file_path=session.file_path,
+        format_python=format_python,
+    )
 
 
 def tree_temp_preview(
     session: EditSession,
     *,
     format_python: bool = False,
+    project_id: str = "",
+    session_id: str = "",
 ) -> SuccessResult | ErrorResult:
-    return preview_export_vs_origin(session, format_python=format_python)
+    return preview_export_vs_origin(
+        session,
+        format_python=format_python,
+        project_id=project_id,
+        session_id=session_id,
+    )
 
 
 def text_preview(
     session: EditSession,
     *,
     format_python: bool = False,
+    project_id: str = "",
+    session_id: str = "",
 ) -> SuccessResult | ErrorResult:
-    return preview_export_vs_origin(session, format_python=format_python)
+    return preview_export_vs_origin(
+        session,
+        format_python=format_python,
+        project_id=project_id,
+        session_id=session_id,
+    )
 
 
 def sidecar_preview(
     session: EditSession,
     *,
     format_python: bool = False,
+    project_id: str = "",
+    session_id: str = "",
 ) -> SuccessResult | ErrorResult:
-    return preview_export_vs_origin(session, format_python=format_python)
+    return preview_export_vs_origin(
+        session,
+        format_python=format_python,
+        project_id=project_id,
+        session_id=session_id,
+    )
 
 
 def sidecar_first_call_preview(
@@ -232,9 +288,16 @@ def sidecar_first_call_preview(
     current_pid: int,
     *,
     format_python: bool = False,
+    project_id: str = "",
+    session_id: str = "",
 ) -> SuccessResult | ErrorResult:
     """Sidecar legacy two-phase: preview diff + session lockfile (no disk write)."""
-    result = preview_export_vs_origin(session, format_python=format_python)
+    result = preview_export_vs_origin(
+        session,
+        format_python=format_python,
+        project_id=project_id,
+        session_id=session_id,
+    )
     if isinstance(result, ErrorResult):
         return result
     write_session_lockfile(

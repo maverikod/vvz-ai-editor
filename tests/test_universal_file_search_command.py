@@ -14,6 +14,7 @@ from ai_editor.commands.universal_file_edit.search_command import (
 )
 from ai_editor.commands.universal_file_edit.session import release_session
 from ai_editor.commands.universal_file_preview import UniversalFilePreviewCommand
+from ai_editor.core.exceptions import ValidationError
 from tests.fixtures.validation_passing_python import SEARCH_MODULE
 from tests.thin_editor_ca_mocks import open_ca_file, upstream_context
 
@@ -22,6 +23,21 @@ _UUID4_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
+# Three FunctionDef nodes, so a cap is observably smaller than the total.
+_THREE_FUNCTIONS_MODULE = '''"""Module with three functions."""
+
+
+def alpha() -> int:
+    return 1
+
+
+def beta() -> int:
+    return 2
+
+
+def gamma() -> int:
+    return 3
+'''
 
 
 def _foo_block(blocks: list[dict]) -> dict:
@@ -236,3 +252,64 @@ async def test_search_then_edit_using_node_ref(tmp_path) -> None:
 
     assert isinstance(edit, SuccessResult), getattr(edit, "message", edit)
     assert uuid.UUID(str((search.data.get("match") or {}).get("stable_id")))
+
+
+def test_max_results_declares_a_minimum_of_one() -> None:
+    """The schema fixes the boundary the runtime is allowed to assume."""
+    prop = UniversalFileSearchCommand.get_schema()["properties"]["max_results"]
+    assert prop["type"] == "integer" and prop["minimum"] == 1, prop
+
+
+@pytest.mark.parametrize("below", [0, -1])
+def test_max_results_below_the_declared_minimum_is_refused(below: int) -> None:
+    """``0`` is a value, not "not specified": it violates ``minimum`` and is refused.
+
+    Reading ``0`` as absent is the falsy-zero bug -- it would silently return
+    every match uncapped. ``validate_params`` rejects it before ``execute`` runs,
+    so the truncation guard never has to decide what a below-minimum cap means.
+    """
+    cmd = UniversalFileSearchCommand()
+    with pytest.raises(ValidationError) as excinfo:
+        cmd.validate_params(
+            {
+                "project_id": _PROJECT_UUID,
+                "session_id": "any-session",
+                "query": "//FunctionDef",
+                "max_results": below,
+            }
+        )
+    assert "max_results" in str(excinfo.value) and ">= 1" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_max_results_one_caps_the_returned_matches(tmp_path) -> None:
+    rel = "src/search_me.py"
+    sid, workspace, _origin, upstream = await open_ca_file(
+        tmp_path,
+        project_id=_PROJECT_UUID,
+        file_path=rel,
+        content=_THREE_FUNCTIONS_MODULE.encode("utf-8"),
+    )
+    cmd = UniversalFileSearchCommand()
+    try:
+        with upstream_context(workspace=workspace, upstream=upstream):
+            base = {
+                "project_id": _PROJECT_UUID,
+                "session_id": sid,
+                "file_path": rel,
+                "query": "//FunctionDef",
+            }
+            uncapped = await cmd.execute(**cmd.validate_params(dict(base)))
+            capped = await cmd.execute(
+                **cmd.validate_params(dict(base, max_results=1))
+            )
+    finally:
+        release_session(sid)
+
+    assert isinstance(uncapped, SuccessResult), getattr(uncapped, "message", uncapped)
+    assert isinstance(capped, SuccessResult), getattr(capped, "message", capped)
+    total = uncapped.data["total_matches"]
+    assert total > 1, uncapped.data
+    assert capped.data["total_matches"] == total
+    assert capped.data["returned_matches"] == 1
+    assert len(capped.data["matches"]) == 1
