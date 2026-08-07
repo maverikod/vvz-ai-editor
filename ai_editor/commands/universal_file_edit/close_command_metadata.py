@@ -69,17 +69,25 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "uncommitted edits and returns MODIFIED_NOT_WRITTEN — nothing is "
             "discarded and the session stays open. Pass write_before_close=true to "
             "commit (lock-then-transfer for a new file) and then close. A file with "
-            "no pending edits closes normally regardless of the flag.\n\n"
+            "no pending edits closes normally regardless of the flag. The guard "
+            "applies to EVERY format group and to new files alike: an edited "
+            "tree-temp (JSON/YAML/INI/TOML) session and an edited uncommitted "
+            "create=true draft are refused exactly like an edited Python or text "
+            "file. The cleanup notes above therefore describe what happens to a "
+            "draft that carries no uncommitted edits.\n\n"
             "New files (R1/R3): a file opened with create=true is held only in the "
             "local workspace until its first universal_file_write commit, which "
             "creates the CA lock and registers the file atomically. Closing such a "
-            "file before any commit releases no CA lock and simply discards the draft."
+            "file before any commit releases no CA lock; when it carries edits the "
+            "close is refused with MODIFIED_NOT_WRITTEN, and when it is untouched "
+            "the local draft is discarded."
         ),
         "parameters": {
             "project_id": {
                 "description": (
                     "Project UUID. Required for CA unlock (C-023) and workspace "
-                    "path resolution. Use list_projects to discover valid values."
+                    "path resolution. Use list_projects to discover valid values. "
+                    "An empty value is rejected with VALIDATION_ERROR."
                 ),
                 "type": "string",
                 "required": True,
@@ -98,7 +106,9 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
                 "description": (
                     "Project-relative path. Required when the CA session has more "
                     "than one open file (see multi_file_bundle from open). Optional "
-                    "when exactly one file is open."
+                    "when exactly one file is open. Omit it entirely to address the "
+                    "only open file; an explicitly empty string is rejected with "
+                    "VALIDATION_ERROR rather than treated as omitted."
                 ),
                 "type": "string",
                 "required": False,
@@ -246,10 +256,30 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
                     "remaining path from remaining_open_files until the session ends."
                 ),
             },
+            "VALIDATION_ERROR": {
+                "description": (
+                    "A declared parameter carried an unusable value: an empty "
+                    "project_id, a project_id that does not own the session's "
+                    "file, or an explicitly empty file_path. Nothing is closed "
+                    "and the session is left untouched. Same guard, same code and "
+                    "same messages as universal_file_edit/write/search."
+                ),
+                "message": (
+                    "project_id is required and must be the project the session's "
+                    "file was opened from | session_id does not match project_id"
+                ),
+                "solution": (
+                    "Pass the real project UUID from list_projects — the same one "
+                    "the file was opened with. Omit file_path entirely when the "
+                    "session has exactly one open file."
+                ),
+            },
             "MODIFIED_NOT_WRITTEN": {
                 "description": (
                     "The file has uncommitted edits and write_before_close was "
-                    "false (the default). The session is left open and unchanged."
+                    "false (the default). The session is left open and unchanged. "
+                    "Raised for every format group and for uncommitted create=true "
+                    "drafts as well as already-persisted files."
                 ),
                 "message": (
                     "File has unsaved changes; commit with universal_file_write "
@@ -270,6 +300,8 @@ def get_universal_file_close_metadata(cls: Type[Any]) -> Dict[str, Any]:
             "runs; do not retry close solely because unlock failed.",
             "Call close even when write failed — it cleans up partial workspace drafts.",
             "Do not call editor session_close_file — CA unlock is internal to this command.",
-            "Calling close without commit discards uncommitted draft edits (cancel workflow).",
+            "Close never discards uncommitted edits: it returns MODIFIED_NOT_WRITTEN. "
+            "To abandon them, undo back to the opened state with universal_session_undo "
+            "and then close; to keep them, pass write_before_close=true.",
         ],
     }

@@ -132,16 +132,86 @@ def _maybe_format_python_bytes(session: EditSession, exported: bytes) -> bytes:
     return formatted.encode("utf-8")
 
 
+def _to_lf(raw: bytes) -> bytes:
+    """Return ``raw`` with CRLF and lone CR line endings collapsed to LF.
+
+    This is the exact transformation the editing pipeline applies to itself: the
+    Origin Snapshot is read into the session through universal-newlines text I/O
+    (``Path.read_text``/libcst/ruamel all decode that way), so every export comes
+    back LF-only regardless of what the file on disk actually contained.
+    """
+    return raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def _differs_only_in_final_newline(origin_lf: bytes, exported: bytes) -> bool:
+    """True when the two forms differ by at most one trailing newline.
+
+    A sidecar export runs through ``normalize_trailing_newline``, which appends
+    the final newline a source file may legitimately lack (bug 62759f8a). That
+    appended byte is the pipeline's own doing, not the caller's edit.
+    """
+    return (
+        origin_lf == exported
+        or origin_lf == exported + b"\n"
+        or exported == origin_lf + b"\n"
+    )
+
+
+def _preserve_origin_bytes(session: EditSession, exported: bytes) -> bytes:
+    """Return the pristine Origin Snapshot bytes for an unchanged round trip.
+
+    Byte fidelity on an untouched round trip is not negotiable: the bytes that
+    came in must go out. A file with CRLF line endings, or without a final
+    newline, that is opened and committed with ZERO edit operations was landing
+    on disk rewritten to LF, and the server reported ``has_changes: true`` for a
+    round trip in which the caller changed nothing.
+
+    The decision is made from content, never from a mutation flag, so it cannot
+    lose an edit: the origin bytes are substituted ONLY when the canonical export
+    is already equal to the origin's own LF-normalized form (modulo the single
+    trailing newline the pipeline itself appends). Any real edit changes the
+    export beyond that equivalence and falls through to the normal path.
+
+    Args:
+        session: The session whose Origin Snapshot backs this export.
+        exported: Canonical export produced by the format-specific serializer.
+
+    Returns:
+        The origin bytes when the export is line-ending-equivalent to them,
+        otherwise ``exported`` unchanged.
+    """
+    origin_path = session.abs_path
+    try:
+        if not origin_path.is_file():
+            return exported
+        origin = origin_path.read_bytes()
+    except OSError:
+        return exported
+    if not origin:
+        # Nothing to preserve; a create=true draft opened from "" must keep the
+        # serializer's own output, including its final newline (bug 62759f8a).
+        return exported
+    if origin == exported:
+        return exported
+    if _differs_only_in_final_newline(_to_lf(origin), exported):
+        return origin
+    return exported
+
+
 def export_canonical_bytes(
     session: EditSession,
     *,
     format_python: bool = False,
 ) -> bytes:
-    """Format-specific canonical export; optional black pass for Python paths."""
+    """Format-specific canonical export; optional black pass for Python paths.
+
+    The result is reconciled against the Origin Snapshot by
+    :func:`_preserve_origin_bytes` so an untouched round trip is byte-identical.
+    """
     exported = _export_canonical_bytes(session)
     if format_python:
-        return _maybe_format_python_bytes(session, exported)
-    return exported
+        exported = _maybe_format_python_bytes(session, exported)
+    return _preserve_origin_bytes(session, exported)
 
 
 def _export_canonical_bytes(session: EditSession) -> bytes:
