@@ -26,8 +26,19 @@ from pipeline.live.client import (
 
 COMMAND = "universal_file_close"
 SANDBOX_PROJECT = "99d60878-53d0-42c0-a06e-41e4782b75e7"
-VALID_SOURCE = "def alpha():\n    return 1\n"
-EDITED_BODY = "    return 99\n"
+# The commit path runs the editor's own Python quality validation, which requires
+# module and function docstrings — a fixture without them is rejected at commit
+# with VALIDATION_ERROR, which would look like a broken escape hatch.
+VALID_SOURCE = (
+    '"""Fixture module for the live close check."""\n\n\n'
+    'def alpha() -> int:\n    """Return the fixture value.\n\n    Returns:\n        The fixture value.\n    """\n    return 1\n'
+)
+# The edit replaces the FIRST preview block, which for this fixture is the whole
+# function. The commit path runs flake8 and the docstring rule over the result,
+# so the replacement must itself be a complete, lint-clean definition -- a bare
+# body line here fails validation and looks like a broken escape hatch.
+EDITED_BODY = ('def alpha() -> int:\n    """Return the edited fixture value.\n\n'
+               '    Returns:\n        The edited fixture value.\n    """\n    return 99\n')
 # The one path this check commits to, so proving write_before_close=true really
 # writes never leaves a growing pile of files behind: each run overwrites it.
 ESCAPE_FIXTURE = "pipeline_live_close/write_before_close_fixture.py"
@@ -265,7 +276,11 @@ def _modify_draft(probe: _Probe, base: Mapping[str, Any], name: str) -> Any:
     """
     preview = probe.client.call("universal_file_preview", {**base, "file_path": name})
     blocks = data_of(preview).get("blocks") or []
-    node_ref = str(blocks[0]["node_ref"]) if blocks else ""
+    # The LAST block is the function; the first is the module docstring. Replacing
+    # the docstring with a definition produced a duplicate `alpha` and the commit
+    # validators (flake8, ruff, mypy) rejected it -- which read as a broken escape
+    # hatch rather than as a bad fixture.
+    node_ref = str(blocks[-1]["node_ref"]) if blocks else ""
     edit = probe.client.call(
         "universal_file_edit",
         {
@@ -376,13 +391,21 @@ def _negative_scenarios(probe: _Probe) -> None:
             "unknown session", {**base, "session_id": str(uuid.uuid4())}, "SESSION_NOT_FOUND"
         )
         probe.expect_error("empty session_id", {**base, "session_id": ""}, "SESSION_REJECTED")
+        # A malformed request answers with the DECLARED VALIDATION_ERROR. These four
+        # asserted the generic -32603 they used to get: our own ValidationError was
+        # unrecognised by the framework's run() and fell through to the catch-all,
+        # discarding the declared code. That is fixed centrally in
+        # BaseMCPCommand.run(), so the declared contract is now what the server keeps.
         for name in ("project_id", "session_id"):
             probe.expect_error(
-                f"omit required {name!r}", {k: v for k, v in base.items() if k != name}, -32603
+                f"omit required {name!r}", {k: v for k, v in base.items() if k != name},
+                "VALIDATION_ERROR",
             )
-        probe.expect_error("unknown parameter", {**base, "not_a_parameter": 1}, -32603)
-        probe.expect_error("write_before_close as a string", {**base, "write_before_close": "yes"}, -32603)
-        probe.expect_error("file_path as an integer", {**base, "file_path": 7}, -32603)
+        probe.expect_error("unknown parameter", {**base, "not_a_parameter": 1}, "VALIDATION_ERROR")
+        probe.expect_error(
+            "write_before_close as a string", {**base, "write_before_close": "yes"}, "VALIDATION_ERROR"
+        )
+        probe.expect_error("file_path as an integer", {**base, "file_path": 7}, "VALIDATION_ERROR")
         # write_before_close=False stated explicitly, so both boolean states are exercised.
         probe.expect_error(
             "write_before_close=False on an empty session", {**base, "write_before_close": False}, "SESSION_NOT_FOUND"
