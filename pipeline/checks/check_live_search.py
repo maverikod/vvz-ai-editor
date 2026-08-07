@@ -20,9 +20,12 @@ coverage report below surfaces that gap automatically; and the parse-error
 fallback (opening an unparsable ``.py`` file) is asserted to return the
 documented ``UNKNOWN_FORMAT`` on this command too.
 
-Also recorded, found while building this check: ``project_id`` is declared
-``required``, yet an empty string and even a well-formed-but-wrong UUID both
-still succeed -- the command is scoped by ``session_id`` alone.
+Also asserted here, and originally found while building this check: ``project_id``
+is declared ``required`` and is now enforced. It used to be discarded outright,
+so an empty string and even a well-formed-but-wrong UUID both returned full
+results for another project's file. Both an empty and a foreign value are now
+``VALIDATION_ERROR`` -- the same code and message ``universal_file_preview``
+already uses -- while the owning project id still returns every match.
 
 Registration is unconditional, like ``check-live-core``: there is no
 environment gate and no skip concept anywhere in this file.
@@ -45,6 +48,7 @@ from pipeline.live.client import (
     LiveClient,
     data_of,
     error_code,
+    error_message,
     is_success,
     run_live_check,
 )
@@ -247,14 +251,30 @@ def _build_cases(client: LiveClient, session_id: str,
         return ("max_results=1 caps returned_matches to 1 (total_matches stays 4); "
                 "max_results=0 does NOT cap at all (falsy-zero quirk): returned_matches stays 4")
 
-    def case_project_id_empty_and_wrong_still_succeed() -> str:
-        for pid in ("", WRONG_PROJECT_ID):
-            env = search({"project_id": pid, "session_id": session_id, "file_path": FILE_A,
-                           "query": "//FunctionDef"})
-            d = data_of(env)
-            _require(is_success(env) and d.get("total_matches") == 4, f"project_id={pid!r}: {env!r}")
-        return ("project_id='' and a well-formed-but-WRONG project_id both still succeed with "
-                "full results: search is scoped by session_id alone, project_id has no effect")
+    def case_project_id_is_enforced() -> str:
+        env = search({"project_id": "", "session_id": session_id, "file_path": FILE_A,
+                       "query": "//FunctionDef"})
+        _require(not is_success(env), f"empty project_id must be refused: {env!r}")
+        _require(error_code(env) == "VALIDATION_ERROR",
+                  f"empty project_id: code={error_code(env)!r}")
+        _require(data_of(env) == {}, f"empty project_id leaked data: {data_of(env)!r}")
+        env = search({"project_id": WRONG_PROJECT_ID, "session_id": session_id,
+                       "file_path": FILE_A, "query": "//FunctionDef"})
+        _require(not is_success(env), f"foreign project_id must be refused: {env!r}")
+        _require(error_code(env) == "VALIDATION_ERROR",
+                  f"foreign project_id: code={error_code(env)!r}")
+        _require(error_message(env) == "session_id does not match project_id",
+                  f"foreign project_id: message={error_message(env)!r}")
+        _require(data_of(env) == {}, f"foreign project_id leaked data: {data_of(env)!r}")
+        env = search({"project_id": PROJECT_ID, "session_id": session_id, "file_path": FILE_A,
+                       "query": "//FunctionDef"})
+        d = data_of(env)
+        _require(is_success(env) and d.get("total_matches") == 4,
+                  f"owning project_id must still work: {env!r}")
+        return ("project_id is enforced: '' and a well-formed but FOREIGN project id are both "
+                "VALIDATION_ERROR with no data (the FOREIGN one carries the same message "
+                "universal_file_preview uses), while the owning project id still returns all "
+                "4 matches")
 
     def case_generic_dash32603_paths() -> str:
         scenarios = (
@@ -327,7 +347,7 @@ def _build_cases(client: LiveClient, session_id: str,
         ("malformed_selector_reproducible_code", case_malformed_selector_reproducible_code),
         ("missing_query_is_invalid_search", case_missing_query_is_invalid_search),
         ("max_results_one_caps_zero_does_not", case_max_results_one_caps_zero_does_not),
-        ("project_id_empty_and_wrong_still_succeed", case_project_id_empty_and_wrong_still_succeed),
+        ("project_id_is_enforced", case_project_id_is_enforced),
         ("generic_dash32603_paths", case_generic_dash32603_paths),
         ("session_not_found_empty_and_unknown", case_session_not_found_empty_and_unknown),
         ("file_path_absent_resolves_single_open_file",

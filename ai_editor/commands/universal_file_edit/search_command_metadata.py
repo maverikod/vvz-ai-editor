@@ -112,6 +112,18 @@ _ERROR_CASES = {
         "message": "Unknown session: {session_id}",
         "solution": "Call universal_file_open again.",
     },
+    "VALIDATION_ERROR": {
+        "description": (
+            "project_id is empty, or it is not the project the session's open "
+            "file was opened from. The same code and message universal_file_"
+            "preview returns for this condition."
+        ),
+        "message": "session_id does not match project_id",
+        "solution": (
+            "Pass the project_id used in universal_file_open for this session "
+            "(list_projects enumerates valid values)."
+        ),
+    },
     "UNKNOWN_FORMAT": {
         "description": (
             "Session is not sidecar Python (JSON/YAML/text or is_invalid fallback)."

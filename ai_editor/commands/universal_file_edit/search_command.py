@@ -21,6 +21,7 @@ from ai_editor.commands.universal_file_edit.errors import (
     make_error,
 )
 from ai_editor.commands.universal_file_edit.format_group import FORMAT_SIDECAR
+from ai_editor.commands.universal_file_edit.project_scope import project_scope_error
 from ai_editor.commands.universal_file_edit.search_command_metadata import (
     get_universal_file_search_metadata,
 )
@@ -230,7 +231,9 @@ class UniversalFileSearchCommand(BaseMCPCommand):
         file_path: str = "",
         **kwargs: Any,
     ) -> SuccessResult | ErrorResult:
-        _ = project_id
+        scope_error = project_scope_error(project_id, session_id, file_path)
+        if scope_error is not None:
+            return scope_error
         search_type: str = kwargs.get("search_type", "xpath")
         query: Optional[str] = kwargs.get("query")
         node_type: Optional[str] = kwargs.get("node_type")

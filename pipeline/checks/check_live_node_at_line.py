@@ -31,10 +31,13 @@ structure -- never merely "the call succeeded":
   is exercised directly: this command on such a session is asserted to
   return the documented ``UNKNOWN_FORMAT``.
 
-Also recorded: like ``universal_file_search`` (see that check's module
-docstring), ``project_id`` has no observed effect here either -- empty and
-even a well-formed-but-wrong project_id both still resolve correctly,
-because the command is scoped by ``session_id`` alone. Asserted explicitly.
+Also asserted: like ``universal_file_search`` (see that check's module
+docstring), ``project_id`` used to have no observed effect here either --
+empty and even a well-formed-but-wrong project_id both still resolved
+correctly, because the command was scoped by ``session_id`` alone. It is now
+enforced: both empty and foreign are ``VALIDATION_ERROR`` -- the code and
+message ``universal_file_preview`` already uses for a project/session
+mismatch -- and the owning project id still resolves the node.
 
 Registration is unconditional, like ``check-live-core``: there is no
 environment gate and no skip concept anywhere in this file.
@@ -57,6 +60,7 @@ from pipeline.live.client import (
     LiveClient,
     data_of,
     error_code,
+    error_message,
     is_success,
     run_live_check,
 )
@@ -244,18 +248,28 @@ def _build_cases(client: LiveClient, session_id: str,
         _require(error_code(env) == -32603, f"code={error_code(env)!r}")
         return "missing project_id -> generic -32603"
 
-    def case_empty_project_id_still_succeeds() -> str:
+    def case_empty_project_id_is_validation_error() -> str:
         env = node_at_line({"project_id": "", "session_id": session_id, "file_path": FILE_A, "line": 1})
-        d = data_of(env)
-        _require(is_success(env) and d.get("type") == "SimpleString", str(env))
-        return "project_id='' still succeeds: node_at_line is scoped by session_id alone"
+        _require(not is_success(env), f"empty project_id must be refused: {env!r}")
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        _require(data_of(env) == {}, f"empty project_id leaked data: {data_of(env)!r}")
+        return "project_id='' -> stable VALIDATION_ERROR, exactly as universal_file_open rejects it"
 
-    def case_wrong_project_id_still_succeeds() -> str:
+    def case_wrong_project_id_is_refused() -> str:
         env = node_at_line({"project_id": WRONG_PROJECT_ID, "session_id": session_id,
                              "file_path": FILE_A, "line": 1})
-        d = data_of(env)
-        _require(is_success(env) and d.get("type") == "SimpleString", str(env))
-        return "a well-formed but WRONG project_id also succeeds: no observed effect on this command"
+        _require(not is_success(env), f"foreign project_id must be refused: {env!r}")
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        _require(error_message(env) == "session_id does not match project_id",
+                  f"message={error_message(env)!r}")
+        _require(data_of(env) == {}, f"foreign project_id leaked data: {data_of(env)!r}")
+        env = node_at_line({"project_id": PROJECT_ID, "session_id": session_id,
+                             "file_path": FILE_A, "line": 1})
+        _require(is_success(env) and data_of(env).get("type") == "SimpleString",
+                  f"owning project_id must still work: {env!r}")
+        return ("a well-formed but FOREIGN project_id -> VALIDATION_ERROR with no data and "
+                "universal_file_preview's own message, while the owning project_id still "
+                "resolves the SimpleString node")
 
     def case_missing_session_id_generic_error() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "file_path": FILE_A, "line": 1})
@@ -321,8 +335,8 @@ def _build_cases(client: LiveClient, session_id: str,
         ("wrong_type_line_generic_error", case_wrong_type_line_generic_error),
         ("missing_line_generic_error", case_missing_line_generic_error),
         ("missing_project_id_generic_error", case_missing_project_id_generic_error),
-        ("empty_project_id_still_succeeds", case_empty_project_id_still_succeeds),
-        ("wrong_project_id_still_succeeds", case_wrong_project_id_still_succeeds),
+        ("empty_project_id_is_validation_error", case_empty_project_id_is_validation_error),
+        ("wrong_project_id_is_refused", case_wrong_project_id_is_refused),
         ("missing_session_id_generic_error", case_missing_session_id_generic_error),
         ("empty_session_id_is_session_not_found", case_empty_session_id_is_session_not_found),
         ("unknown_session_is_session_not_found", case_unknown_session_is_session_not_found),

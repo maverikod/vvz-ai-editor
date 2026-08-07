@@ -22,6 +22,7 @@ from ai_editor.commands.universal_file_edit.errors import (
     make_error,
 )
 from ai_editor.commands.universal_file_edit.format_group import FORMAT_SIDECAR
+from ai_editor.commands.universal_file_edit.project_scope import project_scope_error
 from ai_editor.commands.universal_file_edit.search_command import (
     TREE_NOT_AVAILABLE,
     _build_short_id_lookup,
@@ -172,7 +173,9 @@ class UniversalFileNodeAtLineCommand(BaseMCPCommand):
         file_path: str = "",
         **kwargs: Any,
     ) -> SuccessResult | ErrorResult:
-        _ = project_id
+        scope_error = project_scope_error(project_id, session_id, file_path)
+        if scope_error is not None:
+            return scope_error
         include_ancestors = bool(kwargs.get("include_ancestors", False))
         if line < 1:
             return error_result_from_make_error(
@@ -300,6 +303,14 @@ _ERROR_CASES = {
     SESSION_NOT_FOUND: {
         "description": "Unknown session_id.",
         "solution": "Open the file with universal_file_open.",
+    },
+    "VALIDATION_ERROR": {
+        "description": (
+            "project_id is empty, or it is not the project the session's open "
+            "file was opened from (same code and message as "
+            "universal_file_preview)."
+        ),
+        "solution": "Pass the project_id the session's file was opened from.",
     },
     SESSION_FILE_PATH_REQUIRED: {
         "description": "Multi-file session without file_path.",
