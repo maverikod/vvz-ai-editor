@@ -67,7 +67,11 @@ from typing import Any, Dict, FrozenSet, List, Sequence, Tuple
 from pipeline import registry
 from pipeline.registry import CheckResult
 
-from benchmarks import bench_suite, gate
+# benchmarks/bench_suite.py inserts <root>/src into sys.path at import time, so
+# importing it here would change what every LATER check can import -- discovery
+# walks pipeline/checks/ alphabetically and this module sorts first. That leaked
+# `tree_engine` into check-recovery's environment and broke its own path test.
+# Import inside the function instead: nothing is imported until the check runs.
 
 CHECK_NAME = "check-benchmark"
 CHECK_DESCRIPTION = (
@@ -108,6 +112,8 @@ _BENIGN_NO_COMPARISON_STATUSES = frozenset({"no-baseline", "profile-mismatch"})
 
 def _resolve_profile() -> Dict[str, Any]:
     """The sizes/formats/iterations/warmups this run uses, defaults or env."""
+    from benchmarks import bench_suite
+
     sizes_raw = os.environ.get(SIZES_ENV_VAR, "").strip()
     formats_raw = os.environ.get(FORMATS_ENV_VAR, "").strip()
     iterations_raw = os.environ.get(ITERATIONS_ENV_VAR, "").strip()
@@ -211,6 +217,8 @@ def check_benchmark() -> CheckResult:
     the baseline-independent structural half alone, which the gate itself
     still computes and reports in that case -- see the module docstring.
     """
+    from benchmarks import gate
+
     profile = _resolve_profile()
     result = gate.run_gate(sizes=profile["sizes"], formats=profile["formats"],
                             iterations=profile["iterations"], warmups=profile["warmups"])
