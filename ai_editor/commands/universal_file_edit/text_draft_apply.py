@@ -7,21 +7,27 @@ email: vasilyvz@gmail.com
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from mcp_proxy_adapter.commands.result import ErrorResult, SuccessResult
 
-from ai_editor.commands.anchor_check import AnchorMismatch, check_text_anchor
 from ai_editor.commands.universal_file_edit.edit_draft_path_utils import (
     project_root_near,
 )
 from ai_editor.commands.universal_file_edit.errors import (
-    ANCHOR_MISMATCH,
     INVALID_OPERATION,
-    LINE_OUT_OF_RANGE,
     UNKNOWN_NODE_REF,
     WRITE_FAILED,
     error_result_for_edit,
+)
+from ai_editor.commands.universal_file_edit.text_fallback_tree import (
+    FallbackDocumentTree,
+)
+from ai_editor.commands.universal_file_edit.text_op_guards import (
+    validate_fallback_operation,
+    validate_operation_types,
+    validate_text_line_operation,
+    validate_unresolved_text_insert_targets,
 )
 from ai_editor.commands.universal_file_replace_command import (
     TextReplacementTriple,
@@ -40,176 +46,15 @@ from ai_editor.commands.universal_file_edit.text_node_ref import (
 )
 from ai_editor.core.edit_session.edit_operations_adapter import (
     _coalesce_node_ref_keys,
-    _operation_uses_node_address,
     command_op_to_edit_operation,
     expand_markdown_section_ops,
     session_has_map_tree,
-    session_has_valid_tree,
     sidecar_ops_use_unified_tree,
     text_ops_use_unified_tree,
 )
 from ai_editor.core.backup_manager import BackupManager
 from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
 from ai_editor.tree.edit_operations import EditOperationError
-
-
-def _line_count(buffer: List[str]) -> int:
-    return len(buffer)
-
-
-def _resolve_line_range(op: Dict[str, Any]) -> tuple[int, int]:
-    start_line = int(op.get("start_line", 1))
-    end_raw = op.get("end_line")
-    end_line = start_line if end_raw is None else int(end_raw)
-    return start_line, end_line
-
-
-def _validate_text_line_operation(
-    buffer: List[str],
-    op: Dict[str, Any],
-) -> Optional[ErrorResult]:
-    """Validate one text edit operation against the current draft buffer."""
-    if op.get("position") == "last":
-        return None
-
-    op_type = op.get("type", "replace")
-    if op_type != "insert" and "start_line" not in op:
-        return error_result_for_edit(
-            "text edit operation has no resolvable target: "
-            "no node_ref produced a line range and no explicit start_line "
-            "was given.",
-            INVALID_OPERATION,
-            {
-                "op_type": op_type,
-                "received_keys": sorted(op.keys()),
-                "hint": (
-                    "For .md/text files use node_ref (zero-based block index "
-                    "or markdown slug from universal_file_preview) plus "
-                    "content, or explicit start_line/end_line. Do not use the "
-                    "Python sidecar form (node_id + code_lines) on text files."
-                ),
-            },
-        )
-    start_line, end_line = _resolve_line_range(op)
-    line_count = _line_count(buffer)
-
-    if start_line < 1:
-        return error_result_for_edit(
-            f"start_line must be >= 1, got {start_line}",
-            LINE_OUT_OF_RANGE,
-            {"start_line": start_line, "end_line": end_line, "line_count": line_count},
-        )
-    if end_line < start_line:
-        return error_result_for_edit(
-            f"end_line ({end_line}) must be >= start_line ({start_line})",
-            LINE_OUT_OF_RANGE,
-            {"start_line": start_line, "end_line": end_line, "line_count": line_count},
-        )
-
-    anchor_head = op.get("anchor_head")
-    anchor_tail = op.get("anchor_tail")
-    if (anchor_head is None) != (anchor_tail is None):
-        return error_result_for_edit(
-            "anchor_head and anchor_tail must be supplied together",
-            LINE_OUT_OF_RANGE,
-            {"fields": ["anchor_head", "anchor_tail"]},
-        )
-
-    if op_type == "insert":
-        if start_line > line_count + 1:
-            return error_result_for_edit(
-                f"insert start_line {start_line} is beyond end of file "
-                f"(line_count={line_count}; max insert line is {line_count + 1})",
-                LINE_OUT_OF_RANGE,
-                {
-                    "start_line": start_line,
-                    "end_line": end_line,
-                    "line_count": line_count,
-                    "hint": (
-                        "Line numbers are 1-based against the current draft. "
-                        "Re-run universal_file_preview with session_id after each edit."
-                    ),
-                },
-            )
-    elif op_type in ("replace", "delete"):
-        if start_line > line_count or end_line > line_count:
-            return error_result_for_edit(
-                f"line range {start_line}-{end_line} is out of range "
-                f"(draft has {line_count} lines)",
-                LINE_OUT_OF_RANGE,
-                {
-                    "start_line": start_line,
-                    "end_line": end_line,
-                    "line_count": line_count,
-                    "hint": (
-                        "Line numbers are 1-based against the current draft. "
-                        "Do not reuse line numbers from fulltext_search or an earlier "
-                        "read after a prior universal_file_edit call — re-run "
-                        "universal_file_preview with session_id first."
-                    ),
-                },
-            )
-        if anchor_head is not None:
-            try:
-                check_text_anchor(
-                    buffer,
-                    start_line,
-                    end_line,
-                    anchor_head,
-                    anchor_tail,
-                )
-            except AnchorMismatch as exc:
-                return error_result_for_edit(
-                    str(exc),
-                    ANCHOR_MISMATCH,
-                    {
-                        **exc.details,
-                        "line_count": line_count,
-                        "hint": (
-                            "The target lines no longer match the expected content. "
-                            "Re-run universal_file_preview with session_id to obtain "
-                            "fresh line numbers from the draft."
-                        ),
-                    },
-                )
-
-    return None
-
-
-def _insert_op_has_unresolved_node_target(op: Dict[str, Any]) -> bool:
-    """True when insert names a node address but ``start_line`` was not resolved."""
-    if op.get("position") == "last":
-        return False
-    action = op.get("type") or op.get("action") or "replace"
-    if str(action).lower() != "insert":
-        return False
-    if op.get("start_line") is not None:
-        return False
-    return _operation_uses_node_address(_coalesce_node_ref_keys(op))
-
-
-def _validate_unresolved_text_insert_targets(
-    operations: List[Dict[str, Any]],
-) -> Optional[ErrorResult]:
-    """Reject insert ops that named node_ref targets but got no line range."""
-    for op in operations:
-        if not _insert_op_has_unresolved_node_target(op):
-            continue
-        m = _coalesce_node_ref_keys(op)
-        return error_result_for_edit(
-            "insert node_ref could not be resolved to a draft line position.",
-            UNKNOWN_NODE_REF,
-            {
-                "node_ref": m.get("node_ref") or m.get("node_id"),
-                "target_node_id": m.get("target_node_id"),
-                "hint": (
-                    "Use node_ref / target_node_id from universal_file_preview "
-                    "with the same session_id. For .md marked-tree preview, "
-                    "pass integer short_id as node_ref or target_node_id."
-                ),
-            },
-        )
-    return None
 
 
 def _run_valid_text_tree_apply(
@@ -310,6 +155,10 @@ def run_text_draft_apply(
       When ``position='last'``, ``start_line``/``end_line`` are ignored.
     """
 
+    type_error = validate_operation_types(operations)
+    if type_error is not None:
+        return type_error
+
     if session_has_map_tree(session.core) and text_ops_use_unified_tree(operations):
         if sidecar_ops_use_unified_tree(session.core, operations):
             return _run_valid_text_tree_apply(session, operations)
@@ -354,24 +203,20 @@ def run_text_draft_apply(
         if ref_err is not None:
             return ref_err
 
-    unresolved = _validate_unresolved_text_insert_targets(operations)
+    unresolved = validate_unresolved_text_insert_targets(operations)
     if unresolved is not None:
         return unresolved
 
-    for op in operations:
-        if not session.is_invalid:
-            continue
-        if op.get("type", "replace") != "replace":
-            continue
-        if op.get("node_ref") not in ("", None):
-            continue
-        content_raw = op.get("content", op.get("code", ""))
-        content_str = content_raw if isinstance(content_raw, str) else str(content_raw)
-        block = content_str if content_str.endswith("\n") else content_str + "\n"
-        apply_source_mutation(session, block)
-        return SuccessResult(
-            data={"success": True, "line_count": len(block.splitlines())},
-        )
+    # Parse-error fallback: the draft is a paragraph/line tree, and every
+    # address must resolve to a node of it before anything is applied. This
+    # runs over the WHOLE batch first, so a refused operation cannot leave a
+    # half-applied sibling behind.
+    if session.is_invalid:
+        tree = FallbackDocumentTree.from_source("".join(buffer))
+        for op in operations:
+            fallback_error = validate_fallback_operation(tree, op)
+            if fallback_error is not None:
+                return fallback_error
 
     # Separate position='last' ops (always append, no sort needed) from
     # line-targeted ops (must be applied bottom-up to keep line numbers stable).
@@ -384,7 +229,7 @@ def run_text_draft_apply(
             line_ops.append(op)
 
     for op in line_ops:
-        validation = _validate_text_line_operation(buffer, op)
+        validation = validate_text_line_operation(buffer, op)
         if validation is not None:
             return validation
 
