@@ -11,6 +11,7 @@ from typing import Any, Dict, Type, cast
 from mcp_proxy_adapter.commands.result import CommandResult, ErrorResult
 
 from ai_editor.commands.base_mcp_command import BaseMCPCommand
+from ai_editor.commands.universal_file_edit.project_scope import project_scope_error
 from ai_editor.commands.universal_file_edit.write_command_metadata import (
     get_universal_file_write_metadata,
 )
@@ -133,6 +134,13 @@ class UniversalFileWriteCommand(BaseMCPCommand):
         write_mode_explicit = bool(kwargs.get("write_mode_explicit", False))
         format_python = bool(kwargs.get("format_python", False))
         verify_after_upload = bool(kwargs.get("verify_after_upload", False))
+
+        # project_id is the project this commit uploads into, so a foreign value
+        # would push the session's draft into the wrong project entirely. It is
+        # checked before the Session Guard's CA round-trip.
+        scope_error = project_scope_error(project_id, ca_session_id, file_path)
+        if scope_error is not None:
+            return scope_error
 
         guard = SessionGuard(get_code_analysis_client())
         try:

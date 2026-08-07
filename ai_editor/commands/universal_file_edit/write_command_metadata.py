@@ -215,8 +215,12 @@ def get_universal_file_write_metadata(cls: Type[Any]) -> Dict[str, Any]:
             },
             "VALIDATION_ERROR": {
                 "description": (
-                    "Pre-write validation failed on commit (quality tools and/or "
-                    "handler validator). Temp file removed; origin and draft unchanged."
+                    "project_id is empty or is not the project the session's open "
+                    "file was opened from (message: session_id does not match "
+                    "project_id) — a commit would otherwise upload into a different "
+                    "project; or pre-write validation failed on commit (quality "
+                    "tools and/or handler validator). Temp file removed; origin and "
+                    "draft unchanged."
                 ),
                 "message": "Validation failed: {details}",
                 "solution": (

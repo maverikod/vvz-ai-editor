@@ -113,6 +113,19 @@ class UniversalFileOpenCommand(BaseMCPCommand):
                 message="session_id is required for universal_file_open",
                 code=cast(Any, "SESSION_INVALID"),
             )
+        # project_id identifies the project the session's file belongs to, and
+        # every later universal_file_* call is checked against it (see
+        # project_scope.py). The non-create path already rejects an empty value
+        # inside the Code Analysis client with this exact message; create=true
+        # issues zero CA calls (R1 below), so without this check it could
+        # register a session owning no project at all and defeat that scope
+        # check for the whole session.
+        if str(kwargs.get("project_id", "") or "").strip() == "":
+            return ErrorResult(
+                message="session_id, project_id, and file_path are required",
+                code=cast(Any, "VALIDATION_ERROR"),
+                details={"project_id": kwargs.get("project_id")},
+            )
         # R1: opening a NEW file is local-draft-only — it must issue zero CA calls.
         # The Session Guard validates the session over CA (session_list_file_locks),
         # so it is skipped for create=true. The CA session is validated instead at

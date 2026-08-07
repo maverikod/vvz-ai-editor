@@ -30,6 +30,7 @@ from ai_editor.commands.universal_file_edit.format_group import (
 from ai_editor.commands.universal_file_edit.invalid_write_support import (
     invalid_session_warning,
 )
+from ai_editor.commands.universal_file_edit.project_scope import project_scope_error
 from ai_editor.commands.universal_file_edit.session import EditSession, get_session
 from ai_editor.commands.universal_file_edit.sidecar_cst_apply import (
     run_sidecar_cst_edit_batch,
@@ -166,7 +167,8 @@ class UniversalFileEditCommand(BaseMCPCommand):
         """Execute the edit command.
 
         Args:
-            project_id: Project UUID (validated by handler; reserved for future checks).
+            project_id: Project UUID that must own the session's file; an empty
+                value is VALIDATION_ERROR and a foreign one is SESSION_NOT_FOUND.
             session_id: Active session identifier.
             operations: Batch of edit operation dicts.
             file_path: Project-relative path when the session holds multiple files.
@@ -175,7 +177,10 @@ class UniversalFileEditCommand(BaseMCPCommand):
         Returns:
             SuccessResult with payload, or ErrorResult on failure.
         """
-        del project_id, kwargs
+        del kwargs
+        scope_error = project_scope_error(project_id, session_id, file_path)
+        if scope_error is not None:
+            return scope_error
         ca_session_id = str(session_id).strip()
         guard = SessionGuard(get_code_analysis_client())
         decision = guard.check(OperationKind.EDIT, ca_session_id)
