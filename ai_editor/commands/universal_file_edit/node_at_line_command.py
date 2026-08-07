@@ -22,6 +22,7 @@ from ai_editor.commands.universal_file_edit.errors import (
     make_error,
 )
 from ai_editor.commands.universal_file_edit.format_group import FORMAT_SIDECAR
+from ai_editor.commands.universal_file_edit.project_scope import project_scope_error
 from ai_editor.commands.universal_file_edit.search_command import (
     TREE_NOT_AVAILABLE,
     _build_short_id_lookup,
@@ -172,7 +173,9 @@ class UniversalFileNodeAtLineCommand(BaseMCPCommand):
         file_path: str = "",
         **kwargs: Any,
     ) -> SuccessResult | ErrorResult:
-        _ = project_id
+        scope_error = project_scope_error(project_id, session_id, file_path)
+        if scope_error is not None:
+            return scope_error
         include_ancestors = bool(kwargs.get("include_ancestors", False))
         if line < 1:
             return error_result_from_make_error(
@@ -292,10 +295,15 @@ _ERROR_CASES = {
     "VALIDATION_ERROR": {
         "description": (
             "Parameter validation failed: a required parameter is missing, an "
-            "unknown parameter was supplied, or a value violates its declared "
-            "type or range (e.g. line below the declared minimum of 1)."
+            "unknown parameter was supplied, a value violates its declared "
+            "type or range (e.g. line below the declared minimum of 1), or "
+            "project_id is empty or not the project the session's open file "
+            "was opened from (same code and message as universal_file_preview)."
         ),
-        "solution": "Fix parameters per get_schema() and retry.",
+        "solution": (
+            "Fix parameters per get_schema() and retry; pass the project_id "
+            "the session's file was opened from."
+        ),
     },
     TREE_NOT_AVAILABLE: {
         "description": "Session tree is not loaded.",

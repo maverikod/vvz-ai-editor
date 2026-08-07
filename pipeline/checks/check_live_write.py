@@ -362,8 +362,8 @@ def _case_errors(sandbox: _Sandbox, coverage: CommandCoverage, report: _Report) 
         ("project_id wrong type", None, dict(base, project_id=123)),
         ("file_path wrong type", None, dict(base, file_path=7)),
         ("unknown extra parameter", None, dict(base, bogus=1)),
-        ("empty project_id", None, dict(base, project_id="")),
-        ("foreign project_id", None, dict(base, project_id=str(uuid.uuid4()))),
+        ("empty project_id", "VALIDATION_ERROR", dict(base, project_id="")),
+        ("foreign project_id", "VALIDATION_ERROR", dict(base, project_id=str(uuid.uuid4()))),
     ):
         _rejected(report, label, _write(sandbox, coverage, params), expected)
     _bytes(report, sandbox, "the parameter matrix wrote nothing to the CA host", rel, None)

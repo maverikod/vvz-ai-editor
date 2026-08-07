@@ -11,29 +11,26 @@ silently untested. Nothing here is mocked, stubbed, or replayed.
 
 This is the command where an editor lies most easily, so the emphasis is on
 exact assertions rather than "the call did not raise": both search modes are
-checked against a file of KNOWN structure (exact match count and exact
-identifiers, not a non-empty list); a selector matching nothing asserts an
-EMPTY result (``matches == []``), never an error; a malformed CSTQuery
-selector is asserted to fail with the declared ``QUERY_PARSE_ERROR``,
-reproducibly, on two different bad inputs (fixed: it used to be a bare,
-undeclared ``-32000`` -- the parser's own ``QueryParseError`` is not a
-``ValueError`` and used to miss the command's ``ValueError``->``INVALID_SEARCH``
-handler, falling to ``ErrorResult``'s numeric default instead); every
-malformed-request shape (missing required parameter, unknown parameter,
-enum violation) now returns the declared ``VALIDATION_ERROR`` instead of a
-generic, undeclared ``-32603``; and the parse-error fallback (opening an
-unparsable ``.py`` file) is asserted to return the documented
-``UNKNOWN_FORMAT`` on this command too.
+checked against a file of KNOWN structure (exact counts/identifiers, not a
+non-empty list); a selector matching nothing asserts EMPTY (``matches ==
+[]``), never an error; a malformed CSTQuery selector fails with the declared
+``QUERY_PARSE_ERROR``, reproducibly (fixed: used to be a bare, undeclared
+``-32000`` -- the parser's ``QueryParseError`` is not a ``ValueError`` and
+missed the ``ValueError``->``INVALID_SEARCH`` handler); every malformed
+request shape (missing/unknown parameter, enum violation) now returns the
+declared ``VALIDATION_ERROR`` instead of a generic ``-32603``; and the
+parse-error fallback returns the documented ``UNKNOWN_FORMAT`` here too.
 
-Also recorded, found while building this check: ``project_id`` is declared
-``required``, yet an empty string and even a well-formed-but-wrong UUID both
-still succeed -- the command is scoped by ``session_id`` alone.
+Also asserted: ``project_id`` is declared ``required`` and now enforced (it
+used to be discarded outright, so empty/wrong values returned full results
+for another project's file); both now fail ``VALIDATION_ERROR``, the same
+code and message ``universal_file_preview`` uses, while the owning id still
+returns every match.
 
-Registration is unconditional, like ``check-live-core``: there is no
-environment gate and no skip concept anywhere in this file.
-:func:`pipeline.live.client.run_live_check` FAILS the check outright when the
-server cannot be reached -- the deployment is this project's own service, so
-an unreachable server is this check being RED, not opting out.
+Registration is unconditional, like ``check-live-core``: no environment gate,
+no skip concept. :func:`pipeline.live.client.run_live_check` FAILS the check
+outright when the server cannot be reached -- an unreachable deployment is
+this check being RED, not opting out.
 """
 
 from __future__ import annotations
@@ -50,6 +47,7 @@ from pipeline.live.client import (
     LiveClient,
     data_of,
     error_code,
+    error_message,
     is_success,
     run_live_check,
 )
@@ -254,14 +252,30 @@ def _build_cases(client: LiveClient, session_id: str,
         return ("max_results=1 caps returned_matches to 1 (total_matches stays 4); "
                 "max_results=0 does NOT cap at all (falsy-zero quirk): returned_matches stays 4")
 
-    def case_project_id_empty_and_wrong_still_succeed() -> str:
-        for pid in ("", WRONG_PROJECT_ID):
-            env = search({"project_id": pid, "session_id": session_id, "file_path": FILE_A,
-                           "query": "//FunctionDef"})
-            d = data_of(env)
-            _require(is_success(env) and d.get("total_matches") == 4, f"project_id={pid!r}: {env!r}")
-        return ("project_id='' and a well-formed-but-WRONG project_id both still succeed with "
-                "full results: search is scoped by session_id alone, project_id has no effect")
+    def case_project_id_is_enforced() -> str:
+        env = search({"project_id": "", "session_id": session_id, "file_path": FILE_A,
+                       "query": "//FunctionDef"})
+        _require(not is_success(env), f"empty project_id must be refused: {env!r}")
+        _require(error_code(env) == "VALIDATION_ERROR",
+                  f"empty project_id: code={error_code(env)!r}")
+        _require(data_of(env) == {}, f"empty project_id leaked data: {data_of(env)!r}")
+        env = search({"project_id": WRONG_PROJECT_ID, "session_id": session_id,
+                       "file_path": FILE_A, "query": "//FunctionDef"})
+        _require(not is_success(env), f"foreign project_id must be refused: {env!r}")
+        _require(error_code(env) == "VALIDATION_ERROR",
+                  f"foreign project_id: code={error_code(env)!r}")
+        _require(error_message(env) == "session_id does not match project_id",
+                  f"foreign project_id: message={error_message(env)!r}")
+        _require(data_of(env) == {}, f"foreign project_id leaked data: {data_of(env)!r}")
+        env = search({"project_id": PROJECT_ID, "session_id": session_id, "file_path": FILE_A,
+                       "query": "//FunctionDef"})
+        d = data_of(env)
+        _require(is_success(env) and d.get("total_matches") == 4,
+                  f"owning project_id must still work: {env!r}")
+        return ("project_id is enforced: '' and a well-formed but FOREIGN project id are both "
+                "VALIDATION_ERROR with no data (the FOREIGN one carries the same message "
+                "universal_file_preview uses), while the owning project id still returns all "
+                "4 matches")
 
     def case_malformed_request_shapes_are_validation_error() -> str:
         scenarios = (
@@ -334,7 +348,7 @@ def _build_cases(client: LiveClient, session_id: str,
         ("malformed_selector_reproducible_code", case_malformed_selector_reproducible_code),
         ("missing_query_is_invalid_search", case_missing_query_is_invalid_search),
         ("max_results_one_caps_zero_does_not", case_max_results_one_caps_zero_does_not),
-        ("project_id_empty_and_wrong_still_succeed", case_project_id_empty_and_wrong_still_succeed),
+        ("project_id_is_enforced", case_project_id_is_enforced),
         ("malformed_request_shapes_are_validation_error", case_malformed_request_shapes_are_validation_error),
         ("session_not_found_empty_and_unknown", case_session_not_found_empty_and_unknown),
         ("file_path_absent_resolves_single_open_file",
@@ -361,9 +375,8 @@ def _body(client: LiveClient) -> CheckResult:
     report = coverage.report()
     output.append(report.format())
     if not report.complete:
-        output.append("NOTE: TREE_NOT_AVAILABLE has no known public-API trigger (mirrors the "
-                       "SESSION_INVALID/VALIDATION_ERROR pattern documented as unreachable "
-                       "elsewhere in this API) -- left untested and named here explicitly.")
+        output.append("NOTE: TREE_NOT_AVAILABLE has no known public-API trigger -- left "
+                       "untested and named here explicitly.")
     output.append(schema.format_declared_surface())
     failed = [r.name for r in results if not r.passed]
     body_text = "\n".join(output)

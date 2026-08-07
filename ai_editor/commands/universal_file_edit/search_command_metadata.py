@@ -112,6 +112,21 @@ _ERROR_CASES = {
         "message": "Unknown session: {session_id}",
         "solution": "Call universal_file_open again.",
     },
+    "VALIDATION_ERROR": {
+        "description": (
+            "Parameter validation failed: a required parameter is missing, an "
+            "unknown parameter was supplied, a value violates its declared "
+            "type, enum, or range (e.g. max_results below the declared "
+            "minimum of 1), or project_id is empty or not the project the "
+            "session's open file was opened from (same code and message "
+            "universal_file_preview returns for that condition)."
+        ),
+        "message": "{ValidationError message} | session_id does not match project_id",
+        "solution": (
+            "Fix parameters per get_schema() and retry; pass the project_id "
+            "used in universal_file_open for this session."
+        ),
+    },
     "UNKNOWN_FORMAT": {
         "description": (
             "Session is not sidecar Python (JSON/YAML/text or is_invalid fallback)."
@@ -156,16 +171,6 @@ _ERROR_CASES = {
         "description": "require_one=true but selector matched >1 node.",
         "message": "Selector matched {total_matches} nodes; exactly one required",
         "solution": "Narrow the CSTQuery or omit require_one.",
-    },
-    "VALIDATION_ERROR": {
-        "description": (
-            "Parameter validation failed: a required parameter is missing, an "
-            "unknown parameter was supplied, or a value violates its declared "
-            "type, enum, or range (e.g. max_results below the declared "
-            "minimum of 1)."
-        ),
-        "message": "{ValidationError message}",
-        "solution": "Fix parameters per get_schema() and retry.",
     },
 }
 
