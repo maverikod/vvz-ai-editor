@@ -54,7 +54,11 @@ def _run_cli(args: List[str], cwd: Path, pythonpath: str) -> subprocess.Complete
         env=env,
         capture_output=True,
         text=True,
-        timeout=60,
+        # The no-argument aggregate runs the WHOLE real battery: seven checks,
+        # measured at 57 s today (check-roundtrip alone samples ~1000 real files).
+        # 60 s was the binding constraint and made this flaky as checks landed;
+        # this cap is for a hang, not for a slow-but-working run.
+        timeout=300,
     )
 
 @pytest.fixture()
