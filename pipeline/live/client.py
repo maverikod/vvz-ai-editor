@@ -139,6 +139,12 @@ def error_code(envelope: Mapping[str, Any]) -> Any:
     """The error ``code`` -- stable string or numeric JSON-RPC code -- or None."""
     return (error_of(envelope) or {}).get("code")
 
+def error_message(envelope: Mapping[str, Any]) -> Any:
+    """The error ``message``, or None. A check asserting a documented failure
+    usually needs both halves: the code it must match, and the text a human
+    will read when it does not."""
+    return (error_of(envelope) or {}).get("message")
+
 class LiveClient:
     """Synchronous facade over the real asynchronous ``JsonRpcClient``.
 
