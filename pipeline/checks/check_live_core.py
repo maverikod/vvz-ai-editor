@@ -5,18 +5,19 @@ email: vasilyvz@gmail.com
 
 First check built on ``pipeline/live/client.py``, and the end-to-end proof that
 the live harness works: it opens a real mTLS connection to the REAL deployed
-ai-editor server, calls ``health`` and ``help``, and asserts the deployed
-version and the registered command count. Nothing is mocked and no response is
-fabricated; on a machine with no reachable server the check reports
-SKIPPED-with-reason (see :func:`pipeline.live.client.skipped_result`) and never
-PASS.
+ai-editor server (``192.168.254.26:15000`` by default, from wherever the check
+runs), calls ``health`` and ``help``, and asserts the deployed version and the
+registered command count. Nothing is mocked and no response is fabricated. A
+server that does not answer makes this check RED with the reason -- the
+deployment is this project's own service, so silence means it must be brought
+back up, not that the check does not apply.
 
 The expected version is read from the project's own ``pyproject.toml`` rather
 than hard-coded, so a version bump does not silently invalidate the gate;
 ``AI_EDITOR_LIVE_EXPECTED_VERSION`` and ``AI_EDITOR_LIVE_EXPECTED_COMMANDS``
 override both expectations for a deployment under test.
 
-Coverage note ({p}live_api_contract_coverage): this check owns ``health`` and
+Coverage note (laws.live_api_contract_coverage): this check owns ``health`` and
 ``help`` only. It closes with a schema-driven :class:`CommandCoverage` report
 for ``health`` and for ``universal_file_open``, naming every parameter and
 error case the server DECLARES that no case here exercises -- the per-command
@@ -38,10 +39,8 @@ from pipeline import registry
 from pipeline.live.client import (
     CommandCoverage,
     LiveClient,
-    LiveServerUnavailable,
     data_of,
     is_success,
-    make_client,
     run_live_check,
 )
 from pipeline.registry import CheckResult
@@ -225,27 +224,8 @@ def _body(client: LiveClient) -> CheckResult:
 
 
 def check_live_core() -> CheckResult:
-    """Entry point: run the live core cases, or SKIP when no server is reachable."""
+    """Entry point: run the live core cases against the deployed server."""
     return run_live_check(_body)
 
 
-def live_environment_is_available() -> bool:
-    """True when this machine can host a live check at all: the adapter package
-    imports and the mTLS certificate triple is readable.
-
-    A developer checkout has neither, so the check is not registered there --
-    it would be a verdict about a server it could never contact, and the
-    aggregate ``pipeline`` run must stay meaningful off the deployment host.
-    Wherever the check IS registered and the server is nonetheless unreachable
-    (deployed host, server down or wrong port), it reports SKIPPED-with-reason
-    and never PASS. Every live check should gate its registration this way.
-    """
-    try:
-        make_client()
-    except LiveServerUnavailable:
-        return False
-    return True
-
-
-if live_environment_is_available():
-    registry.register(CHECK_NAME, CHECK_DESCRIPTION, check_live_core)
+registry.register(CHECK_NAME, CHECK_DESCRIPTION, check_live_core)

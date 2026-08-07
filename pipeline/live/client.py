@@ -4,10 +4,11 @@ Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
 
 Foundation for every check that talks to the REAL deployed ai-editor server over
-mTLS; nothing here mocks, stubs or replays. Live checks run INSIDE the deployed
-container, where the mTLS client key is readable; the verified in-container
-defaults below are overridable through ``AI_EDITOR_LIVE_{HOST,PORT,PROTOCOL,
-CERT,KEY,CA_CERT,TIMEOUT}``.
+mTLS; nothing here mocks, stubs or replays. The default target is the deployed
+server at ``https://192.168.254.26:15000``, reached from wherever the check runs
+(a developer machine included) with the mTLS material under the repository's own
+``mtls_certificates/mtls_certificates/``. All of it is overridable through
+``AI_EDITOR_LIVE_{HOST,PORT,PROTOCOL,CERT,KEY,CA_CERT,TIMEOUT}``.
 
 ``JsonRpcClient.execute_command`` funnels replies through ``_extract_result``,
 which RAISES ``RuntimeError`` and discards the structured error object. Checks
@@ -15,13 +16,12 @@ must assert the server's own stable codes (verified on 1.0.84:
 ``result.error.code == "SESSION_NOT_FOUND"``), so :meth:`LiveClient.call` uses
 the same client one layer lower, at ``jsonrpc_call``, and returns the untouched
 envelope: a rejection is HTTP 200 with ``result.success`` false and a stable
-string or numeric ``result.error.code``, while an unknown command is HTTP 500
-with the non-JSON body ``Internal Server Error``, surfaced as
-``{"transport_error": {...}}`` rather than an invented code. ``call`` never
-raises because the server said no -- only when unreachable, which is a SKIP.
-``CheckStatus`` has no SKIP status and is not changed here, so
-:func:`skipped_result` encodes a skip as a FAIL whose message starts with
-``SKIPPED``: a machine with no deployed server never reads PASS.
+string or numeric ``result.error.code``, an unknown command is HTTP 500 with the
+non-JSON body ``Internal Server Error``, surfaced as ``{"transport_error":
+{...}}`` rather than an invented code. So ``call`` never raises because the
+server said no; it raises :class:`LiveServerUnavailable` only when the server
+cannot be reached, and :func:`run_live_check` turns that into a RED check -- an
+unreachable deployment is our own service failing, not a check that opts out.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import os
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from pipeline.registry import CheckResult
@@ -36,19 +37,28 @@ from pipeline.registry import CheckResult
 ENV_PREFIX = "AI_EDITOR_LIVE_"
 CA_ENV_PREFIX = "AI_EDITOR_CODE_ANALYSIS_"
 ENV_CA_SESSION = "AI_EDITOR_LIVE_CA_SESSION"
-SKIP_PREFIX = "SKIPPED"
-DEFAULT_HOST, DEFAULT_PORT = "localhost", 15000
+DEFAULT_HOST, DEFAULT_PORT = "192.168.254.26", 15000
 DEFAULT_PROTOCOL, DEFAULT_TIMEOUT = "https", 60.0
-_CERT_ROOT = "/app/mtls_certificates/mtls_certificates"
-DEFAULT_CERT = f"{_CERT_ROOT}/client/ai-editor.crt"
-DEFAULT_KEY = f"{_CERT_ROOT}/client/ai-editor.key"
-DEFAULT_CA_CERT = f"{_CERT_ROOT}/ca/ca.crt"
-# Code Analysis Server as the deployed container resolves it (container env
-# AI_EDITOR_CODE_ANALYSIS_HOST/_PORT); proxy server id code-analysis-server-vvz.
-DEFAULT_CA_HOST, DEFAULT_CA_PORT = "casmgr", 15010
+# Code Analysis Server on the same deployment host. Inside the container the
+# real env AI_EDITOR_CODE_ANALYSIS_HOST/_PORT (casmgr:15010) overrides this;
+# proxy server id code-analysis-server-vvz.
+DEFAULT_CA_HOST, DEFAULT_CA_PORT = "192.168.254.26", 15010
+
+def repository_root() -> Path:
+    """The checkout owning this module: nearest ancestor holding pyproject.toml.
+    Never the process CWD, so any start directory resolves the same tree."""
+    here = Path(__file__).resolve()
+    for candidate in here.parents:
+        if (candidate / "pyproject.toml").is_file():
+            return candidate
+    return here.parents[2]
+
+_CERTS = repository_root() / "mtls_certificates" / "mtls_certificates"
+DEFAULT_CERT, DEFAULT_KEY = str(_CERTS / "client/ai-editor.crt"), str(_CERTS / "client/ai-editor.key")
+DEFAULT_CA_CERT = str(_CERTS / "ca/ca.crt")
 
 class LiveServerUnavailable(RuntimeError):
-    """The deployed server cannot be reached; the check must SKIP, not fail."""
+    """The deployed server could not be reached: a RED check, never a pass."""
 
 class LiveSchemaError(RuntimeError):
     """The server answered, but its ``help`` reply was not a usable schema."""
@@ -87,8 +97,8 @@ class LiveEndpoint:
         return f"{self.protocol}://{self.host}:{self.port}"
 
 def make_client(endpoint: Optional[LiveEndpoint] = None) -> Any:
-    """Build the real ``JsonRpcClient``; a missing adapter package or certificate file
-    raises :class:`LiveServerUnavailable` -- that machine cannot host a live check."""
+    """Build the real ``JsonRpcClient``; a missing adapter package or certificate
+    file raises :class:`LiveServerUnavailable`, which fails the calling check."""
     endpoint = endpoint if endpoint is not None else LiveEndpoint.from_env()
     try:
         from mcp_proxy_adapter.client.jsonrpc_client.client import JsonRpcClient
@@ -134,8 +144,7 @@ class LiveClient:
 
     One private event loop per instance, reused for every call: the underlying
     ``httpx.AsyncClient`` is cached on the transport, bound to its creating loop.
-    ``jsonrpc_client``/``run`` are public for client APIs this does not wrap;
-    :func:`run_live_check` owns the open/close lifecycle for checks."""
+    ``jsonrpc_client``/``run`` are public for client APIs this does not wrap."""
 
     def __init__(self, endpoint: Optional[LiveEndpoint] = None) -> None:
         self.endpoint = endpoint if endpoint is not None else LiveEndpoint.from_env()
@@ -143,13 +152,11 @@ class LiveClient:
         self._loop = asyncio.new_event_loop()
         self._schemas: Dict[str, "CommandSchema"] = {}
 
-    def run(self, coro: Any) -> Any:
-        """Drive one client coroutine on this instance's loop."""
+    def run(self, coro: Any) -> Any:  # drive one client coroutine on our loop
         return self._loop.run_until_complete(coro)
 
     def call(self, command: str, params: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
-        """Return the JSON-RPC envelope verbatim. A server-side rejection is a
-        RESULT, not an exception; only an unreachable server raises."""
+        """Envelope verbatim: a rejection is a RESULT, not an exception."""
         return self.run(self._call(command, dict(params or {})))
 
     async def _call(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -185,9 +192,9 @@ class LiveClient:
         return self._schemas[command]
 
     def close(self) -> None:
-        try:
+        try:  # teardown must never mask a verdict
             self._loop.run_until_complete(self.jsonrpc_client.close())
-        except Exception:  # noqa: BLE001 - teardown must never mask a verdict
+        except Exception:  # noqa: BLE001
             pass
         finally:
             self._loop.close()
@@ -223,8 +230,7 @@ class CommandSchema:
     error_cases: Mapping[str, ErrorCase]
     metadata: Mapping[str, Any]
 
-    def required_parameters(self) -> List[str]:
-        """Names the server marks ``required`` -- the omit-one negative matrix."""
+    def required_parameters(self) -> List[str]:  # the omit-one negative matrix
         return [n for n, p in self.parameters.items() if p.required]
 
     def format_declared_surface(self) -> str:
@@ -313,7 +319,7 @@ class CommandCoverage:
         self._errors.update(str(code) for code in codes)
 
     def record_call(self, params: Mapping[str, Any], envelope: Mapping[str, Any]) -> None:
-        """Record one real call: the parameter names it sent and any error code it got."""
+        """One real call: the parameter names sent, and any error code returned."""
         self.record_parameters(params)
         code = error_code(envelope)
         if code is not None:
@@ -331,10 +337,11 @@ class CommandCoverage:
 class CaSession:
     """A REAL Code Analysis Server session, as every ``universal_file_*`` needs.
 
-    Verified from inside the deployed container: CA answers at
-    ``https://casmgr:15010`` over the same mTLS triple, ``session_create``/
-    ``session_delete`` both succeed. ``AI_EDITOR_LIVE_CA_SESSION`` injects an
-    externally owned id instead (never deleted). None is ever invented."""
+    Verified from the developer machine and in-container: CA answers at
+    ``192.168.254.26:15010`` (``casmgr:15010`` in-container) over the same mTLS
+    triple, and ``session_create(comment=...)``/``session_delete(session_id=...)``
+    succeed. ``AI_EDITOR_LIVE_CA_SESSION`` injects an externally owned id instead
+    (never deleted). None is ever invented."""
 
     def __init__(self, session_id: str, client: Optional[LiveClient], owned: bool) -> None:
         self.session_id, self.owned, self._client = session_id, owned, client
@@ -377,21 +384,17 @@ class CaSession:
     def __exit__(self, *exc_info: Any) -> None:
         self.dispose()
 
-def skipped_result(reason: str, output: str = "") -> CheckResult:
-    """A skip: FAIL whose message starts with ``SKIPPED``, since the registry has
-    no SKIP status and an unreachable server must never read PASS."""
-    return CheckResult.fail(message=f"{SKIP_PREFIX}: {reason}", output=output)
-
 def run_live_check(body: Callable[[LiveClient], CheckResult],
                    endpoint: Optional[LiveEndpoint] = None) -> CheckResult:
-    """Open a live client, run ``body``, always close it; an unreachable server --
-    no adapter, no certificate, refused, TLS error, timeout -- becomes SKIPPED."""
+    """Open a live client, run ``body``, always close it. An unreachable server --
+    no adapter, no certificate, refused, TLS error, timeout -- FAILS the check
+    with the reason: the deployment is ours, so silence is a defect to fix."""
     client = None
     try:
         client = LiveClient(endpoint)
         return body(client)
     except LiveServerUnavailable as exc:
-        return skipped_result(str(exc))
+        return CheckResult.fail(message=f"live server unreachable: {exc}")
     finally:
         if client is not None:
             client.close()
