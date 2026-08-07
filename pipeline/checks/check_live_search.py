@@ -13,12 +13,17 @@ This is the command where an editor lies most easily, so the emphasis is on
 exact assertions rather than "the call did not raise": both search modes are
 checked against a file of KNOWN structure (exact match count and exact
 identifiers, not a non-empty list); a selector matching nothing asserts an
-EMPTY result (``matches == []``), never an error; a malformed selector is
-asserted to fail with a REPRODUCIBLE code (``-32000`` on two different bad
-inputs) that is not in the command's own declared ``error_cases`` -- the
-coverage report below surfaces that gap automatically; and the parse-error
-fallback (opening an unparsable ``.py`` file) is asserted to return the
-documented ``UNKNOWN_FORMAT`` on this command too.
+EMPTY result (``matches == []``), never an error; a malformed CSTQuery
+selector is asserted to fail with the declared ``QUERY_PARSE_ERROR``,
+reproducibly, on two different bad inputs (fixed: it used to be a bare,
+undeclared ``-32000`` -- the parser's own ``QueryParseError`` is not a
+``ValueError`` and used to miss the command's ``ValueError``->``INVALID_SEARCH``
+handler, falling to ``ErrorResult``'s numeric default instead); every
+malformed-request shape (missing required parameter, unknown parameter,
+enum violation) now returns the declared ``VALIDATION_ERROR`` instead of a
+generic, undeclared ``-32603``; and the parse-error fallback (opening an
+unparsable ``.py`` file) is asserted to return the documented
+``UNKNOWN_FORMAT`` on this command too.
 
 Also recorded, found while building this check: ``project_id`` is declared
 ``required``, yet an empty string and even a well-formed-but-wrong UUID both
@@ -223,9 +228,11 @@ def _build_cases(client: LiveClient, session_id: str,
                         "query": "%%%not-valid%%%"})
         _require(not is_success(env1) and not is_success(env2), "both malformed queries must fail")
         c1, c2 = error_code(env1), error_code(env2)
-        _require(c1 == c2 == -32000, f"codes={c1!r},{c2!r}; expected -32000 both times")
-        return ("two different malformed selectors both fail with code -32000, "
-                "reproducibly, but -32000 is NOT in the command's declared error_cases")
+        _require(c1 == c2 == "QUERY_PARSE_ERROR", f"codes={c1!r},{c2!r}; expected QUERY_PARSE_ERROR both times")
+        return ("two different malformed selectors both fail with the declared QUERY_PARSE_ERROR "
+                "(fixed: used to be a bare, undeclared -32000 -- CSTQuery's own QueryParseError "
+                "was not a ValueError, so it missed the command's ValueError->INVALID_SEARCH "
+                "handler and fell to the generic default-code branch)")
 
     def case_missing_query_is_invalid_search() -> str:
         env = search({"project_id": PROJECT_ID, "session_id": session_id})
@@ -256,7 +263,7 @@ def _build_cases(client: LiveClient, session_id: str,
         return ("project_id='' and a well-formed-but-WRONG project_id both still succeed with "
                 "full results: search is scoped by session_id alone, project_id has no effect")
 
-    def case_generic_dash32603_paths() -> str:
+    def case_malformed_request_shapes_are_validation_error() -> str:
         scenarios = (
             ("missing project_id",
              {"session_id": session_id, "file_path": FILE_A, "query": "//FunctionDef"}),
@@ -272,8 +279,8 @@ def _build_cases(client: LiveClient, session_id: str,
         for label, params in scenarios:
             env = search(params)
             _require(not is_success(env), f"expected failure ({label}): {env!r}")
-            _require(error_code(env) == -32603, f"{label}: code={error_code(env)!r}")
-        return ("generic -32603, never a declared code, for: " +
+            _require(error_code(env) == "VALIDATION_ERROR", f"{label}: code={error_code(env)!r}")
+        return ("declared VALIDATION_ERROR (fixed: used to be a generic, undeclared -32603) for: " +
                 ", ".join(label for label, _ in scenarios))
 
     def case_session_not_found_empty_and_unknown() -> str:
@@ -285,7 +292,7 @@ def _build_cases(client: LiveClient, session_id: str,
             _require(not is_success(env), f"expected failure ({label}): {env!r}")
             _require(error_code(env) == "SESSION_NOT_FOUND", f"{label}: code={error_code(env)!r}")
         return ("session_id='' and an unregistered session_id both -> stable SESSION_NOT_FOUND "
-                "(unlike a MISSING session_id, which is the generic -32603 path)")
+                "(unlike a MISSING session_id, which is the schema-level VALIDATION_ERROR path)")
 
     def case_file_path_absent_resolves_single_open_file() -> str:
         env = search({"project_id": PROJECT_ID, "session_id": session_id, "query": "//FunctionDef"})
@@ -328,7 +335,7 @@ def _build_cases(client: LiveClient, session_id: str,
         ("missing_query_is_invalid_search", case_missing_query_is_invalid_search),
         ("max_results_one_caps_zero_does_not", case_max_results_one_caps_zero_does_not),
         ("project_id_empty_and_wrong_still_succeed", case_project_id_empty_and_wrong_still_succeed),
-        ("generic_dash32603_paths", case_generic_dash32603_paths),
+        ("malformed_request_shapes_are_validation_error", case_malformed_request_shapes_are_validation_error),
         ("session_not_found_empty_and_unknown", case_session_not_found_empty_and_unknown),
         ("file_path_absent_resolves_single_open_file",
          case_file_path_absent_resolves_single_open_file),

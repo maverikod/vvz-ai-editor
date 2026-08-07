@@ -22,11 +22,11 @@ structure -- never merely "the call succeeded":
   smallest span first, ending in the ``Module`` node (the documented order).
 * Boundary lines are exercised in both directions: line 1, the last real
   line, one past the end, line 0, and a negative line. The schema declares
-  ``line`` with ``minimum: 1``, but 0 and negative both reach the SAME
-  domain-level ``LINE_NOT_FOUND`` as "one past the end" rather than being
-  rejected by parameter validation -- the declared minimum is not actually
-  enforced at that layer, which is recorded explicitly below rather than
-  assumed from the schema alone.
+  ``line`` with ``minimum: 1``; 0 and negative now both correctly return the
+  declared ``VALIDATION_ERROR`` instead of reaching the same domain-level
+  ``LINE_NOT_FOUND`` as "one past the end" (fixed: ``minimum``/``maximum``
+  were not enforced by the shared schema validator in
+  ``base_mcp_command.py``; they are now).
 * The parse-error fallback (line-based editing when structural parse fails)
   is exercised directly: this command on such a session is asserted to
   return the documented ``UNKNOWN_FORMAT``.
@@ -210,39 +210,41 @@ def _build_cases(client: LiveClient, session_id: str,
         _require(error_code(env) == "LINE_NOT_FOUND", f"code={error_code(env)!r}")
         return "line far past EOF -> stable LINE_NOT_FOUND"
 
-    def case_line_zero_is_line_not_found() -> str:
+    def case_line_zero_is_validation_error() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "session_id": session_id,
                              "file_path": FILE_A, "line": 0})
         _require(not is_success(env), f"expected failure: {env!r}")
-        _require(error_code(env) == "LINE_NOT_FOUND", f"code={error_code(env)!r}")
-        return ("line=0 -> stable LINE_NOT_FOUND, NOT a parameter-validation error though the "
-                "schema declares minimum=1 -- that minimum is not enforced at the validation layer")
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        return ("line=0 -> declared VALIDATION_ERROR (fixed: the schema's minimum=1 used to go "
+                "unenforced at the validation layer, so 0 fell through to the same domain-level "
+                "LINE_NOT_FOUND as a line past EOF; base_mcp_command.py now enforces "
+                "minimum/maximum on integer schema properties)")
 
-    def case_negative_line_is_line_not_found() -> str:
+    def case_negative_line_is_validation_error() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "session_id": session_id,
                              "file_path": FILE_A, "line": -7})
         _require(not is_success(env), f"expected failure: {env!r}")
-        _require(error_code(env) == "LINE_NOT_FOUND", f"code={error_code(env)!r}")
-        return "negative line -> stable LINE_NOT_FOUND, same as line=0 (declared minimum unenforced)"
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        return "negative line -> declared VALIDATION_ERROR, same as line=0 (declared minimum now enforced)"
 
-    def case_wrong_type_line_generic_error() -> str:
+    def case_wrong_type_line_validation_error() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "session_id": session_id,
                              "file_path": FILE_A, "line": "not-an-int"})
         _require(not is_success(env), f"expected failure: {env!r}")
-        _require(error_code(env) == -32603, f"code={error_code(env)!r}")
-        return "line as a string (wrong declared type) -> generic -32603"
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        return "line as a string (wrong declared type) -> declared VALIDATION_ERROR"
 
-    def case_missing_line_generic_error() -> str:
+    def case_missing_line_validation_error() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "session_id": session_id, "file_path": FILE_A})
         _require(not is_success(env), f"expected failure: {env!r}")
-        _require(error_code(env) == -32603, f"code={error_code(env)!r}")
-        return "missing required 'line' -> generic -32603 (no VALIDATION_ERROR-style stable code)"
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        return "missing required 'line' -> declared VALIDATION_ERROR"
 
-    def case_missing_project_id_generic_error() -> str:
+    def case_missing_project_id_validation_error() -> str:
         env = node_at_line({"session_id": session_id, "file_path": FILE_A, "line": 1})
         _require(not is_success(env), f"expected failure: {env!r}")
-        _require(error_code(env) == -32603, f"code={error_code(env)!r}")
-        return "missing project_id -> generic -32603"
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        return "missing project_id -> declared VALIDATION_ERROR"
 
     def case_empty_project_id_still_succeeds() -> str:
         env = node_at_line({"project_id": "", "session_id": session_id, "file_path": FILE_A, "line": 1})
@@ -257,17 +259,17 @@ def _build_cases(client: LiveClient, session_id: str,
         _require(is_success(env) and d.get("type") == "SimpleString", str(env))
         return "a well-formed but WRONG project_id also succeeds: no observed effect on this command"
 
-    def case_missing_session_id_generic_error() -> str:
+    def case_missing_session_id_validation_error() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "file_path": FILE_A, "line": 1})
         _require(not is_success(env), f"expected failure: {env!r}")
-        _require(error_code(env) == -32603, f"code={error_code(env)!r}")
-        return "missing session_id -> generic -32603"
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        return "missing session_id -> declared VALIDATION_ERROR"
 
     def case_empty_session_id_is_session_not_found() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "session_id": "", "file_path": FILE_A, "line": 1})
         _require(not is_success(env), f"expected failure: {env!r}")
         _require(error_code(env) == "SESSION_NOT_FOUND", f"code={error_code(env)!r}")
-        return "session_id='' -> stable SESSION_NOT_FOUND, unlike missing session_id (-32603)"
+        return "session_id='' -> stable SESSION_NOT_FOUND, unlike a MISSING session_id (VALIDATION_ERROR)"
 
     def case_unknown_session_is_session_not_found() -> str:
         env = node_at_line({"project_id": PROJECT_ID,
@@ -280,8 +282,8 @@ def _build_cases(client: LiveClient, session_id: str,
         env = node_at_line({"project_id": PROJECT_ID, "session_id": session_id, "file_path": FILE_A,
                              "line": 1, "bogus": True})
         _require(not is_success(env), f"expected failure: {env!r}")
-        _require(error_code(env) == -32603, f"code={error_code(env)!r}")
-        return "unknown extra parameter -> generic -32603, not a declared code"
+        _require(error_code(env) == "VALIDATION_ERROR", f"code={error_code(env)!r}")
+        return "unknown extra parameter -> declared VALIDATION_ERROR"
 
     def case_file_path_absent_resolves_single_open_file() -> str:
         env = node_at_line({"project_id": PROJECT_ID, "session_id": session_id, "line": 1})
@@ -316,14 +318,14 @@ def _build_cases(client: LiveClient, session_id: str,
         ("include_ancestors_true_full_chain", case_include_ancestors_true_full_chain),
         ("include_ancestors_false_explicit", case_include_ancestors_false_explicit),
         ("one_past_end_is_line_not_found", case_one_past_end_is_line_not_found),
-        ("line_zero_is_line_not_found", case_line_zero_is_line_not_found),
-        ("negative_line_is_line_not_found", case_negative_line_is_line_not_found),
-        ("wrong_type_line_generic_error", case_wrong_type_line_generic_error),
-        ("missing_line_generic_error", case_missing_line_generic_error),
-        ("missing_project_id_generic_error", case_missing_project_id_generic_error),
+        ("line_zero_is_validation_error", case_line_zero_is_validation_error),
+        ("negative_line_is_validation_error", case_negative_line_is_validation_error),
+        ("wrong_type_line_validation_error", case_wrong_type_line_validation_error),
+        ("missing_line_validation_error", case_missing_line_validation_error),
+        ("missing_project_id_validation_error", case_missing_project_id_validation_error),
         ("empty_project_id_still_succeeds", case_empty_project_id_still_succeeds),
         ("wrong_project_id_still_succeeds", case_wrong_project_id_still_succeeds),
-        ("missing_session_id_generic_error", case_missing_session_id_generic_error),
+        ("missing_session_id_validation_error", case_missing_session_id_validation_error),
         ("empty_session_id_is_session_not_found", case_empty_session_id_is_session_not_found),
         ("unknown_session_is_session_not_found", case_unknown_session_is_session_not_found),
         ("unknown_extra_parameter_rejected", case_unknown_extra_parameter_rejected),
@@ -351,9 +353,8 @@ def _body(client: LiveClient) -> CheckResult:
     report = coverage.report()
     output.append(report.format())
     if not report.complete:
-        output.append("NOTE: TREE_NOT_AVAILABLE has no known public-API trigger (mirrors the "
-                       "SESSION_INVALID/VALIDATION_ERROR pattern documented as unreachable "
-                       "elsewhere in this API) -- left untested and named here explicitly.")
+        output.append("NOTE: TREE_NOT_AVAILABLE has no known public-API trigger -- left "
+                       "untested and named here explicitly.")
     output.append(schema.format_declared_surface())
     failed = [r.name for r in results if not r.passed]
     body_text = "\n".join(output)

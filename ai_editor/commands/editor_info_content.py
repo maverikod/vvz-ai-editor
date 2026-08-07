@@ -11,6 +11,24 @@ from typing import Any, Dict, List
 
 GUIDE_VERSION = "1.0"
 
+# Complete registered-command catalog, measured against the deployed server's
+# own help() reply (32 commands on 1.0.84) -- not just the 9 file-edit
+# workflow commands the guide documents. A literal tuple, not derived from
+# the live registry: registration happens at server-startup hooks this
+# module has no reason to depend on.
+ALL_REGISTERED_COMMANDS = (
+    "config", "health", "help", "info", "load", "plugins", "proxy_registration",
+    "queue_add_job", "queue_delete_job", "queue_get_job_logs",
+    "queue_get_job_status", "queue_health", "queue_list_jobs",
+    "queue_start_job", "queue_stop_job", "reload", "roletest", "settings",
+    "transfer_download_begin", "transfer_download_status",
+    "transfer_upload_begin", "transfer_upload_complete",
+    "transfer_upload_status", "transport_management", "unload",
+    "universal_file_close", "universal_file_edit",
+    "universal_file_node_at_line", "universal_file_open",
+    "universal_file_preview", "universal_file_search", "universal_file_write",
+)
+
 EDITOR_INFO_MARKDOWN = """\
 # AI Editor — file edit guide (thin-server)
 
@@ -40,7 +58,13 @@ AI Editor is a **thin MCP server** between the agent and **Code Analysis Server 
 | `universal_file_write` | Preview diff or commit (validate → CA upload) |
 | `universal_file_close` | CA unlock + workspace cleanup (always) |
 
-**Not registered** in the thin server: legacy CST/save commands and session git/undo helpers. Use `universal_file_search` (Python) or preview drill-down for navigation.
+This table is the file-edit workflow subset. The server also registers framework
+commands (`help`, `config`, `settings`, `reload`, `load`/`unload`, `plugins`,
+`roletest`, `transport_management`, 8 `queue_*` background-job commands, 5
+`transfer_*` chunked-upload/download commands) not part of this workflow;
+`registered_commands` below lists every one of them. Legacy CST/save commands
+and session git/undo helpers are NOT registered. Use `universal_file_search`
+(Python) or preview drill-down for navigation.
 
 ## Lifecycle (edit one file)
 
@@ -294,17 +318,7 @@ def build_editor_info_payload() -> Dict[str, Any]:
         ),
         "markdown": EDITOR_INFO_MARKDOWN,
         "lifecycle": lifecycle,
-        "registered_commands": [
-            "health",
-            "info",
-            "universal_file_preview",
-            "universal_file_open",
-            "universal_file_search",
-            "universal_file_node_at_line",
-            "universal_file_edit",
-            "universal_file_write",
-            "universal_file_close",
-        ],
+        "registered_commands": list(ALL_REGISTERED_COMMANDS),
         "format_groups": {
             "sidecar": {
                 "extensions": [".py", ".pyi", ".pyw"],

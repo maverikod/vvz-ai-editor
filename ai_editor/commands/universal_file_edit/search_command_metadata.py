@@ -141,6 +141,12 @@ _ERROR_CASES = {
         "message": "{validation detail}",
         "solution": "Provide query for xpath or at least one simple filter.",
     },
+    "QUERY_PARSE_ERROR": {
+        "description": "search_type=xpath (or simple with a query override) query "
+        "string is not a syntactically valid CSTQuery selector.",
+        "message": "{CSTQuery parser detail}",
+        "solution": "Fix the CSTQuery selector syntax and retry.",
+    },
     "NoMatch": {
         "description": "require_one=true but selector matched 0 nodes in this tree.",
         "message": "Selector matched no nodes in the session tree",
@@ -150,6 +156,16 @@ _ERROR_CASES = {
         "description": "require_one=true but selector matched >1 node.",
         "message": "Selector matched {total_matches} nodes; exactly one required",
         "solution": "Narrow the CSTQuery or omit require_one.",
+    },
+    "VALIDATION_ERROR": {
+        "description": (
+            "Parameter validation failed: a required parameter is missing, an "
+            "unknown parameter was supplied, or a value violates its declared "
+            "type, enum, or range (e.g. max_results below the declared "
+            "minimum of 1)."
+        ),
+        "message": "{ValidationError message}",
+        "solution": "Fix parameters per get_schema() and retry.",
     },
 }
 

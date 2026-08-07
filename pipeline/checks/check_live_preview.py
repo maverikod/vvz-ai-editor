@@ -17,13 +17,17 @@ modes, and all eleven error cases.
 
 This check asserts the MEASURED behaviour of the deployed server, not the
 documentation, and reports every divergence between the two as a FINDING:
-``selector`` is documented as a "list of int indices" but reads integers as
-short_ids, so the documented index ``0`` is rejected with
-``INVALID_SELECTOR_FORM``; ``selector`` is declared ``type: string`` in the
-parameter table while the command's own JSON schema declares
-``oneOf[string, array]``; ``preview_lines`` below its lower bound is rejected
-with ``HANDLER_ERROR`` ("unexpected failure inside preview orchestration")
-rather than the declared ``VALIDATION_ERROR``; an empty ``session_id`` is
+``selector`` is documented as a "list of int indices" but the marked-tree
+navigation path (``ai_editor/tree/preview_selector.py::PreviewSelector.parse``)
+reads integers as short_ids, so the documented index ``0`` is rejected with
+``INVALID_SELECTOR_FORM`` -- a real, deeper split between that path and
+``universal_file_preview/selector.py::apply_selector`` (which DOES treat
+list[int] as 0-based indices), left unresolved: an architecture decision on
+which semantics the parameter should have, not a one-line fix; ``preview_lines``
+below its lower bound now correctly returns the declared ``VALIDATION_ERROR``
+(fixed: it used to be misclassified as ``HANDLER_ERROR`` -- see
+``universal_file_preview_runtime.py``'s narrowed ``ValueError`` handling
+around the ``PreviewBudget`` construction); an empty ``session_id`` is
 silently treated as an omitted one and falls through to the one-shot path;
 and one-shot preview of a file that really exists fails with ``HANDLER_ERROR``
 wrapping an upstream HTTP 500 from Code Analysis, so the documented one-shot
@@ -223,12 +227,7 @@ def _structural_matrix(probe: _Probe, base: Dict[str, Any]) -> None:
     )
     probe.expect_error("selector malformed", {**base, "selector": "not-a-slice"}, "INVALID_SELECTOR_FORM")
     probe.expect_error("node_ref unknown", {**base, "node_ref": "999999"}, "UNKNOWN_NODE_REF")
-    envelope = probe.expect_error("preview_lines below bound (-1)", {**base, "preview_lines": -1}, "HANDLER_ERROR")
-    probe.findings.append(
-        "WRONG ERROR CLASS: preview_lines=-1 is a parameter-validation failure but is reported as "
-        f"HANDLER_ERROR ({error_message(envelope)!r}), the code documented as 'unexpected failure "
-        "inside preview orchestration'; VALIDATION_ERROR is the declared case for this."
-    )
+    probe.expect_error("preview_lines below bound (-1)", {**base, "preview_lines": -1}, "VALIDATION_ERROR")
     probe.expect_error("preview_offset > 0 on a parseable file", {**base, "preview_offset": 2}, "REQUIRES_IDENTIFIER_ADDRESSING")
     envelope = probe.expect_error("tree_id together with session_id", {**base, "tree_id": str(uuid.uuid4())}, "CONFLICTING_PARAMETERS")
     details = (envelope.get("result") or {}).get("error", {}).get("data")
@@ -308,8 +307,8 @@ def _negative_matrix(probe: _Probe, base: Dict[str, Any], unknown_ext: str, sess
         )
     for name in ("file_path", "project_id"):
         probe.expect_error(f"empty {name!r}", {**base, name: ""}, "VALIDATION_ERROR")
-        probe.expect_error(f"omit required {name!r}", {k: v for k, v in base.items() if k != name}, -32603)
-    probe.expect_error("unknown parameter", {**base, "not_a_parameter": 1}, -32603)
+        probe.expect_error(f"omit required {name!r}", {k: v for k, v in base.items() if k != name}, "VALIDATION_ERROR")
+    probe.expect_error("unknown parameter", {**base, "not_a_parameter": 1}, "VALIDATION_ERROR")
     # Every declared parameter, given the wrong JSON type.
     for name, wrong in (
         ("preview_lines", "many"),
@@ -321,7 +320,7 @@ def _negative_matrix(probe: _Probe, base: Dict[str, Any], unknown_ext: str, sess
         ("tree_id", 1),
         ("selector", 1),
     ):
-        probe.expect_error(f"{name} with the wrong type ({type(wrong).__name__})", {**base, name: wrong}, -32603)
+        probe.expect_error(f"{name} with the wrong type ({type(wrong).__name__})", {**base, name: wrong}, "VALIDATION_ERROR")
 
 
 def _selector_type_finding(probe: _Probe, schema: Any) -> None:

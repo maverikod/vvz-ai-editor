@@ -300,8 +300,11 @@ def get_universal_file_open_metadata(cls: Type[Any]) -> Dict[str, Any]:
             },
             "VALIDATION_ERROR": {
                 "description": (
-                    "Parameter validation failed (e.g. empty session_id caught in "
-                    "validate_params)."
+                    "Parameter validation failed: a required parameter is missing, "
+                    "an unknown parameter was supplied, or a value does not match "
+                    "its declared type or enum (e.g. empty project_id or file_path). "
+                    "An empty session_id specifically returns SESSION_INVALID, not "
+                    "this code."
                 ),
                 "message": "{ValidationError message}",
                 "solution": "Fix parameters per get_schema() and retry.",
