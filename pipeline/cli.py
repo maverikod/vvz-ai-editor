@@ -197,7 +197,11 @@ def _build_parser(registry: Registry) -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", metavar="{list,<check-name>}")
     subparsers.add_parser("list", help="List registered check names and descriptions; run nothing.")
     for entry in registry.list_checks():
-        subparsers.add_parser(entry.name, help=entry.description or "(no description)")
+        # argparse runs help text through %-formatting, so a literal percent in a
+        # check's description (a tolerance, a pass rate) makes it raise and takes
+        # the WHOLE cli down, not just that check. Escape before handing it over.
+        help_text = (entry.description or "(no description)").replace("%", "%%")
+        subparsers.add_parser(entry.name, help=help_text)
     return parser
 
 
