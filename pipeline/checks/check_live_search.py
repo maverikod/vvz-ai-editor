@@ -238,19 +238,19 @@ def _build_cases(client: LiveClient, session_id: str,
         _require(error_code(env) == "INVALID_SEARCH", f"code={error_code(env)!r}")
         return "xpath default with no query -> stable INVALID_SEARCH"
 
-    def case_max_results_one_caps_zero_does_not() -> str:
-        env1 = search({"project_id": PROJECT_ID, "session_id": session_id, "file_path": FILE_A,
-                        "query": "//FunctionDef", "max_results": 1})
-        d1 = data_of(env1)
-        _require(is_success(env1) and d1.get("total_matches") == 4
-                  and d1.get("returned_matches") == 1 and len(d1["matches"]) == 1, str(d1))
-        env0 = search({"project_id": PROJECT_ID, "session_id": session_id, "file_path": FILE_A,
-                        "query": "//FunctionDef", "max_results": 0})
-        d0 = data_of(env0)
-        _require(is_success(env0) and d0.get("total_matches") == 4
-                  and d0.get("returned_matches") == 4, str(d0))
-        return ("max_results=1 caps returned_matches to 1 (total_matches stays 4); "
-                "max_results=0 does NOT cap at all (falsy-zero quirk): returned_matches stays 4")
+    def case_max_results_cap_and_minimum() -> str:
+        def cap(n: int) -> Mapping[str, Any]:
+            return search({"project_id": PROJECT_ID, "session_id": session_id,
+                           "file_path": FILE_A, "query": "//FunctionDef", "max_results": n})
+        for n in (1, 2):
+            _require((d := data_of(cap(n))).get("total_matches") == 4 and len(d["matches"]) == n
+                      and d.get("returned_matches") == n, f"max_results={n}: {d!r}")
+        for low in (0, -1):  # below the declared minimum=1: a value, never "unspecified"
+            _require(error_code(env := cap(low)) == "VALIDATION_ERROR" and data_of(env) == {}
+                      and ">= 1" in error_message(env), f"max_results={low}: {env!r}")
+        return ("max_results=1 and =2 cap returned_matches (total_matches stays 4); 0 and -1 "
+                "are below the declared minimum of 1 and are refused with VALIDATION_ERROR "
+                "and no data (fixed: 0 used to be read as 'not specified', so it never capped)")
 
     def case_project_id_is_enforced() -> str:
         env = search({"project_id": "", "session_id": session_id, "file_path": FILE_A,
@@ -347,7 +347,7 @@ def _build_cases(client: LiveClient, session_id: str,
          case_selector_matching_nothing_is_empty_not_error),
         ("malformed_selector_reproducible_code", case_malformed_selector_reproducible_code),
         ("missing_query_is_invalid_search", case_missing_query_is_invalid_search),
-        ("max_results_one_caps_zero_does_not", case_max_results_one_caps_zero_does_not),
+        ("max_results_cap_and_minimum", case_max_results_cap_and_minimum),
         ("project_id_is_enforced", case_project_id_is_enforced),
         ("malformed_request_shapes_are_validation_error", case_malformed_request_shapes_are_validation_error),
         ("session_not_found_empty_and_unknown", case_session_not_found_empty_and_unknown),
