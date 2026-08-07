@@ -240,8 +240,14 @@ def _case_sidecar(sandbox: _Sandbox, coverage: CommandCoverage, report: _Report)
     _negatives(sandbox, coverage, report, base, sid, rel, (
         ("sidecar unknown type", [{"type": "frobnicate", "node_id": str(functions[0]),
                                    "code_lines": ["x = 1"]}], "INVALID_OPERATION"),
-        ("sidecar stale node_id", [{"type": "replace", "node_id": "9" * 6,
-                                    "code_lines": ["x = 1"]}], "STALE_NODE_ID"),
+        # An id that never existed is UNKNOWN, not stale. A genuinely stale id needs
+        # the tree to have been rebuilt under a caller still holding an old address,
+        # and that cannot happen inside one session: once the file is open the tree
+        # is the truth, identity survives a write, and a rebuild only happens at
+        # open when the source checksum does not match. So this case asserts the
+        # honest answer; STALE_NODE_ID has no reachable scenario here.
+        ("sidecar unknown node_id", [{"type": "replace", "node_id": "9" * 6,
+                                      "code_lines": ["x = 1"]}], "UNKNOWN_NODE_REF"),
         ("sidecar line range refused", [_ln("replace", 1, content="x")], "INVALID_OPERATION"),
         ("sidecar move without ref", [{"type": "move", "position": "last"}],
          "INVALID_OPERATION")))
