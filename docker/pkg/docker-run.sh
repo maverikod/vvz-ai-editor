@@ -6,33 +6,28 @@
 set -e
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f /etc/default/ai-editor ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . /etc/default/ai-editor
-  set +a
-fi
+# shellcheck source=settings-env.sh
+. "${LIB_DIR}/settings-env.sh"
 # shellcheck source=/dev/null
 [ -f "${LIB_DIR}/image-spec" ] && . "${LIB_DIR}/image-spec"
 
-AI_EDITOR_USER="${AI_EDITOR_USER:-ai-editor}"
-AI_EDITOR_GROUP="${AI_EDITOR_GROUP:-ai-editor}"
-CONTAINER_NAME="${AI_EDITOR_CONTAINER:-ai-editor}"
-PORT="${AI_EDITOR_PORT:-15000}"
-CONFIG_DIR="${AI_EDITOR_CONFIG_DIR:-/etc/ai-editor}"
-CONFIG_FILE="${AI_EDITOR_CONFIG_FILE:-ai_editor_container.json}"
-LOG_DIR="${AI_EDITOR_LOG_DIR:-/var/log/ai-editor}"
+CONTAINER_NAME="$AI_EDITOR_CONTAINER"
+PORT="$AI_EDITOR_PORT"
+CONFIG_DIR="$AI_EDITOR_CONFIG_DIR"
+CONFIG_FILE="$AI_EDITOR_CONFIG_FILE"
+LOG_DIR="$AI_EDITOR_LOG_DIR"
 CONTAINER_LOG_DIR="/var/log/ai-editor"
-DATA_DIR="${AI_EDITOR_DATA_DIR:-/var/ai-editor}"
+DATA_DIR="$AI_EDITOR_DATA_DIR"
 # CAS project trees (read-only): commit-time QA resolves the target
 # project's venv site-packages for mypy (bug 7629cc48).
-PROJECTS_DIR="${AI_EDITOR_PROJECTS_DIR:-/var/casmgr/watch_catalog}"
-MTLS_DIR="${AI_EDITOR_MTLS_DIR:-/etc/ai-editor/mtls_certificates}"
-NETWORK_PRIMARY="${AI_EDITOR_NETWORK_PRIMARY:-smart-assistant}"
-NETWORK_SECONDARY="${AI_EDITOR_NETWORK_SECONDARY:-ai-editor-net}"
-DNS_NAME="${AI_EDITOR_DOCKER_DNS_NAME:-ai-editor-server}"
-SHM_SIZE="${AI_EDITOR_SHM_SIZE:-1g}"
-ULIMIT_NOFILE="${AI_EDITOR_ULIMIT_NOFILE:-65536:65536}"
+PROJECTS_DIR="$AI_EDITOR_PROJECTS_DIR"
+MTLS_DIR="$AI_EDITOR_MTLS_DIR"
+MTLS_CONTAINER_DIR="$AI_EDITOR_MTLS_CONTAINER_DIR"
+NETWORK_PRIMARY="$AI_EDITOR_NETWORK_PRIMARY"
+NETWORK_SECONDARY="$AI_EDITOR_NETWORK_SECONDARY"
+DNS_NAME="$AI_EDITOR_DOCKER_DNS_NAME"
+SHM_SIZE="$AI_EDITOR_SHM_SIZE"
+ULIMIT_NOFILE="$AI_EDITOR_ULIMIT_NOFILE"
 IMAGE_SPEC="${LIB_DIR}/image-spec"
 
 EXTRA_HOST_DOCKER_ARGS=()
@@ -112,7 +107,7 @@ container_create() {
     -v "${CONFIG_DIR}/${CONFIG_FILE}:${config_in_container}:ro"
     -v "${LOG_DIR}:${CONTAINER_LOG_DIR}"
     -v "${DATA_DIR}:/var/ai-editor"
-    -v "${MTLS_DIR}:/app/mtls_certificates:ro"
+    -v "${MTLS_DIR}:${MTLS_CONTAINER_DIR}:ro"
     -v "${PROJECTS_DIR}:${PROJECTS_DIR}:ro"
     --network "$NETWORK_PRIMARY"
     --network-alias "$CONTAINER_NAME"
@@ -132,12 +127,8 @@ container_create() {
     docker_opts+=(-e "AI_EDITOR_POSTGRES_PASSWORD=${AI_EDITOR_POSTGRES_PASSWORD}")
   fi
 
-  for _placeholder_var in \
-    AI_EDITOR_ADVERTISED_HOST \
-    AI_EDITOR_REGISTRATION_HOST \
-    AI_EDITOR_REGISTRATION_PORT \
-    AI_EDITOR_CODE_ANALYSIS_HOST \
-    AI_EDITOR_CODE_ANALYSIS_PORT; do
+  # Every ${AI_EDITOR_*} placeholder the service config resolves at load time.
+  for _placeholder_var in "${AI_EDITOR_PLACEHOLDER_VARS[@]}"; do
     if [ -n "${!_placeholder_var:-}" ]; then
       docker_opts+=(-e "${_placeholder_var}=${!_placeholder_var}")
     fi
@@ -168,7 +159,17 @@ pull_image_if_requested() {
     return 0
   fi
   echo "[INFO] Pulling $IMAGE_NAME ..."
-  docker pull "$IMAGE_NAME"
+  if docker pull "$IMAGE_NAME"; then
+    return 0
+  fi
+  # Only fatal when the host has no usable image: a local build or an air-gapped
+  # host legitimately carries the tag without a registry behind it.
+  if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+    echo "[WARN] Pull failed; using the image already on this host: $IMAGE_NAME" >&2
+    return 0
+  fi
+  echo "[ERROR] Pull failed and $IMAGE_NAME is not present on this host" >&2
+  return 1
 }
 
 cmd_start() {

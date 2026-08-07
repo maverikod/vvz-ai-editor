@@ -6,17 +6,17 @@
     "description": "AI Editor server: universal file preview, open, edit, write, and close"
   },
   "server": {
-    "host": "0.0.0.0",
+    "host": "${AI_EDITOR_BIND_HOST}",
     "port": 15000,
-    "protocol": "https",
+    "protocol": "${AI_EDITOR_PROTOCOL}",
     "servername": "ai-editor-server",
     "advertised_host": "${AI_EDITOR_ADVERTISED_HOST}",
     "debug": false,
     "log_level": "INFO",
     "ssl": {
-      "cert": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
-      "key": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.key",
-      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "cert": "${AI_EDITOR_SERVER_SSL_CERT}",
+      "key": "${AI_EDITOR_SERVER_SSL_KEY}",
+      "ca": "${AI_EDITOR_SERVER_SSL_CA}",
       "crl": null,
       "dnscheck": false,
       "check_hostname": false
@@ -25,11 +25,11 @@
   },
   "client": {
     "enabled": false,
-    "protocol": "https",
+    "protocol": "${AI_EDITOR_PROTOCOL}",
     "ssl": {
-      "cert": "/app/mtls_certificates/mtls_certificates/client/ai-editor.crt",
-      "key": "/app/mtls_certificates/mtls_certificates/client/ai-editor.key",
-      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "cert": "${AI_EDITOR_CLIENT_SSL_CERT}",
+      "key": "${AI_EDITOR_CLIENT_SSL_KEY}",
+      "ca": "${AI_EDITOR_CLIENT_SSL_CA}",
       "crl": null,
       "dnscheck": false,
       "check_hostname": false
@@ -37,9 +37,9 @@
   },
   "registration": {
     "enabled": true,
-    "protocol": "https",
-    "register_url": "https://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/register",
-    "unregister_url": "https://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/unregister",
+    "protocol": "${AI_EDITOR_REGISTRATION_PROTOCOL}",
+    "register_url": "${AI_EDITOR_REGISTRATION_SCHEME}://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/register",
+    "unregister_url": "${AI_EDITOR_REGISTRATION_SCHEME}://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/unregister",
     "heartbeat_interval": 30,
     "server_id": "ai-editor-server${AI_EDITOR_SERVER_ID_SUFFIX}",
     "server_name": "AI Editor Server",
@@ -53,15 +53,15 @@
     "auto_on_startup": true,
     "auto_on_shutdown": true,
     "ssl": {
-      "cert": "/app/mtls_certificates/mtls_certificates/client/ai-editor.crt",
-      "key": "/app/mtls_certificates/mtls_certificates/client/ai-editor.key",
-      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "cert": "${AI_EDITOR_CLIENT_SSL_CERT}",
+      "key": "${AI_EDITOR_CLIENT_SSL_KEY}",
+      "ca": "${AI_EDITOR_CLIENT_SSL_CA}",
       "crl": null,
       "dnscheck": false,
       "check_hostname": false
     },
     "heartbeat": {
-      "url": "https://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/proxy/heartbeat",
+      "url": "${AI_EDITOR_REGISTRATION_SCHEME}://${AI_EDITOR_REGISTRATION_HOST}:${AI_EDITOR_REGISTRATION_PORT}/proxy/heartbeat",
       "interval": 30
     }
   },
@@ -78,9 +78,9 @@
     "health_path": "/health",
     "check_hostname": false,
     "ssl": {
-      "cert": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.crt",
-      "key": "/app/mtls_certificates/mtls_certificates/server/ai-editor-server.key",
-      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "cert": "${AI_EDITOR_SERVER_SSL_CERT}",
+      "key": "${AI_EDITOR_SERVER_SSL_KEY}",
+      "ca": "${AI_EDITOR_SERVER_SSL_CA}",
       "crl": null,
       "dnscheck": false,
       "check_hostname": false
@@ -103,7 +103,7 @@
     "completed_job_retention_seconds": 21600
   },
   "transport": {
-    "type": "https",
+    "type": "${AI_EDITOR_PROTOCOL}",
     "verify_client": true,
     "chk_hostname": false
   },
@@ -113,13 +113,13 @@
   "code_analysis_server": {
     "host": "${AI_EDITOR_CODE_ANALYSIS_HOST}",
     "port": "${AI_EDITOR_CODE_ANALYSIS_PORT}",
-    "protocol": "https",
+    "protocol": "${AI_EDITOR_CODE_ANALYSIS_PROTOCOL}",
     "timeout": 300,
     "check_hostname": false,
     "ssl": {
-      "cert": "/app/mtls_certificates/mtls_certificates/client/ai-editor.crt",
-      "key": "/app/mtls_certificates/mtls_certificates/client/ai-editor.key",
-      "ca": "/app/mtls_certificates/mtls_certificates/ca/ca.crt",
+      "cert": "${AI_EDITOR_CLIENT_SSL_CERT}",
+      "key": "${AI_EDITOR_CLIENT_SSL_KEY}",
+      "ca": "${AI_EDITOR_CLIENT_SSL_CA}",
       "crl": null,
       "dnscheck": false,
       "check_hostname": false
@@ -127,7 +127,7 @@
   },
   "ai_editor": {
     "git_commit_on_write": true,
-    "host": "0.0.0.0",
+    "host": "${AI_EDITOR_BIND_HOST}",
     "port": 15000,
     "log": "/var/log/ai-editor/ai_editor.log",
     "dirs": [],

@@ -15,6 +15,7 @@ DOCKERHUB_REPO="$(dockerhub_repo_default)"
 DOCKER_BUILD_NETWORK="${DOCKER_BUILD_NETWORK:-host}"
 SKIP_PUSH=0
 SKIP_DEB=0
+SKIP_IMAGE=0
 SKIP_LIVE_PIPELINE="${AI_EDITOR_SKIP_LIVE_PIPELINE:-0}"
 SKIP_TESTS="${AI_EDITOR_SKIP_TESTS:-0}"
 DEV_RUN=0
@@ -46,6 +47,8 @@ VERSION defaults to pyproject.toml version. Image tags: REPO:VERSION and REPO:la
 Options:
   --skip-push     Build image only; do not push to Docker Hub
   --skip-deb      Do not build the Debian package
+  --skip-image    Do not rebuild the Docker image (package-only change);
+                  implies --skip-push and --skip-live-pipeline
   --skip-live-pipeline
                   Skip real-server editor->CA pipeline gate
   --skip-tests    Skip the local unit-test gate (emergency use only)
@@ -147,6 +150,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --skip-push) SKIP_PUSH=1; shift ;;
     --skip-deb) SKIP_DEB=1; shift ;;
+    --skip-image) SKIP_IMAGE=1; SKIP_PUSH=1; SKIP_LIVE_PIPELINE=1; shift ;;
     --skip-live-pipeline) SKIP_LIVE_PIPELINE=1; shift ;;
     --skip-tests) SKIP_TESTS=1; shift ;;
     --ca-host)
@@ -225,6 +229,14 @@ fi
 if [ ! -f "requirements.txt" ]; then
   echo "[ERROR] requirements.txt not found (Docker build uses it)"
   exit 1
+fi
+
+if [ "$SKIP_IMAGE" -eq 1 ]; then
+  echo "[INFO] Skipping Docker image build (--skip-image); packaging only"
+  if [ "$SKIP_DEB" -eq 0 ]; then
+    bash "$SCRIPT_DIR/build-deb.sh" "$TAG"
+  fi
+  exit 0
 fi
 
 validate_pipeline_inputs

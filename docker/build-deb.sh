@@ -48,11 +48,15 @@ mkdir -p "$PKG_WORK/usr/lib/ai-editor" "$PKG_WORK/usr/bin" "$PKG_WORK/usr/share/
   "$PKG_WORK/usr/share/doc/ai-editor-docker" "$PKG_WORK/etc/ai-editor/mtls_certificates"
 
 install -m 755 "$SCRIPT_DIR/pkg/docker-run.sh" "$PKG_WORK/usr/lib/ai-editor/docker-run.sh"
+install -m 644 "$SCRIPT_DIR/pkg/settings-env.sh" "$PKG_WORK/usr/lib/ai-editor/settings-env.sh"
+install -m 644 "$SCRIPT_DIR/pkg/ai_editor_settings.py" "$PKG_WORK/usr/lib/ai-editor/ai_editor_settings.py"
+install -m 755 "$SCRIPT_DIR/pkg/ai_editor_config.py" "$PKG_WORK/usr/lib/ai-editor/ai_editor_config.py"
 install -m 755 "$SCRIPT_DIR/pkg/config-preflight.sh" "$PKG_WORK/usr/lib/ai-editor/config-preflight.sh"
 install -m 755 "$SCRIPT_DIR/pkg/config_preflight.py" "$PKG_WORK/usr/lib/ai-editor/config_preflight.py"
 install -m 755 "$SCRIPT_DIR/pkg/show-install-banner.sh" "$PKG_WORK/usr/lib/ai-editor/show-install-banner.sh"
 install -m 755 "$SCRIPT_DIR/pkg/ai-editor-info" "$PKG_WORK/usr/bin/ai-editor-info"
 install -m 755 "$SCRIPT_DIR/pkg/ai-editor-docker" "$PKG_WORK/usr/bin/ai-editor-docker"
+install -m 755 "$SCRIPT_DIR/pkg/ai-editor-config" "$PKG_WORK/usr/bin/ai-editor-config"
 install -m 644 "$SCRIPT_DIR/pkg/image-spec.in" "$PKG_WORK/usr/lib/ai-editor/image-spec"
 sed -i "s|@DOCKERHUB_REPO@|${DOCKERHUB_REPO}|g; s|@IMAGE_TAG@|${VERSION}|g" \
   "$PKG_WORK/usr/lib/ai-editor/image-spec"
@@ -66,7 +70,7 @@ install -m 644 "$SCRIPT_DIR/README.md" "$PKG_WORK/usr/share/doc/ai-editor-docker
 MAN_SRC="$DEBIAN_SRC/man"
 if [ -d "$MAN_SRC" ]; then
   mkdir -p "$PKG_WORK/usr/share/man/man1"
-  for man_page in ai-editor-docker.1 ai-editor-info.1; do
+  for man_page in ai-editor-docker.1 ai-editor-info.1 ai-editor-config.1; do
     if [ -f "$MAN_SRC/$man_page" ]; then
       sed "s|@VERSION@|${VERSION}|g" "$MAN_SRC/$man_page" | gzip -9 -n \
         >"$PKG_WORK/usr/share/man/man1/${man_page}.gz"
@@ -78,6 +82,9 @@ sed "s|@VERSION@|${VERSION}|g" "$PKG_WORK/DEBIAN/control" > "$PKG_WORK/DEBIAN/co
 mv "$PKG_WORK/DEBIAN/control.tmp" "$PKG_WORK/DEBIAN/control"
 
 chmod 755 "$PKG_WORK/DEBIAN/postinst" "$PKG_WORK/DEBIAN/prerm" "$PKG_WORK/DEBIAN/postrm"
+# Conffiles must not depend on the builder's umask.
+chmod 644 "$PKG_WORK/etc/default/ai-editor" "$PKG_WORK/etc/ai-editor/ai_editor_container.json"
+find "$PKG_WORK/usr/share/man" -type f -exec chmod 644 {} + 2>/dev/null || true
 
 dpkg-deb --build --root-owner-group "$PKG_WORK" "$DEB_FILE"
 
