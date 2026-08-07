@@ -13,26 +13,23 @@ matches what the server ACTUALLY exposes, not just that the call returns
   with the right type), against the REAL deployed server, not the doc text.
 * Cross-checks ``info``'s own ``registered_commands`` list against the
   server's real command catalog from ``help()`` (32 commands on 1.0.84) and
-  FAILS, by name, listing every command ``info`` does not mention -- this is
-  a real, currently-reproducing gap (``info`` only documents the 9
-  "thin-server" domain commands; the 23 framework/queue/transfer commands,
-  including ``help`` itself, are absent from its own command table). This is
-  not a defect this check fixes; it is the "report any command missing from
-  it" this check exists to surface, left for whoever owns ``info``'s content
-  to reconcile intentionally.
+  asserts EVERY registered command is now documented by name (fixed:
+  ``registered_commands`` used to list only the 9 "thin-server" domain
+  commands; see ``ai_editor/commands/editor_info_content.py``'s
+  ``ALL_REGISTERED_COMMANDS``).
 * Confirms every command ``info`` DOES list is a real, currently-registered
   command name (no stale/renamed entries), which passes today.
 * Confirms via ``help(cmdname="info")`` that the schema itself declares zero
   parameters -- an unknown extra parameter is rejected with ``-32602``
   ("Allowed parameters: []"), which is a DIFFERENT generic code from the
-  ``-32603`` ("unknown parameter ...") pattern used by the ``universal_file_*``
+  ``VALIDATION_ERROR`` string pattern used by the ``universal_file_*``
   commands for the same kind of rejection; recorded as an observed fact, not
-  assumed to be uniform across the API.
+  assumed to be uniform across the API. ``info``/``health`` are built by
+  ``ai_editor`` itself (not the ``mcp_proxy_adapter`` framework); ``help``
+  itself lives in the framework and is out of this project's scope.
 * Notes the declared ``COMMAND_ERROR`` error case has no known public-API
   trigger (no way to make a zero-parameter command fail through user input
-  alone); left untested and named via the coverage report, matching the
-  ``SESSION_INVALID``/``VALIDATION_ERROR`` pattern documented elsewhere in
-  this API as declared-but-unreachable.
+  alone); left untested and named via the coverage report.
 
 Registration is unconditional, like ``check-live-core``: there is no
 environment gate and no skip concept anywhere in this file.
@@ -146,7 +143,7 @@ def _build_cases(client: LiveClient, coverage: CommandCoverage) -> List[tuple]:
         _require(not missing,
                   f"{len(missing)}/{len(real)} registered command(s) are NOT documented by "
                   f"info's own registered_commands table: {missing}")
-        return "info documents every currently-registered command"
+        return f"info documents every one of the {len(real)} currently-registered commands"
 
     def case_schema_declares_zero_parameters() -> str:
         schema = client.command_schema(COMMAND)
@@ -184,8 +181,7 @@ def _body(client: LiveClient) -> CheckResult:
     output.append(report.format())
     if not report.complete:
         output.append("NOTE: COMMAND_ERROR has no known public-API trigger for a zero-parameter "
-                       "command (mirrors the SESSION_INVALID/VALIDATION_ERROR pattern documented "
-                       "as unreachable elsewhere in this API) -- left untested, named here.")
+                       "command -- left untested, named here.")
     output.append(schema.format_declared_surface())
     failed = [r.name for r in results if not r.passed]
     body_text = "\n".join(output)

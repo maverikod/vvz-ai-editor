@@ -95,15 +95,17 @@ class UniversalFileOpenCommand(BaseMCPCommand):
         return cast(Dict[str, Any], get_universal_file_open_metadata(cls))
 
     def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate open params; require non-empty CA session_id."""
+        """Validate open params; normalize (but do not reject) session_id.
+
+        An empty ``session_id`` is deliberately NOT raised here: this hook
+        runs before ``execute()``, and a raised ``ValidationError`` here
+        would collapse into the generic ``VALIDATION_ERROR`` code, shadowing
+        the more specific, already-implemented ``SESSION_INVALID`` branch at
+        the top of ``execute()`` below. Leaving the emptiness check to
+        ``execute()`` is what makes ``SESSION_INVALID`` reachable.
+        """
         params = super().validate_params(params)
-        sid = str(params.get("session_id", "")).strip()
-        if sid == "":
-            raise ValidationError(
-                "session_id is required for universal_file_open",
-                field="session_id",
-            )
-        params["session_id"] = sid
+        params["session_id"] = str(params.get("session_id", "")).strip()
         return params
 
     async def execute(self, **kwargs: Any) -> CommandResult:  # type: ignore[override]

@@ -292,6 +292,19 @@ _ERROR_CASES = {
         "description": "No CST node spans the requested line.",
         "solution": "Pick a line inside a statement, definition, or expression.",
     },
+    "VALIDATION_ERROR": {
+        "description": (
+            "Parameter validation failed: a required parameter is missing, an "
+            "unknown parameter was supplied, a value violates its declared "
+            "type or range (e.g. line below the declared minimum of 1), or "
+            "project_id is empty or not the project the session's open file "
+            "was opened from (same code and message as universal_file_preview)."
+        ),
+        "solution": (
+            "Fix parameters per get_schema() and retry; pass the project_id "
+            "the session's file was opened from."
+        ),
+    },
     TREE_NOT_AVAILABLE: {
         "description": "Session tree is not loaded.",
         "solution": "Call universal_file_open first or refresh the session.",
@@ -303,14 +316,6 @@ _ERROR_CASES = {
     SESSION_NOT_FOUND: {
         "description": "Unknown session_id.",
         "solution": "Open the file with universal_file_open.",
-    },
-    "VALIDATION_ERROR": {
-        "description": (
-            "project_id is empty, or it is not the project the session's open "
-            "file was opened from (same code and message as "
-            "universal_file_preview)."
-        ),
-        "solution": "Pass the project_id the session's file was opened from.",
     },
     SESSION_FILE_PATH_REQUIRED: {
         "description": "Multi-file session without file_path.",

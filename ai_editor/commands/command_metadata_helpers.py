@@ -54,6 +54,29 @@ def empty_params_schema(
     return schema
 
 
+def _declared_type(spec: Mapping[str, Any]) -> str:
+    """Derive the documented ``type`` string for one schema property.
+
+    ``spec.get("type", "string")`` used to silently default to ``"string"``
+    whenever a property used ``oneOf``/``anyOf`` instead of a top-level
+    ``type`` (e.g. universal_file_preview's ``selector``, declared
+    ``oneOf: [string, array]`` in ``get_schema()``): the parameter table
+    then claimed a plain string while the real JSON Schema accepted a union,
+    a documented-vs-actual mismatch. Fall back to a ``|``-joined summary of
+    the union branches' own types instead of masking it.
+    """
+    if "type" in spec:
+        return str(spec["type"])
+    branches = spec.get("oneOf") or spec.get("anyOf")
+    if isinstance(branches, list) and branches:
+        branch_types = {
+            str(b.get("type", "any")) for b in branches if isinstance(b, dict)
+        }
+        if branch_types:
+            return "|".join(sorted(branch_types))
+    return "string"
+
+
 def parameters_from_schema(
     schema: Mapping[str, Any],
     *,
@@ -76,13 +99,17 @@ def parameters_from_schema(
         req = required_flags.get(key) if required_flags else (key in required_set)
         entry: Dict[str, Any] = {
             "description": spec.get("description", ""),
-            "type": spec.get("type", "string"),
+            "type": _declared_type(spec),
             "required": bool(req),
         }
         if "default" in spec:
             entry["default"] = spec["default"]
         if "enum" in spec:
             entry["enum"] = spec["enum"]
+        if "oneOf" in spec:
+            entry["oneOf"] = spec["oneOf"]
+        if "anyOf" in spec:
+            entry["anyOf"] = spec["anyOf"]
         if "items" in spec:
             entry["items"] = spec["items"]
         if "minimum" in spec:

@@ -114,14 +114,17 @@ _ERROR_CASES = {
     },
     "VALIDATION_ERROR": {
         "description": (
-            "project_id is empty, or it is not the project the session's open "
-            "file was opened from. The same code and message universal_file_"
-            "preview returns for this condition."
+            "Parameter validation failed: a required parameter is missing, an "
+            "unknown parameter was supplied, a value violates its declared "
+            "type, enum, or range (e.g. max_results below the declared "
+            "minimum of 1), or project_id is empty or not the project the "
+            "session's open file was opened from (same code and message "
+            "universal_file_preview returns for that condition)."
         ),
-        "message": "session_id does not match project_id",
+        "message": "{ValidationError message} | session_id does not match project_id",
         "solution": (
-            "Pass the project_id used in universal_file_open for this session "
-            "(list_projects enumerates valid values)."
+            "Fix parameters per get_schema() and retry; pass the project_id "
+            "used in universal_file_open for this session."
         ),
     },
     "UNKNOWN_FORMAT": {
@@ -152,6 +155,12 @@ _ERROR_CASES = {
         "description": "Missing or invalid search parameters (e.g. xpath without query).",
         "message": "{validation detail}",
         "solution": "Provide query for xpath or at least one simple filter.",
+    },
+    "QUERY_PARSE_ERROR": {
+        "description": "search_type=xpath (or simple with a query override) query "
+        "string is not a syntactically valid CSTQuery selector.",
+        "message": "{CSTQuery parser detail}",
+        "solution": "Fix the CSTQuery selector syntax and retry.",
     },
     "NoMatch": {
         "description": "require_one=true but selector matched 0 nodes in this tree.",

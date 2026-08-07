@@ -153,20 +153,28 @@ def _run_preview_on_abs_path(
             and isinstance(handler, (JsonFileHandler, YamlFileHandler))
         ):
             full_text_max_lines = 0
-        budget = PreviewBudget(
-            preview_lines=int(
-                kwargs.get("preview_lines") or defaults["preview_lines_default"]
-            ),
-            value_preview_len=int(
-                kwargs.get("value_preview_len")
-                or defaults["preview_value_preview_len_default"]
-            ),
-            full_text_max_lines=full_text_max_lines,
-            max_chars=int(
-                kwargs.get("max_chars") or defaults["preview_max_chars_default"]
-            ),
-            preview_offset=int(kwargs.get("preview_offset") or 0),
-        )
+        try:
+            budget = PreviewBudget(
+                preview_lines=int(
+                    kwargs.get("preview_lines") or defaults["preview_lines_default"]
+                ),
+                value_preview_len=int(
+                    kwargs.get("value_preview_len")
+                    or defaults["preview_value_preview_len_default"]
+                ),
+                full_text_max_lines=full_text_max_lines,
+                max_chars=int(
+                    kwargs.get("max_chars") or defaults["preview_max_chars_default"]
+                ),
+                preview_offset=int(kwargs.get("preview_offset") or 0),
+            )
+        except ValueError as exc:
+            # PreviewBudget.__post_init__ rejects out-of-range caps (e.g.
+            # preview_lines=-1) with a plain ValueError. That is a parameter
+            # validation failure, not a handler-internal failure: map it to
+            # the declared VALIDATION_ERROR instead of letting the broad
+            # `except Exception` below misclassify it as HANDLER_ERROR.
+            return ErrorResult(message=str(exc), code=cast(Any, "VALIDATION_ERROR"))
         nav_kwargs["file_path"] = abs_path_str
         nav_kwargs["project_root"] = project_root
         nav_kwargs["rel_file_path"] = file_path

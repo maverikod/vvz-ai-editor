@@ -18,14 +18,17 @@ parameter rejections.
 This check asserts the MEASURED behaviour of the deployed server, not the
 documentation, and reports every divergence between the two as a FINDING:
 
-* ``SESSION_INVALID`` is a documented stable code the server cannot emit. An
-  empty ``session_id`` produces JSON-RPC ``-32603`` carrying the documented
-  SESSION_INVALID message as free text. The code appears nowhere in
-  ``ai_editor/``.
+* ``SESSION_INVALID`` now fires for an empty ``session_id`` (fixed: it used
+  to collapse into a generic JSON-RPC ``-32603`` because ``validate_params()``
+  pre-empted the already-implemented ``execute()`` branch that returns it --
+  see ``ai_editor/commands/base_mcp_command.py``'s ``run()`` override and
+  ``open_command.py``'s ``validate_params()``).
 * ``PARSE_ERROR`` is documented but not emitted for a broken source file: the
   session opens in line-based fallback with ``is_invalid`` instead.
-* ``VALIDATION_ERROR`` IS reachable -- through an empty ``project_id`` or an
-  empty ``file_path``, not through an empty ``session_id``.
+* ``VALIDATION_ERROR`` is reachable through an empty ``project_id``, an empty
+  ``file_path``, a missing required parameter, an unknown parameter, a
+  wrong-type value, or an out-of-enum value -- every malformed-request shape
+  now maps to the declared code instead of a generic ``-32603``.
 * The success payload carries ``read_only`` and a nested ``success``, neither
   of which the documented ``return_value.success.data`` shape mentions, and
   ``available_operations`` returns six operations where the documentation
@@ -70,7 +73,7 @@ EXISTING_FILE = "docs/guide.md"
 VALID_SOURCE = "def alpha():\n    return 1\n"
 BROKEN_SOURCE = "def (:\n    ???\n"
 # Documented codes measured to be unreachable on the deployed server.
-UNREACHABLE_CODES = ("SESSION_INVALID", "PARSE_ERROR")
+UNREACHABLE_CODES = ("PARSE_ERROR",)
 # Keys the documented return_value.success.data shape promises, with the type
 # every one of them must have when present.
 REQUIRED_SUCCESS_TYPES = {
@@ -275,13 +278,7 @@ def _exercise(probe: _Probe, session_id: str, opened: List[str]) -> None:
 
     # --- negative: session identity -------------------------------------------
     probe.expect_error("unknown session", {**base, "session_id": str(uuid.uuid4()), "file_path": "a.py"}, "SESSION_NOT_FOUND")
-    envelope = probe.expect_error("empty session_id", {**base, "session_id": "", "file_path": "a.py"}, -32603)
-    probe.findings.append(
-        "UNDELIVERABLE DOCUMENTED CODE: universal_file_open declares SESSION_INVALID for a "
-        "missing or empty session_id, but an empty session_id yields JSON-RPC "
-        f"{error_code(envelope)!r} with the documented text as a free-form message "
-        f"({error_message(envelope)!r}). SESSION_INVALID appears nowhere in ai_editor/."
-    )
+    probe.expect_error("empty session_id", {**base, "session_id": "", "file_path": "a.py"}, "SESSION_INVALID")
 
     # --- negative: empty required strings -> the stable VALIDATION_ERROR -------
     probe.expect_error("empty file_path", {**base, "file_path": ""}, "VALIDATION_ERROR")
@@ -293,13 +290,13 @@ def _exercise(probe: _Probe, session_id: str, opened: List[str]) -> None:
     complete = {**base, "file_path": "a.py"}
     for name in ("project_id", "file_path", "session_id"):
         probe.expect_error(
-            f"omit required {name!r}", {k: v for k, v in complete.items() if k != name}, -32603
+            f"omit required {name!r}", {k: v for k, v in complete.items() if k != name}, "VALIDATION_ERROR"
         )
 
     # --- negative: unknown parameter, wrong type, out-of-enum value ------------
-    probe.expect_error("unknown parameter", {**complete, "not_a_parameter": 1}, -32603)
-    probe.expect_error("create as a string", {**complete, "create": "yes"}, -32603)
-    probe.expect_error("format_group out of enum", {**complete, "format_group": "nonsense"}, -32603)
+    probe.expect_error("unknown parameter", {**complete, "not_a_parameter": 1}, "VALIDATION_ERROR")
+    probe.expect_error("create as a string", {**complete, "create": "yes"}, "VALIDATION_ERROR")
+    probe.expect_error("format_group out of enum", {**complete, "format_group": "nonsense"}, "VALIDATION_ERROR")
 
 
 def _close_all(client: LiveClient, session_id: str, opened: List[str], log: List[str]) -> None:

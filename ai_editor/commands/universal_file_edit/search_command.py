@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from ai_editor.commands.universal_file_edit.session import EditSession, get_session
 from ai_editor.core.cst_tree.models import TreeNodeMetadata
+from ai_editor.core.exceptions import QueryParseError
 from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
 from ai_editor.core.cst_tree.tree_builder import get_tree
 from ai_editor.core.cst_tree.tree_finder import find_nodes
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 TREE_NOT_AVAILABLE = "TREE_NOT_AVAILABLE"
 INVALID_SEARCH = "INVALID_SEARCH"
+QUERY_PARSE_ERROR = "QUERY_PARSE_ERROR"
 
 
 @dataclass(frozen=True)
@@ -310,18 +312,15 @@ class UniversalFileSearchCommand(BaseMCPCommand):
                 end_line=end_line,
                 include_code=include_code,
             )
-        except ValueError as exc:
-            return error_result_from_make_error(
-                make_error(
-                    INVALID_SEARCH,
-                    str(exc),
-                    {
-                        "session_id": session_id,
-                        "search_type": search_type,
-                        "query": query,
-                    },
-                )
-            )
+        except (ValueError, QueryParseError) as exc:
+            # QueryParseError (a malformed CSTQuery selector) is an
+            # ai_editor-specific exception, NOT a ValueError, so it used to
+            # miss this clause, fall through to the generic handler below,
+            # and surface as an undeclared, bare -32000. Route both through
+            # their own declared codes instead of discarding them.
+            code = QUERY_PARSE_ERROR if isinstance(exc, QueryParseError) else INVALID_SEARCH
+            details = {"session_id": session_id, "search_type": search_type, "query": query}
+            return error_result_from_make_error(make_error(code, str(exc), details))
         except Exception as exc:
             logger.exception("universal_file_search failed: %s", exc)
             return ErrorResult(message=f"universal_file_search failed: {exc}")

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from mcp_proxy_adapter.commands.base import Command
-from mcp_proxy_adapter.commands.result import ErrorResult
+from mcp_proxy_adapter.commands.result import CommandResult, ErrorResult
 
 from ..core.exceptions import AIEditorError, ValidationError
 from ..core.storage_paths import load_raw_config, resolve_storage_paths, StoragePaths
@@ -24,6 +24,44 @@ logger = logging.getLogger(__name__)
 
 class BaseMCPCommand(Command):
     """Base class for file-editing MCP commands."""
+
+    @classmethod
+    async def run(cls: type["BaseMCPCommand"], **kwargs: Any) -> CommandResult:
+        """Pre-validate so a declared ``AIEditorError`` code survives the trip.
+
+        The framework's own ``Command.run()`` calls ``validate_params()`` and
+        only recognizes its OWN ``mcp_proxy_adapter.core.errors`` exception
+        types (``ValidationError``, ``InvalidParamsError``, ...). An
+        ``ai_editor.core.exceptions.AIEditorError`` raised from
+        ``validate_params()`` -- a missing/unknown/malformed parameter caught
+        by ``validate_params_against_schema``, or a command-specific check
+        such as an empty ``session_id`` -- is invisible to it and falls
+        through to the generic ``except Exception`` branch, which discards
+        the declared string code and reports a bare ``-32603`` instead.
+        Running ``validate_params()`` here first lets a genuine
+        ``AIEditorError`` reach the caller as its own declared code. Any
+        OTHER exception (e.g. a bare ``ValueError`` some override may still
+        raise) is left alone and re-surfaces, unchanged, when the framework
+        redoes the same validation inside its own ``run()`` below --
+        ``validate_params()`` is side-effect-free, so calling it twice is
+        safe.
+        """
+        context = kwargs.pop("context", {}) if "context" in kwargs else {}
+        probe = cls()
+        try:
+            probe.validate_params(dict(kwargs))
+        except AIEditorError as exc:
+            details = dict(exc.details) if exc.details else {}
+            details.setdefault("error_type", type(exc).__name__)
+            return ErrorResult(
+                message=exc.message,
+                code=cast(Any, exc.code or "VALIDATION_ERROR"),
+                details=details,
+            )
+        except Exception:
+            pass
+        kwargs["context"] = context
+        return await super().run(**kwargs)  # type: ignore[misc]
 
     @staticmethod
     def _open_database_from_config(auto_analyze: bool = False) -> None:
@@ -267,6 +305,18 @@ class BaseMCPCommand(Command):
                     f"{command_name}: parameter {field!r} must be integer, got {type(value).__name__}",
                     field=field,
                     details={},
+                )
+            if "minimum" in prop and value < prop["minimum"]:
+                raise ValidationError(
+                    f"{command_name}: parameter {field!r} must be >= {prop['minimum']}, got {value}",
+                    field=field,
+                    details={"minimum": prop["minimum"]},
+                )
+            if "maximum" in prop and value > prop["maximum"]:
+                raise ValidationError(
+                    f"{command_name}: parameter {field!r} must be <= {prop['maximum']}, got {value}",
+                    field=field,
+                    details={"maximum": prop["maximum"]},
                 )
         elif expected_type == "boolean":
             if not isinstance(value, bool):
