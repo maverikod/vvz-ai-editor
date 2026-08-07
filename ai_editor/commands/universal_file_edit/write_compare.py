@@ -15,6 +15,9 @@ from ai_editor.commands.universal_file_edit.format_group import (
     FORMAT_SIDECAR,
     FORMAT_TREE_TEMP,
 )
+from ai_editor.commands.universal_file_edit.line_ending_policy import (
+    reapply_line_endings,
+)
 from ai_editor.commands.universal_file_edit.session import EditSession
 from ai_editor.core.file_handlers.diff_support import unified_diff_text
 
@@ -158,19 +161,26 @@ def _differs_only_in_final_newline(origin_lf: bytes, exported: bytes) -> bool:
 
 
 def _preserve_origin_bytes(session: EditSession, exported: bytes) -> bytes:
-    """Return the pristine Origin Snapshot bytes for an unchanged round trip.
+    """Reconcile the canonical export with the Origin Snapshot's own byte style.
 
-    Byte fidelity on an untouched round trip is not negotiable: the bytes that
-    came in must go out. A file with CRLF line endings, or without a final
-    newline, that is opened and committed with ZERO edit operations was landing
-    on disk rewritten to LF, and the server reported ``has_changes: true`` for a
-    round trip in which the caller changed nothing.
+    Byte fidelity is not negotiable in either direction. On an UNTOUCHED round
+    trip the bytes that came in must go out: a file with CRLF line endings, or
+    without a final newline, opened and committed with ZERO edit operations was
+    landing on disk rewritten to LF, and the server reported ``has_changes:
+    true`` for a round trip in which the caller changed nothing. On an EDITED
+    file the guarantee is the same one line at a time: only the lines the caller
+    actually changed may differ, so the file's line-ending style has to survive
+    the edit as well. The read path destroys it -- ``Path.read_text``, libcst and
+    ruamel all decode with universal newlines -- so it is re-applied here by
+    :func:`~ai_editor.commands.universal_file_edit.line_ending_policy.reapply_line_endings`,
+    which also refuses to let a file gain a trailing newline it never had.
 
-    The decision is made from content, never from a mutation flag, so it cannot
-    lose an edit: the origin bytes are substituted ONLY when the canonical export
-    is already equal to the origin's own LF-normalized form (modulo the single
-    trailing newline the pipeline itself appends). Any real edit changes the
-    export beyond that equivalence and falls through to the normal path.
+    Every decision is made from content, never from a mutation flag, so it cannot
+    lose an edit. The pristine origin bytes are substituted ONLY when the
+    canonical export is already equal to the origin's own LF-normalized form
+    (modulo the single trailing newline the pipeline itself appends); a real edit
+    falls through to the per-line style re-application, which touches terminator
+    bytes and never line content.
 
     Args:
         session: The session whose Origin Snapshot backs this export.
@@ -178,7 +188,7 @@ def _preserve_origin_bytes(session: EditSession, exported: bytes) -> bytes:
 
     Returns:
         The origin bytes when the export is line-ending-equivalent to them,
-        otherwise ``exported`` unchanged.
+        otherwise ``exported`` re-rendered in the origin's line-ending style.
     """
     origin_path = session.abs_path
     try:
@@ -195,7 +205,7 @@ def _preserve_origin_bytes(session: EditSession, exported: bytes) -> bytes:
         return exported
     if _differs_only_in_final_newline(_to_lf(origin), exported):
         return origin
-    return exported
+    return reapply_line_endings(origin, exported)
 
 
 def export_canonical_bytes(
@@ -206,7 +216,9 @@ def export_canonical_bytes(
     """Format-specific canonical export; optional black pass for Python paths.
 
     The result is reconciled against the Origin Snapshot by
-    :func:`_preserve_origin_bytes` so an untouched round trip is byte-identical.
+    :func:`_preserve_origin_bytes`, so an untouched round trip is byte-identical
+    and an edited file keeps the source's line-ending style on every line the
+    caller did not touch.
     """
     exported = _export_canonical_bytes(session)
     if format_python:
