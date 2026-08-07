@@ -339,7 +339,11 @@ def _modified_scenario(probe: _Probe, unique: str) -> None:
 
 def _write_before_close_scenario(probe: _Probe) -> None:
     """The declared escape must really commit the pending edit, then close."""
-    name = ESCAPE_FIXTURE
+    # A fresh path per run. The previous fixed path made the check fail its own
+    # SECOND run: write_before_close really does commit, so the file is in the
+    # project index afterwards and `create=True` is then refused with
+    # FILE_ALREADY_INDEXED -- the check breaking on its own success.
+    name = f"pipeline_live_close/write_before_close_{uuid.uuid4().hex[:8]}.py"
     with CaSession.acquire("ai-editor check-live-close escape") as session:
         base = {"project_id": SANDBOX_PROJECT, "session_id": session.session_id}
         _open_files(probe.client, session.session_id, [name], probe.log)
