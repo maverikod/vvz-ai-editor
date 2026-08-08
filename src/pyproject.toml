@@ -1,0 +1,80 @@
+[build-system]
+# setuptools>=77 is required for PEP 639 (`license = "MIT"` as an SPDX string
+# plus `license-files`); the root distribution still builds on setuptools>=69.
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-editor-tree-engine"
+dynamic = ["version"]
+description = "Format-independent parse/tree/identity/render engine used as the ai-editor server's internals"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Vasiliy Zdanovskiy", email = "vasilyvz@gmail.com" },
+]
+# No base dependencies on purpose: the core, the storage layer and the
+# plain_text / json_format / toml_format plugins are stdlib-only. Everything a
+# format backend needs lives in the extras below.
+dependencies = []
+
+[project.optional-dependencies]
+# --- tree_engine backend extras -------------------------------------------
+# src/tree_engine/ is format-independent by construction: pipeline/checks/
+# check_boundary.py statically rejects any import of libcst / ast / tree_sitter /
+# tree_sitter_bsl outside src/tree_engine/plugins/. The backends below are
+# therefore genuinely optional -- the core, the storage layer and the
+# plain_text / json_format / toml_format plugins are stdlib-only and need none
+# of them. Install only the translator(s) you use.
+#
+# Version lines below are the MEASURED, round-trip-verified ones in this
+# checkout, not copied from the plan text; see docs/release_identity.md §7 and
+# docs/release_manifest.md ("Installed third-party versions").
+#
+# BACKEND MAJOR-UPGRADE RE-GATE RULE ({p032}): a MAJOR-version change of any
+# backend dependency pinned in these extras (libcst, tree-sitter,
+# tree-sitter-bsl, lark) REQUIRES re-running the contract and round-trip gate
+# before publication. The upper bounds below are what makes that rule
+# mechanical: crossing one is an explicit, reviewed edit of this file, never an
+# accidental resolver upgrade.
+#
+# libcst: 1.8.6 is installed and verified here (byte-identical round-trip of a
+# real module through tree_engine.plugins.python.plugin.PythonFormatPlugin).
+tree-engine-python = ["libcst>=1.8.6,<2.0"]
+# tree-sitter: DELIBERATE DIVERGENCE from the plan's "0.24.x" pin. The BSL
+# grammar shipped by tree-sitter-bsl 0.1.6 reports ABI version 15
+# (tree_sitter.Language(tree_sitter_bsl.language()).abi_version == 15). The
+# installed tree-sitter 0.25.2 declares LANGUAGE_VERSION == 15 with
+# MIN_COMPATIBLE_LANGUAGE_VERSION == 13; the 0.24 line tops out below 15 and
+# cannot load this grammar. Verified by execution: BSLFormatPlugin parses a real
+# 1C module on 0.25.2 and renders it back byte-identically.
+tree-engine-bsl = [
+    "tree-sitter>=0.25,<0.26",
+    "tree-sitter-bsl>=0.1.6,<0.2",
+]
+# lark: required only by tree_engine/query/selector.py (the selector grammar).
+tree-engine-query = ["lark>=1.3.1,<2.0"]
+# Aggregate: every tree_engine backend at once.
+tree-engine = [
+    "libcst>=1.8.6,<2.0",
+    "tree-sitter>=0.25,<0.26",
+    "tree-sitter-bsl>=0.1.6,<0.2",
+    "lark>=1.3.1,<2.0",
+]
+
+[tool.setuptools.dynamic]
+# `VERSION` here is a symlink to the repository-root VERSION file, the single
+# source of truth shared by the server, the client and this engine. setuptools
+# refuses to read a path outside the distribution root (expand._assert_local),
+# so the link is what lets one file feed three pyproject.toml files; sdist and
+# wheel builds copy the resolved CONTENT, never a dangling link.
+version = { file = "VERSION" }
+
+# `namespaces = true` is load-bearing, not decoration: tree_engine/ has no
+# __init__.py anywhere, so every subpackage is an implicit namespace package
+# (PEP 420) and a regular-package finder would ship an empty wheel.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tree_engine*"]
+namespaces = true

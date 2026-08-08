@@ -40,11 +40,19 @@ from packaging.version import Version
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+ENGINE_PYPROJECT_PATH = REPO_ROOT / "src" / "pyproject.toml"
+VERSION_PATH = REPO_ROOT / "VERSION"
 
 
 @pytest.fixture(scope="module")
 def pyproject_data() -> dict:
     with open(PYPROJECT_PATH, "rb") as fh:
+        return tomllib.load(fh)
+
+
+@pytest.fixture(scope="module")
+def engine_pyproject_data() -> dict:
+    with open(ENGINE_PYPROJECT_PATH, "rb") as fh:
         return tomllib.load(fh)
 
 
@@ -77,7 +85,13 @@ def test_distribution_name_is_ai_editor(project_table: dict) -> None:
 
 
 def test_version_string_is_valid_semver(project_table: dict) -> None:
-    version = project_table["version"]
+    # The literal `version = "..."` moved to the repository-root VERSION file,
+    # the single source of truth shared with ai-editor-client and
+    # ai-editor-tree-engine (see tests/unit/test_version_pinning.py). The
+    # invariant asserted here is unchanged; only where the string is read from.
+    assert "version" in project_table["dynamic"]
+    assert "version" not in project_table
+    version = VERSION_PATH.read_text(encoding="utf-8").strip()
     parsed = Version(version)
     # Exactly MAJOR.MINOR.PATCH, no pre-release/dev/local segment: this repo
     # bumps this value on unrelated commits (see docs/baseline_anchor.md),
@@ -148,7 +162,15 @@ _EXPECTED_BASE_DEPENDENCIES = frozenset(
 
 
 def test_base_dependencies_unchanged_snapshot(project_table: dict) -> None:
-    assert set(project_table["dependencies"]) == _EXPECTED_BASE_DEPENDENCIES
+    # ai-editor-tree-engine is the one legitimate addition: the tree_engine
+    # package no longer ships inside this distribution, it is depended upon.
+    # Its exact pin tracks VERSION, so it is asserted by
+    # tests/unit/test_version_pinning.py rather than frozen into this snapshot,
+    # which must stay stable across release bumps.
+    declared = set(project_table["dependencies"])
+    engine = {d for d in declared if Requirement(d).name == "ai-editor-tree-engine"}
+    assert len(engine) == 1, "the engine dependency must be declared exactly once"
+    assert declared - engine == _EXPECTED_BASE_DEPENDENCIES
 
 
 def test_backend_packages_are_extras_only_not_base_dependencies(project_table: dict) -> None:
@@ -249,35 +271,59 @@ def packages_find(pyproject_data: dict) -> dict:
     return pyproject_data["tool"]["setuptools"]["packages"]["find"]
 
 
+@pytest.fixture(scope="module")
+def engine_packages_find(engine_pyproject_data: dict) -> dict:
+    return engine_pyproject_data["tool"]["setuptools"]["packages"]["find"]
+
+
 def test_packages_find_declares_where_include_namespaces(packages_find: dict) -> None:
-    assert packages_find["where"] == [".", "src"]
-    assert set(packages_find["include"]) == {"ai_editor*", "aiedmgr_entry*", "tree_engine*"}
+    # tree_engine* is deliberately gone from this distribution's discovery: the
+    # package now ships from exactly one place, the ai-editor-tree-engine
+    # distribution built from src/pyproject.toml (asserted just below).
+    assert packages_find["where"] == ["."]
+    assert set(packages_find["include"]) == {"ai_editor*", "aiedmgr_entry*"}
     assert packages_find["namespaces"] is True
 
 
-def test_packaging_discovery_matches_directory_layout(packages_find: dict) -> None:
+def test_engine_packages_find_declares_where_include_namespaces(
+    engine_packages_find: dict,
+) -> None:
+    assert engine_packages_find["where"] == ["."]
+    assert set(engine_packages_find["include"]) == {"tree_engine*"}
+    assert engine_packages_find["namespaces"] is True
+
+
+def test_packaging_discovery_matches_directory_layout(
+    packages_find: dict, engine_packages_find: dict
+) -> None:
     # Cheap directory walk mirroring the declared where/include, instead of
     # a real `python -m build`: each include stem must exist under a `where` root.
-    where_roots = [REPO_ROOT / w for w in packages_find["where"]]
-    stems = [pattern.rstrip("*") for pattern in packages_find["include"]]
+    def _resolve(find: dict, base: Path) -> dict:
+        where_roots = [base / w for w in find["where"]]
+        found = {}
+        for stem in (pattern.rstrip("*") for pattern in find["include"]):
+            hits = [root for root in where_roots if (root / stem).is_dir()]
+            found[stem] = hits
+            assert hits, f"{stem!r} not found under any of {find['where']!r}"
+        return found
 
-    found = {}
-    for stem in stems:
-        hits = [root for root in where_roots if (root / stem).is_dir()]
-        found[stem] = hits
-        assert hits, f"{stem!r} not found under any of {packages_find['where']!r}"
-
+    found = _resolve(packages_find, REPO_ROOT)
     assert found["ai_editor"] == [REPO_ROOT / "."]
     assert found["aiedmgr_entry"] == [REPO_ROOT / "."]
-    assert found["tree_engine"] == [REPO_ROOT / "src"]
+    assert "tree_engine" not in found
 
-    # No stray top-level "./tree_engine" that would make the "." root also
-    # match tree_engine* and double-discover the package.
+    engine_found = _resolve(engine_packages_find, REPO_ROOT / "src")
+    assert engine_found["tree_engine"] == [REPO_ROOT / "src" / "."]
+
+    # No stray top-level "./tree_engine" that would let this distribution
+    # double-discover the package it is supposed to depend on instead.
     assert not (REPO_ROOT / "tree_engine").is_dir()
 
 
-def test_tree_engine_has_no_init_files_relies_on_namespaces(packages_find: dict) -> None:
-    assert packages_find["namespaces"] is True
+def test_tree_engine_has_no_init_files_relies_on_namespaces(
+    engine_packages_find: dict,
+) -> None:
+    assert engine_packages_find["namespaces"] is True
     init_files = list((REPO_ROOT / "src" / "tree_engine").rglob("__init__.py"))
     assert init_files == []
 
@@ -297,6 +343,17 @@ def test_no_conflicting_top_level_packaging_files() -> None:
     client_include = set(client_data["tool"]["setuptools"]["packages"]["find"]["include"])
     assert client_include == {"ai_editor_client*"}
     assert client_include.isdisjoint({"ai_editor*", "aiedmgr_entry*", "tree_engine*"})
+
+    # src/pyproject.toml is the third legitimate distribution
+    # (ai-editor-tree-engine). Same rule: its discovery scope must not overlap
+    # this file's, or tree_engine would ship from two distributions at once.
+    assert ENGINE_PYPROJECT_PATH.exists()
+    with open(ENGINE_PYPROJECT_PATH, "rb") as fh:
+        engine_data = tomllib.load(fh)
+    assert engine_data["project"]["name"] == "ai-editor-tree-engine"
+    engine_include = set(engine_data["tool"]["setuptools"]["packages"]["find"]["include"])
+    assert engine_include == {"tree_engine*"}
+    assert engine_include.isdisjoint({"ai_editor*", "aiedmgr_entry*", "ai_editor_client*"})
 
 
 def test_pipeline_script_files_declared_and_executable(pyproject_data: dict) -> None:
@@ -382,6 +439,42 @@ def test_public_facade_exposed_no_missing_attributes() -> None:
     reason="opt-in only: set RUN_WHEEL_BUILD_TEST=1 to run the real build+install proof",
 )
 def test_wheel_build_contains_tree_engine_standalone(tmp_path) -> None:
+    # tree_engine now ships from src/pyproject.toml as its own distribution, so
+    # the wheel this asserts against is the engine's -- and the assertion is
+    # stronger than "> 0": every .py file in the source tree must be in it,
+    # which is what proves `namespaces = true` really discovered the
+    # __init__.py-less package.
+    import subprocess
+    import sys as _sys
+    import zipfile
+
+    dist_dir = tmp_path / "dist"
+    subprocess.run(
+        [_sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir)],
+        cwd=REPO_ROOT / "src",
+        check=True,
+    )
+    wheels = list(dist_dir.glob("*.whl"))
+    assert len(wheels) == 1
+    assert wheels[0].name.startswith("ai_editor_tree_engine-")
+    with zipfile.ZipFile(wheels[0]) as zf:
+        names = zf.namelist()
+    packaged = {n for n in names if n.startswith("tree_engine/") and n.endswith(".py")}
+    on_disk = {
+        str(p.relative_to(REPO_ROOT / "src"))
+        for p in (REPO_ROOT / "src" / "tree_engine").rglob("*.py")
+    }
+    assert on_disk, "no tree_engine sources found on disk"
+    assert packaged == on_disk
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_WHEEL_BUILD_TEST") != "1",
+    reason="opt-in only: set RUN_WHEEL_BUILD_TEST=1 to run the real build+install proof",
+)
+def test_server_wheel_no_longer_carries_tree_engine(tmp_path) -> None:
+    # The other half of "exactly one place": the server wheel must NOT ship a
+    # second copy of the package it depends on.
     import subprocess
     import sys as _sys
     import zipfile
@@ -394,7 +487,8 @@ def test_wheel_build_contains_tree_engine_standalone(tmp_path) -> None:
     )
     wheels = list(dist_dir.glob("*.whl"))
     assert len(wheels) == 1
+    assert wheels[0].name.startswith("ai_editor-")
     with zipfile.ZipFile(wheels[0]) as zf:
         names = zf.namelist()
-    tree_engine_modules = [n for n in names if n.startswith("tree_engine/") and n.endswith(".py")]
-    assert len(tree_engine_modules) > 0
+    assert not [n for n in names if n.startswith("tree_engine/")]
+    assert [n for n in names if n.startswith("ai_editor/")]

@@ -35,5 +35,14 @@ pytest-timeout>=2.4
 # Pip-экстра проекта: pip install -e ".[postgres-backup]" (см. pyproject.toml) — маркер;
 # сами бинарники ставятся только через ОС / образ контейнера.
 
+# Local package (ai-editor-tree-engine: the editor's tree internals).
+# This line is what satisfies ai-editor's `ai-editor-tree-engine==<VERSION>`
+# requirement while that distribution is not published to PyPI yet; delete it
+# once it is, and the index will supply the same wheel. Installed NON-editable
+# on purpose: what lands in site-packages must be a real distribution with its
+# own metadata -- the same thing `pip install ai-editor-tree-engine` will
+# produce -- not a path hook back into this checkout.
+./src[tree-engine]
+
 # Local package (ai_editor, aiedmgr CLI)
 -e .

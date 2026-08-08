@@ -22,6 +22,13 @@ dev = [
 ]
 
 [tool.setuptools.dynamic]
+# ai_editor_client/version.txt is a SYMLINK to the repository-root VERSION file,
+# the single source of truth shared with the ai-editor server and the
+# ai-editor-tree-engine distributions. It stays a file inside this package
+# because setuptools refuses to read a version file outside the distribution
+# root (expand._assert_local) and because ai_editor_client.__version__ reads it
+# at runtime from the installed wheel, where sdist/wheel builds have replaced
+# the link with its resolved content.
 version = { file = "ai_editor_client/version.txt" }
 
 [tool.setuptools.packages.find]

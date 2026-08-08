@@ -12,14 +12,14 @@ cd "$PROJECT_ROOT"
 # shellcheck source=dockerhub_repo.sh
 source "$SCRIPT_DIR/dockerhub_repo.sh"
 
-IMAGE_VERSION="$(python3 - <<'PY'
-import re
-from pathlib import Path
-text = Path("pyproject.toml").read_text(encoding="utf-8")
-m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
-print(m.group(1) if m else "1.0.7")
-PY
-)"
+# The version lives in the root VERSION file -- one number for the server, the
+# client and the engine. pyproject.toml no longer carries a literal to grep for;
+# it reads this same file through [tool.setuptools.dynamic].
+if [ -f "$PROJECT_ROOT/VERSION" ]; then
+  IMAGE_VERSION="$(tr -d '[:space:]' < "$PROJECT_ROOT/VERSION")"
+else
+  IMAGE_VERSION="1.0.7"
+fi
 DEFAULT_IMAGE="$(dockerhub_repo_default):${IMAGE_VERSION}"
 IMAGE_NAME="${AI_EDITOR_DEV_IMAGE:-$DEFAULT_IMAGE}"
 CONTAINER_NAME="${AI_EDITOR_CONTAINER:-ai-editor}"

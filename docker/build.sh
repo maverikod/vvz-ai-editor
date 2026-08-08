@@ -42,7 +42,8 @@ usage() {
 Usage: docker/build.sh [OPTIONS] [VERSION]
 
 Build ai-editor Docker image, push to Docker Hub, and build Debian package.
-VERSION defaults to pyproject.toml version. Image tags: REPO:VERSION and REPO:latest.
+VERSION defaults to the root VERSION file (the one number shared by the server,
+the client and the engine). Image tags: REPO:VERSION and REPO:latest.
 
 Options:
   --skip-push     Build image only; do not push to Docker Hub
@@ -191,16 +192,14 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$TAG" ]; then
-  TAG="$(python3 - <<'PY'
-import re
-from pathlib import Path
-text = Path("pyproject.toml").read_text(encoding="utf-8")
-m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
-if not m:
-    raise SystemExit("Cannot read version from pyproject.toml")
-print(m.group(1))
-PY
-)"
+  # The root VERSION file is the single source of truth for the server, the
+  # client and the engine; pyproject.toml reads it via [tool.setuptools.dynamic]
+  # and no longer carries a literal to grep for.
+  if [ ! -f "$PROJECT_ROOT/VERSION" ]; then
+    echo "Cannot read version: $PROJECT_ROOT/VERSION is missing" >&2
+    exit 1
+  fi
+  TAG="$(tr -d '[:space:]' < "$PROJECT_ROOT/VERSION")"
 fi
 
 VERSION_TAG="${DOCKERHUB_REPO}:${TAG}"

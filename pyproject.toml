@@ -4,7 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-editor"
-version = "1.0.93"
+# Version comes from the repository-root VERSION file (see
+# [tool.setuptools.dynamic] below) -- the single source of truth shared by this
+# server distribution, ai-editor-client and ai-editor-tree-engine. Never
+# reintroduce a literal here; tests/unit/test_version_pinning.py fails if any of
+# the three carries its own number.
+dynamic = ["version"]
 description = "AI Editor MCP server: universal file preview, open, edit, write, and close"
 readme = { file = "docs/README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -30,6 +35,15 @@ dependencies = [
     "flake8>=7.0",
     "ruff>=0.6.0",
     "mypy>=1.8",
+    # The editor's tree internals, now their own distribution built from src/.
+    # The pin is EXACT and equal to VERSION: the engine owns node identity and
+    # the on-disk tree file, so a mismatched engine can write a tree file this
+    # server cannot read back. tests/unit/test_version_pinning.py fails if this
+    # number ever diverges from VERSION.
+    # NOT ON PyPI YET: until the first publish this requirement is satisfied by
+    # the local build (`pip install ./src[tree-engine]`, which requirements.txt
+    # and docker/Dockerfile do before installing this project).
+    "ai-editor-tree-engine==1.0.93",
 ]
 # PostgreSQL logical backup (backup_database / restore_database) also needs OS binaries
 # pg_dump and pg_restore (e.g. Debian/Ubuntu: apt install postgresql-client). Pip cannot
@@ -78,6 +92,11 @@ quality = [
 docs = []
 
 # --- tree_engine backend extras -------------------------------------------
+# These four extras are the SAME four carried by src/pyproject.toml, the
+# ai-editor-tree-engine distribution that now owns the tree_engine package.
+# They are kept here verbatim so `pip install ai-editor[tree-engine]` keeps
+# behaving exactly as before; tests/unit/test_version_pinning.py fails if the
+# two files' backend extras ever stop agreeing, so the duplication cannot rot.
 # src/tree_engine/ is format-independent by construction: pipeline/checks/
 # check_boundary.py statically rejects any import of libcst / ast / tree_sitter /
 # tree_sitter_bsl outside src/tree_engine/plugins/. The backends below are
@@ -120,14 +139,22 @@ tree-engine = [
     "lark>=1.3.1,<2.0",
 ]
 
-# src-layout discovery for tree_engine alongside the flat-layout legacy
-# packages. `namespaces = true` (the default for this table) is load-bearing:
-# src/tree_engine/ has no __init__.py anywhere, so every subpackage is an
-# implicit namespace package (PEP 420) and a regular-package finder would ship
-# nothing.
+[tool.setuptools.dynamic]
+# One number for three distributions (server, client, engine). VERSION is a
+# real file at the repository root; client/ai_editor_client/version.txt and
+# src/VERSION are symlinks to it, because setuptools refuses to read a version
+# file outside a distribution's own root (expand._assert_local).
+version = { file = "VERSION" }
+
+# Flat-layout discovery for the server's own packages only. `tree_engine*` is
+# deliberately ABSENT: the package ships from exactly one place now, the
+# ai-editor-tree-engine distribution built from src/pyproject.toml, and this
+# project depends on it. `namespaces = true` stays load-bearing here too --
+# ai_editor/core/ has no __init__.py, so it is an implicit namespace package
+# (PEP 420) and a regular-package finder would drop it.
 [tool.setuptools.packages.find]
-where = [".", "src"]
-include = ["ai_editor*", "aiedmgr_entry*", "tree_engine*"]
+where = ["."]
+include = ["ai_editor*", "aiedmgr_entry*"]
 namespaces = true
 
 [tool.setuptools.package-data]

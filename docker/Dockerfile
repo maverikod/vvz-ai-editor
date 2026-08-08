@@ -23,22 +23,40 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# VERSION is the single source of truth for the server, the client and the
+# engine version. It must land before src/, whose VERSION is a relative symlink
+# into this same file (src/VERSION -> ../VERSION); Docker copies the link, not
+# its target, so the target has to exist at /app/VERSION.
+COPY VERSION ./
 COPY requirements.txt pyproject.toml ./
 COPY docs/README.md docs/README.md
 COPY ai_editor/ ai_editor/
-# src/ holds the tree_engine package. pyproject declares it, but without this
-# copy pip has nothing to install from and the image silently ships without it.
+# src/ is the source of the ai-editor-tree-engine DISTRIBUTION, not a directory
+# the server imports from. It is copied only because that distribution is not
+# published to PyPI yet -- see the install step below.
 COPY src/ src/
 COPY aiedmgr_entry/ aiedmgr_entry/
 COPY scripts/aiedmgr scripts/aiedmgr
 COPY scripts/aiedcfg scripts/aiedcfg
 COPY scripts/pipeline scripts/pipeline
 
+# One install pass. requirements.txt lists `./src[tree-engine]` before `-e .`,
+# so ai-editor-tree-engine is built and installed as a real, NON-editable
+# distribution and pip finds `ai-editor-tree-engine==<VERSION>` already
+# satisfied instead of reaching for an index that does not carry it yet. The
+# aggregate `[tree-engine]` extra is explicit there because the server needs
+# every format backend (tree_engine.facade imports the libcst and tree-sitter
+# plugins eagerly). WHEN THE NAME IS PUBLISHED: drop `COPY src/ src/` above and
+# the `./src[tree-engine]` line from requirements.txt -- nothing else changes,
+# because the server already depends on the distribution by name.
 RUN pip install --default-timeout=300 --no-cache-dir -r requirements.txt
 
-# tree_engine's format backends are optional extras by design; the server
-# needs all of them, so install the aggregate explicitly.
-RUN pip install --default-timeout=300 --no-cache-dir -e ".[tree-engine]"
+# The engine must be importable as an installed distribution, not from /app/src.
+# Proves it here, at build time, where a packaging regression is cheap to see.
+RUN cd / && python -c "\
+import importlib.metadata as m, tree_engine.facade as f; \
+print('ai-editor-tree-engine', m.version('ai-editor-tree-engine'), f.__file__); \
+assert '/app/src' not in f.__file__, f.__file__"
 
 RUN mkdir -p "$CONFIG_DIR" && python -c "\
 from ai_editor.config_templates import copy_bundled_template; \

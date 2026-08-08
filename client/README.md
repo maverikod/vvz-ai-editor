@@ -154,8 +154,12 @@ pytest tests/test_client_server_api_sync.py -v
 
 These tests assert `CLIENT_FACADE_COMMANDS` matches the live server registry (C-016) and `REMOVED_COMMANDS` are absent from the server (C-022).
 
-Package version is in ``client/ai_editor_client/version.txt`` (synced with the
-root ``code-analysis`` project via ``scripts/sync_code_analysis_client_version.py``).
+Package version is in ``client/ai_editor_client/version.txt``, which is a
+**symlink to the repository-root ``VERSION`` file** — the single source of truth
+shared by the server (``ai-editor``), this client (``ai-editor-client``) and the
+engine (``ai-editor-tree-engine``). There is nothing to sync: bump the root
+``VERSION`` and all three move together. ``scripts/sync_code_analysis_client_version.py``
+now verifies that invariant instead of copying a number.
 
 ## Examples (this repository)
 
@@ -188,11 +192,13 @@ pip install -e ./client
 pytest tests/test_code_analysis_client.py
 ```
 
-### Releasing to PyPI (version = root ``code-analysis`` project)
+### Releasing to PyPI (version = the root ``VERSION`` file)
 
-The client wheel version is read from ``client/code_analysis_client/version.txt``.
-That file must match ``[project].version`` in the **repository root**
-``pyproject.toml``. Sync before build:
+The client wheel version is read from ``client/ai_editor_client/version.txt``,
+a symlink to the repository-root ``VERSION`` file. The server, this client and
+``ai-editor-tree-engine`` therefore always publish the same number; the build
+resolves the symlink and writes real content into the sdist and the wheel.
+Verify before build:
 
 ```bash
 python scripts/sync_code_analysis_client_version.py

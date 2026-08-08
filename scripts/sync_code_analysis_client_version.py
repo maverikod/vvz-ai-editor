@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
 """
-Copy ``[project].version`` from the repository root ``pyproject.toml`` into
-``client/ai_editor_client/version.txt`` (single line, no BOM).
+Verify that the server, the client and the engine all carry the SAME version.
 
-Used so the PyPI package **ai-editor-client** stays aligned with the main
-**ai-editor** project version without maintaining two literals.
+This script used to COPY ``[project].version`` from the root ``pyproject.toml``
+into ``client/ai_editor_client/version.txt``. That copy had to be remembered,
+and it was not: the two numbers were measured ten releases apart (1.0.93 against
+1.0.83) before the packaging change that removed the need for it.
+
+There is nothing left to copy. The repository root ``VERSION`` file is the one
+source of truth; all three ``pyproject.toml`` files read it through
+``[tool.setuptools.dynamic]``, and the two outside the root reach it through
+symlinks (``src/VERSION`` and ``client/ai_editor_client/version.txt``), because
+setuptools refuses to read a version file outside a distribution's own root.
+sdist and wheel builds copy the resolved CONTENT, so a published artifact never
+carries a dangling link.
+
+So this command now VERIFIES instead of writing, and exits non-zero on drift.
+The same invariant is asserted by ``tests/unit/test_version_pinning.py``; this
+script exists so a release operator can check it without running pytest.
 
 Author: Vasiliy Zdanovskiy
 email: vasilyvz@gmail.com
@@ -16,25 +29,26 @@ import argparse
 import sys
 from pathlib import Path
 
+VERSION_FILENAME = "VERSION"
 
-def read_project_version(pyproject_path: Path) -> str:
-    text = pyproject_path.read_text(encoding="utf-8")
-    in_project = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped == "[project]":
-            in_project = True
-            continue
-        if in_project:
-            if stripped.startswith("[") and stripped.endswith("]"):
-                break
-            if stripped.startswith("version") and "=" in stripped:
-                _, _, rhs = stripped.partition("=")
-                val = rhs.strip().strip('"').strip("'")
-                if not val:
-                    continue
-                return val
-    raise RuntimeError(f"No version = ... found under [project] in {pyproject_path}")
+
+def read_declared_version(root: Path) -> str:
+    """The one number, from the one file."""
+    version_file = root / VERSION_FILENAME
+    if not version_file.is_file():
+        raise RuntimeError(f"missing single source of truth: {version_file}")
+    return version_file.read_text(encoding="utf-8").strip()
+
+
+def _report(label: str, path: Path, expected: str) -> bool:
+    if not path.is_file():
+        print(f"  {label:<38} MISSING  ({path})")
+        return False
+    actual = path.read_text(encoding="utf-8").strip()
+    link = f" -> {path.readlink()}" if path.is_symlink() else "  (not a symlink)"
+    ok = actual == expected
+    print(f"  {label:<38} {actual:<10} {'OK' if ok else 'DRIFT'}{link}")
+    return ok
 
 
 def main() -> int:
@@ -43,25 +57,37 @@ def main() -> int:
         "--repo-root",
         type=Path,
         default=Path(__file__).resolve().parents[1],
-        help="Repository root (parent of client/)",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print version only; do not write version.txt",
+        help="Repository root (parent of client/ and src/)",
     )
     args = parser.parse_args()
     root = args.repo_root.resolve()
-    pyproject = root / "pyproject.toml"
-    target = root / "client" / "ai_editor_client" / "version.txt"
-    ver = read_project_version(pyproject)
-    print(f"Root project version: {ver!r}")
-    print(f"Target file: {target}")
-    if args.dry_run:
-        return 0
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(ver.strip() + "\n", encoding="utf-8")
-    print("Written.")
+
+    declared = read_declared_version(root)
+    print(f"Declared version ({root / VERSION_FILENAME}): {declared}")
+    print("Version sources:")
+    results = [
+        _report("ai-editor (server)", root / VERSION_FILENAME, declared),
+        _report(
+            "ai-editor-tree-engine (engine)",
+            root / "src" / VERSION_FILENAME,
+            declared,
+        ),
+        _report(
+            "ai-editor-client (client)",
+            root / "client" / "ai_editor_client" / "version.txt",
+            declared,
+        ),
+    ]
+    if not all(results):
+        print(
+            "\nDRIFT: the server, the client and the engine must carry the same "
+            "version. Restore the symlinks into the root VERSION file:\n"
+            "  ln -sfn ../VERSION src/VERSION\n"
+            "  ln -sfn ../../VERSION client/ai_editor_client/version.txt",
+            file=sys.stderr,
+        )
+        return 1
+    print("\nAll three distributions carry the same version.")
     return 0
 
 
