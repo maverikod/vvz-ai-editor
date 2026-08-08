@@ -424,6 +424,15 @@ def test_failing_check_yields_nonzero_exit_real_cli(pipeline_copy):
         "    return CheckResult.fail('deliberately broken')\n"
         "registry.register('fails-zz', 'always fails', check_fails_zz)\n"
     )
+    # The aggregate run below executes EVERY discovered check. The live ones
+    # talk to the deployed server over mTLS and take minutes, which is not
+    # what this test is about -- it asserts that one failing check makes the
+    # aggregate exit nonzero. Dropping them from the throwaway copy keeps the
+    # test deterministic instead of dependent on remote availability: it used
+    # to "pass" only because the remote server happened to be unreachable and
+    # every live check failed instantly.
+    for live in checks_dir.glob("check_live_*.py"):
+        live.unlink()
     pp = _real_pythonpath(pipeline_copy)
 
     single = _run_cli(["fails-zz"], cwd=pipeline_copy, pythonpath=pp)
