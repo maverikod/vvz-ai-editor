@@ -263,9 +263,15 @@ def normalize_node_address(
       ``document.nodes_by_id``.
     * ``int`` -- a positive document-local short_id, resolved through the
       short_id map.
-    * ``str`` -- a ``"0x"``-prefixed hex short_id, a bare UUID string, or a
-      serialized ``"document_id:node_id"`` ``NodeAddress`` (see
-      :func:`from_str`).
+    * ``str`` -- a ``"0x"``-prefixed hex short_id, a DECIMAL-digit short_id,
+      a bare UUID string, or a serialized ``"document_id:node_id"``
+      ``NodeAddress`` (see :func:`from_str`). The decimal form is tried
+      before the UUID form and resolves exactly like the ``int`` it spells,
+      so ``"3"`` and ``3`` are the same address: callers that carry a
+      short_id through a string-typed protocol field -- the editor's
+      ``node_ref`` is one -- would otherwise fall through every branch and
+      be rejected as unknown. Only ASCII digits count, so a non-ASCII
+      decimal digit is not silently reinterpreted.
     * ``NodeAddress`` -- resolved directly.
 
     A ``NodeAddress``-shaped address (an explicit ``NodeAddress`` instance
@@ -318,6 +324,12 @@ def normalize_node_address(
             return _resolve_node_address_value(
                 document, parsed_address, raw_address, current_document_id
             )
+
+        if address.isascii() and address.isdigit():
+            short_id = int(address)
+            if short_id <= 0:
+                raise UnknownAddressError(raw_address)
+            return _resolve_short_id(document, short_id, raw_address, resolve_short_id)
 
         try:
             node_id = UUID(address)

@@ -300,16 +300,24 @@ class TreeDocument:
     and ``format_id`` the current working one; they differ only under the authorized plain-text
     fallback, which also fills ``fallback_diagnostic`` ({p050}, {7a9b}). ``nodes_by_id``,
     ``short_id_index``, ``short_id_map`` and ``parent_index`` are the document-local addressing state
-    ({p097}); ``path`` is the file it was loaded from, or ``None`` for a :func:`loads` document."""
+    ({p097}); ``path`` is the file it was loaded from, or ``None`` for a :func:`loads` document.
+
+    ``short_id_map`` is the one piece of state a caller may SEED. A document rebuilt from a stored
+    tree file already knows which integer every node_id was issued, and letting :meth:`reindex` mint
+    a fresh map instead would silently reissue new short_ids for nodes whose identity survived --
+    which is exactly the identity loss the persisted map exists to prevent. Passing the stored map
+    here makes :meth:`reindex` keep every recorded value and carry the monotonic ``next_short_id``
+    across the reload, so a short_id released by an earlier delete is still never reused ({p097})."""
 
     def __init__(self, root: LiveNode, source_format_id: str, format_id: str, source_bytes: bytes, *,
                  path: Optional[Path] = None,
-                 fallback_diagnostic: Optional[Mapping[str, Any]] = None) -> None:
+                 fallback_diagnostic: Optional[Mapping[str, Any]] = None,
+                 short_id_map: Optional[ShortIdMap] = None) -> None:
         self.document_id, self.document_version = uuid4(), 1
         self.root, self.source_bytes, self.path = root, source_bytes, path
         self.source_format_id, self.format_id = source_format_id, format_id
         self.fallback_diagnostic = dict(fallback_diagnostic) if fallback_diagnostic else None
-        self.short_id_map = ShortIdMap()
+        self.short_id_map = ShortIdMap() if short_id_map is None else short_id_map
         self.nodes_by_id: Dict[UUID, LiveNode] = {}
         self.short_id_index: Dict[int, UUID] = {}
         self.parent_index: Dict[UUID, Optional[UUID]] = {}

@@ -194,6 +194,20 @@ class PlainTextFormatPlugin(FormatPluginContract, FormatBoundary):
     plugin ({p060}): a root container ``Node`` with an ordered tuple of
     paragraph ``Node`` children, each carrying its own ``node_id`` identity."""
 
+    #: Kinds :meth:`parse_fragment` wraps a caller's content in rather than
+    #: returning as content itself. ``plain_text`` has no fragment node type of
+    #: its own -- a fragment is parsed by the very same split as a document --
+    #: so its result is always the root container, and splicing that container
+    #: in beside a paragraph produces a tree ``generate_output`` refuses with
+    #: ``UnsupportedTranslationError``: nothing but a paragraph may sit under
+    #: the root. Declaring the kind here lets a caller performing a splice
+    #: (``facade._fragment``) take the children instead, without having to know
+    #: that plain_text in particular does this, and without any format whose
+    #: fragment result IS content -- JSON's object, Python's statement -- being
+    #: unwrapped by the same rule. ``_ROOT_KIND`` remains a perfectly legal
+    #: PARSE result; this says only that it is a wrapper, never content.
+    fragment_container_kinds = (_ROOT_KIND,)
+
     @property
     def metadata(self) -> FormatPluginMetadata:
         """This plugin's static identity/capability surface."""

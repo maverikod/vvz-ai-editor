@@ -121,11 +121,68 @@ class TestNormalizeNodeAddressAcceptance:
 
         assert resolved_hex == resolved_int == document.node_a
 
+    def test_decimal_string_short_id_matches_equivalent_int_form(
+        self, document: _Document
+    ) -> None:
+        """A short_id spelled in decimal as a ``str`` is the same address as the
+        ``int`` it spells. Regression: a plain ``"3"`` matched no branch -- not
+        the ``0x`` prefix, not ``document_id:node_id``, not a bare UUID -- and
+        fell through to ``UnknownAddressError``, so every caller carrying a
+        short_id through a string-typed protocol field was rejected outright."""
+        short_id = document.short_ids.get_short_id(document.node_b)
+        resolved_decimal = normalize_node_address(
+            document, str(short_id), current_document_id=document.document_id
+        )
+        resolved_int = normalize_node_address(
+            document, short_id, current_document_id=document.document_id
+        )
+
+        assert resolved_decimal == resolved_int == document.node_b
+
+    def test_every_live_short_id_resolves_alike_in_all_three_spellings(
+        self, document: _Document
+    ) -> None:
+        """int, decimal string and hex string are one address form, per node."""
+        for node_id in (document.node_a, document.node_b):
+            short_id = document.short_ids.get_short_id(node_id)
+            resolved = {
+                normalize_node_address(
+                    document, form, current_document_id=document.document_id
+                )
+                for form in (short_id, str(short_id), f"0x{short_id:x}")
+            }
+            assert resolved == {node_id}
+
 
 # normalize_node_address: error paths, and no-partial-execution on each
 
 
 class TestNormalizeNodeAddressErrors:
+    def test_freed_short_id_decimal_string_form_raises(self, document: _Document) -> None:
+        """The decimal spelling is not a way around the map: a released short_id
+        is unresolvable in every spelling, and the rejection touches nothing."""
+        before = _snapshot_state(document)
+        with pytest.raises(UnknownAddressError):
+            normalize_node_address(
+                document, str(document.freed_short_id),
+                current_document_id=document.document_id,
+            )
+
+        assert _snapshot_state(document) == before
+
+    def test_decimal_zero_and_non_ascii_digits_are_not_short_ids(
+        self, document: _Document
+    ) -> None:
+        """``"0"`` is not a positive short_id, and a non-ASCII digit is not a
+        decimal spelling at all -- neither may be reinterpreted as one."""
+        for bad in ("0", "00", "٣"):  # the last is ARABIC-INDIC DIGIT THREE
+            before = _snapshot_state(document)
+            with pytest.raises(UnknownAddressError):
+                normalize_node_address(
+                    document, bad, current_document_id=document.document_id
+                )
+            assert _snapshot_state(document) == before
+
     def test_unknown_uuid_raises(self, document: _Document) -> None:
         unknown_id = uuid.uuid4()
         before = _snapshot_state(document)

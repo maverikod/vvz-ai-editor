@@ -64,6 +64,7 @@ from tree_engine.plugins.contract import (
     SemanticRole,
     SemanticRoleMapping,
 )
+from tree_engine.plugins.detachable import PYTHON_PLUGIN_SPEC
 from tree_engine.plugins.python import export_map as _export_map
 from tree_engine.plugins.python import import_map as _import_map
 from tree_engine.plugins.python.export_map import PythonExportMap
@@ -82,7 +83,10 @@ _FUNCTIONDEF_KIND = f"{FORMAT_ID}:FunctionDef"
 _METADATA = FormatPluginMetadata(
     format_id=FORMAT_ID,
     aliases=(),
-    file_extensions=("py", "pyi"),
+    # From the detachable-plugin manifest, so the table the facade builds for this
+    # plugin while it is UNIMPORTABLE and the metadata it declares once present can
+    # never drift apart -- see plugins/detachable.py.
+    file_extensions=PYTHON_PLUGIN_SPEC.file_extensions,
     plugin_version="1.0.0",
     contract_version="1.0.0",
     capabilities={

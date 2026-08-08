@@ -8,11 +8,14 @@ This is the runnable story of the whole engine, told mostly through its one
 public entry point, ``tree_engine.facade``: load a JSON config, query it,
 inspect it, hit a typed error, apply a batch of real mutations, and save.
 
-Two stages deliberately drop one layer down, to ``tree_engine.storage
-.lifecycle.StorageLifecycle``, because the facade does not attempt to
-re-express them: the paired source+tree-file lifecycle with dual-SHA
-conflict detection and interrupted-publish recovery, and the plain-text
-fallback for an unparseable file. Each such stage says so in a comment.
+The facade owns the paired source+tree-file lifecycle itself now:
+``facade.open_file`` takes the checksum open decision and reports which
+branch it took, and ``facade.write`` publishes both files and reports every
+path it wrote. Two stages still drop one layer down, to
+``tree_engine.storage.lifecycle.StorageLifecycle``, for the parts the facade
+does not surface: session baselines with dual-SHA conflict detection plus a
+named overwrite policy and the forced reparse, and the plain-text fallback
+seen from the storage side. Each such stage says so in a comment.
 
 Two real engine findings surfaced while writing this example, both worth
 knowing about if you build on this code:
@@ -200,27 +203,45 @@ def main() -> None:
         assert doc.nodes_by_id[new_service_node_id].fields["value"] == "billing-v2"
         print(f"batch applied, document_version={doc.document_version}, final content: {final}")
 
-        facade.save(doc, path=config_path)
-        print(f"saved via facade.save(): {config_path.read_bytes()}")
+        written = facade.write(doc, path=config_path)
+        print(f"saved via facade.write(): {config_path.read_bytes()}")
+        # facade.write() publishes the PAIR -- the source file and the tree
+        # file beside it -- and reports every path it wrote, which is what a
+        # caller owning atomicity elsewhere needs in order to stage them.
+        assert written.written_paths == (config_path, written.tree_path)
+        print(f"paths written: {[p.name for p in written.written_paths]}")
+        # Because that tree file carries every node_id/short_id, reopening the
+        # same bytes takes the checksum-match branch and identity survives.
+        reopened_by_facade = facade.open_file(config_path)
+        assert reopened_by_facade.branch is facade.OpenBranch.SHA_MATCH
+        assert reopened_by_facade.identity_preserved is True
+        assert reopened_by_facade.tree_write_intent is facade.TreeWriteIntent.NONE
+        assert new_service_node_id in reopened_by_facade.document.nodes_by_id
+        print(f"reopened by the facade: branch={reopened_by_facade.branch.value}, "
+              f"identity_preserved={reopened_by_facade.identity_preserved}")
 
         # -- 7. Storage-layer pairing: identity round trip, conflict, recovery --
         _banner("7. StorageLifecycle: paired storage, identity round trip, conflict")
-        # facade.save()/load() write and read one plain file; they have no
-        # sidecar, no dual-SHA conflict detection, and no named overwrite
-        # policy. That is StorageLifecycle's own job, one layer down -- used
-        # here deliberately, not as a facade substitute.
+        # The facade drives StorageLifecycle for exactly the open decision and
+        # the paired write. The layer below is still the place for the pieces
+        # the facade does not surface -- the session baselines, the named
+        # overwrite policy, the forced reparse -- and is used directly here.
+        # It runs on its own copy of the document so the pair the facade just
+        # published above stays untouched by this walkthrough.
+        paired_path = workdir / "paired_config.json"
+        paired_path.write_bytes(config_path.read_bytes())
         registry = FormatPluginRegistry()
         registry.register_format_plugin(JSON_FORMAT_PLUGIN)
         registry.register_format_plugin(PLAIN_TEXT_FORMAT_PLUGIN)
         lifecycle = StorageLifecycle(registry)
         plugin = registry.get_format_plugin("json")
 
-        # First open: no sidecar tree file exists yet (facade.save() never
-        # wrote one), so this is necessarily a full rebuild from source text,
-        # minting fresh node identities -- exactly like facade.load() does.
-        opened = lifecycle.open(config_path)
+        # First open: no tree file exists beside this copy yet, so this is
+        # necessarily a full rebuild from source text, minting fresh node
+        # identities -- exactly what facade.open_file() reports as NO_SIDECAR.
+        opened = lifecycle.open(paired_path)
         assert opened.rebuilt is True
-        assert plugin.render_document(opened.document) == config_path.read_bytes()
+        assert plugin.render_document(opened.document) == paired_path.read_bytes()
         some_id = opened.document.root.children[0].children[0].node_id  # the "service" value node
 
         # This save publishes the sidecar tree file, which encodes every
@@ -231,14 +252,14 @@ def main() -> None:
         # Second open: the sidecar is valid and matches the source, so it is
         # decoded and accepted rather than rebuilt -- this is the genuine
         # identity round trip.
-        reopened = lifecycle.open(config_path)
+        reopened = lifecycle.open(paired_path)
         assert reopened.rebuilt is False
         assert some_id in {n.node_id for n in walk(reopened.document.root)}, \
             "node identity must survive a real open()-after-save() round trip"
         print("identity verified: the same node_id survived a paired storage save/reload")
 
         # A conflicting external write, refused then explicitly resolved.
-        config_path.write_bytes(b'{"note": "written by someone else while we were editing"}\n')
+        paired_path.write_bytes(b'{"note": "written by someone else while we were editing"}\n')
         try:
             lifecycle.save(reopened, document=reopened.document)
         except ConcurrentSourceModification as exc:
@@ -254,7 +275,7 @@ def main() -> None:
         # Contrast: reparse() forces a full rebuild from the current source
         # text even over a valid sidecar, so -- unlike an ordinary open() --
         # it does NOT preserve identity. Worth knowing, not a bug.
-        reparsed = lifecycle.reparse(config_path)
+        reparsed = lifecycle.reparse(paired_path)
         assert reparsed.rebuilt is True
         assert some_id not in {n.node_id for n in walk(reparsed.document.root)}
         print("reparse() confirmed to discard identity: it re-derives from source text, on purpose")
