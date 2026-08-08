@@ -22,6 +22,7 @@ from ai_editor.core.edit_session import (
 from ai_editor.core.exceptions import ValidationError
 from ai_editor.tree.edit_operations import EditOperation
 from ai_editor.core.edit_session.edit_session import _active_sessions
+from ai_editor.core.tree_temp.identity import TreeTempIdentityMap
 from ai_editor.core.tree_temp.tree_node import TreeNode
 
 # ca_session_id -> project-relative file_path -> EditSession facade
@@ -66,6 +67,14 @@ class EditSession:
     # serializer.
     tree_temp_mutated: bool = False
     tree_temp_roots: Optional[List[TreeNode]] = None
+    # The session's node-identity map over ``tree_temp_roots``: the integer
+    # short_id the frozen surface reports in ``node_ref``, bound to the node's
+    # ``stable_id`` UUID4 through ``tree_engine``'s ShortIdMap. It lives for as
+    # long as the file is open, which is exactly what makes the integer an
+    # identity rather than a position: inserting above a node changes that
+    # node's JSON Pointer and leaves its integer alone. Built on first use by
+    # ``tree_temp_identity_map`` below.
+    tree_temp_identity: Optional[TreeTempIdentityMap] = None
     sidecar_write_intent: Optional[str] = None
     fallback_reason: Optional[str] = None
     original_format_group: Optional[str] = None
@@ -398,6 +407,23 @@ def apply_source_mutation(session: EditSession, new_source_text: str) -> None:
         session.core.apply_valid_tree_mutation(lambda _: new_source_text)
     session.draft_path = session.core.session_source_path
     session.dirty = True
+
+
+def tree_temp_identity_map(session: EditSession) -> Optional[TreeTempIdentityMap]:
+    """The session's node-identity map, levelled with its current forest.
+
+    Returns ``None`` for a session that holds no tree-temp forest, so a caller
+    on another format is told there is no map rather than handed an empty one.
+    Every other caller gets the SAME map object for the life of the session,
+    which is what makes an integer ``node_ref`` survive the edits that move the
+    node it names.
+    """
+    roots = session.tree_temp_roots
+    if roots is None:
+        return None
+    if session.tree_temp_identity is None:
+        session.tree_temp_identity = TreeTempIdentityMap()
+    return session.tree_temp_identity.sync(roots)
 
 
 def apply_tree_temp_source_mutation(session: EditSession, new_source_text: str) -> None:

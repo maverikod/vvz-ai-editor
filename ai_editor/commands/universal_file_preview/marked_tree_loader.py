@@ -13,6 +13,12 @@ from typing import Callable, List, Optional
 
 from ai_editor.core.tree_lifecycle.lifecycle import TreeLifecycle
 from ai_editor.core.tree_lifecycle.node_id_map import parse_tree_file
+from ai_editor.core.tree_temp.identity import (
+    TreeTempAddressError,
+    TreeTempIdentityMap,
+    bracket_pointer_to_rfc6901,
+    key_path_to_rfc6901,
+)
 from ai_editor.tree.contracts import NodeId, validate_short_id
 from ai_editor.tree.format_handler import FormatHandler
 from ai_editor.tree.handler_registry import HandlerNotFoundError, HandlerRegistry
@@ -117,6 +123,95 @@ def _load_nodes_from_valid_edit_session(session_id: str) -> List[TreeNode] | Non
     return nodes if nodes else None
 
 
+def _tree_temp_identity_for(
+    session_id: str,
+    rel_file_path: str,
+) -> TreeTempIdentityMap | None:
+    """The identity map of an open tree-temp session, or None for anything else.
+
+    ``rel_file_path`` is passed through because one CA session may hold several
+    open files; without it the lookup is ambiguous and would silently leave
+    preview numbering from a different map than the one edit resolves against.
+    """
+    from ai_editor.commands.universal_file_edit.format_group import FORMAT_TREE_TEMP
+    from ai_editor.commands.universal_file_edit.session import (
+        get_session,
+        tree_temp_identity_map,
+    )
+
+    try:
+        edit_sess = get_session(session_id, file_path=rel_file_path or None)
+    except ValueError:
+        return None
+    if edit_sess.is_invalid or edit_sess.format_group != FORMAT_TREE_TEMP:
+        return None
+    return tree_temp_identity_map(edit_sess)
+
+
+def _preview_node_reference(node: TreeNode) -> str | None:
+    """The node's address as a canonical RFC 6901 pointer, or None if it has none.
+
+    A marked-tree preview node carries its address in whichever notation its
+    format handler speaks -- ``json_pointer`` (bracket array form) for JSON,
+    ``key_path`` (dotted) for YAML. Both are translated to the one canonical
+    notation here, so the caller compares like with like.
+    """
+    attributes = node.attributes or {}
+    pointer = attributes.get("json_pointer")
+    key_path = attributes.get("key_path")
+    try:
+        if isinstance(pointer, str):
+            return bracket_pointer_to_rfc6901(pointer)
+        if isinstance(key_path, str):
+            return key_path_to_rfc6901(key_path)
+    except TreeTempAddressError:
+        return None
+    return None
+
+
+def _renumber_from_tree_temp_identity(
+    nodes: List[TreeNode],
+    identity: TreeTempIdentityMap,
+) -> List[TreeNode]:
+    """Re-issue every preview short_id from the session's identity map.
+
+    The marked-tree parse numbers nodes 1..N by walking the current bytes, so
+    its integers are POSITIONS: insert a key at the top and every node below it
+    is renumbered. The session's identity map issues an integer against the
+    node's ``stable_id`` instead, so the same node keeps the same integer for
+    as long as the file is open -- and that is the integer
+    ``universal_file_edit`` resolves. Both commands now read one map.
+
+    A node the map does not cover -- an address its format's notation cannot
+    express unambiguously -- is given a reserved integer that belongs to no
+    node, rather than left holding a positional one that could collide with a
+    real identity.
+    """
+    reissued: dict[NodeId, NodeId] = {}
+    for node in nodes:
+        reference = _preview_node_reference(node)
+        short_id = (
+            None if reference is None else identity.short_id_for_reference(reference)
+        )
+        if short_id is None:
+            short_id = identity.reserve_unmapped()
+        reissued[node.short_id] = NodeId(int(short_id))
+    return [
+        TreeNode(
+            short_id=reissued[node.short_id],
+            kind=node.kind,
+            content=node.content,
+            attributes=dict(node.attributes or {}),
+            parent_short_id=(
+                None
+                if node.parent_short_id is None
+                else reissued.get(node.parent_short_id, node.parent_short_id)
+            ),
+        )
+        for node in nodes
+    ]
+
+
 def make_preview_tree_loader(
     *,
     project_root: Path,
@@ -144,6 +239,10 @@ def make_preview_tree_loader(
             nodes = handler.parse_content(parse_path, content)
         except Exception:
             raise
+        if effective_session is not None:
+            identity = _tree_temp_identity_for(str(effective_session), rel_file_path)
+            if identity is not None:
+                nodes = _renumber_from_tree_temp_identity(nodes, identity)
         return NodeListTree(nodes)
 
     return loader

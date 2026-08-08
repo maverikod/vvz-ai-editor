@@ -12,21 +12,53 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 
 import yaml
 
-from ai_editor.core.json_tree.json_pointer import (
-    pointer_to_segments,
-    segments_to_pointer,
-)
 from ai_editor.commands.universal_file_edit.insert_position import (
     coalesce_tree_temp_insert_position,
 )
+from ai_editor.core.tree_temp.identity import TreeTempIdentityMap
 from ai_editor.core.tree_temp.tree_node import TreeNode
 
+#: Where a mutation may carry the node it addresses, most specific first. Every
+#: one of them now takes the SAME address language -- the integer short_id the
+#: frozen surface hands out in ``node_ref``, the ``stable_id`` UUID4, or a JSON
+#: Pointer in either declared form -- because all three resolve through one
+#: identity map (``ai_editor/core/tree_temp/identity.py``).
+_TARGET_ADDRESS_FIELDS = ("target_stable_id", "target_node_id", "node_id", "node_ref")
 
-def _is_uuid_v4_string(value: str) -> bool:
-    try:
-        return uuid.UUID(value).version == 4
-    except ValueError:
-        return False
+_MISSING_TARGET_MESSAGE = (
+    "tree-temp operation requires a node address in target_stable_id, "
+    "target_node_id/node_id/node_ref (integer short_id or stable_id UUID), "
+    "or json_pointer"
+)
+
+
+def _identity_for(
+    roots: List[TreeNode], identity: Optional[TreeTempIdentityMap]
+) -> TreeTempIdentityMap:
+    """The caller's session-scoped identity map, levelled with ``roots``.
+
+    A caller that owns an open session passes its map, and the integers it
+    issues therefore outlive every edit. A caller with no session (a direct
+    single-shot mutation) gets a map derived from this document alone: the same
+    three address forms resolve, but the integers only mean anything for the
+    duration of the call, because there is no session to remember them.
+    """
+    return (identity or TreeTempIdentityMap()).sync(roots)
+
+
+def _address_from(mop: Dict[str, Any]) -> Optional[Any]:
+    """The node address this operation carries, or ``None`` when it carries none."""
+    for field in _TARGET_ADDRESS_FIELDS:
+        raw = mop.get(field)
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, int):
+            return raw
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    if "json_pointer" in mop:
+        return str(mop["json_pointer"])
+    return None
 
 
 def _stable_index(roots: List[TreeNode]) -> Dict[str, Tuple[List[TreeNode], int]]:
@@ -264,109 +296,21 @@ def _regenerate_stable_ids(node: TreeNode) -> TreeNode:
     )
 
 
-def _node_after_segments(cur: TreeNode, segs: List[str]) -> TreeNode:
-    for seg in segs:
-        if cur.type == "array":
-            idx = int(seg)
-            ch = cur.children
-            if ch is None or idx < 0 or idx >= len(ch):
-                raise ValueError(f"JSON Pointer segment {seg!r} out of range")
-            cur = ch[idx]
-        elif cur.type == "object":
-            if cur.children is None:
-                raise ValueError("object node missing children during pointer walk")
-            found: Optional[TreeNode] = None
-            for c in cur.children:
-                if c.key == seg:
-                    found = c
-                    break
-            if found is None:
-                raise ValueError(f"object has no key {seg!r}")
-            cur = found
-        else:
-            raise ValueError("cannot traverse JSON Pointer through scalar TreeNode")
-    return cur
-
-
-def _resolve_pointer_node(roots: List[TreeNode], pointer: str) -> TreeNode:
-    segs = pointer_to_segments(pointer)
-    if len(roots) > 1:
-        if not segs:
-            raise ValueError("non-empty JSON Pointer required for multi-root tree")
-        idx = int(segs[0])
-        if idx < 0 or idx >= len(roots):
-            raise ValueError("root index out of range")
-        cur = roots[idx]
-        return _node_after_segments(cur, segs[1:])
-    if not roots:
-        raise ValueError("empty roots")
-    if not segs:
-        return roots[0]
-    return _node_after_segments(roots[0], segs)
-
-
-def _parent_holder_and_last_seg(
-    roots: List[TreeNode], pointer: str
-) -> Tuple[List[TreeNode], int, str]:
-    segs = pointer_to_segments(pointer)
-    if not segs:
-        raise ValueError("cannot delete or relocate root via empty JSON Pointer")
-    parent_ptr = segments_to_pointer(segs[:-1])
-    last_seg = segs[-1]
-    if not parent_ptr:
-        if len(roots) > 1:
-            return roots, int(last_seg), last_seg
-        parent_node = roots[0]
-    else:
-        parent_node = _resolve_pointer_node(roots, parent_ptr)
-    if parent_node.type == "object":
-        ch = parent_node.children
-        if ch is None:
-            raise ValueError("object parent missing children")
-        for i, c in enumerate(ch):
-            if c.key == last_seg:
-                return ch, i, last_seg
-        raise ValueError(f"object parent has no key {last_seg!r}")
-    if parent_node.type == "array":
-        ch = parent_node.children
-        if ch is None:
-            raise ValueError("array parent missing children")
-        idx = int(last_seg)
-        if idx < 0 or idx >= len(ch):
-            raise ValueError("array index out of range")
-        return ch, idx, last_seg
-    raise ValueError("JSON Pointer parent must be object or array")
-
-
-def _extract_stable_target(mop: Dict[str, Any]) -> Optional[str]:
-    ts = mop.get("target_stable_id")
-    if isinstance(ts, str) and ts.strip():
-        return ts.strip()
-    for key in ("target_node_id", "node_id"):
-        raw = mop.get(key)
-        if isinstance(raw, str) and raw.strip() and _is_uuid_v4_string(raw.strip()):
-            return raw.strip()
-    return None
-
-
 def _resolve_target_node(
-    roots: List[TreeNode],
     mop: Dict[str, Any],
-    idx_map: Dict[str, Tuple[List[TreeNode], int]],
+    identity: TreeTempIdentityMap,
 ) -> TreeNode:
-    sid = _extract_stable_target(mop)
-    if sid is not None:
-        loc = idx_map.get(sid)
-        if loc is None:
-            raise ValueError(f"stable_id not found: {sid}")
-        holder, idx = loc
-        return holder[idx]
-    if "json_pointer" in mop:
-        return _resolve_pointer_node(roots, str(mop["json_pointer"]))
-    raise ValueError(
-        "tree-temp operation requires target_stable_id, uuid-like target_node_id/node_id, "
-        "or json_pointer"
-    )
+    """The node this operation addresses, through the one identity map.
+
+    Every accepted form goes down the same path, which is the whole point: the
+    integer ``node_ref`` ``universal_file_preview`` reports, the ``stable_id``
+    UUID4, and a JSON Pointer in either the editor's bracket form or the
+    engine's RFC 6901 form all name one node.
+    """
+    address = _address_from(mop)
+    if address is None:
+        raise ValueError(_MISSING_TARGET_MESSAGE)
+    return identity.node(address)
 
 
 def _merge_payload_keep_identity(dst: TreeNode, src: TreeNode) -> None:
@@ -389,18 +333,19 @@ def _merge_payload_keep_identity(dst: TreeNode, src: TreeNode) -> None:
 
 
 def _resolve_insert_parent(
-    roots: List[TreeNode],
     mop: Dict[str, Any],
-    idx_map: Dict[str, Tuple[List[TreeNode], int]],
+    identity: TreeTempIdentityMap,
 ) -> TreeNode:
     """Resolve the parent TreeNode for an insert operation.
 
     Supports:
-    - ``parent_json_pointer``: RFC 6901 pointer to the parent node.
-      The special sentinel ``/-`` suffix (e.g. ``/concepts/-``) is accepted
-      per RFC 6901 §4 and resolves to the array parent without requiring
-      an explicit ``index``; the caller (``_apply_insert``) will append.
-    - ``parent_node_id``: opaque stable UUID of the parent node.
+    - ``parent_json_pointer``: a JSON Pointer to the parent node, in the
+      editor's bracket array form or in RFC 6901. The ``/-`` suffix (e.g.
+      ``/concepts/-``) is accepted per RFC 6901 §4 and resolves to the array
+      parent without an explicit ``index``; the caller (``_apply_insert``)
+      then appends.
+    - ``parent_node_id``: any node address the identity map accepts -- the
+      integer short_id from preview as readily as the ``stable_id`` UUID4.
     """
     if "parent_json_pointer" in mop:
         ptr = str(mop["parent_json_pointer"])
@@ -408,21 +353,14 @@ def _resolve_insert_parent(
         # Strip the trailing "/-" so we resolve the array itself.
         if ptr.endswith("/-"):
             ptr = ptr[:-2] or ""
-        # Bare "/" is accepted as a convenience alias for the document root
-        # (matching the legacy marked-tree resolver this path replaces for
-        # bug b215fbd3): a lone slash is otherwise indistinguishable from
-        # "root has a single '' key", which no caller intends here.
-        if ptr == "/":
-            ptr = ""
-        return _resolve_pointer_node(roots, ptr)
+        return identity.node(ptr)
     p_raw = mop.get("parent_node_id")
+    if isinstance(p_raw, bool):
+        raise ValueError(f"parent_node_id is not a node address: {p_raw!r}")
+    if isinstance(p_raw, int):
+        return identity.node(p_raw)
     if isinstance(p_raw, str) and p_raw.strip():
-        sid = p_raw.strip()
-        loc = idx_map.get(sid)
-        if loc is None:
-            raise ValueError(f"parent_node_id stable_id not found: {sid}")
-        holder, idx = loc
-        return holder[idx]
+        return identity.node(p_raw.strip())
     raise ValueError("insert requires parent_json_pointer or parent_node_id")
 
 
@@ -434,8 +372,8 @@ def _find_child_index_by_stable(children: List[TreeNode], stable: str) -> Option
 
 
 def _coalesce_insert_pointer_sibling_ids(
-    roots: List[TreeNode],
     mop: Dict[str, Any],
+    identity: TreeTempIdentityMap,
 ) -> None:
     """Resolve ``before_json_pointer`` / ``after_json_pointer`` to sibling stable UUIDs."""
     before_ptr = mop.get("before_json_pointer")
@@ -449,15 +387,13 @@ def _coalesce_insert_pointer_sibling_ids(
             raise ValueError(
                 "before_json_pointer and before_node_id are mutually exclusive"
             )
-        node = _resolve_pointer_node(roots, str(before_ptr))
-        mop["before_node_id"] = node.stable_id
+        mop["before_node_id"] = identity.node(str(before_ptr)).stable_id
     if after_ptr is not None:
         if mop.get("after_node_id"):
             raise ValueError(
                 "after_json_pointer and after_node_id are mutually exclusive"
             )
-        node = _resolve_pointer_node(roots, str(after_ptr))
-        mop["after_node_id"] = node.stable_id
+        mop["after_node_id"] = identity.node(str(after_ptr)).stable_id
 
 
 def _find_parent_node(roots: List[TreeNode], stable_id: str) -> Optional[TreeNode]:
@@ -483,46 +419,19 @@ def _find_parent_node(roots: List[TreeNode], stable_id: str) -> Optional[TreeNod
     return None
 
 
-def _legacy_short_id_index(roots: List[TreeNode]) -> Dict[int, TreeNode]:
-    """Recompute the legacy preview short_id numbering over ``roots``.
-
-    ``universal_file_preview`` falls back, for a tree-temp session with no
-    marked-tree MAP file, to an ephemeral generic re-parse of the draft that
-    numbers every node in preorder (root-first depth-first) starting at 1.
-    Reproducing that SAME numbering directly against the persistent
-    ``tree_temp_roots`` forest (bug b215fbd3) lets ``target_node_id`` /
-    ``node_ref`` values copied from a preview response resolve back to the
-    node the user actually pointed at, without reviving the retired
-    marked-tree MAP file.
-    """
-    out: Dict[int, TreeNode] = {}
-    counter = 0
-
-    def visit(node: TreeNode) -> None:
-        nonlocal counter
-        counter += 1
-        out[counter] = node
-        if node.children:
-            for ch in node.children:
-                visit(ch)
-
-    for r in roots:
-        visit(r)
-    return out
-
-
-def _coalesce_legacy_insert_anchor(
+def _coalesce_sibling_insert_anchor(
     roots: List[TreeNode],
     mop: Dict[str, Any],
-    idx_map: Dict[str, Tuple[List[TreeNode], int]],
+    identity: TreeTempIdentityMap,
 ) -> None:
-    """Translate ``target_node_id``/``node_id`` + plain ``position`` into a
-    parent + sibling-anchor insert (bug b215fbd3 preview short_id/node_ref
-    addressing: a preview ``node_ref`` names the sibling to insert next to,
-    not a parent). Formerly resolved via the marked-tree short_id system;
-    this resolves directly against the tree-temp ``roots`` instead (stable_id
-    UUID, or a legacy preview short_id integer via ``_legacy_short_id_index``).
-    A no-op when a parent or sibling anchor is already given explicitly.
+    """Translate a node address + plain ``position`` into parent + sibling anchor.
+
+    A ``node_ref`` from ``universal_file_preview`` combined with
+    ``position: 'before'``/``'after'`` names the SIBLING to insert next to, not
+    the parent (bug b215fbd3). The address is resolved through the identity map
+    like every other one, so the integer short_id, the ``stable_id`` UUID4 and a
+    JSON Pointer are interchangeable here too. A no-op when a parent or a
+    sibling anchor is already given explicitly.
     """
     if mop.get("parent_json_pointer") or mop.get("parent_node_id"):
         return
@@ -540,19 +449,14 @@ def _coalesce_legacy_insert_anchor(
     if side not in ("before", "after"):
         return
     anchor_raw = mop.get("target_node_id") or mop.get("node_id")
-    if not isinstance(anchor_raw, str) or not anchor_raw.strip():
+    if isinstance(anchor_raw, bool) or not isinstance(anchor_raw, (int, str)):
         return
-    sid = anchor_raw.strip()
-    if sid.isdigit():
-        legacy_node = _legacy_short_id_index(roots).get(int(sid))
-        if legacy_node is None:
-            raise ValueError(f"stable_id not found: {sid}")
-        sid = legacy_node.stable_id
-    loc = idx_map.get(sid)
-    if loc is None:
-        raise ValueError(f"stable_id not found: {sid}")
-    holder, idx = loc
-    anchor_node = holder[idx]
+    if isinstance(anchor_raw, str) and not anchor_raw.strip():
+        return
+    anchor_node = identity.node(
+        anchor_raw.strip() if isinstance(anchor_raw, str) else anchor_raw
+    )
+    sid = anchor_node.stable_id
     parent = _find_parent_node(roots, sid)
     if parent is None:
         raise ValueError("insert requires parent_json_pointer or parent_node_id")
@@ -570,7 +474,7 @@ def _apply_insert(
     roots: List[TreeNode],
     handler_id: str,
     mop: Dict[str, Any],
-    idx_map: Dict[str, Tuple[List[TreeNode], int]],
+    identity: Optional[TreeTempIdentityMap] = None,
 ) -> None:
     """Apply an insert operation to the tree.
 
@@ -588,7 +492,7 @@ def _apply_insert(
 
     ``target_node_id`` / ``node_id`` (preview node_ref addressing) combined
     with plain ``position: 'before'/'after'`` names a SIBLING to insert next
-    to; ``_coalesce_legacy_insert_anchor`` resolves the parent and anchor
+    to; ``_coalesce_sibling_insert_anchor`` resolves the parent and anchor
     from that sibling before parent resolution below (bug b215fbd3).
 
     RFC 6901 ``/-`` suffix in ``parent_json_pointer`` is resolved by
@@ -599,13 +503,15 @@ def _apply_insert(
         roots: List of root TreeNodes representing the document.
         handler_id: Format handler identifier ('json' or 'yaml').
         mop: Mutation operation dict with insert parameters.
-        idx_map: Stable-id index mapping stable_id to (holder, index) tuples.
+        identity: The session's identity map. Omitted only by a caller with no
+            session, which then addresses within this document alone.
     """
     if "value" not in mop:
         raise ValueError("insert requires value")
+    address_map = _identity_for(roots, identity)
     coalesce_tree_temp_insert_position(mop)
-    _coalesce_legacy_insert_anchor(roots, mop, idx_map)
-    parent = _resolve_insert_parent(roots, mop, idx_map)
+    _coalesce_sibling_insert_anchor(roots, mop, address_map)
+    parent = _resolve_insert_parent(mop, address_map)
     new_node = _value_to_single_node(handler_id, mop["value"])
     fresh = _regenerate_stable_ids(new_node)
 
@@ -641,7 +547,7 @@ def _apply_insert(
         if parent.children is None:
             parent.children = []
         ch = parent.children
-        _coalesce_insert_pointer_sibling_ids(roots, mop)
+        _coalesce_insert_pointer_sibling_ids(mop, address_map)
         before_nid = mop.get("before_node_id")
         after_nid = mop.get("after_node_id")
         idx_raw = mop.get("index")
@@ -676,6 +582,7 @@ def _apply_one_mutation(
     handler_id: str,
     mop: Dict[str, Any],
     idx_map: Dict[str, Tuple[List[TreeNode], int]],
+    identity: Optional[TreeTempIdentityMap] = None,
 ) -> None:
     """Apply one normalized modify-tree operation to TreeNode roots (mutates in place).
 
@@ -684,31 +591,30 @@ def _apply_one_mutation(
         handler_id: Format handler identifier ('json' or 'yaml').
         mop: Mutation operation dict with 'action', target, and value fields.
         idx_map: Stable-id index mapping stable_id to (holder, index) tuples.
+        identity: The session's identity map, or None for a document with no
+            session behind it.
     """
     action = str(mop.get("action") or "").lower()
+    if action == "insert":
+        _apply_insert(roots, handler_id, mop, identity)
+        return
+    address_map = _identity_for(roots, identity)
     if action == "replace":
         if "value" not in mop:
             raise ValueError("replace requires value")
-        target = _resolve_target_node(roots, mop, idx_map)
+        target = _resolve_target_node(mop, address_map)
         new_node = _value_to_single_node(handler_id, mop["value"])
         _merge_payload_keep_identity(target, new_node)
         return
     if action == "delete":
-        sid_del = _extract_stable_target(mop)
-        if sid_del is not None:
-            loc = idx_map.get(sid_del)
-            if loc is None:
-                raise ValueError(f"stable_id not found: {sid_del}")
-            holder, idx = loc
-            del holder[idx]
-            return
-        if "json_pointer" not in mop:
+        if _address_from(mop) is None:
             raise ValueError("delete requires json_pointer or stable target")
-        holder, idx, _ = _parent_holder_and_last_seg(roots, str(mop["json_pointer"]))
-        del holder[idx]
-        return
-    if action == "insert":
-        _apply_insert(roots, handler_id, mop, idx_map)
+        doomed = _resolve_target_node(mop, address_map)
+        location = idx_map.get(doomed.stable_id)
+        if location is None or location[0] is roots:
+            raise ValueError("cannot delete or relocate the document root")
+        holder, index = location
+        del holder[index]
         return
     raise ValueError(f"Unknown tree-temp action: {action!r}")
 
@@ -717,7 +623,14 @@ def apply_single_tree_temp_mutation(
     roots: List[TreeNode],
     handler_id: str,
     mop: Dict[str, Any],
+    identity: Optional[TreeTempIdentityMap] = None,
 ) -> None:
-    """Apply one normalized modify-tree operation to TreeNode roots (mutates in place)."""
+    """Apply one normalized modify-tree operation to TreeNode roots (mutates in place).
+
+    ``identity`` is the open session's node-identity map. Passing it is what
+    keeps an integer ``node_ref`` meaning the same node across a whole editing
+    session; omitting it (a caller with no session) still resolves every
+    address form, but only against this document as it stands right now.
+    """
     idx_map = _stable_index(roots)
-    _apply_one_mutation(roots, handler_id, mop, idx_map)
+    _apply_one_mutation(roots, handler_id, mop, idx_map, identity)

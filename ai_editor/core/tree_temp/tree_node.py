@@ -46,6 +46,23 @@ class TreeNode:
     comment_inline: Optional[str] = None
     flow_style: Optional[bool] = None
 
+    @property
+    def node_id(self) -> Optional[uuid.UUID]:
+        """This node's ``stable_id`` under the engine's canonical name and type.
+
+        ``tree_engine`` addresses a node by ``uuid.UUID`` and reads it off the
+        node as ``node_id``; ``stable_id`` is already that same UUID4, written
+        as a string. Exposing it here is what lets the engine's JSON Pointer
+        index and identifier map walk this forest directly instead of a copy
+        of it (see ``ai_editor/core/tree_temp/identity.py``). ``None`` when
+        ``stable_id`` is not a UUID -- the engine then skips the node rather
+        than indexing it under a fabricated identity.
+        """
+        try:
+            return uuid.UUID(str(self.stable_id))
+        except (TypeError, ValueError):
+            return None
+
 
 def validate_node_constraints(node: TreeNode) -> None:
     """Validate TreeNode fields against C-001 type discriminator rules.

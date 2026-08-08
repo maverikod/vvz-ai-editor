@@ -6,7 +6,6 @@ import uuid
 
 from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (
     _apply_insert,
-    _stable_index,
 )
 from ai_editor.core.tree_temp.tree_node import TreeNode
 
@@ -40,7 +39,6 @@ def test_insert_before_json_pointer_orders_array() -> None:
         children=[parent],
     )
     roots = [root]
-    idx_map = _stable_index(roots)
     _apply_insert(
         roots,
         "json",
@@ -49,7 +47,6 @@ def test_insert_before_json_pointer_orders_array() -> None:
             "value": "x",
             "before_json_pointer": "/items/1",
         },
-        idx_map,
     )
     values = [ch.value for ch in parent.children or []]
     assert values == ["a", "x", "b", "c"]
@@ -81,7 +78,6 @@ def test_insert_position_before_colon_json_pointer() -> None:
             "value": "z",
             "position": "before:/items/1",
         },
-        _stable_index(roots),
     )
     assert [ch.value for ch in parent.children or []] == ["a", "z", "b"]
 
@@ -106,7 +102,6 @@ def test_insert_position_after_colon_key() -> None:
             "value": 2,
             "position": "after:first",
         },
-        _stable_index(roots),
     )
     keys = [ch.key for ch in parent.children or []]
     assert keys == ["first", "second", "third"]

@@ -28,6 +28,7 @@ from ai_editor.commands.universal_file_edit.session import (
     EditSession,
     apply_tree_operation,
     apply_tree_temp_source_mutation,
+    tree_temp_identity_map,
 )
 from ai_editor.commands.universal_file_edit.tree_temp_edit_nodes import (
     apply_single_tree_temp_mutation,
@@ -759,7 +760,12 @@ def apply_tree_temp_mutations(
             validate_tree_temp_operation(op, session.handler_id)
             mop = _normalized_json_modify_operation(op)
             try:
-                apply_single_tree_temp_mutation(roots, session.handler_id, mop)
+                apply_single_tree_temp_mutation(
+                    roots,
+                    session.handler_id,
+                    mop,
+                    tree_temp_identity_map(session),
+                )
             except ValueError as exc:
                 rollback()
                 return error_result_for_edit(
