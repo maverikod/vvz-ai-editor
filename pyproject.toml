@@ -43,7 +43,7 @@ dependencies = [
     # NOT ON PyPI YET: until the first publish this requirement is satisfied by
     # the local build (`pip install ./src[tree-engine]`, which requirements.txt
     # and docker/Dockerfile do before installing this project).
-    "ai-editor-tree-engine==1.0.95",
+    "ai-editor-tree-engine==1.0.96",
 ]
 # PostgreSQL logical backup (backup_database / restore_database) also needs OS binaries
 # pg_dump and pg_restore (e.g. Debian/Ubuntu: apt install postgresql-client). Pip cannot
