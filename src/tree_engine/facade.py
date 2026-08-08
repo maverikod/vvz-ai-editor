@@ -20,6 +20,7 @@ owned by ``core.live_tree``; this module only drives them.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace as _replace_dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 from uuid import UUID
@@ -34,13 +35,12 @@ from tree_engine.core.locking import DocumentLockCoordinator
 from tree_engine.core.nodes import Document
 from tree_engine.core.short_id import ShortIdMap
 from tree_engine.errors import ErrorCode
-from tree_engine.exceptions import (DocumentVersionConflict, FormatFragmentParseFailed, NodeNotFound,
-    ShortIdConflict, StorageIOError, TreeEngineException, exception_for_code)
-from tree_engine.plugins.bsl.plugin import BSL_FORMAT_PLUGIN
+from tree_engine.exceptions import (DocumentVersionConflict, FormatFragmentParseFailed,
+    FormatPluginNotFound, NodeNotFound, ShortIdConflict, TreeEngineException, exception_for_code)
+from tree_engine.plugins.detachable import DETACHABLE_PLUGIN_SPECS, load_detachable_plugin
 from tree_engine.plugins.fallback import PLAIN_TEXT_FORMAT_ID, build_fallback_tree
 from tree_engine.plugins.json_format import JSON_FORMAT_PLUGIN
 from tree_engine.plugins.plain_text import PLAIN_TEXT_FORMAT_PLUGIN
-from tree_engine.plugins.python.plugin import PYTHON_FORMAT_PLUGIN
 from tree_engine.plugins.registry import FormatPluginRegistry
 from tree_engine.plugins.selection import build_extension_table, resolve_format_plugin
 from tree_engine.plugins.toml_format import TOML_FORMAT_PLUGIN
@@ -49,15 +49,18 @@ from tree_engine.query.engine import query as _query
 from tree_engine.query.inspection import SOURCE_FULL, SOURCE_NONE, SOURCE_PREVIEW, drill_down as _drill_down
 from tree_engine.query.outline import OutlineResponse
 from tree_engine.query.results import QueryMatch
-from tree_engine.storage.file_txn import FileWrite, publish
+from tree_engine.storage.document_bridge import (DocumentStore, OpenBranch, OpenedTree,
+    TreeWriteIntent, WrittenPair)
+from tree_engine.storage.history import Checkpoint, CheckpointKind, HistoryPort
 
 __all__ = [
     "TreeDocument", "Address", "load", "save", "reparse", "loads", "dumps", "query", "drill_down",
     "insert", "delete", "replace", "move", "copy_subtree", "apply_subtree", "set_attribute",
     "set_body", "replace_node_id", "resolve_address", "register_format_plugin", "list_formats",
-    "SOURCE_NONE", "SOURCE_PREVIEW", "SOURCE_FULL", "PLAIN_TEXT_FORMAT_ID", "AddressRemap",
-    "ApplySubtreeResult", "CopiedDocument", "MoveResult", "MutationResult", "NodeAddress",
-    "OutlineResponse", "QueryMatch"]
+    "open_bytes", "open_file", "write", "SOURCE_NONE", "SOURCE_PREVIEW", "SOURCE_FULL",
+    "PLAIN_TEXT_FORMAT_ID", "AddressRemap", "ApplySubtreeResult", "Checkpoint", "CheckpointKind",
+    "CopiedDocument", "HistoryPort", "MoveResult", "MutationResult", "NodeAddress", "OpenBranch",
+    "OpenedTree", "OutlineResponse", "QueryMatch", "TreeWriteIntent", "WrittenPair"]
 
 #: Every address form {j9rh} accepts, on every address-taking command below.
 Address = Union[UUID, int, str, NodeAddress]
@@ -67,12 +70,28 @@ Address = Union[UUID, int, str, NodeAddress]
 MoveResult, MutationResult = _move_mod.MoveResult, _ops.MutationResult
 ApplySubtreeResult, CopiedDocument = _apply_mod.ApplySubtreeResult, _copy_mod.CopiedDocument
 
-_BUILTINS = (PYTHON_FORMAT_PLUGIN, BSL_FORMAT_PLUGIN, JSON_FORMAT_PLUGIN, TOML_FORMAT_PLUGIN,
-             YAML_FORMAT_PLUGIN, PLAIN_TEXT_FORMAT_PLUGIN)
+#: The data formats, always present: stdlib-only or one small stable library, and needed by every
+#: consumer of the engine. The LANGUAGE formats are not here -- see ``plugins/detachable.py`` for
+#: why python and bsl are loaded through an import that is allowed to fail.
+_BASE_PLUGINS = (JSON_FORMAT_PLUGIN, TOML_FORMAT_PLUGIN, YAML_FORMAT_PLUGIN,
+                 PLAIN_TEXT_FORMAT_PLUGIN)
 _REGISTRY = FormatPluginRegistry()
-for _builtin in _BUILTINS:
+_EXTENSIONS: Dict[str, str] = {}
+#: format_id -> the refusal for a format that ships here but whose parser library is not installed.
+#: An entry means the format is KNOWN and unavailable, which is a different answer from unknown,
+#: and the facade gives it before any resolution so the caller is told what to install ({p023}).
+_DETACHED: Dict[str, str] = {}
+for _spec in DETACHABLE_PLUGIN_SPECS:
+    _plugin_object, _why = load_detachable_plugin(_spec)
+    if _plugin_object is None:
+        _DETACHED[_spec.format_id] = _why or ""
+        _EXTENSIONS.update({extension: _spec.format_id for extension in _spec.file_extensions})
+        continue
+    _REGISTRY.register_format_plugin(_plugin_object, replace=True)
+    _EXTENSIONS.update(build_extension_table([_plugin_object]))
+for _builtin in _BASE_PLUGINS:
     _REGISTRY.register_format_plugin(_builtin, replace=True)
-_EXTENSIONS: Dict[str, str] = dict(build_extension_table(_BUILTINS))
+_EXTENSIONS.update(build_extension_table(_BASE_PLUGINS))
 _LOCKS = DocumentLockCoordinator()
 
 # -- typed-error boundary ---------------------------------------------------
@@ -105,8 +124,27 @@ def _typed(default: ErrorCode) -> Iterator[None]:
 
 # -- plugin resolution, content and file entry points ({p037}) --------------
 
+def _detached(format_id: Optional[str] = None, file_path: Optional[str] = None) -> Optional[str]:
+    """The refusal for a format that ships with the engine but whose parser is not installed, or
+    ``None``. Resolution order mirrors :func:`_plugin`'s: an explicit ``format_id`` decides alone
+    ({p061}), otherwise the path's extension does, through the same table."""
+    if format_id is not None:
+        return _DETACHED.get(format_id)
+    if file_path:
+        extension = Path(file_path).suffix.lstrip(".").lower()
+        return _DETACHED.get(_EXTENSIONS.get(extension, ""))
+    return None
+
 def _plugin(format_id: Optional[str] = None, file_path: Optional[str] = None) -> Any:
-    """Resolve exactly one format plugin, explicit ``format_id`` first ({p061})."""
+    """Resolve exactly one format plugin, explicit ``format_id`` first ({p061}).
+
+    A format whose plugin is shipped but detached is refused here, by name, before resolution: the
+    alternative answers are all worse than a refusal -- ``FORMAT_UNKNOWN_EXTENSION`` would claim
+    the engine has never heard of ``.py``, a bare ``FORMAT_PLUGIN_NOT_FOUND`` would not say what to
+    install, and the plain-text fallback would quietly hand back a Python file parsed as text."""
+    refusal = _detached(format_id, file_path)
+    if refusal is not None:
+        raise FormatPluginNotFound(refusal)
     return resolve_format_plugin(format_id=format_id, file_path=file_path, registry=_REGISTRY,
                                  extension_table=_EXTENSIONS)
 
@@ -152,30 +190,83 @@ def dumps(document: TreeDocument) -> bytes:
         output = _plugin(document.format_id).generate_output(common, {})
         return output if isinstance(output, bytes) else str(output).encode("utf-8")
 
-def load(path: Union[str, Path], *, format_id: Optional[str] = None,
-         allow_plain_text_fallback: bool = True) -> TreeDocument:
-    """Read ``path`` and parse it into a :class:`TreeDocument`. This is the direct-file path over the
-    merged storage siblings: the recoverable open of a source/tree *pair* -- partial-publication
-    recovery, source_sha256 conflict detection, edit-session concurrency -- belongs to
-    ``storage/lifecycle.py``, not merged yet; this call routes there once it lands."""
-    with _typed(ErrorCode.STORAGE_IO_ERROR):
-        content = Path(path).read_bytes()
-    return loads(content, format_id=format_id, file_path=str(path),
-                 allow_plain_text_fallback=allow_plain_text_fallback)
+#: The storage half of this facade: the source/tree pair, the checksum open decision, and the write
+#: that persists node identity. Built over the same registry and extension table every other call
+#: resolves through, and driven through this module's own ``loads``/``dumps`` so the rebuild branch
+#: keeps one plugin resolution and one authorized plain-text fallback rather than a second copy.
+_STORE = DocumentStore(_REGISTRY, parse_source=loads, render_source=dumps,
+                       extension_table=_EXTENSIONS)
 
-def save(document: TreeDocument, path: Optional[Union[str, Path]] = None) -> Path:
-    """Render ``document`` and publish it as one recoverable file transaction ({p090}). The
-    lifecycle-owned tree-file companion, its checksums, and conflict policy wait on
-    ``storage/lifecycle.py``, exactly as :func:`load` documents."""
-    content = dumps(document)
+def open_bytes(source: Union[str, bytes], *, tree: Optional[bytes] = None,
+               format_id: Optional[str] = None, file_path: Optional[str] = None,
+               allow_plain_text_fallback: bool = True,
+               active_session_holds_file: bool = False,
+               history: Optional[HistoryPort] = None) -> OpenedTree:
+    """Take the open decision from BYTES: the source bytes, and the stored tree file's bytes when
+    the caller has them ({p087}). For a caller that already holds the content -- one that fetched
+    both files from somewhere that is not this filesystem, or that must not create files where
+    they live -- this is the whole of open, and it touches no filesystem at all.
+
+    The recorded ``source_sha256`` decides. Matching, the stored tree IS the document and every
+    node keeps its ``node_id`` and its ``short_id``; absent or unusable, the source is parsed with
+    fresh identity. A mismatch is decided by ``active_session_holds_file``, which only the caller
+    knows: with no session the file on disk is the truth and the tree is rebuilt, with a session
+    holding it the tree is the truth and is kept. :class:`OpenedTree` reports which of the four
+    branches was taken, whether identity survived, the tree file bytes the decision calls for, and
+    what would have to happen to the tree file for it to agree -- which this call leaves to the
+    caller, having written nothing."""
+    return _STORE.open_bytes(source, tree=tree, format_id=format_id, file_path=file_path,
+                             allow_plain_text_fallback=allow_plain_text_fallback,
+                             active_session_holds_file=active_session_holds_file, history=history)
+
+def open_file(path: Union[str, Path], *, format_id: Optional[str] = None,
+              allow_plain_text_fallback: bool = True,
+              active_session_holds_file: bool = False,
+              history: Optional[HistoryPort] = None) -> OpenedTree:
+    """:func:`open_bytes` over a real pair on disk, acting on the intent it computes.
+
+    The SOURCE file is read and never written: it takes no part in the file transaction this
+    performs, so its bytes and its mtime are unchanged whatever the decision was. The derived TREE
+    file is created when there is none and refreshed when the source has superseded it -- that is
+    not a violation of a read-only open, it is what gives the next open identity to hand out.
+    ``written_paths`` on the result is exactly what was written, which is the tree file or nothing.
+    Use :func:`open_bytes` where even the derived artefact must not be created."""
+    return _STORE.open_file(path, format_id=format_id,
+                            allow_plain_text_fallback=allow_plain_text_fallback,
+                            active_session_holds_file=active_session_holds_file, history=history)
+
+def load(path: Union[str, Path], *, format_id: Optional[str] = None,
+         allow_plain_text_fallback: bool = True,
+         active_session_holds_file: bool = False,
+         history: Optional[HistoryPort] = None) -> TreeDocument:
+    """Read ``path`` and open it into a :class:`TreeDocument`, through the storage layer ({p085}).
+    The document of :func:`open_file` and nothing else: a valid tree file beside ``path`` is
+    accepted and identity survives the reload, a stale or absent one is rebuilt from the source and
+    the tree file brought up to date. Use :func:`open_file` instead when the branch, the refusal
+    reason, the write intent or the paths written matter."""
+    return open_file(path, format_id=format_id,
+                     allow_plain_text_fallback=allow_plain_text_fallback,
+                     active_session_holds_file=active_session_holds_file,
+                     history=history).document
+
+def write(document: TreeDocument, path: Optional[Union[str, Path]] = None, *,
+          history: Optional[HistoryPort] = None) -> WrittenPair:
+    """Render ``document`` and publish the source/tree pair as one recoverable transaction ({p090}),
+    reporting every path written. This is where identity is persisted through an edit: the tree
+    file carries each node's ``node_id``/``short_id`` and the live ``short_id_map`` with its
+    monotonic counter, so the next open of these bytes takes the SHA_MATCH branch with identity
+    intact.
+
+    ``written_paths`` is the whole of the change -- nothing else is created and no journal survives
+    a successful publication -- so a caller that owns atomicity elsewhere can stage exactly those
+    files. A checkpoint is recorded through ``history`` once the publication is verified on disk."""
     with _typed(ErrorCode.STORAGE_IO_ERROR):
-        target = Path(path) if path is not None else document.path
-        if target is None:
-            raise StorageIOError("save() needs a path: this document came from loads(), not a file")
-        publish([FileWrite(target_path=target, content=content)],
-                target.with_suffix(target.suffix + ".journal"))
-        document.path, document.source_bytes = target, content
-        return target
+        return _STORE.write(document, path, history=history)
+
+def save(document: TreeDocument, path: Optional[Union[str, Path]] = None, *,
+         history: Optional[HistoryPort] = None) -> Path:
+    """The source path :func:`write` published, for a caller that needs nothing else from it."""
+    return write(document, path, history=history).source_path
 
 def reparse(document: TreeDocument) -> TreeDocument:
     """Rebuild ``document`` from its own rendered source, in place ({p037}): render, parse again with
@@ -240,12 +331,31 @@ def _committed(document: TreeDocument, *parents: Optional[LiveNode]) -> None:
 def _fragment(document: TreeDocument, source: Union[str, bytes]) -> List[LiveNode]:
     """Parse caller-supplied source into fresh live nodes through the document's own plugin, giving a
     node whose id would collide with a live one a fresh UUID4 and leaving short_id allocation to the
-    core preflight."""
-    parsed = _plugin(document.format_id).parse_fragment(source)
+    core preflight.
+
+    A fragment parser is free to wrap its result in a CONTAINER of its own -- ``plain_text``'s does,
+    documenting that ``parse_fragment`` "always yields a root container Node" -- and splicing that
+    container in as a sibling builds a tree the same format then cannot render: ``dumps()`` fails
+    with ``UNSUPPORTED_TRANSLATION`` on a ``plain_text:root`` found where a paragraph belongs. A
+    plugin says so by declaring ``fragment_container_kinds``, and such a node is unwrapped to its
+    children, which are the content the caller meant. The declaration is what keeps this narrow:
+    for JSON an object returned by ``parse_fragment`` is a genuine value and must NOT be unwrapped,
+    even though it carries the document root's own kind. An empty container carries no content at
+    all, so it raises like every other structureless fragment instead of splicing nothing."""
+    plugin = _plugin(document.format_id)
+    parsed = plugin.parse_fragment(source)
     if isinstance(parsed, str):
         raise FormatFragmentParseFailed(
             f"{document.format_id} found no structure in the given fragment")
     roots = [to_live(n) for n in (parsed if isinstance(parsed, (list, tuple)) else [parsed])]
+    containers = tuple(getattr(plugin, "fragment_container_kinds", ()) or ())
+    if len(roots) == 1 and roots[0].kind in containers:
+        roots = roots[0].children
+        for node in roots:
+            node.parent = None
+        if not roots:
+            raise FormatFragmentParseFailed(
+                f"{document.format_id} found no structure in the given fragment")
     for node in (n for root in roots for n in walk(root)):
         if node.node_id in document.nodes_by_id:
             node.node_id = generate_node_id()
@@ -283,15 +393,30 @@ def insert(document: TreeDocument, source: Union[str, bytes], *, position: str,
            parent: Optional[Address] = None, sibling: Optional[Address] = None,
            index: Optional[int] = None, expected_version: Optional[int] = None) -> MutationResult:
     """Parse ``source`` and insert it at one {p107} positional address: ``first_child``,
-    ``last_child``, ``child_index`` (with ``index``), ``before``, or ``after``."""
+    ``last_child``, ``child_index`` (with ``index``), ``before``, or ``after``.
+
+    A fragment that parses into SEVERAL nodes is inserted whole, in order, rather than having
+    everything after the first silently dropped. The core splice takes one node at a time against a
+    fixed anchor, so the order of the calls is what fixes the final order: ``first_child`` and
+    ``after`` are spliced back to front, ``before``/``last_child``/``child_index`` front to back.
+    The returned :class:`MutationResult` describes the FIRST fragment node -- its ``node_id``,
+    ``short_id`` and final ``position`` -- and carries the ``inserted`` addresses and short_id
+    ``remap`` of every one of them, in fragment order."""
+    reverse = position in ("first_child", "after")
     with _operation(document, expected_version):
         parent_node = _nodes(document, parent)[0] if parent is not None else None
         sibling_node = _nodes(document, sibling)[0] if sibling is not None else None
-        incoming = _fragment(document, source)[0]
-        result = _ops.insert(document, incoming, position=position, parent=parent_node,
-                             sibling=sibling_node, index=index,
-                             next_short_id=lambda: _next_short_id(document))
-        _committed(document, incoming.parent)
+        incoming = _fragment(document, source)
+        results = [
+            _ops.insert(document, node, position=position, parent=parent_node,
+                        sibling=sibling_node, index=index if index is None else index + offset,
+                        next_short_id=lambda: _next_short_id(document))
+            for offset, node in enumerate(reversed(incoming) if reverse else incoming)]
+        ordered = list(reversed(results)) if reverse else results
+        result = _replace_dataclass(
+            ordered[0], remap=tuple(entry for step in ordered for entry in step.remap),
+            inserted=tuple(address for step in ordered for address in step.inserted))
+        _committed(document, incoming[0].parent)
         return result
 
 def delete(document: TreeDocument, targets: Any, *,

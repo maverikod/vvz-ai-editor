@@ -87,6 +87,7 @@ from tree_engine.plugins.contract import (
     SemanticRole,
     SemanticRoleMapping,
 )
+from tree_engine.plugins.detachable import BSL_PLUGIN_SPEC
 
 __all__ = [
     "FORMAT_ID",
@@ -102,7 +103,8 @@ _FUNCTION_KIND = f"{FORMAT_ID}:function_definition"
 _METADATA = FormatPluginMetadata(
     format_id=FORMAT_ID,
     aliases=(),
-    file_extensions=("bsl",),
+    # From the detachable-plugin manifest; see plugins/detachable.py.
+    file_extensions=BSL_PLUGIN_SPEC.file_extensions,
     plugin_version="1.0.0",
     contract_version="1.0.0",
     capabilities={

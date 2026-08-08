@@ -275,6 +275,72 @@ def test_insert_delete_and_replace_change_the_rendered_output() -> None:
     assert facade.dumps(replaced) == b"def z():\n    return 9\n\n\ndef b():\n    return 2\n"
 
 
+def test_insert_into_a_plain_text_document_renders_the_expected_bytes() -> None:
+    """Regression: inserting into a plain-text document produced an UNRENDERABLE tree.
+
+    ``plain_text.parse_fragment`` documents that it always yields a root container, and the splice
+    put that container in beside a paragraph; the next ``dumps()`` raised UNSUPPORTED_TRANSLATION
+    on a ``plain_text:root`` where only a paragraph may be, so a text insert could be applied and
+    then never rendered. The plugin now declares the kind as a fragment container and the splice
+    takes its children. Identity is asserted alongside the bytes: an insert ABOVE a paragraph must
+    not renumber it -- that is the acceptance invariant of the whole migration."""
+    document = facade.loads("alpha\nbravo\ncharlie\n", format_id="plain_text")
+    first = document.root.children[0]
+    before = {node.node_id: node.short_id for node in document.root.children}
+
+    result = facade.insert(document, "zulu\n", position="before", sibling=first.short_id)
+
+    assert facade.dumps(document) == b"zulu\nalpha\nbravo\ncharlie\n"
+    assert len(result.inserted) == 1
+    assert [node.kind for node in document.root.children] == ["plain_text:paragraph"] * 4
+    after = {node.node_id: node.short_id for node in document.root.children}
+    assert all(after[node_id] == short_id for node_id, short_id in before.items())
+
+
+def test_a_multi_line_plain_text_fragment_is_inserted_whole_and_in_order() -> None:
+    """Unwrapping a fragment container must not silently drop everything after its first node: a
+    fragment that parses into several nodes is spliced whole, in order, at every position."""
+    for position, kwargs, expected in (
+            ("last_child", {"parent": None}, b"alpha\nbravo\nx\ny\nz\n"),
+            ("first_child", {"parent": None}, b"x\ny\nz\nalpha\nbravo\n"),
+            ("before", {"sibling": 1}, b"x\ny\nz\nalpha\nbravo\n"),
+            ("after", {"sibling": 1}, b"alpha\nx\ny\nz\nbravo\n"),
+            ("child_index", {"parent": None, "index": 1}, b"alpha\nx\ny\nz\nbravo\n")):
+        document = facade.loads("alpha\nbravo\n", format_id="plain_text")
+        resolved = dict(kwargs)
+        if "parent" in resolved:
+            resolved["parent"] = document.root.short_id
+        if "sibling" in resolved:
+            resolved["sibling"] = document.root.children[resolved["sibling"] - 1].short_id
+        result = facade.insert(document, "x\ny\nz\n", position=position, **resolved)
+        assert (position, facade.dumps(document)) == (position, expected)
+        assert (position, len(result.inserted)) == (position, 3)
+
+
+def test_an_empty_plain_text_fragment_is_refused_rather_than_spliced_as_a_container() -> None:
+    """An empty container carries no content, so it raises like every other structureless
+    fragment instead of putting a bare ``plain_text:root`` into the tree."""
+    document = facade.loads("alpha\n", format_id="plain_text")
+    with pytest.raises(TreeEngineException) as failure:
+        facade.insert(document, "", position="last_child", parent=document.root.short_id)
+    assert failure.value.code is ErrorCode.FORMAT_FRAGMENT_PARSE_FAILED
+    assert facade.dumps(document) == b"alpha\n"
+
+
+def test_a_decimal_string_short_id_is_accepted_by_every_address_taking_command() -> None:
+    """{j9rh}: the frozen editor API carries short_ids as decimal STRINGS (``node_ref``), so every
+    facade command that takes an address must accept ``"3"`` exactly as it accepts ``3``."""
+    document = facade.loads(JSON, format_id="json")
+    member = document.root.children[0]
+    assert facade.resolve_address(document, str(member.short_id)) == member.node_id
+    assert facade.resolve_address(document, str(member.short_id)) == facade.resolve_address(
+        document, member.short_id)
+    facade.set_attribute(document, str(member.short_id), "key", "renamed")
+    assert facade.dumps(document) == b'{"renamed": 1, "b": 2}'
+    facade.delete(document, str(document.root.children[1].short_id))
+    assert facade.dumps(document) == b'{"renamed": 1}'
+
+
 def test_move_reorders_within_a_document_and_transfers_between_two() -> None:
     """{p035}: a move reorders the render; across two documents both stay renderable."""
     document = facade.loads(JSON, format_id="json")
