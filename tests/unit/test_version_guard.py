@@ -117,7 +117,23 @@ def test_engine_guard_passes_when_the_installed_engine_is_the_declared_one(
     assert_tree_engine_version_matches()  # must not raise
 
 
-@pytest.mark.parametrize("installed", ["1.0.92", "1.0.94", "2.0.0", "1.0.93.post1"])
+def _other_versions(declared: str) -> list[str]:
+    """Versions that must be refused, DERIVED from the declared one.
+
+    Never hardcode neighbours here: a literal list silently turns into a
+    contradiction at the next release -- a bump to a version the list called
+    "other" makes the test demand that the correct version be refused.
+    """
+    major, minor, patch = (int(part) for part in declared.split("."))
+    return [
+        f"{major}.{minor}.{patch - 1}",
+        f"{major}.{minor}.{patch + 1}",
+        f"{major + 1}.0.0",
+        f"{declared}.post1",
+    ]
+
+
+@pytest.mark.parametrize("installed", _other_versions(REQUIRED_TREE_ENGINE_VERSION))
 def test_engine_guard_refuses_any_other_version(
     monkeypatch: pytest.MonkeyPatch, installed: str
 ) -> None:
@@ -208,7 +224,7 @@ async def test_client_accepts_a_server_of_its_own_version() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("server", ["1.0.92", "1.0.94", "2.0.0"])
+@pytest.mark.parametrize("server", _other_versions(CLIENT_VERSION)[:3])
 async def test_client_refuses_a_server_of_a_different_version(server: str) -> None:
     client, rpc = _client_against(server)
     with pytest.raises(ServerVersionMismatch) as excinfo:
