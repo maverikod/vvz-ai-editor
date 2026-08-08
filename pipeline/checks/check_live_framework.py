@@ -10,7 +10,7 @@ proxy_registration, roletest. Nothing here is mocked.
 Risk decisions (read before touching this file): ``reload``, ``load``,
 ``unload``, ``transport_management``, and ``proxy_registration`` can disturb a
 running server. Each was independently verified by reading the exact
-installed ``mcp-proxy-adapter==8.10.20`` source before being called live:
+installed ``mcp-proxy-adapter==8.10.21`` source before being called live:
 
 - ``reload`` with no ``config_path`` (its only real parameter, and this check
   never supplies one) only recounts already-registered commands under a lock;
@@ -43,7 +43,7 @@ real parameters (``config``'s operation/path/value, ``settings``'s operation/
 key/value, ``roletest``'s action, ``transport_management``'s action,
 ``proxy_registration``'s operation and friends, ``unload``'s command_name)
 appear in ``schema.properties`` either -- reading the installed
-``mcp-proxy-adapter==8.10.20`` command source was the only way to find them;
+``mcp-proxy-adapter==8.10.21`` command source was the only way to find them;
 see ``FRAMEWORK_REAL_SURFACE`` below.
 """
 
@@ -306,7 +306,7 @@ def _case_unload(client: LiveClient, cov: Dict[str, CommandCoverage]) -> str:
 
 
 #: The REAL parameter surface each command actually honours (verified by reading
-#: the exact installed mcp-proxy-adapter==8.10.20 command source), for the
+#: the exact installed mcp-proxy-adapter==8.10.21 command source), for the
 #: coverage section -- none of it is in help(cmdname=...)'s declared schema.
 FRAMEWORK_REAL_SURFACE = {
     "help": "cmdname (in data.schema.properties only, NOT in metadata.parameters)",

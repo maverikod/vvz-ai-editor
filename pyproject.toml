@@ -26,7 +26,7 @@ dependencies = [
     "pydantic>=2.1.0",
     "lark>=1.1.0",
     "libcst>=1.1.0",
-    "mcp-proxy-adapter>=8.10.19",
+    "mcp-proxy-adapter>=8.10.21",
     "code-analysis-client>=1.0.9",
     "queuemgr>=1.0.20",
     "dulwich>=1.2.4",
@@ -43,7 +43,7 @@ dependencies = [
     # NOT ON PyPI YET: until the first publish this requirement is satisfied by
     # the local build (`pip install ./src[tree-engine]`, which requirements.txt
     # and docker/Dockerfile do before installing this project).
-    "ai-editor-tree-engine==1.0.94",
+    "ai-editor-tree-engine==1.0.95",
 ]
 # PostgreSQL logical backup (backup_database / restore_database) also needs OS binaries
 # pg_dump and pg_restore (e.g. Debian/Ubuntu: apt install postgresql-client). Pip cannot
