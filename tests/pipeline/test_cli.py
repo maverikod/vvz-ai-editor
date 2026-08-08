@@ -16,11 +16,14 @@ Two strategies, kept apart:
   proving actual discovery, resilience, and PYTHONPATH behavior. A fresh
   interpreter process is the only honest way to test module discovery.
 
-PYTHONPATH reality pinned by ``test_check_recovery_needs_src_on_path``:
+PYTHONPATH reality pinned by
+``test_check_recovery_resolves_tree_engine_from_the_installed_distribution``:
 ``pipeline.checks.check_recovery`` imports ``tree_engine`` at module scope,
-so the real CLI needs ``PYTHONPATH=.:src``, not just ``.``. No test writes
-into the real ``pipeline/checks/`` directory; discovery and resilience
-scenarios copy ``pipeline/`` into ``tmp_path`` first.
+and since the engine became its own distribution (``ai-editor-tree-engine``)
+that import is satisfied from site-packages, so ``PYTHONPATH=.`` is enough
+and ``src`` is no longer load-bearing. No test writes into the real
+``pipeline/checks/`` directory; discovery and resilience scenarios copy
+``pipeline/`` into ``tmp_path`` first.
 """
 
 from __future__ import annotations
@@ -258,13 +261,24 @@ def test_check_run_wraps_raised_exception_but_not_bad_return_type():
 
 # Subprocess tests against the real repository: real discovery, real checks.
 
-@pytest.mark.timeout(180)
-def test_cli_list_single_and_aggregate_real_checks():
-    """The no-argument aggregate run executes every real check, so this test
-    costs as much as the whole battery does -- check-roundtrip alone parses
-    hundreds of real files. It carries its own generous timeout rather than
-    the suite default: if it ever exceeds even this, the aggregate run has
-    genuinely become too slow to be used, which is worth failing over."""
+@pytest.mark.timeout(300)
+def test_cli_list_and_single_real_checks():
+    """Real discovery, real checks, real subprocess -- but no live server.
+
+    This used to end with a no-argument aggregate run asserting exit 0. That
+    made a unit test assert the DEPLOYMENT's health, not the CLI's: the
+    aggregate executes the ``check_live_*`` checks, which talk to the remote
+    server over mTLS, and the CLI exits 1 if any single check fails. It duly
+    failed while the Code Analysis server was being restarted mid-merge, and
+    its 180s timeout was really measuring the network. The live battery is an
+    explicit gate run against a deployment, not part of the unit suite.
+
+    Nothing is lost by dropping it here: aggregate semantics (run every
+    registered check, tally line, exit 1 on any failure) are pinned in
+    process by ``test_no_argument_runs_all_checks_aggregate_exit``, and the
+    subprocess path -- real pkgutil discovery, real check execution, real
+    exit code -- is what this test still proves, against real static checks
+    rather than stubs."""
 
     root = _repo_root()
     pp = _real_pythonpath(root)
@@ -274,15 +288,10 @@ def test_cli_list_single_and_aggregate_real_checks():
     assert "check-boundary-check" in listed.stdout
     assert "check-recovery" in listed.stdout
 
-    single = _run_cli(["check-boundary-check"], cwd=root, pythonpath=pp)
-    assert single.returncode == 0, single.stderr
-    assert "[PASS] check-boundary-check" in single.stdout
-
-    aggregate = _run_cli([], cwd=root, pythonpath=pp)
-    assert aggregate.returncode == 0, aggregate.stderr
-    assert "[PASS] check-boundary-check" in aggregate.stdout
-    assert "[PASS] check-recovery" in aggregate.stdout
-    assert "checks passed" in aggregate.stdout
+    for name in ("check-boundary-check", "check-recovery"):
+        single = _run_cli([name], cwd=root, pythonpath=pp)
+        assert single.returncode == 0, single.stdout + single.stderr
+        assert f"[PASS] {name}" in single.stdout
 
 def test_cli_unknown_check_argparse_error():
     root = _repo_root()
@@ -301,20 +310,37 @@ def test_cli_argument_errors_extra_positional_and_bad_flag():
     assert flag.returncode == 2
     assert "unrecognized arguments" in flag.stderr
 
-def test_check_recovery_needs_src_on_path():
-    # Pin the exact PYTHONPATH reality: '.' alone is not enough.
+def test_check_recovery_resolves_tree_engine_from_the_installed_distribution():
+    """Pin the PYTHONPATH reality AFTER ai-editor-tree-engine became its own
+    distribution: 'src' on the path is no longer what makes tree_engine
+    importable -- the installed distribution is. This test used to assert the
+    opposite ("'.' alone is not enough"), which was true only while the engine
+    shipped as a subpackage of the server.
+
+    The engine resolving from site-packages rather than the checkout is the
+    whole point of the split, so assert that too: a check must not silently
+    exercise the working tree when the deployed artifact is what ships."""
+
     root = _repo_root()
     without_src = _run_cli(["list"], cwd=root, pythonpath=str(root))
     assert without_src.returncode == 0
-    assert "check-recovery" not in without_src.stdout
-    assert "check-boundary-check" in without_src.stdout  # unaffected sibling
-    assert "failed to import check module 'pipeline.checks.check_recovery'" in without_src.stderr
-    assert "tree_engine" in without_src.stderr
+    assert "check-recovery" in without_src.stdout
+    assert "check-boundary-check" in without_src.stdout
+    assert without_src.stderr == ""
 
     with_src = _run_cli(["list"], cwd=root, pythonpath=_real_pythonpath(root))
     assert with_src.returncode == 0
     assert "check-recovery" in with_src.stdout
     assert with_src.stderr == ""
+
+    located = subprocess.run(
+        [sys.executable, "-c", "import tree_engine.facade as f; print(f.__file__)"],
+        cwd=str(root), env={**os.environ, "PYTHONPATH": str(root)},
+        capture_output=True, text=True, check=True)
+    engine_file = Path(located.stdout.strip())
+    assert engine_file.is_file(), located.stdout
+    assert root / "src" not in engine_file.parents, (
+        f"tree_engine resolved from the checkout, not the installed distribution: {engine_file}")
 
 # Subprocess tests against a throwaway pipeline/ copy: never touches real pipeline/checks/.
 

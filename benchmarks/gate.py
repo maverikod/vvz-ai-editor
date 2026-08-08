@@ -105,15 +105,21 @@ LOCAL_SCALING_LIMIT = 1.5
 DOCUMENT_SCALING_SLACK = 2.5
 
 _MUTATE = instr.PHASE_MUTATE
-_VERSION_RE = re.compile(r"^version\s*=\s*[\"'](\d+)\.(\d+)\.", re.MULTILINE)
+_BRANCH_RE = re.compile(r"^(\d+)\.(\d+)\.\d+$")
 
 
 def _version_branch() -> str:
-    """The ``major.minor`` branch the baseline is indexed by, read from ``pyproject.toml``."""
-    text = (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = _VERSION_RE.search(text)
+    """The ``major.minor`` branch the baseline is indexed by, read from ``VERSION``.
+
+    The root ``VERSION`` file is the single source of truth for all three
+    distributions (server, client, engine); ``pyproject.toml`` declares
+    ``dynamic = ["version"]`` and no longer carries a literal to grep.
+    """
+    version_file = _ROOT / "VERSION"
+    text = version_file.read_text(encoding="utf-8").strip()
+    match = _BRANCH_RE.match(text)
     if match is None:
-        raise ValueError(f"no 'version = \"major.minor.patch\"' in {_ROOT / 'pyproject.toml'}")
+        raise ValueError(f"no 'major.minor.patch' version in {version_file}: {text!r}")
     return f"{match.group(1)}.{match.group(2)}"
 
 
