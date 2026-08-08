@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import dataclasses
 import os
-import re
 import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List
@@ -56,7 +55,6 @@ ENV_EXPECTED_VERSION = "AI_EDITOR_LIVE_EXPECTED_VERSION"
 ENV_EXPECTED_COMMANDS = "AI_EDITOR_LIVE_EXPECTED_COMMANDS"
 DEFAULT_EXPECTED_COMMANDS = 32
 SCHEMA_SAMPLE_COMMAND = "universal_file_open"
-_VERSION_PATTERN = re.compile(r"^\s*version\s*=\s*\"([^\"]+)\"", re.MULTILINE)
 _HEALTH_COMPONENTS = ("system", "process", "commands", "proxy_registration",
                       "queue_dependencies")
 _UNIVERSAL_FILE_COMMANDS = (
@@ -90,15 +88,22 @@ def _run_case(name: str, func: Callable[[], str]) -> CaseResult:
 
 def expected_version() -> str:
     """The version this deployment must report: ``AI_EDITOR_LIVE_EXPECTED_VERSION``
-    when set, otherwise ``[project] version`` from the checkout's pyproject.toml."""
+    when set, otherwise the repository-root ``VERSION`` file.
+
+    ``VERSION`` is the single source of truth shared by the server, the client
+    and the engine. This used to grep ``[project] version`` out of
+    pyproject.toml; that stopped working the moment the three distributions were
+    switched to ``dynamic = ["version"]`` reading this same file, and the check
+    raised ``no [project] version found`` instead of comparing anything.
+    """
     override = os.environ.get(ENV_EXPECTED_VERSION, "").strip()
     if override:
         return override
-    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    match = _VERSION_PATTERN.search(pyproject.read_text(encoding="utf-8"))
-    if match is None:
-        raise AssertionError(f"no [project] version found in {pyproject}")
-    return match.group(1)
+    version_file = Path(__file__).resolve().parents[2] / "VERSION"
+    declared = version_file.read_text(encoding="utf-8").strip()
+    if not declared:
+        raise AssertionError(f"no version declared in {version_file}")
+    return declared
 
 
 def expected_command_count() -> int:

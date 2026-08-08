@@ -26,6 +26,13 @@ from ai_editor_client.editor_file import EditorFileClient
 from ai_editor_client.file_session import FileSessionClient
 from ai_editor_client.universal_file import UniversalFileClient
 from ai_editor_client.server_schema import fetch_command_schema_from_server
+from ai_editor_client.server_version import (
+    REQUIRED_SERVER_VERSION,
+    SERVER_VERSION_PROBE_COMMAND,
+    assert_server_version_matches,
+    is_version_exempt,
+    server_version_from_health,
+)
 from ai_editor_client.validation import (
     prepare_params_for_schema,
     validate_params_against_schema,
@@ -47,13 +54,21 @@ def _warn_deprecated_facade(name: str, replacement: str) -> None:
 class CodeAnalysisAsyncClient:
     """Async client: domain commands via :meth:`call` / :meth:`call_unified`; full adapter API on :attr:`rpc`."""
 
-    __slots__ = ("_rpc", "_command_schema_cache", "_commands_proxy")
+    __slots__ = (
+        "_rpc",
+        "_command_schema_cache",
+        "_commands_proxy",
+        "_verified_server_version",
+    )
 
     def __init__(self, **jsonrpc_kwargs: Any) -> None:
         """Same keyword arguments as ``JsonRpcClient`` (``protocol``, ``host``, ``port``, ``cert``, …)."""
         self._rpc = JsonRpcClient(**jsonrpc_kwargs)
         self._command_schema_cache: Dict[str, Dict[str, Any]] = {}
         self._commands_proxy: Optional[ValidatedCommandsProxy] = None
+        # Set once the server has been confirmed to be REQUIRED_SERVER_VERSION.
+        # Never set to a mismatching value: a mismatch raises instead.
+        self._verified_server_version: Optional[str] = None
 
     @classmethod
     def from_jsonrpc_kwargs(cls, **kwargs: Any) -> CodeAnalysisAsyncClient:
@@ -135,6 +150,32 @@ class CodeAnalysisAsyncClient:
         """Drop cached command schemas (after ``reload`` or when server definitions change)."""
         self._command_schema_cache.clear()
 
+    async def ensure_server_version(self, command: str) -> None:
+        """Refuse to dispatch ``command`` to a server of a different version.
+
+        Runs before every call except the exempt ones (``health``, ``info``),
+        which stay usable across a mismatch precisely so an operator can see it.
+        The server's version is learned once per client instance from
+        ``health`` and then cached; a mismatch raises
+        :class:`~ai_editor_client.exceptions.ServerVersionMismatch` and nothing
+        is executed on the server.
+
+        The rule is exact equality (see
+        :mod:`ai_editor_client.server_version`). Failure is closed: if the probe
+        does not yield a usable version, the call is refused rather than sent.
+        """
+        if is_version_exempt(command):
+            return
+        if self._verified_server_version == REQUIRED_SERVER_VERSION:
+            return
+        envelope = await self._rpc.execute_command(
+            SERVER_VERSION_PROBE_COMMAND,
+            {},
+        )
+        reported = server_version_from_health(envelope)
+        assert_server_version_matches(reported, command=command)
+        self._verified_server_version = reported
+
     @property
     def file_sessions(self) -> FileSessionClient:
         """Session workflow: ``session_*``, ``subordinate_session_*``, transfer, advisory locks."""
@@ -180,6 +221,7 @@ class CodeAnalysisAsyncClient:
         refresh_schema: bool = False,
     ) -> Dict[str, Any]:
         """``help`` → schema on server, shallow local validation, then ``execute_command``."""
+        await self.ensure_server_version(command)
         schema = await self.get_command_schema(command, refresh=refresh_schema)
         merged = dict(params or {})
         prepared = prepare_params_for_schema(merged, schema)
@@ -204,6 +246,7 @@ class CodeAnalysisAsyncClient:
         status_hook: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> Dict[str, Any]:
         """Same as :meth:`call_validated` but uses ``execute_command_unified``."""
+        await self.ensure_server_version(command)
         schema = await self.get_command_schema(command, refresh=refresh_schema)
         merged = dict(params or {})
         prepared = prepare_params_for_schema(merged, schema)
@@ -227,6 +270,7 @@ class CodeAnalysisAsyncClient:
         use_cmd_endpoint: bool = False,
     ) -> Dict[str, Any]:
         """Run any registered server command (sync completion)."""
+        await self.ensure_server_version(command)
         return await self._rpc.execute_command(
             command,
             params or {},
@@ -246,6 +290,7 @@ class CodeAnalysisAsyncClient:
         status_hook: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> Dict[str, Any]:
         """Run a command with optional queue detection and polling (adapter unified path)."""
+        await self.ensure_server_version(command)
         return await self._rpc.execute_command_unified(
             command,
             params or {},

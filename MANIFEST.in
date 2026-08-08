@@ -2,5 +2,9 @@ include README.md
 include LICENSE
 include requirements.txt
 include .flake8
+# The one source of truth, plus the symlink through which the ai_editor package
+# reads it at runtime (ai_editor/version.py). Both are needed in the sdist.
+include VERSION
+include ai_editor/VERSION
 recursive-include ai_editor *.py
 recursive-include ai_editor/config_templates *.json

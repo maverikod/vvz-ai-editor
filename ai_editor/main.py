@@ -25,13 +25,24 @@ from ai_editor.main_daemon_logging import setup_daemon_logging
 from ai_editor.main_server_config import build_server_config
 from ai_editor.main_startup_info import print_startup_info
 from ai_editor.main_queue_init import init_queue_manager_before_workers
-from ai_editor.core.dependency_compat import assert_queue_dependencies_compatible
+from ai_editor.core.dependency_compat import (
+    assert_queue_dependencies_compatible,
+    assert_tree_engine_version_matches,
+)
 
 from ai_editor import hooks  # noqa: F401
 
 
 def main() -> None:
     """Main function to run AI Editor server."""
+    # FIRST, before argument parsing, config loading, or any file being touched:
+    # the installed tree engine must be exactly the version this build declares
+    # (ai_editor/version.py, REQUIRED_TREE_ENGINE_VERSION, read from the shared
+    # VERSION file). The engine owns node identity and the on-disk tree file
+    # format, so a mismatched engine is a data-corruption risk, not a degraded
+    # feature. Raising here is the point: the server must not come up at all.
+    assert_tree_engine_version_matches()
+
     parser = argparse.ArgumentParser(description="AI Editor Server")
     parser.add_argument(
         "--config",

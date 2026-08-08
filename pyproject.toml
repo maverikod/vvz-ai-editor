@@ -159,6 +159,14 @@ namespaces = true
 
 [tool.setuptools.package-data]
 "ai_editor.config_templates" = ["*.json"]
+# ai_editor/VERSION is a symlink to the repository-root VERSION file and is THE
+# runtime version declaration read by ai_editor/version.py, on which the
+# server<->engine startup guard depends. It must ship inside the wheel:
+# `importlib.metadata` records what was written at INSTALL time and goes stale
+# on an editable install, whereas these bytes are what the build actually is.
+# sdist/wheel builds copy the resolved content, so an installed wheel carries a
+# real file, never a dangling link.
+"ai_editor" = ["VERSION"]
 
 # Portable shell launcher (#!/usr/bin/env bash); not pip console_scripts with host shebang.
 [tool.setuptools]

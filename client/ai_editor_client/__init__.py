@@ -27,7 +27,7 @@ from ai_editor_client.editor_file import (
     EditorFileClient as _EditorFileClient,
     EditorFileHandle as _EditorFileHandle,
 )
-from ai_editor_client.exceptions import ClientValidationError
+from ai_editor_client.exceptions import ClientValidationError, ServerVersionMismatch
 from ai_editor_client.file_session import (
     FileSessionClient as _FileSessionClient,
     SessionNotFoundError,
@@ -47,6 +47,11 @@ from ai_editor_client.server_api import (
     UNIVERSAL_FILE_COMMANDS,
 )
 from ai_editor_client.universal_file import UniversalFileClient
+from ai_editor_client.server_version import (
+    DECLARED_VERSION,
+    REQUIRED_SERVER_VERSION,
+    VERSION_EXEMPT_COMMANDS,
+)
 from ai_editor_client.server_schema import (
     fetch_command_schema_from_server,
     parse_schema_from_help_payload,
@@ -139,6 +144,9 @@ LocalEditWorkspace = _DeprecatedLocalEditWorkspace
 __all__ = [
     "CLIENT_FACADE_COMMANDS",
     "CST_REMOVED_COMMANDS",
+    "DECLARED_VERSION",
+    "REQUIRED_SERVER_VERSION",
+    "VERSION_EXEMPT_COMMANDS",
     "ClientValidationError",
     "CodeAnalysisAsyncClient",
     "EditorFileClient",
@@ -150,6 +158,7 @@ __all__ = [
     "LEGACY_REMOVED_COMMANDS",
     "LocalEditWorkspace",
     "REMOVED_COMMANDS",
+    "ServerVersionMismatch",
     "SessionNotFoundError",
     "TRANSFER_FACADE_METHODS",
     "UNIVERSAL_FILE_COMMANDS",
@@ -165,16 +174,10 @@ __all__ = [
 ]
 
 
-def _read_package_version() -> str:
-    vf = Path(__file__).resolve().parent / "version.txt"
-    if vf.is_file():
-        return vf.read_text(encoding="utf-8").strip()
-    try:
-        import importlib.metadata as _imd
-
-        return _imd.version("ai-editor-client")
-    except Exception:
-        return "0.0.0"
-
-
-__version__ = _read_package_version()
+# One declaration, one number. `ai_editor_client.server_version` reads
+# `version.txt` (a symlink to the repository-root VERSION file, resolved to real
+# content in the built wheel) and is the module the per-call server-version
+# guard enforces against. `__version__` is that same value, never a second
+# derivation of it -- the previous local reader here had a "0.0.0" fallback,
+# which is exactly the kind of guessed number a guard must never be handed.
+__version__ = DECLARED_VERSION

@@ -484,6 +484,11 @@ class FileSessionClient:
         destination: Union[str, Path],
     ) -> Any:
         """Stream download chunks to ``destination`` via the adapter client."""
+        # This is the one workflow path that reaches the adapter transport
+        # directly instead of going through CodeAnalysisAsyncClient.call, so the
+        # per-call server-version guard has to be invoked explicitly here; it is
+        # moving real file bytes and must not run against a foreign server.
+        await self._client.ensure_server_version("download_to_path")
         return await self._client.rpc.download_file(
             str(transfer_id).strip(),
             str(destination),
@@ -497,6 +502,10 @@ class FileSessionClient:
         compression: str = "identity",
     ) -> Any:
         """Upload raw bytes through the adapter buffer; returns upload receipt."""
+        # Same reason as download_to_path: this reaches the adapter transport
+        # directly, so the version guard is invoked explicitly. Checked BEFORE
+        # the temporary file is written, so a refused call leaves no residue.
+        await self._client.ensure_server_version("upload_bytes")
         dest = Path(filename)
         dest.write_bytes(payload)
         try:

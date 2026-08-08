@@ -11,6 +11,32 @@ from ai_editor_client.config import (
     adapter_settings_from_server_config,
     adapter_settings_to_jsonrpc_kwargs,
 )
+from ai_editor_client.server_version import REQUIRED_SERVER_VERSION
+
+
+def _health_envelope(version: str = REQUIRED_SERVER_VERSION) -> dict:
+    """A ``health`` response shaped like the server's, carrying ``version``."""
+    return {"success": True, "data": {"status": "ok", "version": version}}
+
+
+def _matching_server_execute_command(
+    result: dict,
+    *,
+    server_version: str = REQUIRED_SERVER_VERSION,
+) -> AsyncMock:
+    """``execute_command`` that answers the version probe, then returns ``result``.
+
+    Every non-exempt call is now preceded by a ``health`` probe (the client's
+    per-call server-version guard), so a mock rpc must answer it or the call is
+    refused before it is dispatched.
+    """
+
+    async def _side_effect(command: str, params: dict, **kwargs: object) -> dict:
+        if command == "health":
+            return _health_envelope(server_version)
+        return result
+
+    return AsyncMock(side_effect=_side_effect)
 
 
 def test_adapter_settings_https_includes_ssl_when_paths_present() -> None:
@@ -61,7 +87,7 @@ def test_adapter_settings_to_jsonrpc_kwargs_mtls_paths() -> None:
 @pytest.mark.asyncio
 async def test_call_forwards_to_execute_command() -> None:
     mock_rpc = MagicMock()
-    mock_rpc.execute_command = AsyncMock(return_value={"ok": True})
+    mock_rpc.execute_command = _matching_server_execute_command({"ok": True})
     with patch(
         "ai_editor_client.client.JsonRpcClient",
         return_value=mock_rpc,
@@ -69,7 +95,9 @@ async def test_call_forwards_to_execute_command() -> None:
         client = CodeAnalysisAsyncClient(host="h", port=1)
         out = await client.call("list_projects", {"include_deleted": True})
     assert out == {"ok": True}
-    mock_rpc.execute_command.assert_awaited_once_with(
+    # The version probe first, then the command itself.
+    assert mock_rpc.execute_command.await_args_list[0].args == ("health", {})
+    mock_rpc.execute_command.assert_awaited_with(
         "list_projects",
         {"include_deleted": True},
         use_cmd_endpoint=False,
@@ -101,7 +129,7 @@ async def test_call_validated_uses_help_schema_then_execute() -> None:
     mock_rpc.help = AsyncMock(
         return_value={"success": True, "data": {"schema": schema, "metadata": {}}}
     )
-    mock_rpc.execute_command = AsyncMock(return_value={"ok": True})
+    mock_rpc.execute_command = _matching_server_execute_command({"ok": True})
     with patch(
         "ai_editor_client.client.JsonRpcClient",
         return_value=mock_rpc,
@@ -110,7 +138,8 @@ async def test_call_validated_uses_help_schema_then_execute() -> None:
         out = await client.call_validated("list_projects", {"include_deleted": False})
     assert out == {"ok": True}
     mock_rpc.help.assert_awaited_once_with("list_projects")
-    mock_rpc.execute_command.assert_awaited_once_with(
+    assert mock_rpc.execute_command.await_args_list[0].args == ("health", {})
+    mock_rpc.execute_command.assert_awaited_with(
         "list_projects",
         {"include_deleted": False},
         use_cmd_endpoint=False,
@@ -129,7 +158,7 @@ async def test_call_validated_raises_when_required_missing() -> None:
     mock_rpc.help = AsyncMock(
         return_value={"success": True, "data": {"schema": schema, "metadata": {}}}
     )
-    mock_rpc.execute_command = AsyncMock()
+    mock_rpc.execute_command = _matching_server_execute_command({"ok": True})
     with patch(
         "ai_editor_client.client.JsonRpcClient",
         return_value=mock_rpc,
@@ -139,7 +168,8 @@ async def test_call_validated_raises_when_required_missing() -> None:
 
         with pytest.raises(ClientValidationError, match="required parameter"):
             await client.call_validated("universal_file_open", {})
-    mock_rpc.execute_command.assert_not_called()
+    # Only the version probe reached the server; the command itself never did.
+    assert [c.args[0] for c in mock_rpc.execute_command.await_args_list] == ["health"]
 
 
 @pytest.mark.asyncio
@@ -154,7 +184,7 @@ async def test_call_validated_rejects_unknown_key() -> None:
     mock_rpc.help = AsyncMock(
         return_value={"success": True, "data": {"schema": schema, "metadata": {}}}
     )
-    mock_rpc.execute_command = AsyncMock()
+    mock_rpc.execute_command = _matching_server_execute_command({"ok": True})
     with patch(
         "ai_editor_client.client.JsonRpcClient",
         return_value=mock_rpc,
@@ -167,7 +197,8 @@ async def test_call_validated_rejects_unknown_key() -> None:
                 "list_projects",
                 {"include_deleted": False, "extra": 1},
             )
-    mock_rpc.execute_command.assert_not_called()
+    # Only the version probe reached the server; the command itself never did.
+    assert [c.args[0] for c in mock_rpc.execute_command.await_args_list] == ["health"]
 
 
 def test_parse_schema_from_help_unknown_command() -> None:

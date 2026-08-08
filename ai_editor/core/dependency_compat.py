@@ -1,11 +1,30 @@
 """
-Dependency version compatibility checks for queue subsystem.
+Dependency version compatibility checks: queue subsystem, and the tree engine.
+
+Two different policies live here, deliberately, because they guard two
+different kinds of damage:
+
+* The queue dependencies (``mcp-proxy-adapter``, ``queuemgr``) are checked
+  against a MINIMUM version. Too old means a missing lifecycle feature, so a
+  floor is the right rule and only matters when the queue is enabled.
+* The tree engine (``ai-editor-tree-engine``) is checked for EXACT equality
+  with `ai_editor.version.REQUIRED_TREE_ENGINE_VERSION`. The engine owns node
+  identity and the on-disk tree file format; a different engine can write a
+  tree file this server cannot read back. That is data corruption, not a
+  degraded feature, so there is no compatible range and no minimum -- the
+  numbers match or the server does not start.
 """
 
 from __future__ import annotations
 
 from importlib import metadata
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+from ai_editor.version import (
+    REQUIRED_TREE_ENGINE_VERSION,
+    TREE_ENGINE_DISTRIBUTION,
+    VERSION_FILE,
+)
 
 MIN_MCP_PROXY_ADAPTER_VERSION = "8.10.15"
 MIN_QUEUEMGR_VERSION = "1.0.20"
@@ -83,3 +102,64 @@ def assert_queue_dependencies_compatible(queue_enabled: bool) -> None:
     if check["queue_ready"]:
         return
     raise RuntimeError("; ".join(check["errors"]))
+
+
+# ---------------------------------------------------------------------------
+# Server <-> engine: exact equality, enforced at startup.
+# ---------------------------------------------------------------------------
+
+
+class EngineVersionMismatch(RuntimeError):
+    """The installed tree engine is not the one this build declares.
+
+    Raised at server startup, before any file is opened. It is a hard refusal,
+    not a warning: the engine owns node identity and the on-disk tree file, so
+    continuing risks corrupting data on disk rather than merely misbehaving.
+    """
+
+
+def installed_tree_engine_version() -> Optional[str]:
+    """Version of the INSTALLED ``ai-editor-tree-engine`` distribution.
+
+    ``None`` means the distribution is not installed at all. That happens in a
+    bare source checkout with ``src/`` on ``sys.path``: ``import tree_engine``
+    then succeeds while nothing states which version that code is. `None` is
+    reported so the caller can say exactly that, instead of letting an
+    unidentifiable engine through.
+    """
+    try:
+        return metadata.version(TREE_ENGINE_DISTRIBUTION)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def assert_tree_engine_version_matches() -> None:
+    """Refuse to continue unless the installed engine is the declared one."""
+    installed = installed_tree_engine_version()
+    if installed == REQUIRED_TREE_ENGINE_VERSION:
+        return
+    if installed is None:
+        detail = (
+            f"the {TREE_ENGINE_DISTRIBUTION} distribution is NOT INSTALLED, so "
+            "the engine's version cannot be established. An importable "
+            "tree_engine package on sys.path (for example a source checkout's "
+            "src/ directory) is not enough: only an installed distribution "
+            "carries the metadata that says which version it is. Install it, "
+            f"for example `pip install '{TREE_ENGINE_DISTRIBUTION}=="
+            f"{REQUIRED_TREE_ENGINE_VERSION}'` or, from a checkout of this "
+            "repository, `pip install ./src[tree-engine]`."
+        )
+    else:
+        detail = (
+            f"the installed {TREE_ENGINE_DISTRIBUTION} is version {installed}. "
+            "The versions must be EQUAL, not merely compatible: the engine owns "
+            "node identity and the on-disk tree file format, so a mismatched "
+            "engine can write a tree file this server cannot read back. "
+            f"Install {TREE_ENGINE_DISTRIBUTION}=={REQUIRED_TREE_ENGINE_VERSION} "
+            "or run a server build of version " + installed + "."
+        )
+    raise EngineVersionMismatch(
+        f"ai-editor {REQUIRED_TREE_ENGINE_VERSION} refuses to start: " + detail +
+        f" The requirement is declared in {VERSION_FILE} and read by "
+        "ai_editor/version.py as REQUIRED_TREE_ENGINE_VERSION."
+    )
