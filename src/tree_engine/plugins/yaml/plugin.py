@@ -55,16 +55,18 @@ from tree_engine.exceptions import FormatContentParseFailed, FormatFragmentParse
 from tree_engine.plugins.contract import (
     FormatPluginContract, FormatPluginMetadata, SemanticRoleMapping,
 )
+from tree_engine.plugins.json_pointer import JsonPointerNotation
 from tree_engine.plugins.yaml.builder import NodeBuilder
 from tree_engine.plugins.yaml.emitter import (
     emit, is_source_tree, node_to_plain, plain_to_node, render,
 )
 from tree_engine.plugins.yaml.reader import YamlReader
 from tree_engine.plugins.yaml.scanner import (
-    FORMAT_ID, KIND_DOCUMENT, YamlSyntaxError, contract_error,
+    ENTRY_KINDS, FORMAT_ID, KIND_DOCUMENT, KIND_ITEM, KIND_FLOW_ITEM, KIND_TRIVIA,
+    MAPPING_KINDS, PAIR_KINDS, SEQUENCE_KINDS, YamlSyntaxError, contract_error,
 )
 
-__all__ = ["FORMAT_ID", "METADATA", "YamlFormatPlugin", "YAML_FORMAT_PLUGIN"]
+__all__ = ["FORMAT_ID", "METADATA", "YAML_POINTER", "YamlFormatPlugin", "YAML_FORMAT_PLUGIN"]
 
 METADATA = FormatPluginMetadata(
     format_id=FORMAT_ID,
@@ -81,6 +83,63 @@ METADATA = FormatPluginMetadata(
 #: does not model them -- not an error and not an omission.
 _ROLE_MAP = SemanticRoleMapping({})
 
+#: Entry kinds that carry a sequence position rather than a key.
+_ITEM_KINDS = (KIND_ITEM, KIND_FLOW_ITEM)
+
+
+def _pointer_key(entry: Node) -> Optional[str]:
+    """A mapping entry's pointer token: its decoded key, else its raw key text.
+
+    ``decode_scalar`` resolves a key to its YAML value, so ``port: 8080`` gives
+    the integer ``8080`` and a JSON Pointer -- whose tokens are strings and
+    nothing else -- cannot use it directly. ``key_raw`` is the exact source
+    text of the same key, which IS a string and is what a reader of the file
+    would type, so it is the fallback. An entry carrying neither has no token
+    and no pointer, rather than one invented from its position.
+    """
+
+    key = entry.fields.get("key")
+    if isinstance(key, str):
+        return key
+    raw = entry.fields.get("key_raw")
+    return raw if isinstance(raw, str) else None
+
+
+def _pointer_step(parent: Node, child: Node, ordinal: int) -> Optional[Tuple[Tuple[str, ...], bool]]:
+    """This format's structural half of RFC 6901, for ``JsonPointerNotation``.
+
+    YAML models comments, blank lines and ``---`` markers as real nodes so a
+    document round-trips byte-identically. None of them is a value, and RFC
+    6901 addresses values only, so each is refused a pointer instead of being
+    given a synthesized one. Block and flow collections are distinct kinds
+    carrying identical data, and both are handled by the same clauses here.
+    """
+
+    kind, child_kind = parent.kind, child.kind
+    if kind == KIND_DOCUMENT:
+        # The stream wrapper is not a value; its single value block is what the
+        # empty pointer names, so the block claims the root rather than nesting
+        # under it.
+        return None if child_kind == KIND_TRIVIA else ((), True)
+    if kind in MAPPING_KINDS:
+        if child_kind not in PAIR_KINDS:
+            return None
+        key = _pointer_key(child)
+        return ((key,), False) if key is not None else None
+    if kind in SEQUENCE_KINDS:
+        return ((str(ordinal),), False) if child_kind in _ITEM_KINDS else None
+    if kind in ENTRY_KINDS:
+        # A pair or item is the route to its value, never the value itself.
+        return ((), True)
+    return None
+
+
+#: The plugin's reference-notation declaration, read duck-typed by
+#: ``tree_engine.core.identifier_map``. ``root_addressable`` is false because
+#: ``yaml:Document`` is a stream wrapper: the empty pointer names the value
+#: block inside it, which claims that pointer through the step above.
+YAML_POINTER = JsonPointerNotation(_pointer_step, root_addressable=False)
+
 
 class YamlFormatPlugin(FormatPluginContract, FormatBoundary):
     """The registered ``format_id="yaml"`` plugin (concept C-016).
@@ -92,6 +151,10 @@ class YamlFormatPlugin(FormatPluginContract, FormatBoundary):
     signatures below are supersets of both, so one concrete method satisfies
     each name on both bases, exactly as the plain_text and BSL plugins do.
     """
+
+    #: This format's native reference notation ({p021} third correspondence):
+    #: JSON Pointer, computed and parsed here rather than by shared code.
+    native_reference = YAML_POINTER
 
     @property
     def metadata(self) -> FormatPluginMetadata:

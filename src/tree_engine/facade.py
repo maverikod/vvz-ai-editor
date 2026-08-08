@@ -28,6 +28,7 @@ from uuid import UUID
 from tree_engine.core import move as _move_mod, operations as _ops, subtree_apply as _apply_mod
 from tree_engine.core import subtree_copy as _copy_mod, updates as _updates
 from tree_engine.core.address import NodeAddressError, normalize_node_address
+from tree_engine.core.identifier_map import IdentifierMap, IdentifierStyle, NodeIdentifiers
 from tree_engine.core.identity import AddressRemap, NodeAddress, generate_node_id
 from tree_engine.core.live_tree import (LiveNode, TreeDocument, invalidate_cached_source, relink,
     sync_fields, to_frozen, to_live, walk)
@@ -60,9 +61,13 @@ __all__ = [
     "open_bytes", "open_file", "write", "SOURCE_NONE", "SOURCE_PREVIEW", "SOURCE_FULL",
     "PLAIN_TEXT_FORMAT_ID", "AddressRemap", "ApplySubtreeResult", "Checkpoint", "CheckpointKind",
     "CopiedDocument", "HistoryPort", "MoveResult", "MutationResult", "NodeAddress", "OpenBranch",
-    "OpenedTree", "OutlineResponse", "QueryMatch", "TreeWriteIntent", "WrittenPair"]
+    "OpenedTree", "OutlineResponse", "QueryMatch", "TreeWriteIntent", "WrittenPair",
+    "IdentifierMap", "IdentifierStyle", "NodeIdentifiers", "identifier_map", "identifiers",
+    "node_identifier", "node_ref", "reference_notation"]
 
-#: Every address form {j9rh} accepts, on every address-taking command below.
+#: Every address form {j9rh} accepts, on every address-taking command below, plus the format's own
+#: native reference where its plugin declares one -- a JSON Pointer for json/yaml/toml. All three
+#: identifiers of ``core.identifier_map`` are accepted here whatever style a caller reports in.
 Address = Union[UUID, int, str, NodeAddress]
 
 #: Result types re-exported off the core modules already imported above, so a caller annotating or
@@ -284,15 +289,58 @@ def reparse(document: TreeDocument) -> TreeDocument:
 
 # -- addressing, versioning, locking ----------------------------------------
 
+def identifier_map(document: TreeDocument, *,
+                   style: Union[IdentifierStyle, str] = IdentifierStyle.SHORT_ID) -> IdentifierMap:
+    """The document's three-way identifier map: short_id, node_id, and -- where this format's
+    plugin declares a reference notation -- its native reference ({p021}, {p097}).
+
+    ``style`` selects which of the two document-wide identifiers the map REPORTS; it never narrows
+    what it ACCEPTS, since the map is what makes the three forms equivalent. It is an argument on a
+    freshly built object, so two callers may hold two styles over one document at once and neither
+    can change the other's."""
+    return IdentifierMap(document, _plugin(document.format_id), style=style)
+
+def identifiers(document: TreeDocument, address: Address, *,
+                style: Union[IdentifierStyle, str] = IdentifierStyle.SHORT_ID) -> NodeIdentifiers:
+    """Every identifier the addressed node answers to, reported under ``style``. ``ref``/``notation``
+    are ``None`` for a format that declares no reference notation, and for a node its notation
+    cannot express -- never a synthesized string standing in for one."""
+    with _typed(ErrorCode.NODE_NOT_FOUND):
+        return identifier_map(document, style=style).identifiers(resolve_address(document, address))
+
+def node_identifier(document: TreeDocument, address: Address, *,
+                    style: Union[IdentifierStyle, str] = IdentifierStyle.SHORT_ID
+                    ) -> Union[int, str]:
+    """The single identifier ``style`` reports for the addressed node: the compact integer by
+    default, or the canonical UUID4 as a string."""
+    return identifiers(document, address, style=style).reported
+
+def node_ref(document: TreeDocument, address: Address) -> Optional[str]:
+    """The addressed node's native reference -- a JSON Pointer for json/yaml/toml -- or ``None``."""
+    return identifiers(document, address).ref
+
+def reference_notation(document: TreeDocument) -> Optional[str]:
+    """The name of this format's reference notation (``"json_pointer"``), or ``None`` for a format
+    whose plugin declares none, such as plain_text."""
+    return identifier_map(document).notation
+
 def resolve_address(document: TreeDocument, address: Address) -> UUID:
-    """Resolve any accepted address form -- a UUID4, a positive-int or ``0x``-hex short_id, or a
-    ``"document_id:node_id"`` string -- to its canonical UUID4 ({j9rh}). An unknown or
-    foreign-document address raises ``NodeNotFound`` and an ambiguous short_id ``ShortIdConflict``,
-    both before any operation starts."""
+    """Resolve any accepted address form -- a UUID4, a positive-int or ``0x``-hex short_id, a
+    ``"document_id:node_id"`` string, or this format's own native reference -- to its canonical
+    UUID4 ({j9rh}). An unknown or foreign-document address raises ``NodeNotFound`` and an ambiguous
+    short_id ``ShortIdConflict``, both before any operation starts.
+
+    The native reference is tried only AFTER ``normalize_node_address`` has refused a string, which
+    is what keeps every pre-existing address form on exactly the path it already took and builds the
+    plugin's reference index only for a caller actually using one."""
     try:
         return normalize_node_address(document, address, current_document_id=document.document_id,
                                       resolve_short_id=document.resolve_short_id)
     except NodeAddressError as exc:
+        if isinstance(address, str):
+            by_ref = identifier_map(document).node_for_ref(address)
+            if by_ref is not None:
+                return by_ref
         failure = ShortIdConflict if type(exc).__name__ == "AmbiguousAddressError" else NodeNotFound
         raise failure(f"unresolvable node address {address!r}", address=str(address)) from exc
 

@@ -40,8 +40,9 @@ from tree_engine.exceptions import (FormatContentParseFailed, FormatFragmentPars
                                     FormatPluginContractError, UnsupportedTranslation)
 from tree_engine.plugins.contract import (FormatPluginContract, FormatPluginMetadata,
                                           SemanticRoleMapping)
+from tree_engine.plugins.json_pointer import JsonPointerNotation
 
-__all__ = ["FORMAT_ID", "TomlFormatPlugin", "TOML_FORMAT_PLUGIN"]
+__all__ = ["FORMAT_ID", "TOML_POINTER", "TomlFormatPlugin", "TOML_FORMAT_PLUGIN"]
 
 FORMAT_ID = "toml"
 KIND_DOCUMENT = f"{FORMAT_ID}:Document"
@@ -289,8 +290,133 @@ def _dump_toml(mapping: Any, path: Tuple[str, ...] = ()) -> str:
             pairs.append(f"{_dump_key(key)} = {_dump_value(value)}\n")
     return "".join(pairs) + "".join(tables)
 
+def _split_dotted_key(key: str) -> Tuple[str, ...]:
+    """Split a TOML dotted key into its segments, unquoting each one.
+
+    ``a.b`` is two segments, and so is ``a."b.c"`` -- but the second one's dot
+    is content, not a separator, which is exactly why this cannot be a
+    ``str.split(".")``. Quoted segments are decoded so the resulting token is
+    the key a reader means, not the source spelling of it.
+    """
+
+    segments: List[str] = []
+    current: List[str] = []
+    index = 0
+    while index < len(key):
+        char = key[index]
+        if char in "\"'":
+            try:
+                end = _scan_string(key, index)
+            except _TomlScanError:
+                # A key no scanner can close is not a key this notation can
+                # express; the caller-synthesized node it came from simply gets
+                # no pointer rather than one built from a guess at where the
+                # quote was meant to end.
+                return ()
+            literal = key[index:end]
+            try:
+                current.append(json.loads(literal) if char == '"' else literal[1:-1])
+            except ValueError:
+                current.append(literal)
+            index = end
+            continue
+        if char == ".":
+            segments.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    segments.append("".join(current).strip())
+    return tuple(segment for segment in segments if segment != "")
+
+
+def _key_text(node: Node) -> str:
+    """A node's header/key text, or ``""`` when it carries none as a string.
+
+    ``toml:Document`` has no key at all, and a caller-synthesized node may hold
+    a non-string one; both answer ``""``, which
+    :func:`_split_dotted_key` turns into no segments and hence no pointer.
+    """
+
+    key = node.fields.get("key")
+    return key if isinstance(key, str) else ""
+
+
+def _relative_key(parent: Node, child: Node) -> Tuple[str, ...]:
+    """The header segments ``child`` adds below ``parent``'s own header.
+
+    A table header carries its FULL dotted key -- ``[a.b]`` stores ``"a.b"``
+    even though the tree already nests it under ``[a]`` -- so emitting all of
+    it would produce ``/a/a/b``. The parent's own segments are dropped, which
+    is a prefix comparison on parsed segments rather than on raw text, so a
+    quoted segment cannot be mis-stripped.
+    """
+
+    child_segments = _split_dotted_key(_key_text(child))
+    parent_segments = _split_dotted_key(_key_text(parent))
+    if parent_segments and child_segments[:len(parent_segments)] == parent_segments:
+        return child_segments[len(parent_segments):]
+    return child_segments
+
+
+def _array_of_tables_ordinal(parent: Node, child: Node) -> int:
+    """How many earlier siblings repeat ``child``'s ``[[header]]``.
+
+    ``[[a]]`` written three times is a three-element array, kept structurally
+    as three sibling nodes with one key; their pointers differ only by this
+    index, so it has to be counted over the siblings rather than read off the
+    node.
+    """
+
+    key = child.fields.get("key")
+    count = 0
+    for sibling in parent.children:
+        if sibling is child:
+            break
+        if sibling.kind == KIND_ARRAY_OF_TABLES and sibling.fields.get("key") == key:
+            count += 1
+    return count
+
+
+def _pointer_step(parent: Node, child: Node, ordinal: int) -> Optional[Tuple[Tuple[str, ...], bool]]:
+    """This format's structural half of RFC 6901, for ``JsonPointerNotation``.
+
+    TOML is a line-tiled model rather than a value tree, so the mapping is the
+    least direct of the three: a table's pointer is its dotted key expanded
+    into one token per segment, a key/value pair's is the same below whatever
+    table contains it, and a repeated ``[[table]]`` adds its occurrence index
+    because that is what the array element's pointer is. Comments and blank
+    lines exist only to make the document render byte-identically; they are
+    not values and get no pointer.
+    """
+
+    kind = child.kind
+    if kind == KIND_KEYVALUE:
+        segments = _split_dotted_key(_key_text(child))
+        return (segments, True) if segments else None
+    if kind == KIND_TABLE:
+        segments = _relative_key(parent, child)
+        return (segments, True) if segments else None
+    if kind == KIND_ARRAY_OF_TABLES:
+        segments = _relative_key(parent, child)
+        if not segments:
+            return None
+        return (segments + (str(_array_of_tables_ordinal(parent, child)),), True)
+    return None
+
+
+#: The plugin's reference-notation declaration, read duck-typed by
+#: ``tree_engine.core.identifier_map``. A TOML document IS its root table, so
+#: ``toml:Document`` is what the empty pointer names.
+TOML_POINTER = JsonPointerNotation(_pointer_step, root_addressable=True)
+
+
 class TomlFormatPlugin(FormatPluginContract, FormatBoundary):
     """The registered ``format_id="toml"`` plugin (concept C-016)."""
+
+    #: This format's native reference notation ({p021} third correspondence):
+    #: JSON Pointer, computed and parsed here rather than by shared code.
+    native_reference = TOML_POINTER
 
     @property
     def metadata(self) -> FormatPluginMetadata:

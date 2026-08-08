@@ -36,8 +36,9 @@ from tree_engine.plugins.contract import (
     FormatPluginContract, FormatPluginContractError, FormatPluginMetadata,
     SemanticRoleMapping, UnsupportedTranslationError,
 )
+from tree_engine.plugins.json_pointer import JsonPointerNotation
 
-__all__ = ["FORMAT_ID", "JsonFormatPlugin", "JSON_FORMAT_PLUGIN"]
+__all__ = ["FORMAT_ID", "JSON_POINTER", "JsonFormatPlugin", "JSON_FORMAT_PLUGIN"]
 
 FORMAT_ID = "json"
 KIND_OBJECT = f"{FORMAT_ID}:Object"
@@ -303,8 +304,44 @@ def _render_node(node: Node) -> str:
         return "null"
     raise _contract_error(f"cannot render node kind {kind!r} to JSON")
 
+def _pointer_step(parent: Node, child: Node, ordinal: int) -> Optional[Tuple[Tuple[str, ...], bool]]:
+    """This format's structural half of RFC 6901, for ``JsonPointerNotation``.
+
+    JSON is the format the notation was written for, so the mapping is direct
+    but for one asymmetry: a pointer names a VALUE. ``/a`` is the value of
+    member ``"a"``, and RFC 6901 has no notation at all for the member as a
+    thing distinct from its value. ``json:Member`` therefore contributes its
+    key and declares itself unaddressable, and the value beneath it claims the
+    pointer the member built -- which is what keeps one pointer naming exactly
+    one node.
+    """
+
+    kind = parent.kind
+    if kind == KIND_OBJECT:
+        if child.kind != KIND_MEMBER:
+            return None
+        key = child.fields.get("key")
+        return ((key,), False) if isinstance(key, str) else None
+    if kind == KIND_MEMBER:
+        return ((), True)
+    if kind == KIND_ARRAY:
+        return ((str(ordinal),), True)
+    return None
+
+
+#: The plugin's reference-notation declaration, read duck-typed by
+#: ``tree_engine.core.identifier_map`` -- the same declaration pattern
+#: ``fragment_container_kinds`` already established. A JSON document's root
+#: value IS the document, so it is what the empty pointer names.
+JSON_POINTER = JsonPointerNotation(_pointer_step, root_addressable=True)
+
+
 class JsonFormatPlugin(FormatPluginContract, FormatBoundary):
     """The registered ``format_id="json"`` plugin (concept C-016)."""
+
+    #: This format's native reference notation ({p021} third correspondence):
+    #: JSON Pointer, computed and parsed here rather than by shared code.
+    native_reference = JSON_POINTER
 
     @property
     def metadata(self) -> FormatPluginMetadata:
